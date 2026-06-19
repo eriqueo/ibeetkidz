@@ -3,6 +3,7 @@
 // swappable and the core stays unit-testable with a fake implementation.
 
 import type { Clip, EffectDescriptor } from "../core/types.ts";
+import type { QuantizeGrid } from "../core/quantize.ts";
 
 /** Opaque handle to an audio buffer held by the adapter (keyed by id). */
 export type BufferId = string;
@@ -47,6 +48,10 @@ export interface SoundPort {
   startTransport(): void;
   stopTransport(): void;
   stopAll(): void;
+
+  /** Set the global snap grid for one-off triggers (`play`). "off" disables
+   *  snapping. Looping steps (`scheduleStep`) are already bar-aligned. */
+  setQuantize(grid: QuantizeGrid): void;
 
   /** Analyser node feeding the visualizer. */
   getAnalyser(): AnalyserNode;

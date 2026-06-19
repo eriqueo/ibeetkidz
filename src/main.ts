@@ -76,6 +76,7 @@ function boot(): void {
     async () => {
       button.disabled = true;
       await engine.start(); // resume context + load builtins (user gesture)
+      engine.setQuantize("beat"); // everything lands on the beat by default
       await loadLast(); // bring back the last jam, if there is one
       gate.hidden = true;
       app.hidden = false;

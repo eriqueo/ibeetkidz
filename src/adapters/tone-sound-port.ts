@@ -13,6 +13,7 @@ import {
   type BuiltinSound,
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
+import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
 import {
   MicDeniedError,
   NoMicError,
@@ -33,6 +34,8 @@ export class ToneSoundPort implements SoundPort {
   private recorder?: Tone.Recorder | undefined;
   private bufferSeq = 0;
   private builtinsLoaded = false;
+  /** Global snap grid for one-off triggers. Default: snap to each beat. */
+  private quantizeGrid: QuantizeGrid = "beat";
 
   // Live one-shot + scheduled players, tracked for cleanup.
   private readonly liveVoices = new Set<Tone.Player>();
@@ -207,8 +210,27 @@ export class ToneSoundPort implements SoundPort {
         this.liveVoices.delete(player);
         player.dispose();
       };
-      player.start();
+      this.startQuantized(player);
     });
+  }
+
+  /** Start a one-shot player on the beat when the transport is running and a
+   *  snap grid is set; otherwise start it immediately. A small near-boundary
+   *  guard avoids an audible stall when the next grid line is essentially now. */
+  private startQuantized(player: Tone.Player): void {
+    const subdivision = gridSubdivision(this.quantizeGrid);
+    const transport = Tone.getTransport();
+    if (subdivision === null || transport.state !== "started") {
+      player.start();
+      return;
+    }
+    const when = transport.nextSubdivision(subdivision);
+    const now = this.ctx.currentTime;
+    if (when - now < 0.03) {
+      player.start();
+    } else {
+      player.start(when);
+    }
   }
 
   scheduleStep(
@@ -295,6 +317,10 @@ export class ToneSoundPort implements SoundPort {
     transport.cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;
+  }
+
+  setQuantize(grid: QuantizeGrid): void {
+    this.quantizeGrid = grid;
   }
 
   getAnalyser(): AnalyserNode {

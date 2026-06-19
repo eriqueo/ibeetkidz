@@ -4,6 +4,7 @@
 
 import type { Project } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
+import type { QuantizeGrid } from "./quantize.ts";
 
 export class AudioEngine {
   private started = false;
@@ -25,6 +26,11 @@ export class AudioEngine {
 
   setTempo(bpm: number): void {
     this.sound.setTempo(bpm);
+  }
+
+  /** Set the global on-beat snap grid for one-off triggers. */
+  setQuantize(grid: QuantizeGrid): void {
+    this.sound.setQuantize(grid);
   }
 
   /** Reconcile transport + scheduled steps to match the project's layers. */
