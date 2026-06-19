@@ -298,6 +298,96 @@ body {
   opacity: 0.8;
 }
 
+/* Loop Stage — timeline of editable lanes + a sweeping playhead. */
+.loop-board {
+  --ph: 0%;
+  display: grid;
+  gap: 0.5rem;
+  width: min(96vw, 900px);
+  /* Recess the bright visualizer behind the tracks so it doesn't compete. */
+  background: rgba(10, 6, 24, 0.66);
+  border-radius: 0.75rem;
+  padding: 0.5rem;
+}
+.loop-track {
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  border-left: 6px solid var(--row-color, var(--accent));
+  border-radius: 0.6rem;
+  background: var(--panel);
+  padding: 0.4rem 0.5rem;
+}
+.loop-track-head {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name mute" "vol remove";
+  gap: 0.25rem 0.4rem;
+  align-items: center;
+}
+.loop-track-head .layer-name {
+  grid-area: name;
+  font-size: 0.9rem;
+}
+.loop-track-head .layer-mute {
+  grid-area: mute;
+}
+.loop-track-head .layer-vol {
+  grid-area: vol;
+  width: 100%;
+}
+.loop-track-head .layer-remove {
+  grid-area: remove;
+}
+.loop-track-head .t-btn {
+  width: 2.2rem;
+  height: 2.2rem;
+  font-size: 1.1rem;
+}
+.loop-lane {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 0.2rem;
+  min-width: 0;
+}
+.loop-cell {
+  height: 2.4rem;
+  min-width: 0;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.4rem;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+}
+.loop-cell.downbeat {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.loop-cell.on {
+  background: var(--row-color, var(--accent));
+  box-shadow: 0 0 10px var(--row-color, var(--accent));
+}
+.loop-cell:active {
+  transform: scale(0.9);
+}
+/* The playhead lives inside each lane and reads the board's --ph variable. */
+.loop-playhead {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: var(--ph);
+  width: 3px;
+  margin-left: -1.5px;
+  background: #ffd23f;
+  box-shadow: 0 0 10px #ffd23f;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.loop-board[data-playing="true"] .loop-playhead {
+  opacity: 1;
+}
+
 /* Sound Pads */
 .pad-grid {
   display: grid;

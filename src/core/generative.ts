@@ -7,7 +7,9 @@ import { STEP_COUNT } from "./types.ts";
 import type { RngPort } from "./rng.ts";
 import { DRUM_SOUNDS } from "./sound-catalog.ts";
 
-const LAYER_ID = (assetId: string): string => `gen-${assetId}`;
+// Same id scheme as the Beat Maker (`beat-<assetId>`) so a generated beat and a
+// hand-made one share ONE layer per drum — no duplicate rows in the Loop Stage.
+const LAYER_ID = (assetId: string): string => `beat-${assetId}`;
 
 /** Build a fresh beat: clears prior generated layers, then lays down a kick +
  *  snare + hat groove with seeded variation, optionally adding clap/tom. */

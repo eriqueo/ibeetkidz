@@ -58,6 +58,10 @@ export interface SoundPort {
    *  snapping. Looping steps (`scheduleStep`) are already bar-aligned. */
   setQuantize(grid: QuantizeGrid): void;
 
+  /** Current playhead step (0..totalSteps-1) from the running transport, or -1
+   *  when stopped. Drives the Loop Stage playhead. */
+  getTransportStep(totalSteps: number): number;
+
   /** Analyser node feeding the visualizer. */
   getAnalyser(): AnalyserNode;
 }

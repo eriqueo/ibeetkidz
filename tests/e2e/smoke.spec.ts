@@ -66,8 +66,8 @@ test("surprise-me generates a beat and lands on the loop stage", async ({
   await boot(page);
   await page.locator('[data-act="surprise"]').click();
   // It switches to the Loop Stage, which now lists generated layers.
-  await expect(page.locator(".layer-row").first()).toBeVisible();
-  const count = await page.locator(".layer-row").count();
+  await expect(page.locator(".loop-track").first()).toBeVisible();
+  const count = await page.locator(".loop-track").count();
   expect(count).toBeGreaterThanOrEqual(3); // kick + snare + hihat at minimum
 });
 
@@ -76,16 +76,34 @@ test("a saved jam survives a reload (save → reload → still there)", async ({
 }) => {
   await boot(page);
   await page.locator('[data-act="surprise"]').click();
-  await expect(page.locator(".layer-row").first()).toBeVisible();
-  const before = await page.locator(".layer-row").count();
+  await expect(page.locator(".loop-track").first()).toBeVisible();
+  const before = await page.locator(".loop-track").count();
 
   await page.locator('[data-act="save"]').click();
   await page.waitForTimeout(200);
 
   await boot(page); // reload + re-enter
   // Loop Stage is the active machine post-surprise, so layers show immediately.
-  await expect(page.locator(".layer-row").first()).toBeVisible();
-  expect(await page.locator(".layer-row").count()).toBe(before);
+  await expect(page.locator(".loop-track").first()).toBeVisible();
+  expect(await page.locator(".loop-track").count()).toBe(before);
+});
+
+test("loop stage shows editable lanes with a playhead", async ({ page }) => {
+  await boot(page);
+  await page.locator('[data-act="surprise"]').click(); // generate → loop stage
+
+  const cells = page.locator(".loop-cell");
+  await expect(cells.first()).toBeVisible();
+  expect(await cells.count()).toBeGreaterThanOrEqual(48); // >=3 layers x 16
+
+  // Toggling a step changes the active-cell count (editable in place).
+  const before = await page.locator(".loop-cell.on").count();
+  await cells.nth(1).click();
+  expect(await page.locator(".loop-cell.on").count()).not.toBe(before);
+
+  // Playhead activates while the transport runs.
+  await page.locator('[data-act="play"]').click();
+  await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
 });
 
 test("hero loop: record → effect keeps the app responsive", async ({

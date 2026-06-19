@@ -304,8 +304,33 @@ const BeatMakerCanvas: FC = () => {
 // ── Loop Stage (mixer) ───────────────────────────────────────────────────────
 
 const LoopStageCanvas: FC = () => {
-  const { dispatch } = useApp();
+  const { sound, dispatch } = useApp();
   const project = useProject();
+  const boardRef = useRef<HTMLDivElement>(null);
+
+  // Sweep the playhead from the live transport position via a CSS var on the
+  // board (no React state churn). Each lane's .loop-playhead reads --ph.
+  useEffect(() => {
+    let raf = 0;
+    const tick = (): void => {
+      const board = boardRef.current;
+      if (board) {
+        const step = sound.getTransportStep(STEP_COUNT);
+        if (step < 0) {
+          board.dataset.playing = "false";
+        } else {
+          board.dataset.playing = "true";
+          board.style.setProperty(
+            "--ph",
+            `${((step + 0.5) / STEP_COUNT) * 100}%`,
+          );
+        }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [sound]);
 
   if (project.layers.length === 0) {
     return (
@@ -319,47 +344,74 @@ const LoopStageCanvas: FC = () => {
 
   return (
     <section className="machine machine--stage" data-machine="looper-stage">
-      <div className="layer-list">
+      <div className="loop-board" ref={boardRef} data-playing="false">
         {project.layers.map((layer) => {
           const clip = project.clips[layer.clipId];
+          const steps =
+            layer.steps.length > 0
+              ? layer.steps
+              : new Array<boolean>(STEP_COUNT).fill(false);
           return (
             <div
-              className="layer-row"
+              className="loop-track"
               key={layer.id}
               style={cssVar("--row-color", clip?.color ?? "#888")}
             >
-              <span className="layer-name">{clip?.label ?? layer.clipId}</span>
-              <button
-                className="layer-mute t-btn"
-                onClick={() =>
-                  dispatch({ type: "toggleLayerMuted", layerId: layer.id })
-                }
-              >
-                {layer.muted ? "🔇" : "🔊"}
-              </button>
-              <input
-                className="layer-vol"
-                type="range"
-                min="0"
-                max="1"
-                step="0.01"
-                value={layer.volume}
-                onChange={(e) =>
-                  dispatch({
-                    type: "setLayerVolume",
-                    layerId: layer.id,
-                    volume: Number(e.target.value),
-                  })
-                }
-              />
-              <button
-                className="layer-remove t-btn"
-                onClick={() =>
-                  dispatch({ type: "removeLayer", layerId: layer.id })
-                }
-              >
-                🗑️
-              </button>
+              <div className="loop-track-head">
+                <span className="layer-name">{clip?.label ?? layer.clipId}</span>
+                <button
+                  className="layer-mute t-btn"
+                  onClick={() =>
+                    dispatch({ type: "toggleLayerMuted", layerId: layer.id })
+                  }
+                >
+                  {layer.muted ? "🔇" : "🔊"}
+                </button>
+                <input
+                  className="layer-vol"
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={layer.volume}
+                  onChange={(e) =>
+                    dispatch({
+                      type: "setLayerVolume",
+                      layerId: layer.id,
+                      volume: Number(e.target.value),
+                    })
+                  }
+                />
+                <button
+                  className="layer-remove t-btn"
+                  onClick={() =>
+                    dispatch({ type: "removeLayer", layerId: layer.id })
+                  }
+                >
+                  🗑️
+                </button>
+              </div>
+              <div className="loop-lane">
+                {steps.map((on, i) => (
+                  <button
+                    key={i}
+                    className={
+                      "loop-cell" +
+                      (on ? " on" : "") +
+                      (i % 4 === 0 ? " downbeat" : "")
+                    }
+                    onPointerDown={() => {
+                      dispatch({
+                        type: "toggleStep",
+                        layerId: layer.id,
+                        index: i,
+                      });
+                      if (!on && clip) sound.play(clip);
+                    }}
+                  />
+                ))}
+                <div className="loop-playhead" />
+              </div>
             </div>
           );
         })}

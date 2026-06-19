@@ -14,6 +14,7 @@ import {
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
+import { stepIndexFromProgress } from "../core/timeline.ts";
 import {
   MicDeniedError,
   NoMicError,
@@ -328,6 +329,15 @@ export class ToneSoundPort implements SoundPort {
 
   setQuantize(grid: QuantizeGrid): void {
     this.quantizeGrid = grid;
+  }
+
+  getTransportStep(totalSteps: number): number {
+    const t = Tone.getTransport();
+    if (t.state !== "started") return -1;
+    const beatsPerBar = typeof t.timeSignature === "number" ? t.timeSignature : 4;
+    const ticksPerBar = t.PPQ * beatsPerBar;
+    const progress = (t.ticks % ticksPerBar) / ticksPerBar;
+    return stepIndexFromProgress(progress, totalSteps);
   }
 
   getAnalyser(): AnalyserNode {

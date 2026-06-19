@@ -32,7 +32,7 @@ describe("generateBeat", () => {
     const layerIds = cmds
       .filter((c) => c.type === "addLayer")
       .map((c) => (c as { layer: { id: string } }).layer.id);
-    for (const core of ["gen-kick", "gen-snare", "gen-hihat"]) {
+    for (const core of ["beat-kick", "beat-snare", "beat-hihat"]) {
       expect(layerIds).toContain(core);
     }
   });
