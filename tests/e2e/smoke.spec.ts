@@ -106,6 +106,41 @@ test("loop stage shows editable lanes with a playhead", async ({ page }) => {
   await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
 });
 
+test("studio rail: add a melody lane, place notes, tweak guided controls", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.getByRole("button", { name: /loop stage/i }).click();
+
+  // The guided Studio rail is present with its high-level controls.
+  await expect(page.locator(".rail")).toBeVisible();
+  await expect(page.getByText("Magic Notes: ON")).toBeVisible();
+
+  // Add a melody lane → a note grid appears.
+  await page.locator('[data-act="add-melody"]').click();
+  const grid = page.locator(".melody-grid");
+  await expect(grid.first()).toBeVisible();
+  const notes = page.locator(".note-cell");
+  expect(await notes.count()).toBe(16 * 7); // STEP_COUNT x MELODY_ROWS
+
+  // Tapping a note cell places it (and previews it).
+  await notes.nth(20).click();
+  await expect(page.locator(".note-cell.on")).toHaveCount(1);
+
+  // The rail's per-lane Sound picker is shown for the selected melody lane.
+  await expect(page.locator('.rail [title="Buzzy"]')).toBeVisible();
+
+  // Magic Notes → Rainbow toggles the song scale via the rail.
+  await page.getByRole("button", { name: "Magic Notes: ON" }).click();
+  await expect(
+    page.getByRole("button", { name: "Rainbow Notes" }),
+  ).toBeVisible();
+
+  // Play still drives the playhead with a melody lane present.
+  await page.locator('[data-act="play"]').click();
+  await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
+});
+
 test("hero loop: record → effect keeps the app responsive", async ({
   page,
 }) => {

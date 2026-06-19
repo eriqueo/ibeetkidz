@@ -49,6 +49,15 @@ async function persist(): Promise<void> {
   }
 }
 
+// Autosave: the Loop Stage is a thing you iterate on, so the jam should always
+// be there next visit without the kid remembering to hit save. Debounce so a
+// flurry of edits collapses into one write.
+let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+store.subscribe(() => {
+  if (autosaveTimer) clearTimeout(autosaveTimer);
+  autosaveTimer = setTimeout(() => void persist(), 800);
+});
+
 /** Re-load the most recent saved project and rehydrate its recorded audio. */
 export async function loadLast(): Promise<void> {
   const metas = await storage.listProjects();
