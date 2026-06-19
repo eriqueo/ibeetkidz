@@ -11,6 +11,8 @@ import { deserialize, serialize } from "../core/project-state.ts";
 import type { Project } from "../core/types.ts";
 
 const KEY = "ibeetkidz:projects";
+const DB_NAME = "ibeetkidz";
+const BLOB_STORE = "blobs";
 
 interface Index {
   [id: string]: { name: string; savedAt: number; json: string };
@@ -22,6 +24,41 @@ function readIndex(): Index {
   } catch {
     return {};
   }
+}
+
+// ── IndexedDB blob store (recorded audio is too big for localStorage) ────────
+
+let dbPromise: Promise<IDBDatabase> | null = null;
+
+function openDb(): Promise<IDBDatabase> {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(BLOB_STORE)) {
+        db.createObjectStore(BLOB_STORE);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
+  });
+  return dbPromise;
+}
+
+function tx<T>(
+  mode: IDBTransactionMode,
+  run: (store: IDBObjectStore) => IDBRequest<T>,
+): Promise<T> {
+  return openDb().then(
+    (db) =>
+      new Promise<T>((resolve, reject) => {
+        const transaction = db.transaction(BLOB_STORE, mode);
+        const req = run(transaction.objectStore(BLOB_STORE));
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error ?? new Error("IndexedDB op failed"));
+      }),
+  );
 }
 
 export class LocalStoragePort implements StoragePort {
@@ -59,11 +96,22 @@ export class LocalStoragePort implements StoragePort {
     localStorage.setItem(KEY, JSON.stringify(idx));
   }
 
-  async putBlob(_id: string, _blob: Blob): Promise<void> {
-    // TODO(build): IndexedDB object store for recorded audio blobs.
+  async putBlob(id: string, blob: Blob): Promise<void> {
+    try {
+      await tx("readwrite", (store) => store.put(blob, id));
+    } catch {
+      throw new QuotaExceededError();
+    }
   }
-  async getBlob(_id: string): Promise<Blob | null> {
-    // TODO(build): IndexedDB read.
-    return null;
+
+  async getBlob(id: string): Promise<Blob | null> {
+    try {
+      const result = await tx<Blob | undefined>("readonly", (store) =>
+        store.get(id),
+      );
+      return result ?? null;
+    } catch {
+      return null;
+    }
   }
 }

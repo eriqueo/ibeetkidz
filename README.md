@@ -48,6 +48,9 @@ npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
 
 ## Status
 
-Scaffold + foundation. The pure core (state, history, RNG) is implemented and
-unit-tested. Machines beyond the hero (`record-voicefx`) and the Tone.js DSP
-bodies are stubbed with `TODO(build)` markers. See `BUILD_RUNBOOK.md`.
+Feature-complete v1. All five machines are built, the Tone.js DSP is
+implemented (procedurally-synthesized built-in pack, offline effect baking,
+transport-scheduled playback, live theremin voice), recordings persist to
+IndexedDB and survive reload, and "Surprise me" generates a seeded beat. Gates
+green: `typecheck` clean, 25 unit tests, 6 Playwright E2E (incl. the full hero
+journey and save→reload). See `BUILD_RUNBOOK.md` for the build history.

@@ -11,6 +11,17 @@
   -webkit-tap-highlight-color: transparent;
 }
 
+/* Respect reduced-motion (sensory-friendly, and keeps automated UI stable). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
 html,
 body {
   margin: 0;
@@ -205,4 +216,110 @@ body {
   max-width: 30rem;
   text-align: center;
   opacity: 0.8;
+}
+
+/* Sound Pads */
+.pad-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.75rem;
+  width: min(92vw, 640px);
+}
+.pad {
+  aspect-ratio: 1;
+  border: none;
+  border-radius: 1.25rem;
+  background: var(--pad-color, var(--panel));
+  color: white;
+  font-size: 0.85rem;
+  display: grid;
+  place-content: center;
+  gap: 0.3rem;
+  cursor: pointer;
+  box-shadow: 0 4px 0 rgba(0, 0, 0, 0.3);
+}
+.pad-emoji {
+  font-size: 2rem;
+}
+.pad.hit {
+  animation: pad-hit 0.18s ease-out;
+}
+@keyframes pad-hit {
+  50% {
+    transform: scale(0.88);
+    filter: brightness(1.4);
+  }
+}
+
+/* Beat Grid */
+.beat-rows {
+  display: grid;
+  gap: 0.4rem;
+}
+.beat-row {
+  display: grid;
+  grid-template-columns: 3rem repeat(16, 1fr);
+  gap: 0.25rem;
+  align-items: center;
+}
+.beat-label {
+  font-size: 1.4rem;
+  height: 2.2rem;
+  border: none;
+  border-radius: 0.6rem;
+  background: var(--row-color, var(--panel));
+  cursor: pointer;
+}
+.beat-cell {
+  height: 2.2rem;
+  min-width: 0;
+  border: 2px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: transform 0.05s;
+}
+.beat-cell.downbeat {
+  border-color: rgba(255, 255, 255, 0.3);
+}
+.beat-cell.on {
+  background: var(--row-color, var(--accent));
+  box-shadow: 0 0 12px var(--row-color, var(--accent));
+}
+.beat-cell:active {
+  transform: scale(0.9);
+}
+
+/* Loop Stage */
+.layer-list {
+  display: grid;
+  gap: 0.6rem;
+  width: min(92vw, 560px);
+}
+.layer-row {
+  display: grid;
+  grid-template-columns: 1fr auto 2fr auto;
+  gap: 0.6rem;
+  align-items: center;
+  padding: 0.5rem 0.75rem;
+  border-left: 6px solid var(--row-color, var(--accent));
+  border-radius: 0.75rem;
+  background: var(--panel);
+}
+.layer-name {
+  font-size: 1rem;
+}
+.layer-vol {
+  width: 100%;
+}
+
+/* Transient save confirmation */
+.t-btn.flash {
+  animation: flash 0.5s ease-out;
+}
+@keyframes flash {
+  0% {
+    background: #06d6a0;
+    transform: scale(1.15);
+  }
 }

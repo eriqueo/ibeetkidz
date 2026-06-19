@@ -80,7 +80,13 @@ export function buildShell(
   root.querySelector('[data-act="stop"]')!.addEventListener("click", () => engine.stop());
   root.querySelector('[data-act="undo"]')!.addEventListener("click", () => cb.undo());
   root.querySelector('[data-act="redo"]')!.addEventListener("click", () => cb.redo());
-  root.querySelector('[data-act="save"]')!.addEventListener("click", () => cb.save());
+  root.querySelector('[data-act="save"]')!.addEventListener("click", (e) => {
+    cb.save();
+    const btn = e.currentTarget as HTMLElement;
+    btn.classList.remove("flash");
+    void btn.offsetWidth; // restart the animation
+    btn.classList.add("flash");
+  });
   root.querySelector('[data-act="surprise"]')!.addEventListener("click", () => cb.surprise());
   root.querySelector('[data-act="tempo"]')!.addEventListener("input", (e) => {
     const bpm = Number((e.target as HTMLInputElement).value);

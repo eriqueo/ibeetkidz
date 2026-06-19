@@ -48,7 +48,23 @@ discipline as the kidpix repo). Feature branches off `main`; PR; green CI
 
 ## Current state
 
-Scaffold. Pure core (state/history/rng) implemented + unit-tested. Hero machine
-(`record-voicefx`) and theremin pad have real UI; other machines + Tone DSP are
-`TODO(build)` stubs. See `BUILD_RUNBOOK.md` for build-out order and the list of
-unverified hand-written areas (esp. the Tone v15 API surface).
+Feature-complete v1 (built out against Tone 15.1.22, verified). All machines
+real: `record-voicefx` (record → 8 effect tiles → hear it), `sound-pads`
+(12-pad procedurally-synthesized pack + your recordings), `beat-grid` (16-step
+drum machine, live transport reconcile), `looper-stage` (layer mixer:
+mute/volume/remove), `theremin-xy` (live oscillator+filter voice, pentatonic).
+
+Audio adapter (`tone-sound-port.ts`) implements: procedural built-in synthesis
+(no binary assets — stays offline), offline effect baking via `Tone.Offline`
+(reverse/pitch/robot/echo/reverb/bitcrush + seeded "crazy" stack),
+transport-scheduled step playback with per-layer volume, and the live theremin.
+Built-in pack is data (`src/core/sound-catalog.ts`); "Surprise me" is a pure
+seeded generator (`src/core/generative.ts`). Recordings persist to IndexedDB
+(`local-storage-port.ts`) and rehydrate on reload (`main.ts` load-last flow).
+
+Gates: `typecheck` clean, 25 unit tests, 6 Playwright E2E (incl. full hero
+journey + save→reload). `BUILD_RUNBOOK.md` retains the original build order.
+
+Known follow-ups: `robot` is a comb-delay approximation (not vocoded);
+`scheduleStep` only resolves un-effected source buffers synchronously (beat-grid
+clips are effect-free, so this is fine in practice).

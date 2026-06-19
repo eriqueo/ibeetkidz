@@ -1,10 +1,18 @@
-// ToneSoundPort: concrete SoundPort backed by Tone.js (the only file that knows
-// Tone exists). Built against Tone v15. Marked TODO where the DSP needs to be
-// fleshed out and verified in a browser — the structure and contract are firm,
-// the inner node wiring is the build-out work.
+// ToneSoundPort: the ONLY file that knows Tone.js exists. It implements the
+// SoundPort contract — builtin synthesis, mic recording, offline effect baking,
+// one-shot + transport-scheduled playback, and the live theremin voice.
+//
+// Built against Tone v15.1. Built-in sounds are synthesized procedurally (no
+// binary assets ship), keeping the app fully offline.
 
 import * as Tone from "tone";
-import type { Clip, EffectDescriptor } from "../core/types.ts";
+import type { Clip, ClipSource, EffectDescriptor } from "../core/types.ts";
+import {
+  BUILTIN_SOUNDS,
+  getBuiltin,
+  type BuiltinSound,
+} from "../core/sound-catalog.ts";
+import { createRng } from "../core/rng.ts";
 import {
   MicDeniedError,
   NoMicError,
@@ -14,24 +22,50 @@ import {
 
 export class ToneSoundPort implements SoundPort {
   private analyser!: AnalyserNode;
+  private ctx!: AudioContext;
+  /** Decoded audio data keyed by buffer id (builtins, recordings, baked). */
   private readonly buffers = new Map<BufferId, AudioBuffer>();
+  /** Encoded recording bytes, kept so the app can persist them. */
+  private readonly recordingBlobs = new Map<BufferId, Blob>();
+  /** Baked effect-chain results, keyed by source+chain signature. */
+  private readonly bakedCache = new Map<string, AudioBuffer>();
   private mic?: Tone.UserMedia | undefined;
   private recorder?: Tone.Recorder | undefined;
   private bufferSeq = 0;
+  private builtinsLoaded = false;
+
+  // Live one-shot + scheduled players, tracked for cleanup.
+  private readonly liveVoices = new Set<Tone.Player>();
+  private readonly scheduledVoices: Tone.Player[] = [];
+
+  // Theremin voice (live, never baked).
+  private theremin?:
+    | {
+        osc: Tone.Oscillator;
+        filter: Tone.Filter;
+        gain: Tone.Gain;
+      }
+    | undefined;
 
   async resume(): Promise<void> {
     await Tone.start();
-    // A raw AnalyserNode tapped off the master output feeds the visualizer.
-    const ctx = Tone.getContext().rawContext as AudioContext;
-    this.analyser = ctx.createAnalyser();
+    this.ctx = Tone.getContext().rawContext as AudioContext;
+    // A raw AnalyserNode tapped off the master output feeds the visualizer —
+    // it sees every real voice (builtins, recordings, theremin), never a fake.
+    this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     Tone.getDestination().connect(this.analyser);
   }
 
   async loadBuiltins(): Promise<void> {
-    // TODO(build): load the bundled sample pack from /public/sounds into Tone
-    // buffers, keyed by assetId. No-op until assets are added.
+    if (this.builtinsLoaded) return;
+    for (const sound of BUILTIN_SOUNDS) {
+      this.buffers.set(`builtin:${sound.assetId}`, this.synthesize(sound));
+    }
+    this.builtinsLoaded = true;
   }
+
+  // ── Recording ──────────────────────────────────────────────────────────
 
   async startRecording(): Promise<void> {
     try {
@@ -56,13 +90,28 @@ export class ToneSoundPort implements SoundPort {
     const blob = await this.recorder.stop();
     this.mic.close();
     const arrayBuf = await blob.arrayBuffer();
-    const audioBuf = await Tone.getContext().decodeAudioData(arrayBuf);
+    const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
     const id = `rec-${this.bufferSeq++}`;
     this.buffers.set(id, audioBuf);
+    this.recordingBlobs.set(id, blob);
     this.mic = undefined;
     this.recorder = undefined;
     return id;
   }
+
+  async rehydrate(bufferId: BufferId, blob: Blob): Promise<void> {
+    if (this.buffers.has(bufferId)) return;
+    const arrayBuf = await blob.arrayBuffer();
+    const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
+    this.buffers.set(bufferId, audioBuf);
+    this.recordingBlobs.set(bufferId, blob);
+  }
+
+  getRecordingBlob(bufferId: BufferId): Blob | null {
+    return this.recordingBlobs.get(bufferId) ?? null;
+  }
+
+  // ── Effect baking (render-once) ──────────────────────────────────────────
 
   async renderEffects(
     source: BufferId,
@@ -70,41 +119,166 @@ export class ToneSoundPort implements SoundPort {
   ): Promise<BufferId> {
     const src = this.buffers.get(source);
     if (!src) throw new Error(`unknown buffer: ${source}`);
-    // TODO(build): use Tone.Offline to render `src` through the effect chain
-    // (reverse = reversed buffer, pitch = PitchShift, robot = stacked presets,
-    // echo = FeedbackDelay, reverb = Reverb, bitcrush = BitCrusher, crazy =
-    // seeded random stack). For now, pass the source through unchanged so the
-    // pipeline is wired end-to-end.
-    void effects;
+    const baked = await this.renderChain(src, effects);
     const id = `baked-${this.bufferSeq++}`;
-    this.buffers.set(id, src);
+    this.buffers.set(id, baked);
     return id;
   }
 
-  play(clip: Clip): void {
-    // TODO(build): resolve clip.source -> buffer, build a one-shot Player.
-    void clip;
+  /** Offline-render `src` through the effect chain into a new AudioBuffer. */
+  private async renderChain(
+    src: AudioBuffer,
+    effects: readonly EffectDescriptor[],
+  ): Promise<AudioBuffer> {
+    if (effects.length === 0) return src;
+
+    // "crazy" expands to a seeded random stack; everything else maps 1:1.
+    const chain = effects.flatMap((e) =>
+      e.id === "crazy" ? expandCrazy(e.amount) : [e],
+    );
+
+    // Reverse is a pure buffer op done up front; it isn't a graph node.
+    let source = src;
+    const reverseCount = chain.filter((e) => e.id === "reverse").length;
+    if (reverseCount % 2 === 1) source = reverseBuffer(this.ctx, src);
+    const graphFx = chain.filter((e) => e.id !== "reverse");
+
+    const tail = graphFx.some((e) => e.id === "echo" || e.id === "reverb")
+      ? 3
+      : 0.1;
+    const duration = source.duration + tail;
+
+    const rendered = await Tone.Offline(async () => {
+      const player = new Tone.Player(source);
+      let node: Tone.ToneAudioNode = player;
+      for (const fx of graphFx) {
+        const made = makeEffectNode(fx);
+        if (!made) continue;
+        node.connect(made.node);
+        node = made.node;
+        if (made.ready) await made.ready;
+      }
+      node.toDestination();
+      player.start(0);
+    }, duration);
+
+    return rendered.get() as AudioBuffer;
   }
 
-  scheduleStep(clip: Clip, stepIndex: number, totalSteps: number): void {
-    // TODO(build): schedule on Tone.getTransport() at the step's time.
-    void clip;
-    void stepIndex;
-    void totalSteps;
+  /** Resolve a clip to a playable AudioBuffer (baking effects, cached). */
+  private async resolveClip(clip: Clip): Promise<AudioBuffer | undefined> {
+    const base = this.resolveSource(clip.source);
+    if (!base) return undefined;
+    if (clip.effects.length === 0) return base;
+    const key = bakeKey(clip);
+    const cached = this.bakedCache.get(key);
+    if (cached) return cached;
+    const baked = await this.renderChain(base, clip.effects);
+    this.bakedCache.set(key, baked);
+    return baked;
+  }
+
+  private resolveSource(source: ClipSource): AudioBuffer | undefined {
+    switch (source.kind) {
+      case "builtin":
+        return this.buffers.get(`builtin:${source.assetId}`);
+      case "recording":
+        return this.buffers.get(source.bufferId);
+      case "synth": {
+        const id = `synth:${source.note}`;
+        let buf = this.buffers.get(id);
+        if (!buf) {
+          buf = this.synthesizeTone(Tone.Frequency(source.note).toFrequency());
+          this.buffers.set(id, buf);
+        }
+        return buf;
+      }
+    }
+  }
+
+  // ── Playback ───────────────────────────────────────────────────────────
+
+  play(clip: Clip): void {
+    void this.resolveClip(clip).then((buf) => {
+      if (!buf) return;
+      const player = new Tone.Player(buf).toDestination();
+      this.liveVoices.add(player);
+      player.onstop = () => {
+        this.liveVoices.delete(player);
+        player.dispose();
+      };
+      player.start();
+    });
+  }
+
+  scheduleStep(
+    clip: Clip,
+    stepIndex: number,
+    totalSteps: number,
+    volume = 1,
+  ): void {
+    // Beat-grid clips are builtins without effects → resolve synchronously.
+    const buf = this.resolveSource(clip.source);
+    if (!buf) return;
+    const player = new Tone.Player(buf).toDestination();
+    player.volume.value = Tone.gainToDb(Math.max(0.0001, volume));
+    this.scheduledVoices.push(player);
+    const measure = Tone.Time("1m").toSeconds();
+    const offset = (measure * stepIndex) / totalSteps;
+    Tone.getTransport().scheduleRepeat(
+      (time) => player.start(time),
+      "1m",
+      offset,
+    );
+  }
+
+  // ── Theremin (live voice) ─────────────────────────────────────────────
+
+  // C-major pentatonic across ~2 octaves: kid-friendly, no wrong notes.
+  private static readonly THEREMIN_SCALE = [
+    261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33, 659.25, 783.99, 880.0,
+    1046.5,
+  ];
+
+  thereminOn(): void {
+    if (this.theremin) return;
+    const osc = new Tone.Oscillator(440, "triangle");
+    const filter = new Tone.Filter(1200, "lowpass");
+    const gain = new Tone.Gain(0).toDestination();
+    osc.connect(filter);
+    filter.connect(gain);
+    osc.start();
+    gain.gain.rampTo(0.25, 0.05);
+    this.theremin = { osc, filter, gain };
   }
 
   setThereminXY(x: number, y: number): void {
-    // TODO(build): map x -> pitch (quantized to a kid-friendly scale),
-    // y -> filter cutoff / timbre on a live-running oscillator voice.
-    void x;
-    void y;
+    if (!this.theremin) return;
+    const scale = ToneSoundPort.THEREMIN_SCALE;
+    const idx = Math.min(scale.length - 1, Math.floor(x * scale.length));
+    this.theremin.osc.frequency.rampTo(scale[idx] as number, 0.04);
+    // y → brightness (filter cutoff), 300 Hz .. 6 kHz.
+    this.theremin.filter.frequency.rampTo(300 + y * 5700, 0.04);
   }
-  thereminOn(): void {
-    /* TODO(build): start the live oscillator voice. */
-  }
+
   thereminOff(): void {
-    /* TODO(build): release the live oscillator voice. */
+    const t = this.theremin;
+    if (!t) return;
+    this.theremin = undefined;
+    t.gain.gain.rampTo(0, 0.08);
+    // Dispose after the fade so we don't cut with a click.
+    const osc = t.osc;
+    const filter = t.filter;
+    const gain = t.gain;
+    osc.stop("+0.1");
+    setTimeout(() => {
+      osc.dispose();
+      filter.dispose();
+      gain.dispose();
+    }, 200);
   }
+
+  // ── Transport ────────────────────────────────────────────────────────────
 
   setTempo(bpm: number): void {
     Tone.getTransport().bpm.value = bpm;
@@ -116,10 +290,201 @@ export class ToneSoundPort implements SoundPort {
     Tone.getTransport().stop();
   }
   stopAll(): void {
-    Tone.getTransport().cancel();
+    const transport = Tone.getTransport();
+    transport.stop();
+    transport.cancel();
+    for (const p of this.scheduledVoices) p.dispose();
+    this.scheduledVoices.length = 0;
   }
 
   getAnalyser(): AnalyserNode {
     return this.analyser;
   }
+
+  // ── Procedural synthesis ─────────────────────────────────────────────────
+
+  private synthesize(sound: BuiltinSound): AudioBuffer {
+    if (sound.recipe.kind === "tone") {
+      return this.synthesizeTone(Tone.Frequency(sound.recipe.note).toFrequency());
+    }
+    return this.synthesizeDrum(sound.recipe.drum);
+  }
+
+  private makeBuffer(
+    seconds: number,
+    render: (data: Float32Array, sampleRate: number) => void,
+  ): AudioBuffer {
+    const sr = this.ctx.sampleRate;
+    const len = Math.max(1, Math.floor(seconds * sr));
+    const buf = this.ctx.createBuffer(1, len, sr);
+    render(buf.getChannelData(0), sr);
+    return buf;
+  }
+
+  private synthesizeTone(freq: number): AudioBuffer {
+    return this.makeBuffer(0.5, (d, sr) => {
+      for (let i = 0; i < d.length; i++) {
+        const t = i / sr;
+        const env = Math.min(1, t / 0.005) * Math.exp(-t * 5);
+        d[i] =
+          0.6 *
+          env *
+          (Math.sin(2 * Math.PI * freq * t) +
+            0.3 * Math.sin(4 * Math.PI * freq * t) +
+            0.12 * Math.sin(6 * Math.PI * freq * t));
+      }
+    });
+  }
+
+  private synthesizeDrum(drum: string): AudioBuffer {
+    const noise = seededNoise(drum.length * 7919 + 1);
+    switch (drum) {
+      case "kick":
+        return this.makeBuffer(0.4, (d, sr) => {
+          let phase = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const freq = 45 + 120 * Math.exp(-t * 22);
+            phase += (2 * Math.PI * freq) / sr;
+            d[i] = Math.sin(phase) * Math.exp(-t * 9);
+          }
+        });
+      case "snare":
+        return this.makeBuffer(0.25, (d, sr) => {
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const env = Math.exp(-t * 22);
+            d[i] = (0.6 * noise() + 0.4 * Math.sin(2 * Math.PI * 180 * t)) * env;
+          }
+        });
+      case "hihat":
+        return this.makeBuffer(0.08, (d, sr) => {
+          let prev = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const n = noise();
+            const hp = n - prev; // crude high-pass → metallic
+            prev = n;
+            d[i] = hp * Math.exp(-t * 90);
+          }
+        });
+      case "clap":
+        return this.makeBuffer(0.2, (d, sr) => {
+          const bursts = [0, 0.012, 0.024];
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            let env = 0;
+            for (const b of bursts) {
+              if (t >= b) env += Math.exp(-(t - b) * 90);
+            }
+            d[i] = noise() * Math.min(1, env) * Math.exp(-t * 8);
+          }
+        });
+      case "tom":
+        return this.makeBuffer(0.35, (d, sr) => {
+          let phase = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const freq = 90 + 80 * Math.exp(-t * 12);
+            phase += (2 * Math.PI * freq) / sr;
+            d[i] = Math.sin(phase) * Math.exp(-t * 7);
+          }
+        });
+      case "cowbell":
+        return this.makeBuffer(0.3, (d, sr) => {
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const sq = (f: number) => Math.sign(Math.sin(2 * Math.PI * f * t));
+            d[i] = 0.4 * (sq(540) + sq(800)) * Math.exp(-t * 9);
+          }
+        });
+      default:
+        return this.makeBuffer(0.1, (d) => d.fill(0));
+    }
+  }
 }
+
+// ── Effect node factory (module-scoped: pure mapping, no instance state) ─────
+
+interface MadeNode {
+  node: Tone.ToneAudioNode;
+  ready?: Promise<void> | undefined;
+}
+
+function makeEffectNode(fx: EffectDescriptor): MadeNode | null {
+  const amt = clamp01(fx.amount);
+  switch (fx.id) {
+    case "pitchUp":
+      return { node: new Tone.PitchShift(Math.round(3 + amt * 9)) };
+    case "pitchDown":
+      return { node: new Tone.PitchShift(-Math.round(3 + amt * 9)) };
+    case "robot":
+      // Metallic comb + crunch: short feedback delay stacked under a pitch drop.
+      return { node: new Tone.FeedbackDelay(0.018, 0.55 + amt * 0.3) };
+    case "echo":
+      return { node: new Tone.FeedbackDelay(0.22, 0.25 + amt * 0.5) };
+    case "reverb": {
+      const reverb = new Tone.Reverb(0.8 + amt * 4);
+      return { node: reverb, ready: reverb.ready.then(() => undefined) };
+    }
+    case "bitcrush":
+      return { node: new Tone.BitCrusher(Math.max(1, Math.round(8 - amt * 6))) };
+    case "reverse":
+    case "crazy":
+      return null; // handled before the graph is built
+  }
+}
+
+/** "Make it crazy" → a deterministic random stack seeded from `amount`. */
+function expandCrazy(amount: number): EffectDescriptor[] {
+  const rng = createRng(Math.max(1, Math.floor(amount * 1_000_000)));
+  const palette = ["pitchUp", "pitchDown", "robot", "echo", "bitcrush"] as const;
+  const count = rng.int(2, 3);
+  const out: EffectDescriptor[] = [];
+  if (rng.next() < 0.5) out.push({ id: "reverse", amount: 1 });
+  for (let i = 0; i < count; i++) {
+    out.push({ id: rng.pick(palette), amount: rng.next() });
+  }
+  return out;
+}
+
+function reverseBuffer(ctx: AudioContext, src: AudioBuffer): AudioBuffer {
+  const out = ctx.createBuffer(
+    src.numberOfChannels,
+    src.length,
+    src.sampleRate,
+  );
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const inData = src.getChannelData(ch);
+    const outData = out.getChannelData(ch);
+    for (let i = 0, n = inData.length; i < n; i++) {
+      outData[i] = inData[n - 1 - i] as number;
+    }
+  }
+  return out;
+}
+
+function bakeKey(clip: Clip): string {
+  const srcKey =
+    clip.source.kind === "builtin"
+      ? `b:${clip.source.assetId}`
+      : clip.source.kind === "recording"
+        ? `r:${clip.source.bufferId}`
+        : `s:${clip.source.note}`;
+  const fx = clip.effects.map((e) => `${e.id}@${e.amount.toFixed(3)}`).join(",");
+  return `${srcKey}|${fx}`;
+}
+
+/** Deterministic noise generator (LCG) so synthesized drums are reproducible. */
+function seededNoise(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return (s / 4294967296) * 2 - 1;
+  };
+}
+
+const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+// Re-export so callers needing the catalog can pull through the adapter barrel.
+export { getBuiltin };

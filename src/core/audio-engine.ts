@@ -37,7 +37,7 @@ export class AudioEngine {
       const clip = project.clips[layer.clipId];
       if (!clip) continue;
       layer.steps.forEach((on, i) => {
-        if (on) this.sound.scheduleStep(clip, i, layer.steps.length);
+        if (on) this.sound.scheduleStep(clip, i, layer.steps.length, layer.volume);
       });
     }
   }

@@ -23,11 +23,20 @@ export interface SoundPort {
    *  (render-once model). */
   renderEffects(source: BufferId, effects: readonly EffectDescriptor[]): Promise<BufferId>;
 
+  /** Re-hydrate a recording buffer from a persisted blob (after reload), so a
+   *  saved project's recorded clips play again. */
+  rehydrate(bufferId: BufferId, blob: Blob): Promise<void>;
+
+  /** The encoded bytes of a recorded buffer, for persistence. Null if unknown
+   *  or if the buffer was synthesized rather than recorded. */
+  getRecordingBlob(bufferId: BufferId): Blob | null;
+
   /** Trigger a clip once, now. */
   play(clip: Clip): void;
 
-  /** Schedule looping playback of a clip on the transport at the given step. */
-  scheduleStep(clip: Clip, stepIndex: number, totalSteps: number): void;
+  /** Schedule looping playback of a clip on the transport at the given step.
+   *  `volume` is linear 0..1 (the layer's mix level). */
+  scheduleStep(clip: Clip, stepIndex: number, totalSteps: number, volume?: number): void;
 
   /** Real-time XY control for the theremin machine (resolved live, not baked). */
   setThereminXY(x: number, y: number): void;
