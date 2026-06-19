@@ -49,6 +49,10 @@ export interface SoundPort {
   /** Trigger a clip once, now. */
   play(clip: Clip): void;
 
+  /** Audition a single melody note now (used when a kid taps a note cell), so
+   *  the grid gives instant feedback without waiting for Play. */
+  previewNote(noteName: string, wave: ThereminWave): void;
+
   /** Schedule looping playback of a drum clip on the transport at the given
    *  step. Swing leans the off-beats late; echo adds a per-lane delay tail. */
   scheduleStep(

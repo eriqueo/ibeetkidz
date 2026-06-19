@@ -241,6 +241,16 @@ export class ToneSoundPort implements SoundPort {
     }
   }
 
+  previewNote(noteName: string, wave: ThereminWave): void {
+    const synth = new Tone.Synth({
+      oscillator: { type: wave },
+      envelope: { attack: 0.01, decay: 0.18, sustain: 0.15, release: 0.2 },
+    }).toDestination();
+    synth.triggerAttackRelease(noteName, "8n");
+    // One-shot: free the voice after it has rung out.
+    setTimeout(() => synth.dispose(), 700);
+  }
+
   /** Seconds-into-the-bar a step fires, with swing leaning the off-beats late. */
   private stepOffset(stepIndex: number, totalSteps: number, swing: number): number {
     const measure = Tone.Time("1m").toSeconds();

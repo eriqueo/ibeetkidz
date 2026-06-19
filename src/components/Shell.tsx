@@ -4,7 +4,11 @@
 
 import { useEffect, useRef, useState, type FC } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { TOOLS, type ToolDescriptor } from "../machines/tools.tsx";
+import {
+  TOOLS,
+  LoopSelectionProvider,
+  type ToolDescriptor,
+} from "../machines/tools.tsx";
 import { createVisualizer } from "../visualizer/visualizer.ts";
 
 const Palette: FC<{ activeId: string }> = ({ activeId }) => {
@@ -152,20 +156,28 @@ export const Shell: FC = () => {
   const project = useProject();
   const active = TOOLS.find((t) => t.id === project.activeMachineId) ?? TOOLS[0]!;
   const Canvas = active.Canvas;
+  const Rail = active.Rail;
   return (
     <div id="app">
       <Visualizer />
       <div className="shell-root">
-        <div className="shell-grid">
-          <Palette activeId={active.id} />
-          <header className="options-bar">
-            <OptionsBar tool={active} />
-          </header>
-          <main className="canvas">
-            <Canvas />
-          </main>
-          <PlayBar />
-        </div>
+        <LoopSelectionProvider>
+          <div className={"shell-grid" + (Rail ? " shell-grid--rail" : "")}>
+            <Palette activeId={active.id} />
+            <header className="options-bar">
+              <OptionsBar tool={active} />
+            </header>
+            <main className="canvas">
+              <Canvas />
+            </main>
+            {Rail && (
+              <aside className="rail" data-rail={active.id}>
+                <Rail />
+              </aside>
+            )}
+            <PlayBar />
+          </div>
+        </LoopSelectionProvider>
       </div>
     </div>
   );

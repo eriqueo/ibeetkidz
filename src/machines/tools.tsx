@@ -5,17 +5,28 @@
 
 import * as React from "react";
 import {
+  createContext,
+  useContext,
   useEffect,
   useRef,
   useState,
   type CSSProperties,
   type FC,
+  type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
 import { makeLayer } from "../core/project-state.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
+import {
+  SCALES,
+  KEYS,
+  KEY_IDS,
+  MELODY_ROWS,
+  degreeToNote,
+  type KeyId,
+} from "../core/scale.ts";
 import type { ThereminWave } from "../ports/sound-port.ts";
 
 export interface ToolDescriptor {
@@ -24,7 +35,36 @@ export interface ToolDescriptor {
   readonly icon: string;
   readonly Canvas: FC;
   readonly Options?: FC;
+  /** Optional right-side "studio" rail of higher-level, guided controls. */
+  readonly Rail?: FC;
 }
+
+// ── Loop Stage lane selection (shared between the board and the rail) ─────────
+// The board and the rail render as separate Shell regions, so the "which lane
+// am I tweaking" selection lives in a tiny context both can read.
+interface LoopSelection {
+  readonly selected: string | null;
+  select(id: string | null): void;
+}
+const LoopSelectionCtx = createContext<LoopSelection>({
+  selected: null,
+  select: () => {},
+});
+export const LoopSelectionProvider: FC<{ children: ReactNode }> = ({
+  children,
+}) => {
+  const [selected, setSelected] = useState<string | null>(null);
+  return (
+    <LoopSelectionCtx.Provider value={{ selected, select: setSelected }}>
+      {children}
+    </LoopSelectionCtx.Provider>
+  );
+};
+const useLoopSelection = (): LoopSelection => useContext(LoopSelectionCtx);
+
+// Friendly colors cycled onto new melody lanes.
+const MELODY_COLORS = ["#8338ec", "#3a86ff", "#06d6a0", "#fb5607"];
+let melodySeq = 0;
 
 const cssVar = (name: string, value: string): CSSProperties =>
   ({ [name]: value }) as CSSProperties;
@@ -327,91 +367,334 @@ const LoopStageCanvas: FC = () => {
     return () => cancelAnimationFrame(raf);
   }, [sound]);
 
-  if (project.layers.length === 0) {
-    return (
-      <section className="machine machine--stage" data-machine="looper-stage">
-        <p className="stub-note">
-          No loops yet! Make a beat in the Beat Maker 🎛️, then mix it here.
-        </p>
-      </section>
-    );
-  }
+  const { select } = useLoopSelection();
+
+  // Add the next unused drum as a fresh lane (boom → snap → tss → …).
+  const addDrum = (): void => {
+    const taken = new Set(project.layers.map((l) => l.clipId));
+    const drum = DRUM_SOUNDS.find((d) => !taken.has(`beat-${d.assetId}`));
+    if (!drum) return;
+    const id = `beat-${drum.assetId}`;
+    dispatch({
+      type: "addClip",
+      clip: {
+        id,
+        source: { kind: "builtin", assetId: drum.assetId },
+        effects: [],
+        color: drum.color,
+        label: drum.label,
+      },
+    });
+    dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum" }) });
+    select(id);
+  };
+
+  // Add an empty melody lane the kid fills in by tapping the note grid.
+  const addMelody = (): void => {
+    const id = `melody-${melodySeq++}`;
+    const color = MELODY_COLORS[melodySeq % MELODY_COLORS.length] as string;
+    dispatch({
+      type: "addClip",
+      clip: { id, source: { kind: "synth", note: "C4" }, effects: [], color, label: "Melody" },
+    });
+    dispatch({
+      type: "addLayer",
+      layer: makeLayer({ id, clipId: id, kind: "melody", wave: "triangle" }),
+    });
+    select(id);
+  };
 
   return (
     <section className="machine machine--stage" data-machine="looper-stage">
-      <div className="loop-board" ref={boardRef} data-playing="false">
-        {project.layers.map((layer) => {
-          const clip = project.clips[layer.clipId];
-          const steps =
-            layer.steps.length > 0
-              ? layer.steps
-              : new Array<boolean>(STEP_COUNT).fill(false);
-          return (
-            <div
-              className="loop-track"
-              key={layer.id}
-              style={cssVar("--row-color", clip?.color ?? "#888")}
-            >
-              <div className="loop-track-head">
-                <span className="layer-name">{clip?.label ?? layer.clipId}</span>
-                <button
-                  className="layer-mute t-btn"
-                  onClick={() =>
-                    dispatch({ type: "toggleLayerMuted", layerId: layer.id })
-                  }
-                >
-                  {layer.muted ? "🔇" : "🔊"}
-                </button>
-                <input
-                  className="layer-vol"
-                  type="range"
-                  min="0"
-                  max="1"
-                  step="0.01"
-                  value={layer.volume}
-                  onChange={(e) =>
-                    dispatch({
-                      type: "setLayerVolume",
-                      layerId: layer.id,
-                      volume: Number(e.target.value),
-                    })
-                  }
-                />
-                <button
-                  className="layer-remove t-btn"
-                  onClick={() =>
-                    dispatch({ type: "removeLayer", layerId: layer.id })
-                  }
-                >
-                  🗑️
-                </button>
-              </div>
-              <div className="loop-lane">
-                {steps.map((on, i) => (
-                  <button
-                    key={i}
-                    className={
-                      "loop-cell" +
-                      (on ? " on" : "") +
-                      (i % 4 === 0 ? " downbeat" : "")
-                    }
-                    onPointerDown={() => {
-                      dispatch({
-                        type: "toggleStep",
-                        layerId: layer.id,
-                        index: i,
-                      });
-                      if (!on && clip) sound.play(clip);
-                    }}
-                  />
-                ))}
-                <div className="loop-playhead" />
-              </div>
-            </div>
-          );
-        })}
+      <div className="loop-add">
+        <button className="t-btn" data-act="add-drum" onClick={addDrum}>
+          ➕ 🥁 Drum
+        </button>
+        <button className="t-btn" data-act="add-melody" onClick={addMelody}>
+          ➕ 🎵 Melody
+        </button>
+        <span className="loop-hint">
+          Build a loop, then shape it with the Studio knobs on the right →
+        </span>
       </div>
+
+      {project.layers.length === 0 ? (
+        <p className="stub-note">
+          Empty stage! Tap <b>➕ Drum</b> for a beat or <b>➕ Melody</b> for a
+          tune. Or hit 🎲 for a surprise.
+        </p>
+      ) : (
+        <div className="loop-board" ref={boardRef} data-playing="false">
+          {project.layers.map((layer) => (
+            <LoopTrack key={layer.id} layerId={layer.id} />
+          ))}
+        </div>
+      )}
     </section>
+  );
+};
+
+/** One lane on the Loop Stage — a drum row or a melody mini-grid. */
+const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
+  const { sound, dispatch } = useApp();
+  const project = useProject();
+  const { selected, select } = useLoopSelection();
+  const layer = project.layers.find((l) => l.id === layerId);
+  if (!layer) return null;
+  const clip = project.clips[layer.clipId];
+
+  return (
+    <div
+      className={"loop-track" + (selected === layer.id ? " selected" : "")}
+      style={cssVar("--row-color", clip?.color ?? "#888")}
+      onPointerDown={() => select(layer.id)}
+    >
+      <div className="loop-track-head">
+        <span className="layer-name">
+          {layer.kind === "melody" ? "🎵 " : ""}
+          {clip?.label ?? layer.clipId}
+        </span>
+        <button
+          className="layer-mute t-btn"
+          onClick={() => dispatch({ type: "toggleLayerMuted", layerId: layer.id })}
+        >
+          {layer.muted ? "🔇" : "🔊"}
+        </button>
+        <button
+          className="layer-remove t-btn"
+          onClick={() => dispatch({ type: "removeLayer", layerId: layer.id })}
+        >
+          🗑️
+        </button>
+      </div>
+
+      {layer.kind === "melody" ? (
+        <div
+          className="melody-grid"
+          style={cssVar("--rows", String(MELODY_ROWS))}
+        >
+          {/* High notes on top → iterate rows from the top down. */}
+          {Array.from({ length: MELODY_ROWS }, (_, r) => MELODY_ROWS - 1 - r).map(
+            (row) => (
+              <div className="melody-row" key={row}>
+                {layer.notes.map((noteRow, i) => {
+                  const on = noteRow === row;
+                  return (
+                    <button
+                      key={i}
+                      className={
+                        "note-cell" +
+                        (on ? " on" : "") +
+                        (i % 4 === 0 ? " downbeat" : "")
+                      }
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        select(layer.id);
+                        dispatch({
+                          type: "setNote",
+                          layerId: layer.id,
+                          index: i,
+                          row: on ? null : row,
+                        });
+                        if (!on) {
+                          sound.previewNote(
+                            degreeToNote(project.scaleId, project.keyId, row),
+                            layer.wave,
+                          );
+                        }
+                      }}
+                    />
+                  );
+                })}
+              </div>
+            ),
+          )}
+          <div className="loop-playhead" />
+        </div>
+      ) : (
+        <div className="loop-lane">
+          {layer.steps.map((on, i) => (
+            <button
+              key={i}
+              className={
+                "loop-cell" + (on ? " on" : "") + (i % 4 === 0 ? " downbeat" : "")
+              }
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                select(layer.id);
+                dispatch({ type: "toggleStep", layerId: layer.id, index: i });
+                if (!on && clip) sound.play(clip);
+              }}
+            />
+          ))}
+          <div className="loop-playhead" />
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ── Loop Stage Studio rail (guided high-level controls) ──────────────────────
+
+/** A labeled rail control with a one-line "what + why" coach for kids. */
+const RailControl: FC<{ title: string; coach: string; children: ReactNode }> = ({
+  title,
+  coach,
+  children,
+}) => (
+  <div className="rail-control">
+    <div className="rail-title">{title}</div>
+    {children}
+    <div className="coach">{coach}</div>
+  </div>
+);
+
+const LoopStageRail: FC = () => {
+  const { dispatch, engine } = useApp();
+  const project = useProject();
+  const { selected } = useLoopSelection();
+  const lane =
+    project.layers.find((l) => l.id === selected) ?? project.layers[0] ?? null;
+  const magicOn = project.scaleId === "magic";
+
+  return (
+    <div className="rail-inner">
+      <div className="rail-heading">🎚️ Studio</div>
+
+      <RailControl
+        title={`⏩ Speed · ${project.tempoBpm}`}
+        coach="How fast the loop runs. Slow = chill, fast = party."
+      >
+        <input
+          type="range"
+          min="40"
+          max="220"
+          value={project.tempoBpm}
+          onChange={(e) => {
+            const bpm = Number(e.target.value);
+            dispatch({ type: "setTempo", bpm });
+            engine.setTempo(bpm);
+          }}
+        />
+      </RailControl>
+
+      <RailControl
+        title={`✨ ${SCALES[project.scaleId].label}`}
+        coach={SCALES[project.scaleId].coach}
+      >
+        <button
+          className={"rail-toggle t-btn" + (magicOn ? " active" : "")}
+          onClick={() =>
+            dispatch({ type: "setScale", scaleId: magicOn ? "rainbow" : "magic" })
+          }
+        >
+          {magicOn ? "Magic Notes: ON" : "Rainbow Notes"}
+        </button>
+      </RailControl>
+
+      <RailControl
+        title={`🏠 Key · ${KEYS[project.keyId].label}`}
+        coach="Home note the song leans on. Try a few — pick what feels happy."
+      >
+        <div className="rail-pills">
+          {KEY_IDS.map((k) => (
+            <button
+              key={k}
+              className={"rail-pill" + (project.keyId === k ? " active" : "")}
+              onClick={() => dispatch({ type: "setKey", keyId: k as KeyId })}
+            >
+              {KEYS[k].label}
+            </button>
+          ))}
+        </div>
+      </RailControl>
+
+      <RailControl
+        title={`🎢 Groove · ${project.swing > 0.05 ? "Bouncy" : "Straight"}`}
+        coach="Swing makes the beat bounce instead of marching in a line."
+      >
+        <input
+          type="range"
+          min="0"
+          max="1"
+          step="0.05"
+          value={project.swing}
+          onChange={(e) => dispatch({ type: "setSwing", swing: Number(e.target.value) })}
+        />
+      </RailControl>
+
+      <div className="rail-sep">
+        🎚️ {lane ? `${project.clips[lane.clipId]?.label ?? "Lane"}` : "Lane"}
+      </div>
+
+      {lane ? (
+        <>
+          {lane.kind === "melody" && (
+            <RailControl
+              title="🔊 Sound"
+              coach="The voice of this tune. Soft & Smooth are gentle; Buzzy & Sharp cut through."
+            >
+              <div className="rail-pills">
+                {WAVES.map((w) => (
+                  <button
+                    key={w.wave}
+                    className={"rail-pill" + (lane.wave === w.wave ? " active" : "")}
+                    onClick={() =>
+                      dispatch({ type: "setLayerWave", layerId: lane.id, wave: w.wave })
+                    }
+                    title={w.label}
+                  >
+                    {w.emoji}
+                  </button>
+                ))}
+              </div>
+            </RailControl>
+          )}
+
+          <RailControl
+            title="📢 Volume"
+            coach="How loud this lane sits in the mix. Turn down to tuck it behind."
+          >
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.01"
+              value={lane.volume}
+              onChange={(e) =>
+                dispatch({
+                  type: "setLayerVolume",
+                  layerId: lane.id,
+                  volume: Number(e.target.value),
+                })
+              }
+            />
+          </RailControl>
+
+          <RailControl
+            title={`🌀 Echo · ${Math.round(lane.echo * 100)}%`}
+            coach="Adds a spacey echo tail. A little = roomy; a lot = dreamy."
+          >
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={lane.echo}
+              onChange={(e) =>
+                dispatch({
+                  type: "setLayerEcho",
+                  layerId: lane.id,
+                  echo: Number(e.target.value),
+                })
+              }
+            />
+          </RailControl>
+        </>
+      ) : (
+        <p className="coach">Add a lane, then tap it to tweak its sound here.</p>
+      )}
+    </div>
   );
 };
 
@@ -512,6 +795,6 @@ export const TOOLS: readonly ToolDescriptor[] = [
   { id: "record-voicefx", label: "My Voice", icon: "🎤", Canvas: MyVoiceCanvas, Options: MyVoiceOptions },
   { id: "sound-pads", label: "Sound Pads", icon: "🥁", Canvas: SoundPadsCanvas },
   { id: "beat-grid", label: "Beat Maker", icon: "🎛️", Canvas: BeatMakerCanvas },
-  { id: "looper-stage", label: "Loop Stage", icon: "🔁", Canvas: LoopStageCanvas },
+  { id: "looper-stage", label: "Loop Stage", icon: "🔁", Canvas: LoopStageCanvas, Rail: LoopStageRail },
   { id: "theremin-xy", label: "Magic Pad", icon: "✨", Canvas: MagicPadCanvas, Options: MagicPadOptions },
 ];
