@@ -14,12 +14,13 @@ import {
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
-import { stepIndexFromProgress } from "../core/timeline.ts";
+import { stepIndexFromProgress, swingDelayFraction } from "../core/timeline.ts";
 import {
   MicDeniedError,
   NoMicError,
   type BufferId,
   type SoundPort,
+  type StepOptions,
   type ThereminWave,
 } from "../ports/sound-port.ts";
 
@@ -42,6 +43,10 @@ export class ToneSoundPort implements SoundPort {
   // Live one-shot + scheduled players, tracked for cleanup.
   private readonly liveVoices = new Set<Tone.Player>();
   private readonly scheduledVoices: Tone.Player[] = [];
+  /** Per-melody-lane synth voices, scheduled on the transport. */
+  private readonly scheduledSynths: Tone.Synth[] = [];
+  /** Per-lane echo sends (FeedbackDelay nodes), torn down with the transport. */
+  private readonly scheduledFx: Tone.ToneAudioNode[] = [];
 
   // Theremin voice (live, never baked).
   private thereminWave: ThereminWave = "triangle";
@@ -236,22 +241,63 @@ export class ToneSoundPort implements SoundPort {
     }
   }
 
+  /** Seconds-into-the-bar a step fires, with swing leaning the off-beats late. */
+  private stepOffset(stepIndex: number, totalSteps: number, swing: number): number {
+    const measure = Tone.Time("1m").toSeconds();
+    const stepDur = measure / totalSteps;
+    return stepDur * (stepIndex + swingDelayFraction(stepIndex, swing));
+  }
+
+  /** Build the destination for a scheduled voice: a per-lane echo send when
+   *  echo > 0, otherwise the main output. Tracked nodes are torn down in
+   *  stopAll so re-scheduling never leaks. */
+  private scheduledDestination(echo: number): Tone.ToneAudioNode {
+    if (echo <= 0) return Tone.getDestination();
+    const delay = new Tone.FeedbackDelay({
+      delayTime: "8n",
+      feedback: 0.2 + echo * 0.5,
+      wet: Math.min(0.6, echo),
+    }).toDestination();
+    this.scheduledFx.push(delay);
+    return delay;
+  }
+
   scheduleStep(
     clip: Clip,
     stepIndex: number,
     totalSteps: number,
-    volume = 1,
+    opts: StepOptions,
   ): void {
     // Beat-grid clips are builtins without effects → resolve synchronously.
     const buf = this.resolveSource(clip.source);
     if (!buf) return;
-    const player = new Tone.Player(buf).toDestination();
-    player.volume.value = Tone.gainToDb(Math.max(0.0001, volume));
+    const player = new Tone.Player(buf).connect(this.scheduledDestination(opts.echo));
+    player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
     this.scheduledVoices.push(player);
-    const measure = Tone.Time("1m").toSeconds();
-    const offset = (measure * stepIndex) / totalSteps;
+    const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
     Tone.getTransport().scheduleRepeat(
       (time) => player.start(time),
+      "1m",
+      offset,
+    );
+  }
+
+  scheduleNote(
+    noteName: string,
+    wave: ThereminWave,
+    stepIndex: number,
+    totalSteps: number,
+    opts: StepOptions,
+  ): void {
+    const synth = new Tone.Synth({
+      oscillator: { type: wave },
+      envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
+    }).connect(this.scheduledDestination(opts.echo));
+    synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
+    this.scheduledSynths.push(synth);
+    const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
+    Tone.getTransport().scheduleRepeat(
+      (time) => synth.triggerAttackRelease(noteName, "16n", time),
       "1m",
       offset,
     );
@@ -325,6 +371,10 @@ export class ToneSoundPort implements SoundPort {
     transport.cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;
+    for (const s of this.scheduledSynths) s.dispose();
+    this.scheduledSynths.length = 0;
+    for (const fx of this.scheduledFx) fx.dispose();
+    this.scheduledFx.length = 0;
   }
 
   setQuantize(grid: QuantizeGrid): void {

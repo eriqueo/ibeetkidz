@@ -3,8 +3,10 @@
 // state -> sound reconciliation loop and gesture-gated startup.
 
 import type { Project } from "./types.ts";
+import { STEP_COUNT } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
+import { degreeToNote } from "./scale.ts";
 
 export class AudioEngine {
   private started = false;
@@ -42,9 +44,19 @@ export class AudioEngine {
       if (layer.muted) continue;
       const clip = project.clips[layer.clipId];
       if (!clip) continue;
-      layer.steps.forEach((on, i) => {
-        if (on) this.sound.scheduleStep(clip, i, layer.steps.length, layer.volume);
-      });
+      const opts = { volume: layer.volume, swing: project.swing, echo: layer.echo };
+      if (layer.kind === "melody") {
+        layer.notes.forEach((row, i) => {
+          if (row === null) return;
+          const note = degreeToNote(project.scaleId, project.keyId, row);
+          this.sound.scheduleNote(note, layer.wave, i, layer.notes.length, opts);
+        });
+      } else {
+        const total = layer.steps.length || STEP_COUNT;
+        layer.steps.forEach((on, i) => {
+          if (on) this.sound.scheduleStep(clip, i, total, opts);
+        });
+      }
     }
   }
 

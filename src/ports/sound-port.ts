@@ -12,6 +12,16 @@ export type BufferId = string;
 // (the Tone adapter, the UI tools) can keep pulling it from the port boundary.
 export type { ThereminWave };
 
+/** Mix + groove options shared by every transport-scheduled voice. */
+export interface StepOptions {
+  /** Linear mix level, 0..1. */
+  readonly volume: number;
+  /** Swing amount, 0..1 (off-beats lean late). */
+  readonly swing: number;
+  /** Echo send, 0..1 (0 = dry). */
+  readonly echo: number;
+}
+
 export interface SoundPort {
   /** Resume the (single, shared) AudioContext. Must be called from a user gesture. */
   resume(): Promise<void>;
@@ -39,9 +49,24 @@ export interface SoundPort {
   /** Trigger a clip once, now. */
   play(clip: Clip): void;
 
-  /** Schedule looping playback of a clip on the transport at the given step.
-   *  `volume` is linear 0..1 (the layer's mix level). */
-  scheduleStep(clip: Clip, stepIndex: number, totalSteps: number, volume?: number): void;
+  /** Schedule looping playback of a drum clip on the transport at the given
+   *  step. Swing leans the off-beats late; echo adds a per-lane delay tail. */
+  scheduleStep(
+    clip: Clip,
+    stepIndex: number,
+    totalSteps: number,
+    opts: StepOptions,
+  ): void;
+
+  /** Schedule a looping melody note (pitched synth voice) on the transport at
+   *  the given step. `noteName` is scientific pitch (e.g. "C4"). */
+  scheduleNote(
+    noteName: string,
+    wave: ThereminWave,
+    stepIndex: number,
+    totalSteps: number,
+    opts: StepOptions,
+  ): void;
 
   /** Real-time XY control for the theremin machine (resolved live, not baked). */
   setThereminXY(x: number, y: number): void;
