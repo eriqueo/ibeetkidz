@@ -2,14 +2,15 @@
 // The core AudioEngine talks only to this interface, so the audio vendor is
 // swappable and the core stays unit-testable with a fake implementation.
 
-import type { Clip, EffectDescriptor } from "../core/types.ts";
+import type { Clip, EffectDescriptor, ThereminWave } from "../core/types.ts";
 import type { QuantizeGrid } from "../core/quantize.ts";
 
 /** Opaque handle to an audio buffer held by the adapter (keyed by id). */
 export type BufferId = string;
 
-/** Oscillator shape for the theremin / Magic Pad voice. */
-export type ThereminWave = "sine" | "triangle" | "square" | "sawtooth";
+// `ThereminWave` is a pure domain type; re-exported here so existing importers
+// (the Tone adapter, the UI tools) can keep pulling it from the port boundary.
+export type { ThereminWave };
 
 export interface SoundPort {
   /** Resume the (single, shared) AudioContext. Must be called from a user gesture. */

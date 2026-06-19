@@ -2,8 +2,9 @@
 // returns a list of Commands the app reduces. Same seed → same beat (testable,
 // and the kidpix "randomness is reproducible" rule). No Math.random here.
 
-import type { Clip, Command, Layer } from "./types.ts";
+import type { Clip, Command } from "./types.ts";
 import { STEP_COUNT } from "./types.ts";
+import { makeLayer } from "./project-state.ts";
 import type { RngPort } from "./rng.ts";
 import { DRUM_SOUNDS } from "./sound-catalog.ts";
 
@@ -38,13 +39,12 @@ export function generateBeat(rng: RngPort): Command[] {
     };
     cmds.push({ type: "addClip", clip });
 
-    const layer: Layer = {
+    const layer = makeLayer({
       id: LAYER_ID(drum.assetId),
       clipId: clip.id,
-      volume: 0.9,
-      muted: false,
+      kind: "drum",
       steps: patternFor(drum.assetId, rng),
-    };
+    });
     cmds.push({ type: "addLayer", layer });
   }
 

@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { stepIndexFromProgress } from "../../src/core/timeline.ts";
+import {
+  stepIndexFromProgress,
+  swingDelayFraction,
+} from "../../src/core/timeline.ts";
+
+describe("swingDelayFraction", () => {
+  it("leaves on-beats (even steps) put", () => {
+    expect(swingDelayFraction(0, 0.6)).toBe(0);
+    expect(swingDelayFraction(2, 1)).toBe(0);
+  });
+
+  it("delays off-beats (odd steps) by up to half a step", () => {
+    expect(swingDelayFraction(1, 0)).toBe(0);
+    expect(swingDelayFraction(1, 1)).toBe(0.5);
+    expect(swingDelayFraction(3, 0.5)).toBe(0.25);
+  });
+
+  it("clamps swing to 0..1", () => {
+    expect(swingDelayFraction(1, 5)).toBe(0.5);
+    expect(swingDelayFraction(1, -2)).toBe(0);
+  });
+});
 
 describe("stepIndexFromProgress", () => {
   it("maps bar progress to a step index", () => {

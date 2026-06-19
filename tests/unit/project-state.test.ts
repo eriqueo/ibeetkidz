@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  deserialize,
   dispatch,
   emptyProject,
   initHistory,
+  makeLayer,
   redo,
   reduce,
   undo,
@@ -24,13 +26,8 @@ const clip = (id: string): Clip => ({
   label: id,
 });
 
-const layer = (id: string, clipId: string): Layer => ({
-  id,
-  clipId,
-  volume: 0.8,
-  muted: false,
-  steps: [],
-});
+const layer = (id: string, clipId: string): Layer =>
+  makeLayer({ id, clipId, volume: 0.8 });
 
 describe("reduce", () => {
   it("adds a clip", () => {
@@ -98,5 +95,82 @@ describe("history", () => {
     let h = initHistory(emptyProject("p"));
     h = dispatch(h, { type: "applyEffect", clipId: "ghost", effect: { id: "robot", amount: 1 } });
     expect(h.past).toHaveLength(0);
+  });
+});
+
+describe("melody + song settings", () => {
+  it("defaults to Magic Notes in C with no swing", () => {
+    const s = emptyProject("p");
+    expect(s.scaleId).toBe("magic");
+    expect(s.keyId).toBe("C");
+    expect(s.swing).toBe(0);
+  });
+
+  it("a melody layer gets a full notes array and no steps", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+    expect(s.layers[0]?.notes).toHaveLength(STEP_COUNT);
+    expect(s.layers[0]?.steps).toHaveLength(0);
+  });
+
+  it("places and clears a melody note", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+    s = reduce(s, { type: "setNote", layerId: "m1", index: 2, row: 4 });
+    expect(s.layers[0]?.notes[2]).toBe(4);
+    s = reduce(s, { type: "setNote", layerId: "m1", index: 2, row: null });
+    expect(s.layers[0]?.notes[2]).toBeNull();
+  });
+
+  it("sets scale, key, swing, wave, and echo", () => {
+    let s = reduce(emptyProject("p"), { type: "setScale", scaleId: "rainbow" });
+    s = reduce(s, { type: "setKey", keyId: "G" });
+    s = reduce(s, { type: "setSwing", swing: 0.6 });
+    expect(s.scaleId).toBe("rainbow");
+    expect(s.keyId).toBe("G");
+    expect(s.swing).toBe(0.6);
+
+    s = reduce(s, { type: "addClip", clip: clip("c1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+    s = reduce(s, { type: "setLayerWave", layerId: "m1", wave: "square" });
+    s = reduce(s, { type: "setLayerEcho", layerId: "m1", echo: 0.5 });
+    expect(s.layers[0]?.wave).toBe("square");
+    expect(s.layers[0]?.echo).toBe(0.5);
+  });
+
+  it("clamps swing and echo to 0..1", () => {
+    expect(reduce(emptyProject("p"), { type: "setSwing", swing: 9 }).swing).toBe(1);
+  });
+});
+
+describe("normalizeProject (back-compat)", () => {
+  it("back-fills song settings missing from an old save", () => {
+    // A project shaped like the pre-melody version (no scale/key/swing, and a
+    // layer with only drum fields) must still load and play.
+    const oldSave = JSON.stringify({
+      id: "old",
+      name: "Old Jam",
+      tempoBpm: 120,
+      clips: { c1: clip("c1") },
+      layers: [{ id: "l1", clipId: "c1", volume: 0.8, muted: false, steps: new Array(STEP_COUNT).fill(true) }],
+      activeMachineId: "looper-stage",
+    });
+    const p = deserialize(oldSave);
+    expect(p.scaleId).toBe("magic");
+    expect(p.keyId).toBe("C");
+    expect(p.swing).toBe(0);
+    expect(p.layers[0]?.kind).toBe("drum");
+    expect(p.layers[0]?.notes).toHaveLength(0); // drum lanes carry no melody
+    expect(p.layers[0]?.echo).toBe(0);
+    expect(p.layers[0]?.steps[0]).toBe(true); // original pattern preserved
   });
 });

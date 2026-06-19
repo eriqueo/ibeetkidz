@@ -14,6 +14,7 @@ import {
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
+import { makeLayer } from "../core/project-state.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import type { ThereminWave } from "../ports/sound-port.ts";
 
@@ -239,13 +240,7 @@ const BeatMakerCanvas: FC = () => {
       if (!getProject().layers.some((l) => l.id === id)) {
         dispatch({
           type: "addLayer",
-          layer: {
-            id,
-            clipId: id,
-            volume: 0.9,
-            muted: false,
-            steps: new Array<boolean>(STEP_COUNT).fill(false),
-          },
+          layer: makeLayer({ id, clipId: id, kind: "drum" }),
         });
       }
     }

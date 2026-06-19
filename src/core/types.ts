@@ -7,6 +7,11 @@
 // reconciles the live Web Audio graph to match the Project.
 // ─────────────────────────────────────────────────────────────────────────
 
+import type { ScaleId, KeyId } from "./scale.ts";
+
+/** Oscillator shape for melody lanes and the Magic Pad / theremin voice. */
+export type ThereminWave = "sine" | "triangle" | "square" | "sawtooth";
+
 /** Identifier for one of the effect presets a kid can stack onto a clip. */
 export type EffectId =
   | "reverse"
@@ -44,14 +49,26 @@ export interface Clip {
   readonly label: string;
 }
 
+/** Drum lanes toggle a sound on/off per step; melody lanes place a pitched
+ *  note (a grid row) per step. Both share the Loop Stage timeline. */
+export type LaneKind = "drum" | "melody";
+
 /** A layer on the Stage — one looping/triggerable lane in the mix. */
 export interface Layer {
   readonly id: string;
   readonly clipId: string;
   readonly volume: number; // 0..1
   readonly muted: boolean;
-  /** Step pattern for the beat grid; empty for one-shot/looper layers. */
+  /** "drum" → use `steps`; "melody" → use `notes`. */
+  readonly kind: LaneKind;
+  /** Step pattern for drum lanes; empty for melody lanes. */
   readonly steps: readonly boolean[];
+  /** Per-step melody: grid-row index, or null for a rest. Empty for drums. */
+  readonly notes: readonly (number | null)[];
+  /** Melody timbre (ignored by drum lanes). */
+  readonly wave: ThereminWave;
+  /** Per-lane echo send, 0..1 (0 = dry). */
+  readonly echo: number;
 }
 
 /** The serializable source of truth. Save/load round-trips this exactly. */
@@ -61,6 +78,11 @@ export interface Project {
   readonly tempoBpm: number;
   readonly clips: Readonly<Record<string, Clip>>;
   readonly layers: readonly Layer[];
+  /** Song-level musical settings driving the melody lanes + groove. */
+  readonly scaleId: ScaleId;
+  readonly keyId: KeyId;
+  /** Swing amount, 0..1 (0 = straight). */
+  readonly swing: number;
   /** Id of the machine currently in focus. */
   readonly activeMachineId: string;
 }
@@ -75,7 +97,13 @@ export type Command =
   | { readonly type: "setLayerVolume"; readonly layerId: string; readonly volume: number }
   | { readonly type: "toggleLayerMuted"; readonly layerId: string }
   | { readonly type: "toggleStep"; readonly layerId: string; readonly index: number }
+  | { readonly type: "setNote"; readonly layerId: string; readonly index: number; readonly row: number | null }
+  | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
+  | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setTempo"; readonly bpm: number }
+  | { readonly type: "setScale"; readonly scaleId: ScaleId }
+  | { readonly type: "setKey"; readonly keyId: KeyId }
+  | { readonly type: "setSwing"; readonly swing: number }
   | { readonly type: "setActiveMachine"; readonly machineId: string };
 
 export const MIN_BPM = 40;
