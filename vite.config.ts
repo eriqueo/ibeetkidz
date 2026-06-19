@@ -1,4 +1,5 @@
 import { defineConfig } from "vite";
+import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
 
 // Dual-base build, mirroring the kidpix pattern:
@@ -8,6 +9,7 @@ export default defineConfig(({ mode }) => {
   const isGh = mode === "gh";
   return {
     base: isGh ? "/ibeetkidz/" : "/",
+    plugins: [react()],
     build: {
       outDir: isGh ? "dist-gh" : "dist",
       emptyOutDir: true,

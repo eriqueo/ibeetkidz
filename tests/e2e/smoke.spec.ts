@@ -21,14 +21,16 @@ test("switching machines shows only the active one (no stacking)", async ({
   page,
 }) => {
   await boot(page);
-  // Visit two machines so both their <section>s are mounted in the host.
   await page.getByRole("button", { name: /beat maker/i }).click();
-  await page.getByRole("button", { name: /my voice/i }).click();
+  await expect(page.locator('section[data-machine="beat-grid"]')).toBeVisible();
 
-  // Multiple sections exist, but the [hidden] rule must leave exactly one shown.
-  const sections = page.locator("section[data-machine]");
-  expect(await sections.count()).toBeGreaterThan(1);
-  await expect(page.locator("section[data-machine]:visible")).toHaveCount(1);
+  await page.getByRole("button", { name: /my voice/i }).click();
+  await expect(
+    page.locator('section[data-machine="record-voicefx"]'),
+  ).toBeVisible();
+
+  // React unmounts the inactive machine → exactly one is ever in the DOM.
+  await expect(page.locator("section[data-machine]")).toHaveCount(1);
 });
 
 test("beat maker: toggle steps, play and stop without error", async ({
