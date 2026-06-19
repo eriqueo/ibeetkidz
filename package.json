@@ -1,0 +1,29 @@
+{
+  "name": "ibeetkidz",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Kidpix for audio — a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && vite build --mode gh",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:unit": "vitest",
+    "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed"
+  },
+  "dependencies": {
+    "tone": "^15.0.4"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.56.1",
+    "@vitest/coverage-v8": "^3.2.3",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.6.3",
+    "vite": "^6.4.1",
+    "vitest": "^3.2.3"
+  }
+}
