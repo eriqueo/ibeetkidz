@@ -141,6 +141,13 @@ body {
   gap: 1rem;
   place-content: start center;
 }
+/* The machine switcher hides inactive machines via the [hidden] attribute, but
+   the author rule `.machine { display: grid }` above beats the UA stylesheet's
+   `[hidden] { display: none }`, so hidden machines kept rendering and stacked on
+   top of each other. Restore the attribute's intended semantics app-wide. */
+[hidden] {
+  display: none !important;
+}
 
 /* Voice FX */
 .big-record {

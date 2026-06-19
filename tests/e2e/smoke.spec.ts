@@ -17,6 +17,20 @@ test("boots from the gesture gate into the app", async ({ page }) => {
   await expect(page.getByRole("button", { name: /magic pad/i })).toBeVisible();
 });
 
+test("switching machines shows only the active one (no stacking)", async ({
+  page,
+}) => {
+  await boot(page);
+  // Visit two machines so both their <section>s are mounted in the host.
+  await page.getByRole("button", { name: /beat maker/i }).click();
+  await page.getByRole("button", { name: /my voice/i }).click();
+
+  // Multiple sections exist, but the [hidden] rule must leave exactly one shown.
+  const sections = page.locator("section[data-machine]");
+  expect(await sections.count()).toBeGreaterThan(1);
+  await expect(page.locator("section[data-machine]:visible")).toHaveCount(1);
+});
+
 test("beat maker: toggle steps, play and stop without error", async ({
   page,
 }) => {
