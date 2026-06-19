@@ -8,6 +8,9 @@ import type { QuantizeGrid } from "../core/quantize.ts";
 /** Opaque handle to an audio buffer held by the adapter (keyed by id). */
 export type BufferId = string;
 
+/** Oscillator shape for the theremin / Magic Pad voice. */
+export type ThereminWave = "sine" | "triangle" | "square" | "sawtooth";
+
 export interface SoundPort {
   /** Resume the (single, shared) AudioContext. Must be called from a user gesture. */
   resume(): Promise<void>;
@@ -43,6 +46,8 @@ export interface SoundPort {
   setThereminXY(x: number, y: number): void;
   thereminOn(): void;
   thereminOff(): void;
+  /** Choose the theremin's oscillator shape (applies live if a voice is held). */
+  setThereminWaveform(wave: ThereminWave): void;
 
   setTempo(bpm: number): void;
   startTransport(): void;

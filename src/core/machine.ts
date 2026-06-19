@@ -22,8 +22,11 @@ export interface Machine {
   readonly label: string;
   /** Emoji/icon for the chunky kid toolbar. */
   readonly icon: string;
-  /** Build the machine's UI into `host`. Called once when first shown. */
+  /** Build the machine's canvas UI into `host`. Called once when first shown. */
   mount(host: HTMLElement, ctx: MachineContext): void;
+  /** Optionally render the tool's knobs into the top options bar. Omit if the
+   *  tool has no settings — the shell shows a labeled title instead. */
+  mountOptions?(host: HTMLElement, ctx: MachineContext): void;
   /** Machine gained focus (kid switched to it). */
   onEnter(ctx: MachineContext): void;
   /** Machine lost focus. Stop any machine-local audio/animation here. */

@@ -4,7 +4,15 @@
 // setThereminXY is the build-out work.
 
 import type { Machine, MachineContext } from "../core/machine.ts";
+import type { ThereminWave } from "../ports/sound-port.ts";
 import { attachPointer } from "../core/input-router.ts";
+
+const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
+  { wave: "triangle", label: "Soft", emoji: "🔺" },
+  { wave: "sine", label: "Smooth", emoji: "🌊" },
+  { wave: "square", label: "Buzzy", emoji: "🟦" },
+  { wave: "sawtooth", label: "Sharp", emoji: "🪚" },
+];
 
 export const thereminXyMachine: Machine = {
   id: "theremin-xy",
@@ -38,6 +46,26 @@ export const thereminXyMachine: Machine = {
     });
 
     host.appendChild(pad);
+  },
+
+  mountOptions(host: HTMLElement, ctx: MachineContext): void {
+    host.innerHTML = "";
+    const group = document.createElement("div");
+    group.className = "opt-choices";
+    WAVES.forEach((w, i) => {
+      const b = document.createElement("button");
+      b.className = "opt-choice";
+      if (i === 0) b.classList.add("active"); // matches the adapter default
+      b.innerHTML = `<span>${w.emoji}</span><span>${w.label}</span>`;
+      b.addEventListener("click", () => {
+        ctx.sound.setThereminWaveform(w.wave);
+        group
+          .querySelectorAll("button")
+          .forEach((other) => other.classList.toggle("active", other === b));
+      });
+      group.appendChild(b);
+    });
+    host.appendChild(group);
   },
 
   onEnter(): void {},

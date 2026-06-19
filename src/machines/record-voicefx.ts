@@ -17,6 +17,10 @@ const EFFECT_TILES: { id: EffectId; label: string; emoji: string; color: string 
 ];
 
 let clipSeq = 0;
+// How strong the effects are (0..1). Driven by the "Wildness" knob in the
+// options bar; the effect tiles read it when applying. Module-scoped because
+// only one machine instance is ever active.
+let wildness = 0.6;
 
 export const recordVoiceFxMachine: Machine = {
   id: "record-voicefx",
@@ -87,7 +91,7 @@ export const recordVoiceFxMachine: Machine = {
           setStatus("Record your voice first! 🎤");
           return;
         }
-        const amount = tile.id === "crazy" ? ctx.rng.next() : 0.6;
+        const amount = tile.id === "crazy" ? ctx.rng.next() : wildness;
         const effect: EffectDescriptor = { id: tile.id, amount };
         ctx.dispatch({ type: "applyEffect", clipId, effect });
         const updated = ctx.getProject().clips[clipId];
@@ -98,6 +102,24 @@ export const recordVoiceFxMachine: Machine = {
     }
 
     host.append(recordBtn, status, tiles);
+  },
+
+  mountOptions(host: HTMLElement, _ctx: MachineContext): void {
+    host.innerHTML = "";
+    const wrap = document.createElement("label");
+    wrap.className = "opt-knob";
+    wrap.innerHTML = `<span>🌶️ Wildness</span>`;
+    const slider = document.createElement("input");
+    slider.type = "range";
+    slider.min = "0";
+    slider.max = "1";
+    slider.step = "0.01";
+    slider.value = String(wildness);
+    slider.addEventListener("input", () => {
+      wildness = Number(slider.value);
+    });
+    wrap.appendChild(slider);
+    host.appendChild(wrap);
   },
 
   onEnter(): void {

@@ -19,6 +19,7 @@ import {
   NoMicError,
   type BufferId,
   type SoundPort,
+  type ThereminWave,
 } from "../ports/sound-port.ts";
 
 export class ToneSoundPort implements SoundPort {
@@ -42,6 +43,7 @@ export class ToneSoundPort implements SoundPort {
   private readonly scheduledVoices: Tone.Player[] = [];
 
   // Theremin voice (live, never baked).
+  private thereminWave: ThereminWave = "triangle";
   private theremin?:
     | {
         osc: Tone.Oscillator;
@@ -264,7 +266,7 @@ export class ToneSoundPort implements SoundPort {
 
   thereminOn(): void {
     if (this.theremin) return;
-    const osc = new Tone.Oscillator(440, "triangle");
+    const osc = new Tone.Oscillator(440, this.thereminWave);
     const filter = new Tone.Filter(1200, "lowpass");
     const gain = new Tone.Gain(0).toDestination();
     osc.connect(filter);
@@ -281,6 +283,11 @@ export class ToneSoundPort implements SoundPort {
     this.theremin.osc.frequency.rampTo(scale[idx] as number, 0.04);
     // y → brightness (filter cutoff), 300 Hz .. 6 kHz.
     this.theremin.filter.frequency.rampTo(300 + y * 5700, 0.04);
+  }
+
+  setThereminWaveform(wave: ThereminWave): void {
+    this.thereminWave = wave;
+    if (this.theremin) this.theremin.osc.type = wave;
   }
 
   thereminOff(): void {
