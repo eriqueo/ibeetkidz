@@ -60,6 +60,12 @@ export class ToneSoundPort implements SoundPort {
 
   async resume(): Promise<void> {
     await Tone.start();
+    // iOS routes Web Audio through the "ambient" session by default, which the
+    // hardware mute/ringer switch silences — so the app boots and the
+    // visualizer animates, but nothing is audible. Asking for the "playback"
+    // session (iOS 16.4+) makes our sound ignore the silent switch. No-op on
+    // platforms that don't expose `navigator.audioSession`.
+    setPlaybackAudioSession();
     this.ctx = Tone.getContext().rawContext as AudioContext;
     // A raw AnalyserNode tapped off the master output feeds the visualizer —
     // it sees every real voice (builtins, recordings, theremin), never a fake.
@@ -594,6 +600,21 @@ function seededNoise(seed: number): () => number {
 }
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
+
+/** Opt into the "playback" audio session so iOS plays through the silent
+ *  switch. Guarded by feature detection; the property is read-only on older
+ *  WebKit, so a throw is swallowed. */
+function setPlaybackAudioSession(): void {
+  const session = (
+    navigator as Navigator & { audioSession?: { type: string } }
+  ).audioSession;
+  if (!session) return;
+  try {
+    session.type = "playback";
+  } catch {
+    // Older/locked-down WebKit exposes a read-only stub — safe to ignore.
+  }
+}
 
 // Re-export so callers needing the catalog can pull through the adapter barrel.
 export { getBuiltin };

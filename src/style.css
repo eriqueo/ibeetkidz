@@ -570,6 +570,74 @@ body {
   text-align: center;
 }
 
+/* ── Studio rail as a bottom sheet (phones) ───────────────────────────────── */
+/* The toggle floats just above the play bar; the sheet slides up over the
+   canvas. Both are only rendered at phone widths (see usePhoneLayout). */
+.rail-sheet-toggle {
+  position: fixed;
+  right: 0.6rem;
+  bottom: 4.4rem;
+  z-index: 4;
+  padding: 0.55rem 0.9rem;
+  border: none;
+  border-radius: 1.4rem;
+  background: var(--accent);
+  color: white;
+  font-size: 0.95rem;
+  font-family: inherit;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.rail-sheet-toggle.active {
+  background: var(--panel);
+}
+.rail-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 4rem; /* sit above the play bar */
+  z-index: 3;
+  max-height: 62vh;
+  border-top: 2px solid rgba(255, 255, 255, 0.12);
+  border-left: none;
+  border-radius: 1rem 1rem 0 0;
+  background: rgba(18, 13, 36, 0.97);
+  backdrop-filter: blur(8px);
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.5);
+  transform: translateY(115%);
+  transition: transform 0.22s ease-out;
+}
+.rail-sheet.open {
+  transform: translateY(0);
+}
+
+/* Phone reflow: slim the palette so the canvas keeps real estate. The rail
+   column is dropped here — the Shell renders it as the sheet above instead. */
+@media (max-width: 740px) {
+  .shell-grid {
+    grid-template-columns: 4.6rem 1fr;
+  }
+  .palette {
+    gap: 0.35rem;
+    padding: 0.35rem 0.25rem;
+  }
+  .palette button {
+    font-size: 0.55rem;
+    padding: 0.4rem 0.15rem;
+    border-width: 2px;
+  }
+  .m-icon {
+    font-size: 1.5rem;
+  }
+  .options-bar {
+    gap: 0.5rem;
+    padding: 0.4rem 0.6rem;
+  }
+  .opt-knob input {
+    width: 6.5rem;
+  }
+}
+
 /* Sound Pads */
 .pad-grid {
   display: grid;

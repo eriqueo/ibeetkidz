@@ -2,8 +2,15 @@
 // (top), canvas (center), play bar (bottom), with the full-screen visualizer
 // behind. Only the active tool renders, so panels can't stack.
 
-import { useEffect, useRef, useState, type FC } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type FC,
+  type ReactNode,
+} from "react";
 import { useApp, useProject } from "../app/context.tsx";
+import { usePhoneLayout } from "../app/use-viewport.ts";
 import {
   TOOLS,
   LoopSelectionProvider,
@@ -152,17 +159,52 @@ const Visualizer: FC = () => {
   return <canvas className="viz-canvas" ref={ref} />;
 };
 
+// On phones the Studio rail slides up from the bottom on demand, keeping the
+// canvas full-width. It stays mounted (just translated off-screen) so its
+// controls don't lose state between peeks.
+const RailSheet: FC<{
+  toolId: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}> = ({ toolId, open, onToggle, children }) => (
+  <>
+    <button
+      type="button"
+      className={"rail-sheet-toggle" + (open ? " active" : "")}
+      aria-expanded={open}
+      onClick={onToggle}
+    >
+      🎛️ {open ? "Close" : "Studio"}
+    </button>
+    <aside
+      className={"rail rail-sheet" + (open ? " open" : "")}
+      data-rail={toolId}
+      aria-hidden={!open}
+    >
+      {children}
+    </aside>
+  </>
+);
+
 export const Shell: FC = () => {
   const project = useProject();
+  const isPhone = usePhoneLayout();
   const active = TOOLS.find((t) => t.id === project.activeMachineId) ?? TOOLS[0]!;
   const Canvas = active.Canvas;
   const Rail = active.Rail;
+  const sideRail = Rail && !isPhone;
+  const sheetRail = Rail && isPhone;
+  const [sheetOpen, setSheetOpen] = useState(false);
+  // A fresh tool starts with its rail tucked away — never surprise the kid with
+  // a panel covering the canvas they just switched to.
+  useEffect(() => setSheetOpen(false), [active.id]);
   return (
     <div id="app">
       <Visualizer />
       <div className="shell-root">
         <LoopSelectionProvider>
-          <div className={"shell-grid" + (Rail ? " shell-grid--rail" : "")}>
+          <div className={"shell-grid" + (sideRail ? " shell-grid--rail" : "")}>
             <Palette activeId={active.id} />
             <header className="options-bar">
               <OptionsBar tool={active} />
@@ -170,13 +212,22 @@ export const Shell: FC = () => {
             <main className="canvas">
               <Canvas />
             </main>
-            {Rail && (
+            {sideRail && Rail && (
               <aside className="rail" data-rail={active.id}>
                 <Rail />
               </aside>
             )}
             <PlayBar />
           </div>
+          {sheetRail && Rail && (
+            <RailSheet
+              toolId={active.id}
+              open={sheetOpen}
+              onToggle={() => setSheetOpen((o) => !o)}
+            >
+              <Rail />
+            </RailSheet>
+          )}
         </LoopSelectionProvider>
       </div>
     </div>
