@@ -127,6 +127,15 @@ test("studio rail: add a melody lane, place notes, tweak guided controls", async
   await notes.nth(20).click();
   await expect(page.locator(".note-cell.on")).toHaveCount(1);
 
+  // Stack a chord in a fresh column (col 7): cells 7 and 7+16 share a column.
+  // Both stay lit alongside the first note → 3 total.
+  await notes.nth(7).click();
+  await notes.nth(7 + 16).click();
+  await expect(page.locator(".note-cell.on")).toHaveCount(3);
+  // Tapping a lit note again removes just that one.
+  await notes.nth(7 + 16).click();
+  await expect(page.locator(".note-cell.on")).toHaveCount(2);
+
   // The rail's per-lane Sound picker is shown for the selected melody lane.
   await expect(page.locator('.rail [title="Buzzy"]')).toBeVisible();
 
@@ -138,6 +147,36 @@ test("studio rail: add a melody lane, place notes, tweak guided controls", async
 
   // Play still drives the playhead with a melody lane present.
   await page.locator('[data-act="play"]').click();
+  await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
+});
+
+test("drum picker: choose a specific drum, and keep playing while editing", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.getByRole("button", { name: /loop stage/i }).click();
+
+  // Opening the picker reveals every drum to choose from (no randomness).
+  await page.locator('[data-act="add-drum"]').click();
+  await expect(page.locator(".drum-picker")).toBeVisible();
+  expect(await page.locator(".drum-chip").count()).toBeGreaterThanOrEqual(6);
+
+  // Pick a SPECIFIC drum → that exact lane appears.
+  await page.locator('.drum-chip[data-drum="cowbell"]').click();
+  await expect(
+    page.locator('section[data-machine="looper-stage"] .loop-track'),
+  ).toHaveCount(1);
+  await expect(page.locator(".loop-track .layer-name")).toContainText("Ding");
+
+  // Start the loop, then add another drum mid-play — it must KEEP playing.
+  await page.locator('[data-act="play"]').click();
+  await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
+  await page.locator('[data-act="add-drum"]').click();
+  await page.locator('.drum-chip[data-drum="kick"]').click();
+  await expect(
+    page.locator('section[data-machine="looper-stage"] .loop-track'),
+  ).toHaveCount(2);
+  // Editing did not stop the transport.
   await expect(page.locator('.loop-board[data-playing="true"]')).toBeVisible();
 });
 

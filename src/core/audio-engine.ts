@@ -39,17 +39,20 @@ export class AudioEngine {
   reconcile(project: Project): void {
     if (!this.started) return;
     this.sound.setTempo(project.tempoBpm);
-    this.sound.stopAll();
+    // Clear + reschedule WITHOUT stopping the transport, so a loop keeps
+    // playing seamlessly while the kid adds lanes or toggles steps.
+    this.sound.clearScheduled();
     for (const layer of project.layers) {
       if (layer.muted) continue;
       const clip = project.clips[layer.clipId];
       if (!clip) continue;
       const opts = { volume: layer.volume, swing: project.swing, echo: layer.echo };
       if (layer.kind === "melody") {
-        layer.notes.forEach((row, i) => {
-          if (row === null) return;
-          const note = degreeToNote(project.scaleId, project.keyId, row);
-          this.sound.scheduleNote(note, layer.wave, i, layer.notes.length, opts);
+        layer.notes.forEach((rows, i) => {
+          for (const row of rows) {
+            const note = degreeToNote(project.scaleId, project.keyId, row);
+            this.sound.scheduleNote(note, layer.wave, i, layer.notes.length, opts);
+          }
         });
       } else {
         const total = layer.steps.length || STEP_COUNT;

@@ -106,26 +106,42 @@ describe("melody + song settings", () => {
     expect(s.swing).toBe(0);
   });
 
-  it("a melody layer gets a full notes array and no steps", () => {
+  it("a melody layer gets a full notes array (empty chords) and no steps", () => {
     let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     s = reduce(s, {
       type: "addLayer",
       layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
     });
     expect(s.layers[0]?.notes).toHaveLength(STEP_COUNT);
+    expect(s.layers[0]?.notes[0]).toEqual([]); // each step starts as a rest
     expect(s.layers[0]?.steps).toHaveLength(0);
   });
 
-  it("places and clears a melody note", () => {
+  it("toggles a melody note on then off", () => {
     let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     s = reduce(s, {
       type: "addLayer",
       layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
     });
-    s = reduce(s, { type: "setNote", layerId: "m1", index: 2, row: 4 });
-    expect(s.layers[0]?.notes[2]).toBe(4);
-    s = reduce(s, { type: "setNote", layerId: "m1", index: 2, row: null });
-    expect(s.layers[0]?.notes[2]).toBeNull();
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 2, row: 4 });
+    expect(s.layers[0]?.notes[2]).toEqual([4]);
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 2, row: 4 });
+    expect(s.layers[0]?.notes[2]).toEqual([]);
+  });
+
+  it("stacks multiple notes in one column (a chord)", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 4 });
+    expect(s.layers[0]?.notes[0]).toEqual([0, 2, 4]);
+    // removing the middle note leaves the rest of the chord intact
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
+    expect(s.layers[0]?.notes[0]).toEqual([0, 4]);
   });
 
   it("sets scale, key, swing, wave, and echo", () => {
@@ -172,5 +188,37 @@ describe("normalizeProject (back-compat)", () => {
     expect(p.layers[0]?.notes).toHaveLength(0); // drum lanes carry no melody
     expect(p.layers[0]?.echo).toBe(0);
     expect(p.layers[0]?.steps[0]).toBe(true); // original pattern preserved
+  });
+
+  it("migrates a pre-chord melody lane (single-note steps → chord arrays)", () => {
+    // The first melody release stored notes as (number | null)[]; those saves
+    // must upgrade to the chord shape (each step a row-set) without data loss.
+    const oldSave = JSON.stringify({
+      id: "old2",
+      name: "Old Tune",
+      tempoBpm: 100,
+      clips: { m1: clip("m1") },
+      layers: [
+        {
+          id: "m1",
+          clipId: "m1",
+          volume: 0.9,
+          muted: false,
+          kind: "melody",
+          steps: [],
+          notes: [3, null, 5, ...new Array(STEP_COUNT - 3).fill(null)],
+          wave: "triangle",
+          echo: 0,
+        },
+      ],
+      scaleId: "magic",
+      keyId: "C",
+      swing: 0,
+      activeMachineId: "looper-stage",
+    });
+    const p = deserialize(oldSave);
+    expect(p.layers[0]?.notes[0]).toEqual([3]);
+    expect(p.layers[0]?.notes[1]).toEqual([]);
+    expect(p.layers[0]?.notes[2]).toEqual([5]);
   });
 });

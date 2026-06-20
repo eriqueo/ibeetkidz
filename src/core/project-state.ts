@@ -65,10 +65,20 @@ const normalizeSteps = (steps?: readonly boolean[]): boolean[] =>
     ? steps.slice()
     : new Array<boolean>(STEP_COUNT).fill(false);
 
-const normalizeNotes = (notes?: readonly (number | null)[]): (number | null)[] =>
-  notes && notes.length === STEP_COUNT
-    ? notes.slice()
-    : new Array<number | null>(STEP_COUNT).fill(null);
+/** Coerce any saved `notes` shape into the chord model (array of row-sets).
+ *  Tolerates the pre-chord shape where each step was a single row or null. */
+function normalizeNotes(
+  notes?: readonly (readonly number[] | number | null)[],
+): number[][] {
+  const empty = (): number[][] =>
+    Array.from({ length: STEP_COUNT }, () => []);
+  if (!notes || notes.length !== STEP_COUNT) return empty();
+  return notes.map((step) => {
+    if (Array.isArray(step)) return [...new Set(step)];
+    if (typeof step === "number") return [step]; // legacy single-note step
+    return []; // null / rest
+  });
+}
 
 export function reduce(state: Project, cmd: Command): Project {
   switch (cmd.type) {
@@ -125,14 +135,17 @@ export function reduce(state: Project, cmd: Command): Project {
         }),
       };
 
-    case "setNote":
+    case "toggleNote":
       return {
         ...state,
         layers: state.layers.map((l) => {
           if (l.id !== cmd.layerId) return l;
           if (cmd.index < 0 || cmd.index >= l.notes.length) return l;
-          const notes = l.notes.slice();
-          notes[cmd.index] = cmd.row;
+          const notes = l.notes.map((s) => s.slice());
+          const col = notes[cmd.index] as number[];
+          const at = col.indexOf(cmd.row);
+          if (at >= 0) col.splice(at, 1); // tap again to remove
+          else col.push(cmd.row); // stack another note → chord
           return { ...l, notes };
         }),
       };

@@ -63,8 +63,9 @@ export interface Layer {
   readonly kind: LaneKind;
   /** Step pattern for drum lanes; empty for melody lanes. */
   readonly steps: readonly boolean[];
-  /** Per-step melody: grid-row index, or null for a rest. Empty for drums. */
-  readonly notes: readonly (number | null)[];
+  /** Per-step melody: the set of grid-row indices sounding on that step (a
+   *  chord). Empty inner array = a rest. Empty outer array for drum lanes. */
+  readonly notes: readonly (readonly number[])[];
   /** Melody timbre (ignored by drum lanes). */
   readonly wave: ThereminWave;
   /** Per-lane echo send, 0..1 (0 = dry). */
@@ -97,7 +98,7 @@ export type Command =
   | { readonly type: "setLayerVolume"; readonly layerId: string; readonly volume: number }
   | { readonly type: "toggleLayerMuted"; readonly layerId: string }
   | { readonly type: "toggleStep"; readonly layerId: string; readonly index: number }
-  | { readonly type: "setNote"; readonly layerId: string; readonly index: number; readonly row: number | null }
+  | { readonly type: "toggleNote"; readonly layerId: string; readonly index: number; readonly row: number }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setTempo"; readonly bpm: number }

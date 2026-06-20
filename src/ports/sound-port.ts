@@ -84,6 +84,10 @@ export interface SoundPort {
   stopTransport(): void;
   stopAll(): void;
 
+  /** Tear down scheduled loop voices WITHOUT stopping the transport, so the
+   *  loop keeps playing across edits. Reconcile re-schedules right after. */
+  clearScheduled(): void;
+
   /** Set the global snap grid for one-off triggers (`play`). "off" disables
    *  snapping. Looping steps (`scheduleStep`) are already bar-aligned. */
   setQuantize(grid: QuantizeGrid): void;

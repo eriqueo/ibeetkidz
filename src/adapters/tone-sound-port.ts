@@ -375,16 +375,22 @@ export class ToneSoundPort implements SoundPort {
   stopTransport(): void {
     Tone.getTransport().stop();
   }
-  stopAll(): void {
-    const transport = Tone.getTransport();
-    transport.stop();
-    transport.cancel();
+  /** Cancel scheduled repeats + dispose loop voices, but leave the transport
+   *  running. Re-scheduling continues on the next bar, so editing a loop while
+   *  it plays never interrupts the groove. */
+  clearScheduled(): void {
+    Tone.getTransport().cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;
     for (const s of this.scheduledSynths) s.dispose();
     this.scheduledSynths.length = 0;
     for (const fx of this.scheduledFx) fx.dispose();
     this.scheduledFx.length = 0;
+  }
+
+  stopAll(): void {
+    Tone.getTransport().stop();
+    this.clearScheduled();
   }
 
   setQuantize(grid: QuantizeGrid): void {

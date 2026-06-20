@@ -368,25 +368,29 @@ const LoopStageCanvas: FC = () => {
   }, [sound]);
 
   const { select } = useLoopSelection();
+  const [picking, setPicking] = useState(false);
 
-  // Add the next unused drum as a fresh lane (boom → snap → tss → …).
-  const addDrum = (): void => {
-    const taken = new Set(project.layers.map((l) => l.clipId));
-    const drum = DRUM_SOUNDS.find((d) => !taken.has(`beat-${d.assetId}`));
+  // Add (or just re-select) a SPECIFIC drum the kid chose — no more random.
+  const addDrum = (assetId: string): void => {
+    const drum = DRUM_SOUNDS.find((d) => d.assetId === assetId);
     if (!drum) return;
     const id = `beat-${drum.assetId}`;
-    dispatch({
-      type: "addClip",
-      clip: {
-        id,
-        source: { kind: "builtin", assetId: drum.assetId },
-        effects: [],
-        color: drum.color,
-        label: drum.label,
-      },
-    });
+    setPicking(false);
+    if (project.layers.some((l) => l.id === id)) {
+      select(id); // already on the stage → highlight it
+      return;
+    }
+    const clip: Clip = {
+      id,
+      source: { kind: "builtin", assetId: drum.assetId },
+      effects: [],
+      color: drum.color,
+      label: drum.label,
+    };
+    dispatch({ type: "addClip", clip });
     dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum" }) });
     select(id);
+    sound.play(clip); // a quick taste of the drum you just picked
   };
 
   // Add an empty melody lane the kid fills in by tapping the note grid.
@@ -407,7 +411,11 @@ const LoopStageCanvas: FC = () => {
   return (
     <section className="machine machine--stage" data-machine="looper-stage">
       <div className="loop-add">
-        <button className="t-btn" data-act="add-drum" onClick={addDrum}>
+        <button
+          className={"t-btn" + (picking ? " active" : "")}
+          data-act="add-drum"
+          onClick={() => setPicking((p) => !p)}
+        >
           ➕ 🥁 Drum
         </button>
         <button className="t-btn" data-act="add-melody" onClick={addMelody}>
@@ -417,6 +425,27 @@ const LoopStageCanvas: FC = () => {
           Build a loop, then shape it with the Studio knobs on the right →
         </span>
       </div>
+
+      {picking && (
+        <div className="drum-picker" data-picker="drums">
+          {DRUM_SOUNDS.map((d) => {
+            const present = project.layers.some((l) => l.id === `beat-${d.assetId}`);
+            return (
+              <button
+                key={d.assetId}
+                className={"drum-chip" + (present ? " present" : "")}
+                data-drum={d.assetId}
+                style={cssVar("--pad-color", d.color)}
+                onClick={() => addDrum(d.assetId)}
+              >
+                <span className="drum-emoji">{d.emoji}</span>
+                <span>{d.label}</span>
+                {present && <span className="drum-check">✓</span>}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {project.layers.length === 0 ? (
         <p className="stub-note">
@@ -477,8 +506,8 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           {Array.from({ length: MELODY_ROWS }, (_, r) => MELODY_ROWS - 1 - r).map(
             (row) => (
               <div className="melody-row" key={row}>
-                {layer.notes.map((noteRow, i) => {
-                  const on = noteRow === row;
+                {layer.notes.map((rows, i) => {
+                  const on = rows.includes(row);
                   return (
                     <button
                       key={i}
@@ -491,10 +520,10 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                         e.stopPropagation();
                         select(layer.id);
                         dispatch({
-                          type: "setNote",
+                          type: "toggleNote",
                           layerId: layer.id,
                           index: i,
-                          row: on ? null : row,
+                          row,
                         });
                         if (!on) {
                           sound.previewNote(
