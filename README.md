@@ -51,13 +51,15 @@ npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
 ## Status
 
 Live on GitHub Pages. The presentation layer is React (the hexagonal core is
-unchanged); all five machines are built, the Tone.js DSP is implemented
-(procedurally-synthesized pack, offline effect baking, transport-scheduled
-playback, pitched melody lanes, live theremin voice), recordings persist to
-IndexedDB and survive reload, and "Surprise me" generates a seeded beat. Loop
-Stage is a BeepBox-style studio (editable drum + melody lanes, sweeping
-playhead, guided Studio rail). On phones a `usePhoneLayout()` resolver turns the
-Studio rail into a bottom sheet, and the audio adapter plays through the iOS
-silent switch and self-heals after interruptions. Gates green: `typecheck`
-clean, 52 unit tests, 13 Playwright E2E (incl. the full hero journey and
-save→reload). See `BUILD_RUNBOOK.md` for the build history.
+unchanged); the Tone.js DSP is implemented (procedurally-synthesized pack,
+offline effect baking, transport-scheduled playback, pitched melody lanes, live
+theremin voice), recordings persist to IndexedDB and survive reload, and
+"Surprise me" generates a seeded beat. **Home** (the default landing) is a
+BeepBox-style studio where drums, melodies, and your recordings stack as lanes;
+the satellite tools (🎤 My Voice, 🥁 Sound Pads, 🎛️ Beat Maker, ✨ Magic Pad)
+are pages you visit and send results back from — record a voice, make it funny,
+and **Send to Home** to drop it in as a 16-step lane (rename clips inline to
+tell them apart). On phones a `usePhoneLayout()` resolver turns the Studio rail
+into a bottom sheet, and the audio adapter plays through the iOS silent switch
+and self-heals after interruptions. Gates: `typecheck` clean, 53 unit tests, 14
+Playwright E2E. See `BUILD_RUNBOOK.md` for the build history.

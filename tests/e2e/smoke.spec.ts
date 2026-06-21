@@ -110,7 +110,8 @@ test("studio rail: add a melody lane, place notes, tweak guided controls", async
   page,
 }) => {
   await boot(page);
-  await page.getByRole("button", { name: /loop stage/i }).click();
+  // Home is the default landing now; click it in the palette to be explicit.
+  await page.locator(".palette").getByRole("button", { name: /home/i }).click();
 
   // The guided Studio rail is present with its high-level controls.
   await expect(page.locator(".rail")).toBeVisible();
@@ -154,7 +155,7 @@ test("drum picker: choose a specific drum, and keep playing while editing", asyn
   page,
 }) => {
   await boot(page);
-  await page.getByRole("button", { name: /loop stage/i }).click();
+  await page.locator(".palette").getByRole("button", { name: /home/i }).click();
 
   // Opening the picker reveals every drum to choose from (no randomness).
   await page.locator('[data-act="add-drum"]').click();
@@ -184,6 +185,8 @@ test("hero loop: record → effect keeps the app responsive", async ({
   page,
 }) => {
   await boot(page);
+  // Home is the default landing; the recorder lives on the My Voice page.
+  await page.locator(".palette").getByRole("button", { name: /my voice/i }).click();
   const rec = page.locator(".big-record");
   await rec.dispatchEvent("pointerdown");
   await page.waitForTimeout(350);
@@ -197,4 +200,28 @@ test("hero loop: record → effect keeps the app responsive", async ({
   // Applying an effect must not throw even before a successful recording.
   await page.locator(".fx-tile").first().click();
   await expect(page.locator(".fx-tiles")).toBeVisible();
+});
+
+test("voice → Home: record, then send the clip onto the Home stack", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator(".palette").getByRole("button", { name: /my voice/i }).click();
+
+  const rec = page.locator(".big-record");
+  await rec.dispatchEvent("pointerdown");
+  await page.waitForTimeout(350);
+  await rec.dispatchEvent("pointerup");
+
+  // A named clip card appears with a Send-to-Home action (faked mic records).
+  const send = page.locator('[data-act="send-home"]');
+  await expect(send).toBeVisible({ timeout: 4000 });
+  await send.click();
+
+  // We land on Home and the voice is now a lane in the stack.
+  await expect(
+    page.locator('section[data-machine="looper-stage"]'),
+  ).toBeVisible();
+  await expect(page.locator(".loop-track")).toHaveCount(1);
+  await expect(page.locator(".loop-track .layer-name")).toContainText("My Voice");
 });

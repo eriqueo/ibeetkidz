@@ -54,13 +54,16 @@ discipline as the kidpix repo). Feature branches off `main`; PR; green CI
 ## Current state
 
 Live on GitHub Pages; the presentation layer migrated to React (hexagonal core
-unchanged). All five machines real: `record-voicefx` (record → 8 effect tiles →
-hear it), `sound-pads` (procedurally-synthesized pad pack + your recordings),
-`beat-grid` (16-step drum machine, live transport reconcile), `looper-stage`
-(BeepBox-style studio: editable drum + melody lanes with a sweeping playhead, a
-guided Studio rail for key/groove/volume/echo, and seamless
-reschedule-while-playing), `theremin-xy` (live oscillator+filter voice,
-pentatonic).
+unchanged). `looper-stage` (UI label **Home**, id unchanged) is the hub and the
+default landing — a BeepBox-style studio where every sound stacks as a lane:
+editable drum + melody lanes with a sweeping playhead, a guided Studio rail for
+key/groove/volume/echo, and seamless reschedule-while-playing. The satellite
+tools feed Home: `record-voicefx` (record → 8 effect tiles → **Send to Home**,
+where the funny clip becomes a 16-step voice lane), `beat-grid` (16-step drum
+machine over the same drum lanes), `sound-pads` (soundboard of the built-in pack
++ your recordings), `theremin-xy` (Magic Pad, live oscillator+filter voice).
+Clip names are editable inline (`renameClip`) so voice lanes are tellable apart
+on Home.
 
 Audio adapter (`tone-sound-port.ts`) implements: procedural built-in synthesis
 (no binary assets — stays offline), offline effect baking via `Tone.Offline`
@@ -79,8 +82,11 @@ a `usePhoneLayout()` resolver (`src/app/use-viewport.ts`): on phones the Studio
 rail becomes a slide-up bottom sheet so the canvas stays full-width;
 iPad/desktop keep the side-by-side rail.
 
-Gates: `typecheck` clean, 52 unit tests, 13 Playwright E2E (incl. full hero
-journey + save→reload). `BUILD_RUNBOOK.md` retains the original build order.
+Gates: `typecheck` clean, 53 unit tests, 14 Playwright E2E (incl. full hero
+journey, save→reload, and voice→Home). `BUILD_RUNBOOK.md` retains the original
+build order. Note: looped clips schedule through `resolveClip` (async, baked +
+cached), so effected voice lanes loop with their effects — and a `scheduleGen`
+guard discards stale async (re)schedules.
 
 Known follow-ups: `robot` is a comb-delay approximation (not vocoded);
 `scheduleStep` only resolves un-effected source buffers synchronously (beat-grid

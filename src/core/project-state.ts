@@ -30,7 +30,7 @@ export function emptyProject(id: string, name = "My Beat"): Project {
     scaleId: "magic",
     keyId: "C",
     swing: 0,
-    activeMachineId: "record-voicefx",
+    activeMachineId: "looper-stage", // boot into Home, the stacked mix
   };
 }
 
@@ -90,6 +90,15 @@ export function reduce(state: Project, cmd: Command): Project {
       if (!clip) return state;
       const updated: Clip = { ...clip, effects: [...clip.effects, cmd.effect] };
       return { ...state, clips: { ...state.clips, [clip.id]: updated } };
+    }
+
+    case "renameClip": {
+      const clip = state.clips[cmd.clipId];
+      if (!clip) return state;
+      const label = cmd.label.trim();
+      // No-op on blank/unchanged so renaming doesn't pollute undo history.
+      if (!label || label === clip.label) return state;
+      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, label } } };
     }
 
     case "addLayer": {
