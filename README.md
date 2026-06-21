@@ -9,7 +9,7 @@ offline on an iPad.
 
 ## Stack
 
-- TypeScript + Vite 6, vanilla DOM (no framework)
+- TypeScript + Vite 6, React 19 (presentation layer only — the hexagonal core is framework-free)
 - [Tone.js](https://tonejs.github.io/) for all audio (the one vendor behind `SoundPort`)
 - Vitest (unit) + Playwright (E2E, Chromium with faked media)
 - GitHub Pages auto-deploy (dual-base build: `/` local, `/ibeetkidz/` Pages)
@@ -32,8 +32,10 @@ reduces them (pure) giving undo/redo + save for free; `AudioEngine` reconciles
 the live audio graph to match.
 
 **Machines** are the kidpix "tools": data-driven objects (`record-voicefx`,
-`sound-pads`, `beat-grid`, `looper-stage`, `theremin-xy`). Adding one is a
-one-line registry entry — no plumbing changes.
+`sound-pads`, `beat-grid`, `looper-stage`, `theremin-xy`) in the `TOOLS`
+registry. Adding one is a one-line registry entry — no plumbing changes. React
+is confined to the presentation layer (`src/App.tsx`, `src/components/`,
+`src/app/`); the core imports no framework.
 
 ## Commands
 
@@ -48,9 +50,14 @@ npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
 
 ## Status
 
-Feature-complete v1. All five machines are built, the Tone.js DSP is
-implemented (procedurally-synthesized built-in pack, offline effect baking,
-transport-scheduled playback, live theremin voice), recordings persist to
-IndexedDB and survive reload, and "Surprise me" generates a seeded beat. Gates
-green: `typecheck` clean, 25 unit tests, 6 Playwright E2E (incl. the full hero
-journey and save→reload). See `BUILD_RUNBOOK.md` for the build history.
+Live on GitHub Pages. The presentation layer is React (the hexagonal core is
+unchanged); all five machines are built, the Tone.js DSP is implemented
+(procedurally-synthesized pack, offline effect baking, transport-scheduled
+playback, pitched melody lanes, live theremin voice), recordings persist to
+IndexedDB and survive reload, and "Surprise me" generates a seeded beat. Loop
+Stage is a BeepBox-style studio (editable drum + melody lanes, sweeping
+playhead, guided Studio rail). On phones a `usePhoneLayout()` resolver turns the
+Studio rail into a bottom sheet, and the audio adapter plays through the iOS
+silent switch and self-heals after interruptions. Gates green: `typecheck`
+clean, 52 unit tests, 13 Playwright E2E (incl. the full hero journey and
+save→reload). See `BUILD_RUNBOOK.md` for the build history.
