@@ -38,6 +38,9 @@ export class ToneSoundPort implements SoundPort {
   private bufferSeq = 0;
   private builtinsLoaded = false;
   private keepAliveBound = false;
+  /** Bumped on every clearScheduled so an in-flight async (re)schedule whose
+   *  generation is stale bails instead of leaking a voice onto the transport. */
+  private scheduleGen = 0;
   /** Global snap grid for one-off triggers. Default: snap to each beat. */
   private quantizeGrid: QuantizeGrid = "beat";
 
@@ -304,18 +307,21 @@ export class ToneSoundPort implements SoundPort {
     totalSteps: number,
     opts: StepOptions,
   ): void {
-    // Beat-grid clips are builtins without effects → resolve synchronously.
-    const buf = this.resolveSource(clip.source);
-    if (!buf) return;
-    const player = new Tone.Player(buf).connect(this.scheduledDestination(opts.echo));
-    player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
-    this.scheduledVoices.push(player);
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
-    Tone.getTransport().scheduleRepeat(
-      (time) => player.start(time),
-      "1m",
-      offset,
-    );
+    // Resolve through resolveClip so effected clips (a "funny" voice recording
+    // sent to Home) loop with their baked effects, not the dry source. Drums are
+    // un-effected builtins, so this resolves on the next microtask — inaudibly
+    // soon. The generation guard discards a result that a reschedule superseded.
+    const gen = this.scheduleGen;
+    void this.resolveClip(clip).then((buf) => {
+      if (!buf || gen !== this.scheduleGen) return;
+      const player = new Tone.Player(buf).connect(
+        this.scheduledDestination(opts.echo),
+      );
+      player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
+      this.scheduledVoices.push(player);
+      Tone.getTransport().scheduleRepeat((time) => player.start(time), "1m", offset);
+    });
   }
 
   scheduleNote(
@@ -405,6 +411,7 @@ export class ToneSoundPort implements SoundPort {
    *  running. Re-scheduling continues on the next bar, so editing a loop while
    *  it plays never interrupts the groove. */
   clearScheduled(): void {
+    this.scheduleGen++; // invalidate any async scheduleStep still in flight
     Tone.getTransport().cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;

@@ -93,6 +93,7 @@ export interface Project {
 export type Command =
   | { readonly type: "addClip"; readonly clip: Clip }
   | { readonly type: "applyEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
+  | { readonly type: "renameClip"; readonly clipId: string; readonly label: string }
   | { readonly type: "addLayer"; readonly layer: Layer }
   | { readonly type: "removeLayer"; readonly layerId: string }
   | { readonly type: "setLayerVolume"; readonly layerId: string; readonly volume: number }

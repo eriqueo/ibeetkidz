@@ -69,6 +69,55 @@ let melodySeq = 0;
 const cssVar = (name: string, value: string): CSSProperties =>
   ({ [name]: value }) as CSSProperties;
 
+// ── Editable label ───────────────────────────────────────────────────────────
+// Tap the name to rename it (a recording's name, a lane's name). Kept tiny and
+// reused so renaming feels the same everywhere. Stops pointer propagation so
+// renaming a lane never also toggles a step or re-selects it.
+const EditableLabel: FC<{
+  value: string;
+  onCommit: (next: string) => void;
+}> = ({ value, onCommit }) => {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+  useEffect(() => setDraft(value), [value]);
+
+  if (editing) {
+    const commit = (): void => {
+      setEditing(false);
+      onCommit(draft); // reducer trims + ignores blank/unchanged
+    };
+    return (
+      <input
+        className="name-edit"
+        value={draft}
+        autoFocus
+        maxLength={24}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onPointerDown={(e) => e.stopPropagation()}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="name-display"
+      title="Tap to rename"
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={() => setEditing(true)}
+    >
+      {value} <span className="name-pencil">✏️</span>
+    </button>
+  );
+};
+
 // ── My Voice (hero) ─────────────────────────────────────────────────────────
 
 const EFFECT_TILES: { id: EffectId; label: string; emoji: string; color: string }[] =
@@ -84,22 +133,20 @@ const EFFECT_TILES: { id: EffectId; label: string; emoji: string; color: string 
   ];
 
 let clipSeq = 0;
+let voiceCount = 0; // numbers the default recording names so they're tellable apart
 let wildness = 0.6; // shared between the canvas tiles and the Options knob
-
-function mostRecentRecordedClipId(
-  clips: Readonly<Record<string, Clip>>,
-): string | null {
-  const recorded = Object.values(clips).filter(
-    (c) => c.source.kind === "recording",
-  );
-  const last = recorded[recorded.length - 1];
-  return last ? last.id : null;
-}
 
 const MyVoiceCanvas: FC = () => {
   const { sound, rng, dispatch, getProject } = useApp();
-  const [status, setStatus] = useState("Tap the effects to change your voice!");
+  const project = useProject();
+  const { select } = useLoopSelection();
+  const [status, setStatus] = useState("Hold the mic to record your voice! 🎤");
   const [recording, setRecording] = useState(false);
+  // The clip this page is currently shaping. Effects + Send-to-Home act on it.
+  const [clipId, setClipId] = useState<string | null>(null);
+  const clip = clipId ? project.clips[clipId] : undefined;
+  // Once a clip is on Home its lane id equals the clip id (see sendToHome).
+  const onHome = clipId ? project.layers.some((l) => l.id === clipId) : false;
 
   const startRec = async (): Promise<void> => {
     try {
@@ -116,23 +163,23 @@ const MyVoiceCanvas: FC = () => {
     setRecording(false);
     try {
       const bufferId = await sound.stopRecording();
-      const clip: Clip = {
+      const newClip: Clip = {
         id: `clip-${clipSeq++}`,
         source: { kind: "recording", bufferId },
         effects: [],
         color: "#ff5d8f",
-        label: "My Voice",
+        label: `My Voice ${++voiceCount}`,
       };
-      dispatch({ type: "addClip", clip });
-      sound.play(clip);
-      setStatus("Now tap an effect to make it crazy! 🎉");
+      dispatch({ type: "addClip", clip: newClip });
+      setClipId(newClip.id);
+      sound.play(newClip);
+      setStatus("Make it funny with an effect, then send it Home! 🎉");
     } catch {
       setStatus("Hmm, that didn't record. Try again!");
     }
   };
 
   const applyFx = (tile: (typeof EFFECT_TILES)[number]): void => {
-    const clipId = mostRecentRecordedClipId(getProject().clips);
     if (!clipId) {
       setStatus("Record your voice first! 🎤");
       return;
@@ -142,6 +189,22 @@ const MyVoiceCanvas: FC = () => {
     const updated = getProject().clips[clipId];
     if (updated) sound.play(updated);
     setStatus(`${tile.emoji} ${tile.label}!`);
+  };
+
+  // Stack the (funny) recording onto Home as a 16-step lane, firing once per
+  // loop to start. Then jump to Home with the new lane selected to tweak.
+  const sendToHome = (): void => {
+    if (!clipId) return;
+    if (!onHome) {
+      const steps = new Array<boolean>(STEP_COUNT).fill(false);
+      steps[0] = true; // audible immediately; kid re-places it on the grid
+      dispatch({
+        type: "addLayer",
+        layer: makeLayer({ id: clipId, clipId, kind: "drum", steps }),
+      });
+    }
+    select(clipId);
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
   };
 
   return (
@@ -155,6 +218,28 @@ const MyVoiceCanvas: FC = () => {
         🎤 HOLD TO RECORD
       </button>
       <p className="voicefx-status">{status}</p>
+
+      {clip && (
+        <div className="voice-clip-card" style={cssVar("--tile-color", clip.color)}>
+          <span className="voice-clip-name">
+            🎤 <EditableLabel
+              value={clip.label}
+              onCommit={(label) =>
+                dispatch({ type: "renameClip", clipId: clip.id, label })
+              }
+            />
+          </span>
+          <button
+            className="t-btn send-home"
+            data-act="send-home"
+            disabled={onHome}
+            onClick={sendToHome}
+          >
+            {onHome ? "✓ On Home" : "➡️ 🏠 Send to Home"}
+          </button>
+        </div>
+      )}
+
       <div className="fx-tiles">
         {EFFECT_TILES.map((t) => (
           <button
@@ -421,8 +506,17 @@ const LoopStageCanvas: FC = () => {
         <button className="t-btn" data-act="add-melody" onClick={addMelody}>
           ➕ 🎵 Melody
         </button>
+        <button
+          className="t-btn"
+          data-act="go-voice"
+          onClick={() =>
+            dispatch({ type: "setActiveMachine", machineId: "record-voicefx" })
+          }
+        >
+          ➕ 🎤 Voice
+        </button>
         <span className="loop-hint">
-          Build a loop, then shape it with the Studio knobs on the right →
+          Stack drums, melodies & your voice — then shape it with Studio.
         </span>
       </div>
 
@@ -449,8 +543,9 @@ const LoopStageCanvas: FC = () => {
 
       {project.layers.length === 0 ? (
         <p className="stub-note">
-          Empty stage! Tap <b>➕ Drum</b> for a beat or <b>➕ Melody</b> for a
-          tune. Or hit 🎲 for a surprise.
+          🏠 This is <b>Home</b> — where your sounds stack up. Add a{" "}
+          <b>➕ Drum</b>, a <b>➕ Melody</b>, or record your <b>➕ Voice</b>. Or
+          hit 🎲 for a surprise.
         </p>
       ) : (
         <div className="loop-board" ref={boardRef} data-playing="false">
@@ -471,6 +566,8 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const layer = project.layers.find((l) => l.id === layerId);
   if (!layer) return null;
   const clip = project.clips[layer.clipId];
+  const isVoice = clip?.source.kind === "recording";
+  const prefix = layer.kind === "melody" ? "🎵 " : isVoice ? "🎤 " : "";
 
   return (
     <div
@@ -480,8 +577,17 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
     >
       <div className="loop-track-head">
         <span className="layer-name">
-          {layer.kind === "melody" ? "🎵 " : ""}
-          {clip?.label ?? layer.clipId}
+          {prefix}
+          {clip ? (
+            <EditableLabel
+              value={clip.label}
+              onCommit={(label) =>
+                dispatch({ type: "renameClip", clipId: clip.id, label })
+              }
+            />
+          ) : (
+            layer.clipId
+          )}
         </span>
         <button
           className="layer-mute t-btn"
@@ -821,9 +927,9 @@ const MagicPadOptions: FC = () => {
 // ── Registry (order = palette order) ─────────────────────────────────────────
 
 export const TOOLS: readonly ToolDescriptor[] = [
+  { id: "looper-stage", label: "Home", icon: "🏠", Canvas: LoopStageCanvas, Rail: LoopStageRail },
   { id: "record-voicefx", label: "My Voice", icon: "🎤", Canvas: MyVoiceCanvas, Options: MyVoiceOptions },
   { id: "sound-pads", label: "Sound Pads", icon: "🥁", Canvas: SoundPadsCanvas },
   { id: "beat-grid", label: "Beat Maker", icon: "🎛️", Canvas: BeatMakerCanvas },
-  { id: "looper-stage", label: "Loop Stage", icon: "🔁", Canvas: LoopStageCanvas, Rail: LoopStageRail },
   { id: "theremin-xy", label: "Magic Pad", icon: "✨", Canvas: MagicPadCanvas, Options: MagicPadOptions },
 ];

@@ -264,6 +264,73 @@ body {
   font-size: 2rem;
 }
 
+/* The just-recorded clip: name it, then send it to Home. */
+.voice-clip-card {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.9rem;
+  border-left: 6px solid var(--tile-color, var(--accent));
+  border-radius: 0.9rem;
+  background: var(--panel);
+}
+.voice-clip-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 1.05rem;
+}
+.send-home {
+  width: auto;
+  height: auto;
+  padding: 0.5rem 0.9rem;
+  font-size: 0.95rem;
+  background: var(--accent);
+}
+.send-home:disabled {
+  background: #2c8c5a;
+  opacity: 0.85;
+  cursor: default;
+}
+
+/* Editable label (recording + lane names). Looks like text until tapped. */
+.name-display {
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+.name-pencil {
+  font-size: 0.7em;
+  opacity: 0.55;
+}
+.name-edit {
+  font: inherit;
+  color: var(--ink);
+  width: 8rem;
+  max-width: 60vw;
+  padding: 0.1rem 0.35rem;
+  border: 2px solid var(--accent);
+  border-radius: 0.4rem;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+/* Home is the hub — make its palette button unmistakable. */
+.palette button[data-machine="looper-stage"] {
+  background: #241a44;
+  border-color: rgba(251, 86, 7, 0.55);
+}
+.palette button[data-machine="looper-stage"].active {
+  border-color: var(--accent);
+}
+
 /* XY theremin pad */
 .xy-pad {
   position: relative;

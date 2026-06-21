@@ -47,6 +47,16 @@ describe("reduce", () => {
     expect(reduce(s, { type: "applyEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(s);
   });
 
+  it("renames a clip (trimmed), no-ops on blank/unchanged/unknown", () => {
+    const base = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    const renamed = reduce(base, { type: "renameClip", clipId: "c1", label: "  Dog bark  " });
+    expect(renamed.clips["c1"]?.label).toBe("Dog bark");
+    // Blank, unchanged, and unknown-clip renames return the same reference.
+    expect(reduce(renamed, { type: "renameClip", clipId: "c1", label: "   " })).toBe(renamed);
+    expect(reduce(renamed, { type: "renameClip", clipId: "c1", label: "Dog bark" })).toBe(renamed);
+    expect(reduce(base, { type: "renameClip", clipId: "ghost", label: "x" })).toBe(base);
+  });
+
   it("refuses to add a layer for an unknown clip", () => {
     const s = reduce(emptyProject("p"), { type: "addLayer", layer: layer("l1", "ghost") });
     expect(s.layers).toHaveLength(0);
