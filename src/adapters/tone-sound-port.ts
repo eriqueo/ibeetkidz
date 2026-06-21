@@ -37,6 +37,7 @@ export class ToneSoundPort implements SoundPort {
   private recorder?: Tone.Recorder | undefined;
   private bufferSeq = 0;
   private builtinsLoaded = false;
+  private keepAliveBound = false;
   /** Global snap grid for one-off triggers. Default: snap to each beat. */
   private quantizeGrid: QuantizeGrid = "beat";
 
@@ -72,6 +73,25 @@ export class ToneSoundPort implements SoundPort {
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     Tone.getDestination().connect(this.analyser);
+    this.installKeepAlive();
+  }
+
+  /** iOS suspends the AudioContext on interruptions (incoming call, screen
+   *  lock, backgrounding) and does NOT auto-resume it — the app would go silent
+   *  until reload. Resume on return-to-foreground and on any context state
+   *  change. Bound once; the listeners live for the page's lifetime. */
+  private installKeepAlive(): void {
+    if (this.keepAliveBound) return;
+    this.keepAliveBound = true;
+    const resumeIfNeeded = (): void => {
+      // `state` is "suspended"/"interrupted"(iOS) when paused; resume is a
+      // no-op if already running and safe to call repeatedly.
+      if (this.ctx.state !== "running") void this.ctx.resume().catch(() => {});
+    };
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible") resumeIfNeeded();
+    });
+    this.ctx.addEventListener("statechange", resumeIfNeeded);
   }
 
   async loadBuiltins(): Promise<void> {
