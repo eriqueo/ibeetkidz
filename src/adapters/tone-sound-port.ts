@@ -69,7 +69,7 @@ export class ToneSoundPort implements SoundPort {
     // visualizer animates, but nothing is audible. Asking for the "playback"
     // session (iOS 16.4+) makes our sound ignore the silent switch. No-op on
     // platforms that don't expose `navigator.audioSession`.
-    setPlaybackAudioSession();
+    setAudioSession("playback");
     this.ctx = Tone.getContext().rawContext as AudioContext;
     // A raw AnalyserNode tapped off the master output feeds the visualizer —
     // it sees every real voice (builtins, recordings, theremin), never a fake.
@@ -108,6 +108,9 @@ export class ToneSoundPort implements SoundPort {
   // ── Recording ──────────────────────────────────────────────────────────
 
   async startRecording(): Promise<void> {
+    // The "playback" session blocks mic capture on iOS — switch to
+    // play-and-record before opening the mic, and restore playback on failure.
+    setAudioSession("play-and-record");
     try {
       this.mic = new Tone.UserMedia();
       this.recorder = new Tone.Recorder();
@@ -118,6 +121,7 @@ export class ToneSoundPort implements SoundPort {
       this.mic?.close();
       this.mic = undefined;
       this.recorder = undefined;
+      setAudioSession("playback");
       if (err instanceof DOMException && err.name === "NotAllowedError") {
         throw new MicDeniedError();
       }
@@ -129,6 +133,8 @@ export class ToneSoundPort implements SoundPort {
     if (!this.recorder || !this.mic) throw new NoMicError();
     const blob = await this.recorder.stop();
     this.mic.close();
+    // Back to loud, silent-switch-defying playback now the mic is closed.
+    setAudioSession("playback");
     const arrayBuf = await blob.arrayBuffer();
     const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
     const id = `rec-${this.bufferSeq++}`;
@@ -628,16 +634,18 @@ function seededNoise(seed: number): () => number {
 
 const clamp01 = (v: number): number => Math.max(0, Math.min(1, v));
 
-/** Opt into the "playback" audio session so iOS plays through the silent
- *  switch. Guarded by feature detection; the property is read-only on older
- *  WebKit, so a throw is swallowed. */
-function setPlaybackAudioSession(): void {
+/** Set the iOS audio session category. "playback" plays through the silent
+ *  switch but is OUTPUT-ONLY — it blocks the mic — so recording must switch to
+ *  "play-and-record" first and restore "playback" after. Guarded by feature
+ *  detection; the property is read-only on older WebKit, so a throw is
+ *  swallowed. No-op where `navigator.audioSession` is absent (desktop/Android). */
+function setAudioSession(type: "playback" | "play-and-record"): void {
   const session = (
     navigator as Navigator & { audioSession?: { type: string } }
   ).audioSession;
   if (!session) return;
   try {
-    session.type = "playback";
+    session.type = type;
   } catch {
     // Older/locked-down WebKit exposes a read-only stub — safe to ignore.
   }
