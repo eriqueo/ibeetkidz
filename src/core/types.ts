@@ -113,13 +113,36 @@ export interface Layer {
   readonly swing?: number;
 }
 
+/** One "car" of the Song Train: a full, independent loop (its own lanes). The
+ *  default project has exactly one part — Home edits it and it behaves like the
+ *  single loop always did. `clips` and the musical settings stay song-wide on the
+ *  Project; only `layers` live per-part. */
+export interface Part {
+  readonly id: string;
+  readonly name: string;
+  readonly color: string;
+  readonly layers: readonly Layer[];
+}
+
+/** One entry in the arrangement: which car plays, and how many times before the
+ *  song advances. `repeats` is 1 | 2 | 4. */
+export interface ArrangeCar {
+  readonly partId: string;
+  readonly repeats: number;
+}
+
 /** The serializable source of truth. Save/load round-trips this exactly. */
 export interface Project {
   readonly id: string;
   readonly name: string;
   readonly tempoBpm: number;
   readonly clips: Readonly<Record<string, Clip>>;
-  readonly layers: readonly Layer[];
+  /** The cars (loops). At least one always exists; one car = today's single loop. */
+  readonly parts: readonly Part[];
+  /** Song order — the cars in sequence with repeats. One car = `[{part,1}]`. */
+  readonly arrangement: readonly ArrangeCar[];
+  /** Which car Home is currently editing. */
+  readonly activePartId: string;
   /** Song-level musical settings driving the melody lanes + groove. */
   readonly scaleId: ScaleId;
   readonly keyId: KeyId;
