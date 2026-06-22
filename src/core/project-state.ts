@@ -91,6 +91,18 @@ export function reduce(state: Project, cmd: Command): Project {
     case "addClip":
       return { ...state, clips: { ...state.clips, [cmd.clip.id]: cmd.clip } };
 
+    case "removeClip": {
+      if (!state.clips[cmd.clipId]) return state;
+      // Drop the clip AND any lane that referenced it — a layer can never point
+      // at an unknown clip. One command, so undo restores clip + lanes together.
+      const { [cmd.clipId]: _removed, ...rest } = state.clips;
+      return {
+        ...state,
+        clips: rest,
+        layers: state.layers.filter((l) => l.clipId !== cmd.clipId),
+      };
+    }
+
     case "applyEffect": {
       const clip = state.clips[cmd.clipId];
       if (!clip) return state;
@@ -105,6 +117,19 @@ export function reduce(state: Project, cmd: Command): Project {
       // No-op on blank/unchanged so renaming doesn't pollute undo history.
       if (!label || label === clip.label) return state;
       return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, label } } };
+    }
+
+    case "setClipLoop": {
+      const clip = state.clips[cmd.clipId];
+      if (!clip) return state;
+      if (cmd.loopBeats === null) {
+        if (clip.loopBeats === undefined) return state; // already natural-length
+        const { loopBeats: _drop, ...bare } = clip;
+        return { ...state, clips: { ...state.clips, [clip.id]: bare } };
+      }
+      const beats = Math.max(1, Math.round(cmd.loopBeats)); // forgiving: min 1 beat
+      if (clip.loopBeats === beats) return state;
+      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, loopBeats: beats } } };
     }
 
     case "addLayer": {

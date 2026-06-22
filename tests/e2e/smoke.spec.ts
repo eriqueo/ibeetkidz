@@ -192,12 +192,15 @@ test("hero loop: record → effect keeps the app responsive", async ({
   await page.waitForTimeout(350);
   await rec.dispatchEvent("pointerup");
 
-  // Either it recorded (prompt to add an effect) or fell back gracefully — both
-  // leave the app usable, never a hard error.
+  // A take appears as the clip card (faked mic records) → FX tiles are now in
+  // reach. The empty state shows only the big Record button, so wait for it.
+  await expect(page.locator('[data-act="clip-rerecord"]')).toBeVisible({
+    timeout: 4000,
+  });
   const status = page.locator(".voicefx-status");
-  await expect(status).not.toHaveText(/didn't record/i, { timeout: 4000 });
+  await expect(status).not.toHaveText(/didn't record/i);
 
-  // Applying an effect must not throw even before a successful recording.
+  // Applying an effect must not throw and leaves the app responsive.
   await page.locator(".fx-tile").first().click();
   await expect(page.locator(".fx-tiles")).toBeVisible();
 });
