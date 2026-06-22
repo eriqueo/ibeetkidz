@@ -11,6 +11,7 @@ import {
   BUILTIN_SOUNDS,
   getBuiltin,
   type BuiltinSound,
+  type DrumKind,
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
@@ -588,8 +589,15 @@ export class ToneSoundPort implements SoundPort {
     if (sound.recipe.kind === "tone") {
       return this.synthesizeTone(Tone.Frequency(sound.recipe.note).toFrequency());
     }
-    return this.synthesizeDrum(sound.recipe.drum);
+    return this.synthDrum(sound.recipe.drum, {});
   }
+
+  /** Default ring time (seconds) per drum at pitch 0. Length-aware playback (the
+   *  rework's Increment 2) scales the decay so a stretched drum rings longer. */
+  private static readonly DRUM_DUR: Record<DrumKind, number> = {
+    kick: 0.5, snare: 0.25, hihat: 0.08, clap: 0.22, tom: 0.45, cowbell: 0.32,
+    openhat: 0.5, rim: 0.06, shaker: 0.14, conga: 0.34,
+  };
 
   private makeBuffer(
     seconds: number,
@@ -617,71 +625,138 @@ export class ToneSoundPort implements SoundPort {
     });
   }
 
-  private synthesizeDrum(drum: string): AudioBuffer {
-    const noise = seededNoise(drum.length * 7919 + 1);
-    switch (drum) {
-      case "kick":
-        return this.makeBuffer(0.4, (d, sr) => {
+  /** Parametric drum voice: a fuller layered-synthesis render of one drum, with
+   *  an optional requested `durationSec` (length-aware ring) and `pitch`
+   *  (semitone tune of the tonal component). All recipes are peak-limited so the
+   *  richer layering never clips. `pitch`/`durationSec` are honored now; the
+   *  scheduler wires them through in Increment 2. */
+  private synthDrum(
+    kind: DrumKind,
+    params: { durationSec?: number; pitch?: number },
+  ): AudioBuffer {
+    const defDur = ToneSoundPort.DRUM_DUR[kind] ?? 0.3;
+    const dur = Math.max(0.02, params.durationSec ?? defDur);
+    const pm = Math.pow(2, (params.pitch ?? 0) / 12); // pitch multiplier
+    const ds = defDur / dur; // >1 shortens, <1 lengthens the ring (stretch)
+    const noise = seededNoise(kind.length * 7919 + 1);
+    const buf = this.makeBuffer(dur, (d, sr) => {
+      switch (kind) {
+        case "kick": {
+          // Sine body with a fast pitch drop + a noisy click transient for punch.
           let phase = 0;
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
-            const freq = 45 + 120 * Math.exp(-t * 22);
-            phase += (2 * Math.PI * freq) / sr;
-            d[i] = Math.sin(phase) * Math.exp(-t * 9);
+            phase += (2 * Math.PI * (48 + 80 * Math.exp(-t * 32)) * pm) / sr;
+            const body = 0.9 * Math.sin(phase) * Math.exp(-t * 6.5 * ds);
+            const click = t < 0.006 ? 0.5 * noise() * Math.exp(-t * 800) : 0;
+            d[i] = body + click;
           }
-        });
-      case "snare":
-        return this.makeBuffer(0.25, (d, sr) => {
+          break;
+        }
+        case "snare": {
+          // Noise burst over a two-tone shell.
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
-            const env = Math.exp(-t * 22);
-            d[i] = (0.6 * noise() + 0.4 * Math.sin(2 * Math.PI * 180 * t)) * env;
+            const tone =
+              0.32 * Math.sin(2 * Math.PI * 180 * pm * t) +
+              0.18 * Math.sin(2 * Math.PI * 330 * pm * t);
+            d[i] = (0.6 * noise() + tone) * Math.exp(-t * 22 * ds);
           }
-        });
-      case "hihat":
-        return this.makeBuffer(0.08, (d, sr) => {
+          break;
+        }
+        case "hihat": {
           let prev = 0;
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
             const n = noise();
-            const hp = n - prev; // crude high-pass → metallic
+            const hp = (n - prev) * 0.6;
             prev = n;
-            d[i] = hp * Math.exp(-t * 90);
+            d[i] = hp * Math.exp(-t * 90 * ds);
           }
-        });
-      case "clap":
-        return this.makeBuffer(0.2, (d, sr) => {
-          const bursts = [0, 0.012, 0.024];
+          break;
+        }
+        case "openhat": {
+          // Like the hat but with a long, slightly metallic tail.
+          let prev = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const n = noise();
+            const hp = (n - prev) * 0.5;
+            prev = n;
+            const ring =
+              0.1 *
+              (Math.sign(Math.sin(2 * Math.PI * 6300 * pm * t)) +
+                Math.sign(Math.sin(2 * Math.PI * 9200 * pm * t)));
+            d[i] = (hp + ring) * Math.exp(-t * 8 * ds);
+          }
+          break;
+        }
+        case "clap": {
+          const bursts = [0, 0.011, 0.022, 0.035];
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
             let env = 0;
-            for (const b of bursts) {
-              if (t >= b) env += Math.exp(-(t - b) * 90);
-            }
-            d[i] = noise() * Math.min(1, env) * Math.exp(-t * 8);
+            for (const b of bursts) if (t >= b) env += Math.exp(-(t - b) * 120);
+            d[i] = noise() * Math.min(1, env) * Math.exp(-t * 7 * ds);
           }
-        });
-      case "tom":
-        return this.makeBuffer(0.35, (d, sr) => {
+          break;
+        }
+        case "tom": {
           let phase = 0;
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
-            const freq = 90 + 80 * Math.exp(-t * 12);
-            phase += (2 * Math.PI * freq) / sr;
-            d[i] = Math.sin(phase) * Math.exp(-t * 7);
+            phase += (2 * Math.PI * (92 + 70 * Math.exp(-t * 13)) * pm) / sr;
+            d[i] = Math.sin(phase) * Math.exp(-t * 6 * ds);
           }
-        });
-      case "cowbell":
-        return this.makeBuffer(0.3, (d, sr) => {
+          break;
+        }
+        case "conga": {
+          // A higher, tighter tom with a noisy slap on the attack.
+          let phase = 0;
           for (let i = 0; i < d.length; i++) {
             const t = i / sr;
-            const sq = (f: number) => Math.sign(Math.sin(2 * Math.PI * f * t));
-            d[i] = 0.4 * (sq(540) + sq(800)) * Math.exp(-t * 9);
+            phase += (2 * Math.PI * (210 + 130 * Math.exp(-t * 30)) * pm) / sr;
+            const slap = t < 0.008 ? 0.4 * noise() * Math.exp(-t * 400) : 0;
+            d[i] = Math.sin(phase) * Math.exp(-t * 8 * ds) + slap;
           }
-        });
-      default:
-        return this.makeBuffer(0.1, (d) => d.fill(0));
-    }
+          break;
+        }
+        case "cowbell": {
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const sq = (f: number) => Math.sign(Math.sin(2 * Math.PI * f * pm * t));
+            d[i] = 0.4 * (sq(540) + sq(800)) * Math.exp(-t * 8 * ds);
+          }
+          break;
+        }
+        case "rim": {
+          // Short woody click: a high tone ping + a tiny noise tick.
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            d[i] =
+              Math.sin(2 * Math.PI * 1700 * pm * t) * Math.exp(-t * 240) +
+              0.3 * noise() * Math.exp(-t * 500);
+          }
+          break;
+        }
+        case "shaker": {
+          // Band-ish noise with a soft attack then decay → "shh-k".
+          let prev = 0;
+          for (let i = 0; i < d.length; i++) {
+            const t = i / sr;
+            const n = noise();
+            const hp = (n - prev) * 0.7;
+            prev = n;
+            d[i] = hp * Math.min(1, t / 0.02) * Math.exp(-t * 26 * ds);
+          }
+          break;
+        }
+        default:
+          d.fill(0);
+      }
+    });
+    limitPeak(buf.getChannelData(0), 0.97);
+    return buf;
   }
 }
 
@@ -800,6 +875,19 @@ function bakeKey(clip: Clip): string {
         : `s:${clip.source.note}`;
   const fx = clip.effects.map((e) => `${e.id}@${e.amount.toFixed(3)}`).join(",");
   return `${srcKey}|${fx}`;
+}
+
+/** Scale a channel down so its peak sits at `ceil` (no boost). Keeps the fuller,
+ *  layered drum recipes from clipping without hand-tuning every amplitude. */
+function limitPeak(data: Float32Array, ceil: number): void {
+  let peak = 0;
+  for (let i = 0; i < data.length; i++) {
+    const a = Math.abs(data[i] as number);
+    if (a > peak) peak = a;
+  }
+  if (peak <= ceil || peak === 0) return;
+  const g = ceil / peak;
+  for (let i = 0; i < data.length; i++) data[i] = (data[i] as number) * g;
 }
 
 /** Deterministic noise generator (LCG) so synthesized drums are reproducible. */

@@ -523,7 +523,10 @@ const BeatMakerCanvas: FC = () => {
   const { sound, dispatch, getProject } = useApp();
   const project = useProject();
 
-  // Ensure each drum has a clip + an empty layer to toggle (once, guarded).
+  // Ensure each drum has a CLIP (cheap, uncapped) so its row previews and plays.
+  // Layers are created lazily on first toggle (below) — with a palette larger
+  // than MAX_LAYERS, reserving a layer per drum would blow the cap and steal the
+  // earliest rows. A drum only joins the mix once the kid actually uses it.
   useEffect(() => {
     const p = getProject();
     for (const drum of DRUM_SOUNDS) {
@@ -538,12 +541,6 @@ const BeatMakerCanvas: FC = () => {
             color: drum.color,
             label: drum.label,
           },
-        });
-      }
-      if (!getProject().layers.some((l) => l.id === id)) {
-        dispatch({
-          type: "addLayer",
-          layer: makeLayer({ id, clipId: id, kind: "drum" }),
         });
       }
     }
@@ -587,6 +584,13 @@ const BeatMakerCanvas: FC = () => {
                     (i % 4 === 0 ? " downbeat" : "")
                   }
                   onPointerDown={() => {
+                    // Lazily add this drum's layer the first time it's touched.
+                    if (!getProject().layers.some((l) => l.id === id)) {
+                      dispatch({
+                        type: "addLayer",
+                        layer: makeLayer({ id, clipId: id, kind: "drum" }),
+                      });
+                    }
                     dispatch({ type: "toggleStep", layerId: id, index: i });
                     if (!on) sound.play(clip);
                   }}

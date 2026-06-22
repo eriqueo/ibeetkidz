@@ -17,7 +17,12 @@ export type DrumKind =
   | "hihat"
   | "clap"
   | "tom"
-  | "cowbell";
+  | "cowbell"
+  // Rework palette (appended — existing ids/saves unaffected).
+  | "openhat"
+  | "rim"
+  | "shaker"
+  | "conga";
 
 export interface BuiltinSound {
   readonly assetId: string;
@@ -27,7 +32,7 @@ export interface BuiltinSound {
   readonly recipe: SoundRecipe;
 }
 
-/** 12 pads: 6 drums + a 6-note pentatonic run of melodic blips. */
+/** 16 pads: 10 drums + a 6-note pentatonic run of melodic blips. */
 export const BUILTIN_SOUNDS: readonly BuiltinSound[] = [
   { assetId: "kick", label: "Boom", emoji: "🥁", color: "#ef476f", recipe: { kind: "drum", drum: "kick" } },
   { assetId: "snare", label: "Snap", emoji: "🪘", color: "#ff5d8f", recipe: { kind: "drum", drum: "snare" } },
@@ -35,6 +40,10 @@ export const BUILTIN_SOUNDS: readonly BuiltinSound[] = [
   { assetId: "clap", label: "Clap", emoji: "👏", color: "#06d6a0", recipe: { kind: "drum", drum: "clap" } },
   { assetId: "tom", label: "Bonk", emoji: "🛢️", color: "#118ab2", recipe: { kind: "drum", drum: "tom" } },
   { assetId: "cowbell", label: "Ding", emoji: "🔔", color: "#3a86ff", recipe: { kind: "drum", drum: "cowbell" } },
+  { assetId: "openhat", label: "Sssss", emoji: "💨", color: "#f4a261", recipe: { kind: "drum", drum: "openhat" } },
+  { assetId: "rim", label: "Tik", emoji: "🥢", color: "#2a9d8f", recipe: { kind: "drum", drum: "rim" } },
+  { assetId: "shaker", label: "Shaka", emoji: "🪇", color: "#fb5607", recipe: { kind: "drum", drum: "shaker" } },
+  { assetId: "conga", label: "Tumba", emoji: "🟤", color: "#b5651d", recipe: { kind: "drum", drum: "conga" } },
   { assetId: "note-do", label: "Do", emoji: "🔵", color: "#3a86ff", recipe: { kind: "tone", note: "C4" } },
   { assetId: "note-re", label: "Re", emoji: "🟣", color: "#8338ec" , recipe: { kind: "tone", note: "D4" } },
   { assetId: "note-mi", label: "Mi", emoji: "🩷", color: "#ff5d8f", recipe: { kind: "tone", note: "E4" } },
