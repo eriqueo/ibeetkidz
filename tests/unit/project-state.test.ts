@@ -110,11 +110,87 @@ describe("reduce", () => {
     expect(reduce(emptyProject("p"), { type: "setTempo", bpm: 1 }).tempoBpm).toBe(MIN_BPM);
   });
 
-  it("toggles a step", () => {
+  it("toggles a step (boolean cell → length-1 hit and back)", () => {
     let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     s = reduce(s, { type: "addLayer", layer: layer("l1", "c1") });
     s = reduce(s, { type: "toggleStep", layerId: "l1", index: 3 });
-    expect(s.layers[0]?.steps[3]).toBe(true);
+    expect(s.layers[0]?.steps[3]).toEqual({ row: 0, length: 1 });
+    s = reduce(s, { type: "toggleStep", layerId: "l1", index: 3 });
+    expect(s.layers[0]?.steps[3]).toBeNull();
+  });
+});
+
+describe("note model (length + roll)", () => {
+  const drumLane = (): ReturnType<typeof reduce> => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    return reduce(s, { type: "addLayer", layer: layer("d1", "c1") });
+  };
+  const melodyLane = (): ReturnType<typeof reduce> => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    return reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+  };
+
+  it("stretches a drum hit, clamped to the bar end", () => {
+    let s = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 2 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 2, row: 0, length: 4 });
+    expect(s.layers[0]?.steps[2]).toEqual({ row: 0, length: 4 });
+    // Can't spill past step 15: a note at index 14 caps at length 2.
+    let t = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 14 });
+    t = reduce(t, { type: "resizeNote", layerId: "d1", index: 14, row: 0, length: 9 });
+    expect(t.layers[0]?.steps[14]?.length).toBe(2);
+  });
+
+  it("resizing an empty cell is a no-op (same reference, no history churn)", () => {
+    const s = drumLane();
+    expect(reduce(s, { type: "resizeNote", layerId: "d1", index: 2, row: 0, length: 4 })).toBe(s);
+  });
+
+  it("resizing to the same length is a no-op (no undo entry mid-drag)", () => {
+    let s = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 0, length: 3 });
+    expect(reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 0, length: 3 })).toBe(s);
+  });
+
+  it("cycles a drum roll 1 → 2 → 4 → 1 (absent = single hit)", () => {
+    let s = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
+    expect(s.layers[0]?.steps[0]?.roll).toBeUndefined();
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 0, row: 0, roll: 2 });
+    expect(s.layers[0]?.steps[0]?.roll).toBe(2);
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 0, row: 0, roll: 4 });
+    expect(s.layers[0]?.steps[0]?.roll).toBe(4);
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 0, row: 0, roll: 1 });
+    expect(s.layers[0]?.steps[0]?.roll).toBeUndefined();
+  });
+
+  it("roll preserves length; resize preserves roll", () => {
+    let s = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 1 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 1, row: 0, length: 3 });
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 1, row: 0, roll: 4 });
+    expect(s.layers[0]?.steps[1]).toEqual({ row: 0, length: 3, roll: 4 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 1, row: 0, length: 2 });
+    expect(s.layers[0]?.steps[1]).toEqual({ row: 0, length: 2, roll: 4 });
+  });
+
+  it("addNote/removeNote place and clear a melody note at a row", () => {
+    let s = reduce(melodyLane(), { type: "addNote", layerId: "m1", index: 2, row: 4, length: 2 });
+    expect(s.layers[0]?.notes[2]).toEqual([{ row: 4, length: 2 }]);
+    // addNote is idempotent: a second place leaves the existing note untouched.
+    expect(reduce(s, { type: "addNote", layerId: "m1", index: 2, row: 4 })).toBe(s);
+    s = reduce(s, { type: "removeNote", layerId: "m1", index: 2, row: 4 });
+    expect(s.layers[0]?.notes[2]).toEqual([]);
+  });
+
+  it("resizes one note in a chord, leaving its neighbours alone", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 4 });
+    s = reduce(s, { type: "resizeNote", layerId: "m1", index: 0, row: 4, length: 3 });
+    expect(s.layers[0]?.notes[0]).toEqual([
+      { row: 0, length: 1 },
+      { row: 4, length: 3 },
+    ]);
   });
 });
 
@@ -162,7 +238,7 @@ describe("melody + song settings", () => {
       layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
     });
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 2, row: 4 });
-    expect(s.layers[0]?.notes[2]).toEqual([4]);
+    expect(s.layers[0]?.notes[2]).toEqual([{ row: 4, length: 1 }]);
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 2, row: 4 });
     expect(s.layers[0]?.notes[2]).toEqual([]);
   });
@@ -176,10 +252,10 @@ describe("melody + song settings", () => {
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 4 });
-    expect(s.layers[0]?.notes[0]).toEqual([0, 2, 4]);
+    expect(s.layers[0]?.notes[0]?.map((n) => n.row)).toEqual([0, 2, 4]);
     // removing the middle note leaves the rest of the chord intact
     s = reduce(s, { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
-    expect(s.layers[0]?.notes[0]).toEqual([0, 4]);
+    expect(s.layers[0]?.notes[0]?.map((n) => n.row)).toEqual([0, 4]);
   });
 
   it("sets scale, key, swing, wave, and echo", () => {
@@ -238,7 +314,54 @@ describe("normalizeProject (back-compat)", () => {
     expect(p.layers[0]?.kind).toBe("drum");
     expect(p.layers[0]?.notes).toHaveLength(0); // drum lanes carry no melody
     expect(p.layers[0]?.echo).toBe(0);
-    expect(p.layers[0]?.steps[0]).toBe(true); // original pattern preserved
+    // Old boolean step pattern upgrades to length-1 hits (still audible).
+    expect(p.layers[0]?.steps[0]).toEqual({ row: 0, length: 1 });
+    expect(p.layers[0]?.steps.filter(Boolean)).toHaveLength(STEP_COUNT);
+  });
+
+  it("migrates the current (pre-length) shapes: boolean[] drums + number[][] chords", () => {
+    // The live IndexedDB format right before this feature: drums as boolean[],
+    // melody as a dense array of row-sets. Both must upgrade to length-1 notes
+    // with no lost hits.
+    const save = JSON.stringify({
+      id: "cur",
+      name: "Current Jam",
+      tempoBpm: 110,
+      clips: { d1: clip("d1"), m1: clip("m1") },
+      layers: [
+        {
+          id: "d1", clipId: "d1", volume: 0.9, muted: false, kind: "drum",
+          steps: [true, false, true, ...new Array(STEP_COUNT - 3).fill(false)],
+          notes: [], wave: "triangle", echo: 0, tone: 1,
+        },
+        {
+          id: "m1", clipId: "m1", volume: 0.9, muted: false, kind: "melody",
+          steps: [],
+          notes: [[0, 4], ...new Array(STEP_COUNT - 1).fill([])],
+          wave: "triangle", echo: 0, tone: 1,
+        },
+      ],
+      scaleId: "magic", keyId: "C", swing: 0, activeMachineId: "looper-stage",
+    });
+    const p = deserialize(save);
+    expect(p.layers[0]?.steps[0]).toEqual({ row: 0, length: 1 });
+    expect(p.layers[0]?.steps[1]).toBeNull();
+    expect(p.layers[0]?.steps[2]).toEqual({ row: 0, length: 1 });
+    expect(p.layers[1]?.notes[0]).toEqual([
+      { row: 0, length: 1 },
+      { row: 4, length: 1 },
+    ]);
+    expect(p.layers[1]?.notes[1]).toEqual([]);
+  });
+
+  it("round-trips a stretched/rolled jam through serialize → deserialize", () => {
+    let s = reduce(emptyProject("rt"), { type: "addClip", clip: clip("d1") });
+    s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "d1", clipId: "d1" }) });
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 0, length: 3 });
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 0, row: 0, roll: 4 });
+    const back = deserialize(JSON.stringify(s));
+    expect(back.layers[0]?.steps[0]).toEqual({ row: 0, length: 3, roll: 4 });
   });
 
   it("migrates a pre-chord melody lane (single-note steps → chord arrays)", () => {
@@ -268,8 +391,8 @@ describe("normalizeProject (back-compat)", () => {
       activeMachineId: "looper-stage",
     });
     const p = deserialize(oldSave);
-    expect(p.layers[0]?.notes[0]).toEqual([3]);
+    expect(p.layers[0]?.notes[0]).toEqual([{ row: 3, length: 1 }]);
     expect(p.layers[0]?.notes[1]).toEqual([]);
-    expect(p.layers[0]?.notes[2]).toEqual([5]);
+    expect(p.layers[0]?.notes[2]).toEqual([{ row: 5, length: 1 }]);
   });
 });
