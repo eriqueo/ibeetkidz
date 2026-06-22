@@ -62,19 +62,30 @@ export type LaneKind = "drum" | "melody";
  *  stays field-free (same "absent = default" convention as `swing`/`loopBeats`). */
 export type Roll = 2 | 4;
 
+/** A pitch-bend control point on a melody note (BeepBox's "pin", step-quantized
+ *  and in-scale). `t` is the position within the note as a fraction of its
+ *  length (0 = start, 1 = end); `row` is the scale-degree at that point, so a
+ *  bend snaps to the scale (Magic Notes) by construction. The note's base `row`
+ *  is the implicit pin at t=0; `pins` describe the path AFTER the start. */
+export interface PitchPin {
+  readonly t: number;
+  readonly row: number;
+}
+
 /** The one placed note/hit behind BOTH melody and drum lanes ("everything is a
  *  note"). `row` is the melody scale-degree — Magic Notes maps it to an in-scale
  *  pitch at schedule time (`degreeToNote`); drum hits ignore it (row 0). */
 export interface StepNote {
-  /** Melody grid-row / scale degree; 0 for drum hits. */
+  /** Melody grid-row / scale degree; 0 for drum hits. Also the bend's t=0 pitch. */
   readonly row: number;
   /** Steps this note spans (sustain). >= 1; clamped to the bar end on edit. */
   readonly length: number;
-  /** Sub-hits packed into the start step (a fill). Absent = a single hit. */
+  /** Sub-hits packed into the start step (a fill). Absent = a single hit.
+   *  Mutually exclusive with `pins` (a note either rolls or bends, not both). */
   readonly roll?: Roll;
-  /** FUTURE bend pass: target scale degree to glide to. Defined now so saves are
-   *  forward-stable; the scheduler does NOT honor it yet. */
-  readonly slideTo?: number;
+  /** Pitch-bend path after the start (melody only). Absent = a flat note (the
+   *  default — no scheduler/UI change). Sorted by `t`, in-scale by construction. */
+  readonly pins?: readonly PitchPin[];
 }
 
 /** A layer on the Stage — one looping/triggerable lane in the mix. */
@@ -137,6 +148,10 @@ export type Command =
   | { readonly type: "removeNote"; readonly layerId: string; readonly index: number; readonly row: number }
   | { readonly type: "resizeNote"; readonly layerId: string; readonly index: number; readonly row: number; readonly length: number }
   | { readonly type: "setRoll"; readonly layerId: string; readonly index: number; readonly row: number; readonly roll: 1 | Roll }
+  // Pitch bend (melody only): set/move/clear control points on the note keyed by
+  // its base `row`. `addPin` upserts a pin at fraction `t` targeting `toRow`.
+  | { readonly type: "addPin"; readonly layerId: string; readonly index: number; readonly row: number; readonly t: number; readonly toRow: number }
+  | { readonly type: "clearPins"; readonly layerId: string; readonly index: number; readonly row: number }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }

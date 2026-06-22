@@ -192,6 +192,51 @@ describe("note model (length + roll)", () => {
       { row: 4, length: 3 },
     ]);
   });
+
+  it("adds a bend pin to a melody note (in-scale path after the start)", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 1 });
+    s = reduce(s, { type: "resizeNote", layerId: "m1", index: 0, row: 1, length: 4 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 1, t: 1, toRow: 4 });
+    expect(s.layers[0]?.notes[0]?.[0]).toEqual({ row: 1, length: 4, pins: [{ t: 1, row: 4 }] });
+  });
+
+  it("addPin upserts by t (dragging the end re-targets the same pin)", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 1 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 1, t: 1, toRow: 4 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 1, t: 1, toRow: 6 });
+    expect(s.layers[0]?.notes[0]?.[0]?.pins).toEqual([{ t: 1, row: 6 }]);
+  });
+
+  it("keeps multiple pins sorted by t and clamps rows in-scale", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 0, t: 1, toRow: 99 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 0, t: 0.5, toRow: 3 });
+    expect(s.layers[0]?.notes[0]?.[0]?.pins).toEqual([
+      { t: 0.5, row: 3 },
+      { t: 1, row: 6 }, // 99 clamped to the top grid row (MELODY_ROWS-1)
+    ]);
+  });
+
+  it("roll and bend are mutually exclusive", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 2, t: 1, toRow: 5 });
+    // Adding a roll drops the bend…
+    s = reduce(s, { type: "setRoll", layerId: "m1", index: 0, row: 2, roll: 2 });
+    expect(s.layers[0]?.notes[0]?.[0]).toEqual({ row: 2, length: 1, roll: 2 });
+    // …and adding a bend drops the roll.
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 2, t: 1, toRow: 5 });
+    expect(s.layers[0]?.notes[0]?.[0]).toEqual({ row: 2, length: 1, pins: [{ t: 1, row: 5 }] });
+  });
+
+  it("clearPins removes the bend; addPin is a no-op on drums", () => {
+    let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 2, t: 1, toRow: 5 });
+    s = reduce(s, { type: "clearPins", layerId: "m1", index: 0, row: 2 });
+    expect(s.layers[0]?.notes[0]?.[0]).toEqual({ row: 2, length: 1 });
+
+    let d = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
+    expect(reduce(d, { type: "addPin", layerId: "d1", index: 0, row: 0, t: 1, toRow: 3 })).toBe(d);
+  });
 });
 
 describe("history", () => {
