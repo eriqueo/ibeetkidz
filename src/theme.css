@@ -1,0 +1,553 @@
+/* ============================================================================
+   iBeetKidz — MARIO-PAINT PIXEL THEME  (theme.css)  v2
+   Warm & bright, NOT dark neon. Dark plum text on cream "paper" panels.
+   Flat fills, hard 2–3px pixel drop-shadows (NO glow / bloom / gradients on UI
+   chrome). One shared warm palette. Every sprite is pixel art with a 1px plum
+   outline. Pixel font for the LOGO/titles only; a coding mono (Cascadia Code) for
+   all labels and body.
+
+   Drop-in skin: CSS + assets only — no DOM changes, no class renames, no JS.
+   Restyles existing selectors and overrides the app's --bg/--panel/--ink/--accent.
+   All asset urls are RELATIVE (offline). Load AFTER src/style.css.
+   ========================================================================== */
+
+/* ── Self-hosted fonts (offline, relative) ─────────────────────────────── */
+@font-face {                       /* LOGO / titles only — use sparingly */
+  font-family: "Press Start 2P";
+  font-style: normal; font-weight: 400; font-display: swap;
+  src: url("./assets/theme/fonts/press-start-2p-latin.woff2") format("woff2");
+}
+@font-face {                       /* everything readable — coding/nerd mono */
+  font-family: "Cascadia Code";
+  font-style: normal; font-weight: 200 700; font-display: swap;
+  src: url("./assets/theme/fonts/cascadia-code-latin.woff2") format("woff2");
+}
+
+/* ── Token overrides + warm palette ────────────────────────────────────── */
+:root {
+  /* app reads these four */
+  --bg: #29242e;           /* deep warm purple-brown ground */
+  --panel: #393243;        /* elevated panel */
+  --ink: #ebdbb2;          /* gruvbox cream text */
+  --accent: #bd93f9;       /* Dracula purple (primary) */
+
+  /* surfaces */
+  --paper: #393243;
+  --paper-2: #322b3b;
+  --edge: #15121b;         /* near-black sprite/border outline */
+  --ink-soft: #b3a591;
+
+  /* shared retro palette (Gruvbox brights + Dracula purple) */
+  --grape: #bd93f9;
+  --grape-dark: #8b5cf6;
+  --beet: #ff79c6;
+  --beet-dark: #d2548f;
+  --beet-light: #ffa6d8;
+  --leaf: #b8bb26;
+  --leaf-dark: #98971a;
+  --sun: #fabd2f;
+  --sun-dark: #d79921;
+  --orange: #fe8019;
+  --orange-dark: #d65d0e;
+  --sky: #79c0e8;
+  --sky-dark: #4a93bd;
+  --teal: #8ec07c;
+  --tomato: #fb4934;
+  --tomato-dark: #cc241d;
+  --cocoa: #b07f55;
+  --cloud: #ebdbb2;
+
+  /* selected/active = purple */
+  --active-fill: #bd93f9;
+  --active-shadow: #8b5cf6;
+
+  /* type */
+  --font-display: "Press Start 2P", "Cascadia Code", monospace;   /* logo/titles only */
+  --font-body: "Cascadia Code", ui-monospace, Menlo, monospace;
+
+  /* hard pixel shadow (no blur) — near-black on dark */
+  --shadow-hard: 0 3px 0 rgba(0, 0, 0, 0.40);
+  --shadow-pop: 0 4px 0 rgba(0, 0, 0, 0.50);
+
+  font-family: var(--font-body);
+}
+
+/* Crisp pixel art everywhere we paint icons. */
+.m-icon,
+.t-btn[data-act],
+.tempo::before,
+.fx-tile .fx-emoji {
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* ── Page ground: deep warm dark with a faint cream paper dot ── */
+body {
+  background-color: var(--bg);
+  background-image: radial-gradient(rgba(235, 219, 178, 0.05) 1.5px, transparent 1.5px);
+  background-size: 16px 16px;
+  color: var(--ink);
+}
+/* Let the visualizer glow against the dark shell. */
+.viz-canvas { opacity: 0.42; mix-blend-mode: screen; }
+
+/* ============================================================================
+   BOOT GATE
+   ========================================================================== */
+#boot-gate { position: relative; z-index: 2; }
+#boot-button {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 2rem;
+  padding: 1.1rem 2.2rem;
+  color: #fff;
+  background: var(--beet);
+  border: 3px solid var(--edge);
+  border-radius: 14px;
+  box-shadow: 0 6px 0 var(--beet-dark);
+  cursor: pointer;
+}
+#boot-button:active { transform: translateY(4px); box-shadow: 0 2px 0 var(--beet-dark); }
+
+/* ============================================================================
+   PALETTE (left tool rail)
+   ========================================================================== */
+.palette {
+  background: var(--paper-2);
+  border-right: 3px solid var(--edge);
+}
+.palette button {
+  min-height: 68px;
+  background: var(--paper);
+  color: var(--ink);
+  border: 2px solid var(--edge);
+  border-radius: 12px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.82rem;
+  box-shadow: var(--shadow-hard);
+  transition: transform 80ms, box-shadow 80ms, background 80ms;
+}
+.palette button:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.22); }
+.palette button.active {
+  background: var(--active-fill);
+  border-color: var(--edge);
+  box-shadow: 0 3px 0 var(--active-shadow);
+  color: var(--edge);
+}
+
+/* Tool icons: swap each emoji for Beet-crew pixel art; hide the glyph. */
+.m-icon {
+  font-size: 0 !important;
+  width: 42px; height: 42px;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+.palette button[data-machine="record-voicefx"] .m-icon { background-image: url("./assets/theme/icons/icon-record-voicefx.png"); }
+.palette button[data-machine="sound-pads"]    .m-icon { background-image: url("./assets/theme/icons/icon-sound-pads.png"); }
+.palette button[data-machine="beat-grid"]     .m-icon { background-image: url("./assets/theme/icons/icon-beat-grid.png"); }
+.palette button[data-machine="looper-stage"]  .m-icon { background-image: url("./assets/theme/icons/icon-looper-stage.png"); }
+.palette button[data-machine="theremin-xy"]   .m-icon { background-image: url("./assets/theme/icons/icon-theremin-xy.png"); }
+
+/* ============================================================================
+   OPTIONS BAR (top, per-tool knobs)
+   ========================================================================== */
+.options-bar {
+  background: var(--paper);
+  border-bottom: 3px solid var(--edge);
+  backdrop-filter: none;
+}
+.options-title {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 1.3rem;
+  color: var(--ink);
+  opacity: 1;
+}
+.options-icon { font-size: 1.7rem; }
+.opt-knob {
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1.1rem;
+  color: var(--ink);
+}
+.opt-choice {
+  min-height: 44px;
+  background: var(--paper-2);
+  color: var(--ink);
+  border: 2px solid var(--edge);
+  border-radius: 9px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 1rem;
+  box-shadow: var(--shadow-hard);
+}
+.opt-choice.active {
+  background: var(--active-fill);
+  color: var(--edge);
+  box-shadow: 0 3px 0 var(--active-shadow);
+}
+
+/* ── Range inputs — chunky flat pixel slider ───────────────────────────── */
+.opt-knob input[type="range"],
+.tempo input[type="range"],
+.layer-vol,
+input[type="range"] {
+  -webkit-appearance: none; appearance: none;
+  height: 12px;
+  background: var(--paper-2);
+  border: 2px solid var(--edge);
+  border-radius: 7px;
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 24px; height: 24px;
+  background: var(--beet);
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--beet-dark);
+  cursor: pointer;
+}
+input[type="range"]::-moz-range-thumb {
+  width: 24px; height: 24px;
+  background: var(--beet);
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+  box-shadow: 0 2px 0 var(--beet-dark);
+  cursor: pointer;
+}
+
+/* ============================================================================
+   CANVAS + MACHINE
+   ========================================================================== */
+.canvas { z-index: 1; }
+.machine { font-family: var(--font-body); padding: 1.25rem; gap: 1.25rem; }
+.stub-note { font-size: 1.5rem; font-weight: 600; color: var(--ink-soft); opacity: 1; }
+
+/* ── Voice FX (hero) ───────────────────────────────────────────────────── */
+.big-record {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 1.5rem;
+  padding: 1.6rem 2rem;
+  color: #fff;
+  background: var(--beet);
+  border: 3px solid var(--edge);
+  border-radius: 16px;
+  box-shadow: 0 6px 0 var(--beet-dark);
+}
+.big-record:active { transform: translateY(3px); box-shadow: 0 3px 0 var(--beet-dark); }
+.big-record.recording {
+  background: var(--tomato);
+  box-shadow: 0 6px 0 var(--tomato-dark);
+  animation: ibk-rec 0.7s steps(2) infinite;
+}
+@keyframes ibk-rec { 50% { background: #ff7a6e; } }
+.voicefx-status { font-size: 1.6rem; font-weight: 700; color: var(--ink); }
+
+.fx-tiles { gap: 0.85rem; }
+.fx-tile {
+  color: var(--ink);
+  background: var(--tile-color, var(--paper));
+  border: 2px solid var(--edge);
+  border-radius: 12px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.92rem;
+  box-shadow: var(--shadow-pop);
+}
+.fx-tile:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,0.3); }
+.fx-emoji { font-size: 2.2rem; }
+/* OPTIONAL: the 8 Voice-FX as the Beet mascot. The app renders the effect emoji
+   in markup with no per-effect hook. If the engineer adds data-fx="<id>" to each
+   .fx-tile (one-line change), these swap the emoji for the Beet-crew art: */
+.fx-tile[data-fx] .fx-emoji {
+  font-size: 0 !important;
+  width: 44px; height: 44px; display: inline-block;
+  background: center / contain no-repeat;
+}
+.fx-tile[data-fx="reverse"]   .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-reverse.png"); }
+.fx-tile[data-fx="pitchUp"]   .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-pitchUp.png"); }
+.fx-tile[data-fx="pitchDown"] .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-pitchDown.png"); }
+.fx-tile[data-fx="robot"]     .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-robot.png"); }
+.fx-tile[data-fx="echo"]      .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-echo.png"); }
+.fx-tile[data-fx="reverb"]    .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-reverb.png"); }
+.fx-tile[data-fx="bitcrush"]  .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-bitcrush.png"); }
+.fx-tile[data-fx="crazy"]     .fx-emoji { background-image: url("./assets/theme/icons/icon-fx-crazy.png"); }
+
+/* ── Sound Pads ────────────────────────────────────────────────────────── */
+.pad {
+  color: var(--ink);
+  background: var(--pad-color, var(--paper));
+  border: 2px solid var(--edge);
+  border-radius: 12px;
+  font-family: var(--font-body);
+  font-weight: 700;
+  font-size: 0.9rem;
+  box-shadow: var(--shadow-pop);
+}
+.pad:active { transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,0.3); }
+.pad-emoji { font-size: 2.2rem; }
+
+/* ── Beat Maker ────────────────────────────────────────────────────────── */
+.beat-label {
+  height: 46px; min-height: 44px;
+  background: var(--row-color, var(--paper));
+  border: 2px solid var(--edge);
+  border-radius: 9px;
+  box-shadow: var(--shadow-hard);
+}
+.beat-cell {
+  height: 46px; min-height: 44px;
+  background: var(--paper);
+  border: 2px solid var(--edge);
+  border-radius: 6px;
+}
+.beat-cell.downbeat { background: var(--paper-2); }
+.beat-cell.on {
+  background: var(--row-color, var(--accent));
+  border-color: var(--edge);
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.22);
+}
+
+/* ── Loop Stage (mixer + new loop-track classes) ───────────────────────── */
+.layer-row {
+  background: var(--paper);
+  border: 2px solid var(--edge);
+  border-left: 8px solid var(--row-color, var(--accent));
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
+}
+.layer-name { font-size: 1.35rem; font-weight: 700; color: var(--ink); }
+.layer-mute.t-btn, .layer-remove.t-btn { min-width: 46px; min-height: 46px; }
+
+.loop-track {
+  background: var(--paper);
+  border: 2px solid var(--edge);
+  border-left: 8px solid var(--row-color, var(--accent));
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
+}
+.loop-track-head { font-family: var(--font-body); font-weight: 800; font-size: 1.05rem; color: var(--ink); }
+.loop-lane {
+  background: var(--paper-2);
+  border: 2px solid var(--edge);
+  border-radius: 7px;
+}
+.loop-cell {
+  border: 2px solid var(--edge);
+  border-radius: 5px;
+  background: var(--paper);
+}
+.loop-cell.downbeat { background: var(--paper-2); }
+.loop-cell.on {
+  background: var(--row-color, var(--accent));
+  box-shadow: inset 0 -3px 0 rgba(0,0,0,0.22);
+}
+.loop-playhead {
+  background: var(--beet);
+  width: 4px;
+  box-shadow: 0 0 0 1px var(--edge);
+}
+
+/* ── Magic Pad (theremin) — flat warm field, plum frame, no neon ───────── */
+.xy-pad {
+  background:
+    linear-gradient(135deg, transparent 0, transparent 100%),
+    var(--sky);
+  border: 3px solid var(--edge);
+  border-radius: 14px;
+  box-shadow: var(--shadow-pop);
+  background-image:
+    repeating-linear-gradient(0deg, transparent 0 31px, rgba(0,0,0,0.12) 31px 33px),
+    repeating-linear-gradient(90deg, transparent 0 31px, rgba(0,0,0,0.12) 31px 33px),
+    linear-gradient(180deg, #9bd4ee, var(--sky));
+}
+.xy-hint { font-family: var(--font-body); font-weight: 800; font-size: 1.5rem; color: #fff; text-shadow: 0 2px 0 var(--sky-dark); }
+.xy-dot {
+  background: var(--sun);
+  border: 3px solid var(--edge);
+  box-shadow: 0 2px 0 var(--sun-dark);
+}
+
+/* ============================================================================
+   PLAY BAR (transport)
+   ========================================================================== */
+.playbar {
+  background: var(--paper);
+  border-top: 3px solid var(--edge);
+  backdrop-filter: none;
+  gap: 0.6rem;
+  padding: 0.6rem;
+}
+.t-btn {
+  width: 54px; height: 54px;
+  background: var(--paper-2);
+  border: 2px solid var(--edge);
+  border-radius: 11px;
+  box-shadow: var(--shadow-hard);
+  transition: transform 80ms, box-shadow 80ms, background 80ms;
+}
+.t-btn:active { transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.22); }
+.t-btn.active { background: var(--active-fill); box-shadow: 0 3px 0 var(--active-shadow); }
+/* Beet-crew pixel glyphs on each transport control (hide the emoji).
+   Scoped to the icon transport buttons ONLY — the Home/Studio UI has since added
+   *labelled* .t-btn[data-act] buttons (send-home, add-drum, add-melody, go-voice,
+   go-magic, magic-record) with no matching icon, so a blanket data-act rule would
+   blank their text. Keep this list in sync with the icon map below. */
+.t-btn[data-act="play"],
+.t-btn[data-act="stop"],
+.t-btn[data-act="snap"],
+.t-btn[data-act="undo"],
+.t-btn[data-act="redo"],
+.t-btn[data-act="surprise"],
+.t-btn[data-act="save"] {
+  color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 34px 34px;
+}
+.t-btn[data-act="play"]     { background-image: url("./assets/theme/icons/icon-play.png"); }
+.t-btn[data-act="stop"]     { background-image: url("./assets/theme/icons/icon-stop.png"); }
+.t-btn[data-act="snap"]     { background-image: url("./assets/theme/icons/icon-snap.png"); }
+.t-btn[data-act="undo"]     { background-image: url("./assets/theme/icons/icon-undo.png"); }
+.t-btn[data-act="redo"]     { background-image: url("./assets/theme/icons/icon-redo.png"); }
+.t-btn[data-act="surprise"] { background-image: url("./assets/theme/icons/icon-surprise.png"); }
+.t-btn[data-act="save"]     { background-image: url("./assets/theme/icons/icon-save.png"); }
+
+/* Tempo (range labelled "Speed") — pixel dial glyph + readable label. */
+.tempo {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--ink);
+  gap: 0.3rem;
+}
+.tempo::before {
+  content: "";
+  width: 28px; height: 28px;
+  background: url("./assets/theme/icons/icon-tempo.png") center / contain no-repeat;
+}
+
+/* Save confirm flash → friendly leaf-green pop. */
+.t-btn.flash { animation: ibk-flash 0.5s ease-out; }
+@keyframes ibk-flash {
+  0% { background-color: var(--leaf); box-shadow: 0 3px 0 var(--leaf-dark); transform: scale(1.1); }
+}
+
+/* ============================================================================
+   ROUND-2 COVERAGE — Home hub + Studio rail
+   The app grew a BeepBox-style Home (loop board, melody lanes, drum picker), a
+   guided Studio rail, and "Send to Home" flows after this skin was first
+   authored. The base style.css drives these off --bg/--panel/--ink/--accent, so
+   the :root override above already recolors most of it; this section fixes the
+   two regressions the skin introduces and tightens cohesion. CSS only.
+   ========================================================================== */
+
+/* (1) LABELLED .t-btns. The .t-btn { width:54px; height:54px } rule above (loaded
+   after style.css, equal specificity) squashes the text pill buttons into icon
+   squares. Re-assert auto sizing at higher specificity and give them a readable
+   pixel pill. .loop-add .t-btn / .rail-pill survive on their own specificity. */
+.t-btn.send-home,
+.t-btn.magic-record,
+.t-btn.rail-toggle {
+  width: auto;
+  height: auto;
+  padding: 0.55rem 1rem;
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 0.95rem;
+  color: var(--edge);
+}
+.t-btn.rail-toggle { width: 100%; color: var(--ink); background: var(--paper-2); }
+.t-btn.send-home   { background: var(--leaf); box-shadow: 0 3px 0 var(--leaf-dark); }
+.t-btn.send-home:disabled { background: var(--teal); opacity: 0.8; cursor: default; box-shadow: var(--shadow-hard); }
+.t-btn.magic-record { background: var(--grape); color: #fff; box-shadow: 0 3px 0 var(--grape-dark); }
+.t-btn.magic-record.recording { background: var(--tomato); box-shadow: 0 3px 0 var(--tomato-dark); }
+.loop-add .t-btn { font-family: var(--font-body); font-weight: 800; color: var(--ink); }
+
+/* (2) STUDIO RAIL — recolor the old #1a1430-era grounds onto the warm-dark palette. */
+.rail { background: var(--paper-2); border-left: 3px solid var(--edge); }
+.rail-heading { font-family: var(--font-body); font-weight: 800; font-size: 1.1rem; color: var(--ink); }
+.rail-control { background: var(--paper); border: 2px solid var(--edge); border-radius: 10px; }
+.rail-title { font-weight: 700; color: var(--ink); }
+.coach { color: var(--ink-soft); opacity: 1; }
+.rail-sep { border-top: 2px solid var(--edge); color: var(--ink-soft); font-weight: 700; }
+.rail-pill {
+  background: var(--paper-2);
+  border: 2px solid var(--edge);
+  border-radius: 8px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 700;
+  box-shadow: var(--shadow-hard);
+}
+.rail-pill.active { background: var(--active-fill); border-color: var(--edge); color: var(--edge); box-shadow: 0 3px 0 var(--active-shadow); }
+
+/* Studio rail as a phone bottom sheet. */
+.rail-sheet { background: var(--paper); border-top: 3px solid var(--edge); }
+.rail-sheet-toggle {
+  background: var(--beet);
+  color: #fff;
+  border: 3px solid var(--edge);
+  border-radius: 14px;
+  font-family: var(--font-body);
+  font-weight: 800;
+  box-shadow: 0 4px 0 var(--beet-dark);
+}
+.rail-sheet-toggle.active { background: var(--paper-2); color: var(--ink); }
+
+/* (3) HOME LOOP BOARD — recess the board, skin the add bar + drum picker. */
+.loop-board { background: rgba(21, 18, 27, 0.66); border: 2px solid var(--edge); border-radius: 12px; }
+.loop-hint { color: var(--ink-soft); opacity: 1; font-family: var(--font-body); }
+.drum-picker { background: rgba(21, 18, 27, 0.66); border: 2px solid var(--edge); border-radius: 10px; }
+.drum-chip {
+  background: var(--paper);
+  border: 2px solid var(--edge);
+  border-radius: 9px;
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-weight: 700;
+  box-shadow: var(--shadow-hard);
+}
+.drum-chip.present { background: var(--pad-color, var(--active-fill)); color: var(--edge); }
+
+/* (4) MELODY LANES — note grid (high notes on top). */
+.note-cell { border: 2px solid var(--edge); background: var(--paper-2); border-radius: 4px; }
+.note-cell.downbeat { background: var(--paper); }
+.note-cell.on { background: var(--row-color, var(--accent)); box-shadow: inset 0 -2px 0 rgba(0,0,0,0.22); }
+
+/* (5) VOICE-CLIP CARD (record → name → Send to Home) + inline rename. */
+.voice-clip-card {
+  background: var(--paper);
+  border: 2px solid var(--edge);
+  border-left: 8px solid var(--tile-color, var(--active-fill));
+  border-radius: 10px;
+  box-shadow: var(--shadow-hard);
+}
+.voice-clip-name, .layer-name, .loop-track-head { color: var(--ink); }
+.name-pencil { color: var(--ink-soft); opacity: 1; }
+.name-edit {
+  font-family: var(--font-body);
+  color: var(--ink);
+  background: var(--paper-2);
+  border: 2px solid var(--active-fill);
+  border-radius: 6px;
+}
+
+/* (6) HOME hub palette button — base.css marks it out with an off-palette indigo
+   fill + orange border (higher specificity than .palette button above). Keep it
+   unmistakable as the hub, but in-theme: pink edge on the paper fill. */
+.palette button[data-machine="looper-stage"] {
+  background: var(--paper);
+  border-color: var(--beet);
+}
+.palette button[data-machine="looper-stage"].active {
+  background: var(--active-fill);
+  border-color: var(--edge);
+  color: var(--edge);
+}
+
+/* Keep the app's hidden-machine contract intact. */
+[hidden] { display: none !important; }

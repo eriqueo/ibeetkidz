@@ -5,7 +5,12 @@
 import type { VisualFrame, VisualStyle } from "../../ports/renderer-port.ts";
 import type { Project } from "../../core/types.ts";
 
-let hue = 200;
+// iBeetKidz dark theme (Gruvbox-dark × Dracula). The visualizer glows behind the
+// cream-on-plum panels — the theme.css canvas runs it at mix-blend-mode: screen
+// (~0.42 opacity), so these are picked to read as a calm, recessed glow on the
+// #29242e ground rather than a neon rave.
+const SPECTRUM = ["#fe8019", "#fabd2f", "#79c0e8", "#b8bb26", "#bd93f9"]; // orange → sun → sky (+ leaf, grape accents)
+const WAVEFORM = "#ff79c6"; // brand pink
 
 export const retroScopeStyle: VisualStyle = {
   id: "retro-scope",
@@ -13,27 +18,27 @@ export const retroScopeStyle: VisualStyle = {
 
   draw(ctx: CanvasRenderingContext2D, frame: VisualFrame, _project: Project): void {
     const { width: w, height: h } = ctx.canvas;
-    hue = (hue + 0.6) % 360;
 
-    // Fading trail instead of a hard clear → classic screensaver smear.
-    ctx.fillStyle = "rgba(10, 6, 24, 0.25)";
+    // Fading trail instead of a hard clear → classic screensaver smear. Tinted
+    // to the theme ground so the trail melts into the dark instead of going grey.
+    ctx.fillStyle = "rgba(41, 36, 46, 0.25)";
     ctx.fillRect(0, 0, w, h);
 
-    // Chunky mirrored spectrum bars.
+    // Chunky mirrored spectrum bars, cycling the warm→cool theme palette.
     const bars = 32;
     const step = Math.floor(frame.spectrum.length / bars);
     const barW = w / bars;
     for (let i = 0; i < bars; i++) {
       const v = (frame.spectrum[i * step] ?? 0) / 255;
       const bh = v * h * 0.4;
-      ctx.fillStyle = `hsl(${(hue + i * 6) % 360} 90% 55%)`;
+      ctx.fillStyle = SPECTRUM[i % SPECTRUM.length] ?? WAVEFORM;
       ctx.fillRect(i * barW + 1, h - bh, barW - 2, bh);
     }
 
-    // Glowing oscilloscope line.
+    // Glowing oscilloscope line — brand pink.
     ctx.lineWidth = 3;
-    ctx.strokeStyle = `hsl(${(hue + 180) % 360} 100% 65%)`;
-    ctx.shadowColor = ctx.strokeStyle;
+    ctx.strokeStyle = WAVEFORM;
+    ctx.shadowColor = WAVEFORM;
     ctx.shadowBlur = 16;
     ctx.beginPath();
     const wf = frame.waveform;
