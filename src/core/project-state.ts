@@ -517,6 +517,71 @@ export function reduce(state: Project, cmd: Command): Project {
 
     case "setActiveMachine":
       return { ...state, activeMachineId: cmd.machineId };
+
+    // ── Song Train (cars + arrangement) ──────────────────────────────────────
+
+    // Duplicate the active car into a fresh one (its own id + color, copied
+    // lanes), append it to the arrangement, and open it for editing. The copy
+    // shares clip ids and (immutable) layer objects — every lane edit is scoped
+    // to the active car (editActivePart), so identical layer ids across cars are
+    // safe and the cars diverge copy-on-write.
+    case "addCar": {
+      if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
+      const src = activePart(state);
+      const color = CAR_COLORS[state.parts.length % CAR_COLORS.length] as string;
+      const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
+        ...src.layers,
+      ]);
+      return {
+        ...state,
+        parts: [...state.parts, part],
+        arrangement: [...state.arrangement, { partId: cmd.id, repeats: 1 }],
+        activePartId: cmd.id,
+      };
+    }
+
+    case "selectCar":
+      if (
+        state.activePartId === cmd.partId ||
+        !state.parts.some((p) => p.id === cmd.partId)
+      )
+        return state; // no-op (already active or unknown) keeps undo clean
+      return { ...state, activePartId: cmd.partId };
+
+    case "renameCar": {
+      const part = state.parts.find((p) => p.id === cmd.partId);
+      if (!part) return state;
+      const name = cmd.name.trim();
+      if (!name || name === part.name) return state; // blank/unchanged → no-op
+      return {
+        ...state,
+        parts: state.parts.map((p) => (p.id === cmd.partId ? { ...p, name } : p)),
+      };
+    }
+
+    // Drop a car, keeping ≥1 always. Clips stay shared (a clip used elsewhere
+    // must survive); an orphaned clip is left harmlessly. If the removed car was
+    // active, select its nearest neighbor.
+    case "removeCar": {
+      if (state.parts.length <= 1) return state; // never delete the last car
+      const idx = state.parts.findIndex((p) => p.id === cmd.partId);
+      if (idx < 0) return state;
+      const parts = state.parts.filter((p) => p.id !== cmd.partId);
+      const arrangement = state.arrangement.filter((c) => c.partId !== cmd.partId);
+      const activePartId =
+        state.activePartId === cmd.partId
+          ? (parts[Math.min(idx, parts.length - 1)] as Part).id
+          : state.activePartId;
+      return {
+        ...state,
+        parts,
+        arrangement:
+          arrangement.length > 0
+            ? arrangement
+            : parts.map((p) => ({ partId: p.id, repeats: 1 })),
+        activePartId,
+      };
+    }
   }
 }
 
