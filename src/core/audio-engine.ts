@@ -58,8 +58,14 @@ export class AudioEngine {
         layer.notes.forEach((chord, i) => {
           for (const n of chord) {
             const note = degreeToNote(project.scaleId, project.keyId, n.row);
+            // Resolve bend pin rows → note names here so the adapter stays free
+            // of music theory (Magic Notes lives in the core).
+            const bend = n.pins?.map((p) => ({
+              t: p.t,
+              noteName: degreeToNote(project.scaleId, project.keyId, p.row),
+            }));
             this.sound.scheduleNote(
-              note, layer.wave, i, total, opts, n.length, n.roll ?? 1,
+              note, layer.wave, i, total, opts, n.length, n.roll ?? 1, bend,
             );
           }
         });

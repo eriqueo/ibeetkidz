@@ -22,6 +22,7 @@ import {
 import {
   MicDeniedError,
   NoMicError,
+  type BendPoint,
   type BufferId,
   type SoundPort,
   type StepOptions,
@@ -436,6 +437,7 @@ export class ToneSoundPort implements SoundPort {
     opts: StepOptions,
     lengthSteps = 1,
     roll = 1,
+    bend?: readonly BendPoint[],
   ): void {
     const synth = new Tone.Synth({
       oscillator: { type: wave },
@@ -445,9 +447,24 @@ export class ToneSoundPort implements SoundPort {
     this.scheduledSynths.push(synth);
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
+    const hasBend = !!bend && bend.length > 0;
     Tone.getTransport().scheduleRepeat(
       (time) => {
-        if (roll > 1) {
+        const dur = Math.max(0.05, lengthSteps * stepDur * 0.92);
+        if (hasBend) {
+          // Swoop: hold one voice and ramp its pitch through the bend points.
+          // triggerAttack anchors the start frequency; each point is an
+          // exponential ramp (equal pitch steps sound even). Clear last loop's
+          // ramps first so they don't bleed into this one.
+          synth.frequency.cancelScheduledValues(time);
+          synth.triggerAttack(noteName, time);
+          for (const pt of bend) {
+            const when = time + Math.min(1, Math.max(0, pt.t)) * dur;
+            const hz = Math.max(1, Tone.Frequency(pt.noteName).toFrequency());
+            synth.frequency.exponentialRampToValueAtTime(hz, when);
+          }
+          synth.triggerRelease(time + dur);
+        } else if (roll > 1) {
           // Re-pluck the note `roll` times inside the start step (a melody fill).
           const subDur = (stepDur / roll) * 0.9;
           for (const s of subHitOffsets(roll, stepDur)) {
@@ -456,7 +473,6 @@ export class ToneSoundPort implements SoundPort {
         } else {
           // Sustain the voice across the note's length (Stretch), held just shy
           // of the next note so consecutive notes don't smear together.
-          const dur = Math.max(0.05, lengthSteps * stepDur * 0.92);
           synth.triggerAttackRelease(noteName, dur, time);
         }
       },

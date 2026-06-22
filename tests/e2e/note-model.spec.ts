@@ -61,6 +61,32 @@ test("melody: place → stretch → remove a note", async ({ page }) => {
   await expect(row.locator(".note-cell")).toHaveCount(16);
 });
 
+test("melody: drag a note's edge UP bends it (a swoop line appears)", async ({ page }) => {
+  await boot(page);
+  await page.locator('[data-act="add-melody"]').click();
+
+  const grid = page.locator(".melody-grid");
+  await expect(grid).toBeVisible();
+  await expect(grid.locator(".bend-line")).toHaveCount(0);
+
+  // Place a note low-ish (4th row from the top), then drag its handle straight
+  // up into a higher row → a dominant vertical drag = bend.
+  const row = page.locator(".melody-row").nth(4);
+  await row.locator(".note-cell").nth(2).click();
+  const handle = row.locator(".note-cell.on .note-handle");
+  const gridBox = (await grid.boundingBox())!;
+  const hBox = (await handle.boundingBox())!;
+  await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hBox.x + hBox.width / 2, gridBox.y + 4, { steps: 12 });
+  await page.mouse.up();
+
+  // The swoop is drawn as a polyline over the grid, and the note itself stays
+  // (one placed note, now bent).
+  await expect(grid.locator(".bend-line")).toHaveCount(1);
+  await expect(row.locator(".note-cell.on")).toHaveCount(1);
+});
+
 test("drum: double-tap cycles a cell's roll 1 → 2 → 4 → off", async ({ page }) => {
   await boot(page);
   // Add a kick lane via the Sound picker.

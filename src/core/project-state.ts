@@ -17,7 +17,8 @@ import {
   MIN_BPM,
   STEP_COUNT,
 } from "./types.ts";
-import type { ScaleId, KeyId } from "./scale.ts";
+import { MELODY_ROWS, type ScaleId, type KeyId } from "./scale.ts";
+import type { PitchPin } from "./types.ts";
 
 const clamp = (v: number, lo: number, hi: number): number =>
   Math.max(lo, Math.min(hi, v));
@@ -26,25 +27,46 @@ const clamp = (v: number, lo: number, hi: number): number =>
 export const maxLengthAt = (index: number): number =>
   Math.max(1, STEP_COUNT - index);
 
+/** Coerce raw pin data into a clean, sorted bend path: each pin clamped to a
+ *  real grid row and to t∈(0,1], de-duped by t (last wins), sorted. A pin at
+ *  t≤0 is dropped (t=0 IS the note's base row). Returns undefined for an empty
+ *  or absent path, so a flat note carries no `pins` field. */
+function sanitizePins(raw: unknown): PitchPin[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const byT = new Map<number, number>();
+  for (const p of raw) {
+    if (!p || typeof p !== "object") continue;
+    const o = p as Partial<PitchPin>;
+    if (typeof o.t !== "number" || typeof o.row !== "number") continue;
+    const t = clamp(o.t, 0, 1);
+    if (t <= 0) continue;
+    byT.set(t, clamp(Math.round(o.row), 0, MELODY_ROWS - 1));
+  }
+  if (byT.size === 0) return undefined;
+  return [...byT.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([t, row]) => ({ t, row }));
+}
+
 /** Build a clean StepNote: clamp length to the bar, keep roll only when it's a
- *  real fill (2|4), keep slideTo only when it's a finite number. Honors
- *  exactOptionalPropertyTypes by adding optional fields conditionally. */
+ *  real fill (2|4), keep a bend `pins` path only when non-empty. Roll and pins
+ *  are mutually exclusive (a note rolls OR bends) — pins win if both are passed.
+ *  Honors exactOptionalPropertyTypes by adding optional fields conditionally. */
 function makeNote(
   row: number,
   index: number,
   length = 1,
   roll?: number,
-  slideTo?: number,
+  pins?: unknown,
 ): StepNote {
   const note: StepNote = {
     row: Number.isFinite(row) ? Math.trunc(row) : 0,
     length: clamp(Math.round(length) || 1, 1, maxLengthAt(index)),
   };
+  const bend = sanitizePins(pins);
+  if (bend) return { ...note, pins: bend };
   const r = roll === 2 || roll === 4 ? (roll as Roll) : undefined;
-  const withRoll = r === undefined ? note : { ...note, roll: r };
-  return typeof slideTo === "number" && Number.isFinite(slideTo)
-    ? { ...withRoll, slideTo: Math.trunc(slideTo) }
-    : withRoll;
+  return r === undefined ? note : { ...note, roll: r };
 }
 
 /** Coerce one raw cell (StepNote | legacy number | boolean | null) at `index`
@@ -55,7 +77,7 @@ function coerceNote(raw: unknown, index: number): StepNote | null {
   if (typeof raw === "number") return makeNote(raw, index); // legacy melody row
   if (typeof raw === "object") {
     const o = raw as Partial<StepNote>;
-    return makeNote(o.row ?? 0, index, o.length ?? 1, o.roll, o.slideTo);
+    return makeNote(o.row ?? 0, index, o.length ?? 1, o.roll, o.pins);
   }
   return null;
 }
@@ -172,8 +194,18 @@ function sameNote(a: StepNote | null, b: StepNote | null): boolean {
     a.row === b.row &&
     a.length === b.length &&
     a.roll === b.roll &&
-    a.slideTo === b.slideTo
+    samePins(a.pins, b.pins)
   );
+}
+
+/** Structural equality for bend paths (sorted, so positional compare is valid). */
+function samePins(
+  a?: readonly PitchPin[],
+  b?: readonly PitchPin[],
+): boolean {
+  if (a === b) return true;
+  if (!a || !b || a.length !== b.length) return false;
+  return a.every((p, i) => p.t === b[i]!.t && p.row === b[i]!.row);
 }
 
 /** Apply `fn` to the note at (step `index`, pitch `row`) within a lane, writing
@@ -317,17 +349,18 @@ export function reduce(state: Project, cmd: Command): Project {
       );
 
     // Stretch: set a placed note's length (clamped to the bar). No-op if absent.
+    // Roll OR bend (whichever the note has) is preserved.
     case "resizeNote":
       return editLane(state, cmd.layerId, cmd.index, (l) =>
         editNote(l, cmd.index, cmd.row, (note) =>
           note
-            ? makeNote(note.row, cmd.index, cmd.length, note.roll, note.slideTo)
+            ? makeNote(note.row, cmd.index, cmd.length, note.roll, note.pins)
             : null,
         ),
       );
 
     // Roll: cycle a placed drum/melody note's fill (1 clears, 2|4 set). No-op
-    // if absent. Length + slide are preserved.
+    // if absent. Setting a roll drops any bend (roll and bend are exclusive).
     case "setRoll":
       return editLane(state, cmd.layerId, cmd.index, (l) =>
         editNote(l, cmd.index, cmd.row, (note) =>
@@ -337,9 +370,33 @@ export function reduce(state: Project, cmd: Command): Project {
                 cmd.index,
                 note.length,
                 cmd.roll === 1 ? undefined : cmd.roll,
-                note.slideTo,
+                undefined, // roll wins → clear pins
               )
             : null,
+        ),
+      );
+
+    // Bend (melody only): upsert a control point at fraction `t` targeting
+    // `toRow`. Adding a pin drops any roll (mutually exclusive). No-op on drums
+    // or an empty cell.
+    case "addPin":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        l.kind === "melody"
+          ? editNote(l, cmd.index, cmd.row, (note) =>
+              note
+                ? makeNote(note.row, cmd.index, note.length, undefined, [
+                    ...(note.pins ?? []),
+                    { t: cmd.t, row: cmd.toRow },
+                  ])
+                : null,
+            )
+          : l,
+      );
+
+    case "clearPins":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, (note) =>
+          note ? makeNote(note.row, cmd.index, note.length, note.roll) : null,
         ),
       );
 
