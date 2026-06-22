@@ -23,6 +23,15 @@ export function nearestBeatLoop(
   return { beats, seconds: beats * beatSec };
 }
 
+/** Even sub-hit offsets (in seconds) for a roll/fill inside ONE step: `roll`
+ *  hits spread across `stepDurationSec`, the first at 0. `roll` 1 (or less) is a
+ *  single hit `[0]`. Pure so the fill math is testable without Tone. */
+export function subHitOffsets(roll: number, stepDurationSec: number): number[] {
+  const n = Math.max(1, Math.floor(roll));
+  const slot = stepDurationSec / n;
+  return Array.from({ length: n }, (_, i) => i * slot);
+}
+
 /** Swing pushes the off-beats (odd steps) later for a bouncy feel. Returns the
  *  delay as a fraction of ONE step (0 = straight). `swing` is 0..1; at 1 an
  *  off-beat lands halfway to the next step. Even steps never move. */

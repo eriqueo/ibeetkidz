@@ -10,6 +10,8 @@ import {
   type Layer,
   type LaneKind,
   type Project,
+  type Roll,
+  type StepNote,
   MAX_BPM,
   MAX_LAYERS,
   MIN_BPM,
@@ -19,6 +21,44 @@ import type { ScaleId, KeyId } from "./scale.ts";
 
 const clamp = (v: number, lo: number, hi: number): number =>
   Math.max(lo, Math.min(hi, v));
+
+/** Longest a note at `index` may span without spilling past the bar end. */
+export const maxLengthAt = (index: number): number =>
+  Math.max(1, STEP_COUNT - index);
+
+/** Build a clean StepNote: clamp length to the bar, keep roll only when it's a
+ *  real fill (2|4), keep slideTo only when it's a finite number. Honors
+ *  exactOptionalPropertyTypes by adding optional fields conditionally. */
+function makeNote(
+  row: number,
+  index: number,
+  length = 1,
+  roll?: number,
+  slideTo?: number,
+): StepNote {
+  const note: StepNote = {
+    row: Number.isFinite(row) ? Math.trunc(row) : 0,
+    length: clamp(Math.round(length) || 1, 1, maxLengthAt(index)),
+  };
+  const r = roll === 2 || roll === 4 ? (roll as Roll) : undefined;
+  const withRoll = r === undefined ? note : { ...note, roll: r };
+  return typeof slideTo === "number" && Number.isFinite(slideTo)
+    ? { ...withRoll, slideTo: Math.trunc(slideTo) }
+    : withRoll;
+}
+
+/** Coerce one raw cell (StepNote | legacy number | boolean | null) at `index`
+ *  into a StepNote, or null for an off/rest cell. */
+function coerceNote(raw: unknown, index: number): StepNote | null {
+  if (raw == null || raw === false) return null;
+  if (raw === true) return makeNote(0, index); // legacy drum boolean
+  if (typeof raw === "number") return makeNote(raw, index); // legacy melody row
+  if (typeof raw === "object") {
+    const o = raw as Partial<StepNote>;
+    return makeNote(o.row ?? 0, index, o.length ?? 1, o.roll, o.slideTo);
+  }
+  return null;
+}
 
 export function emptyProject(id: string, name = "My Beat"): Project {
   return {
@@ -34,12 +74,20 @@ export function emptyProject(id: string, name = "My Beat"): Project {
   };
 }
 
+/** Loose constructor input: callers may still hand `steps` as a `boolean[]`
+ *  (generative beats, Send-to-Home) and `notes` as legacy `number`/`number[]`
+ *  cells. `makeLayer` normalizes everything into the StepNote model, so those
+ *  call sites stay untouched. */
+export type LayerInit = Pick<Layer, "id" | "clipId"> &
+  Partial<Omit<Layer, "steps" | "notes">> & {
+    readonly steps?: readonly (StepNote | boolean | null)[];
+    readonly notes?: readonly (readonly (StepNote | number)[] | number | null)[];
+  };
+
 /** Build a fully-formed Layer from the bits a caller cares about; the melody/
  *  drum-specific fields get sane defaults so every call site stays terse and
  *  every Layer in the Project is complete. */
-export function makeLayer(
-  partial: Pick<Layer, "id" | "clipId"> & Partial<Layer>,
-): Layer {
+export function makeLayer(partial: LayerInit): Layer {
   const kind: LaneKind = partial.kind ?? "drum";
   const layer: Layer = {
     id: partial.id,
@@ -47,14 +95,8 @@ export function makeLayer(
     volume: partial.volume ?? 0.9,
     muted: partial.muted ?? false,
     kind,
-    steps:
-      kind === "drum"
-        ? normalizeSteps(partial.steps)
-        : [],
-    notes:
-      kind === "melody"
-        ? normalizeNotes(partial.notes)
-        : [],
+    steps: kind === "drum" ? normalizeSteps(partial.steps) : [],
+    notes: kind === "melody" ? normalizeNotes(partial.notes) : [],
     wave: partial.wave ?? "triangle",
     echo: clamp(partial.echo ?? 0, 0, 1),
     tone: clamp(partial.tone ?? 1, 0, 1),
@@ -66,24 +108,104 @@ export function makeLayer(
     : { ...layer, swing: clamp(partial.swing, 0, 1) };
 }
 
-const normalizeSteps = (steps?: readonly boolean[]): boolean[] =>
-  steps && steps.length === STEP_COUNT
-    ? steps.slice()
-    : new Array<boolean>(STEP_COUNT).fill(false);
+/** Coerce any saved drum `steps` shape (boolean[] legacy, or (StepNote|null)[])
+ *  into the per-step hit model. One hit (or rest) per step. */
+function normalizeSteps(
+  steps?: readonly (StepNote | boolean | null)[],
+): (StepNote | null)[] {
+  if (!steps || steps.length !== STEP_COUNT)
+    return new Array<StepNote | null>(STEP_COUNT).fill(null);
+  return steps.map((cell, i) => coerceNote(cell, i));
+}
 
-/** Coerce any saved `notes` shape into the chord model (array of row-sets).
- *  Tolerates the pre-chord shape where each step was a single row or null. */
+/** Coerce any saved `notes` shape into the chord model (array of StepNote per
+ *  step). Tolerates the pre-chord shapes where each step was a single row, a
+ *  row-set, or null. De-dupes a chord by row so a note is unique per pitch. */
 function normalizeNotes(
-  notes?: readonly (readonly number[] | number | null)[],
-): number[][] {
-  const empty = (): number[][] =>
+  notes?: readonly (readonly (StepNote | number)[] | number | null)[],
+): StepNote[][] {
+  const empty = (): StepNote[][] =>
     Array.from({ length: STEP_COUNT }, () => []);
   if (!notes || notes.length !== STEP_COUNT) return empty();
-  return notes.map((step) => {
-    if (Array.isArray(step)) return [...new Set(step)];
-    if (typeof step === "number") return [step]; // legacy single-note step
-    return []; // null / rest
+  return notes.map((step, i) => {
+    const cells = Array.isArray(step) ? step : step == null ? [] : [step];
+    const byRow = new Map<number, StepNote>();
+    for (const cell of cells) {
+      const note = coerceNote(cell, i);
+      if (note) byRow.set(note.row, note); // last write wins per row
+    }
+    return [...byRow.values()];
   });
+}
+
+// ── Note edit helpers ────────────────────────────────────────────────────────
+// Both lane kinds carry StepNotes; these isolate the drum (one cell per step)
+// vs melody (a chord per step) shapes so each reducer reads as one intent.
+
+/** Replace one lane (matched by id) via `fn`; identity-stable when `fn` returns
+ *  the same Layer, so no-op edits never pollute undo history. Out-of-range step
+ *  indices are a no-op. */
+function editLane(
+  state: Project,
+  layerId: string,
+  index: number,
+  fn: (layer: Layer) => Layer,
+): Project {
+  let changed = false;
+  const layers = state.layers.map((l) => {
+    if (l.id !== layerId) return l;
+    const span = l.kind === "melody" ? l.notes.length : l.steps.length;
+    if (index < 0 || index >= span) return l;
+    const next = fn(l);
+    if (next !== l) changed = true;
+    return next;
+  });
+  return changed ? { ...state, layers } : state;
+}
+
+/** Structural equality for cells, so a resize/roll that lands on the SAME value
+ *  (common mid-drag) produces no state change and no undo entry. */
+function sameNote(a: StepNote | null, b: StepNote | null): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return (
+    a.row === b.row &&
+    a.length === b.length &&
+    a.roll === b.roll &&
+    a.slideTo === b.slideTo
+  );
+}
+
+/** Apply `fn` to the note at (step `index`, pitch `row`) within a lane, writing
+ *  back the result (null/absent = remove). Drums hold one cell per step (row
+ *  ignored); melody holds a chord keyed by row. Returns the same Layer when the
+ *  edit lands on the same value (no undo churn). */
+function editNote(
+  layer: Layer,
+  index: number,
+  row: number,
+  fn: (note: StepNote | null) => StepNote | null,
+): Layer {
+  if (layer.kind === "melody") {
+    const chord = layer.notes[index] ?? [];
+    const at = chord.findIndex((n) => n.row === row);
+    const prev = at >= 0 ? (chord[at] as StepNote) : null;
+    const next = fn(prev);
+    if (sameNote(prev, next)) return layer; // unchanged
+    const nextChord =
+      next === null
+        ? chord.filter((_, i) => i !== at)
+        : at >= 0
+          ? chord.map((n, i) => (i === at ? next : n))
+          : [...chord, next];
+    const notes = layer.notes.map((c, i) => (i === index ? nextChord : c));
+    return { ...layer, notes };
+  }
+  const cell = layer.steps[index] ?? null;
+  const next = fn(cell);
+  if (sameNote(cell, next)) return layer;
+  const steps = layer.steps.map((c, i) => (i === index ? next : c));
+  return { ...layer, steps };
 }
 
 export function reduce(state: Project, cmd: Command): Project {
@@ -163,32 +285,63 @@ export function reduce(state: Project, cmd: Command): Project {
         ),
       };
 
+    // Tap a drum cell: place a single hit, or clear it if already on. Row 0 —
+    // drums have no pitch. (Element type went boolean → StepNote|null, so this
+    // toggles null ↔ a length-1 hit instead of flipping a boolean.)
     case "toggleStep":
-      return {
-        ...state,
-        layers: state.layers.map((l) => {
-          if (l.id !== cmd.layerId) return l;
-          if (cmd.index < 0 || cmd.index >= l.steps.length) return l;
-          const steps = l.steps.slice();
-          steps[cmd.index] = !steps[cmd.index];
-          return { ...l, steps };
-        }),
-      };
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, 0, (cell) =>
+          cell ? null : makeNote(0, cmd.index),
+        ),
+      );
 
+    // Tap a melody cell: stack a note at this row, or remove it if already on.
     case "toggleNote":
-      return {
-        ...state,
-        layers: state.layers.map((l) => {
-          if (l.id !== cmd.layerId) return l;
-          if (cmd.index < 0 || cmd.index >= l.notes.length) return l;
-          const notes = l.notes.map((s) => s.slice());
-          const col = notes[cmd.index] as number[];
-          const at = col.indexOf(cmd.row);
-          if (at >= 0) col.splice(at, 1); // tap again to remove
-          else col.push(cmd.row); // stack another note → chord
-          return { ...l, notes };
-        }),
-      };
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, (note) =>
+          note ? null : makeNote(cmd.row, cmd.index),
+        ),
+      );
+
+    // Explicit place (idempotent): set/add a note; leave an existing one as-is.
+    case "addNote":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, (note) =>
+          note ?? makeNote(cmd.row, cmd.index, cmd.length ?? 1),
+        ),
+      );
+
+    case "removeNote":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, () => null),
+      );
+
+    // Stretch: set a placed note's length (clamped to the bar). No-op if absent.
+    case "resizeNote":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, (note) =>
+          note
+            ? makeNote(note.row, cmd.index, cmd.length, note.roll, note.slideTo)
+            : null,
+        ),
+      );
+
+    // Roll: cycle a placed drum/melody note's fill (1 clears, 2|4 set). No-op
+    // if absent. Length + slide are preserved.
+    case "setRoll":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        editNote(l, cmd.index, cmd.row, (note) =>
+          note
+            ? makeNote(
+                note.row,
+                cmd.index,
+                note.length,
+                cmd.roll === 1 ? undefined : cmd.roll,
+                note.slideTo,
+              )
+            : null,
+        ),
+      );
 
     case "setLayerWave":
       return {

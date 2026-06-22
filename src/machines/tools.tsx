@@ -15,7 +15,7 @@ import {
   type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import type { Clip, EffectId } from "../core/types.ts";
+import type { Clip, EffectId, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
 import { makeLayer } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
@@ -69,6 +69,43 @@ let melodySeq = 0;
 
 const cssVar = (name: string, value: string): CSSProperties =>
   ({ [name]: value }) as CSSProperties;
+
+// ── Note-lane rendering (shared by drum + melody lanes) ──────────────────────
+/** How long a double-tap window is before a tap on a placed drum cell counts as
+ *  a removal (a second tap inside the window cycles its roll instead). */
+const DOUBLE_TAP_MS = 260;
+/** Roll cycle for the "tap-tap to roll" gesture: none → 2 → 4 → none. */
+const nextRoll = (roll: StepNote["roll"]): 1 | 2 | 4 =>
+  roll === undefined ? 2 : roll === 2 ? 4 : 1;
+
+interface LaneSeg {
+  readonly index: number;
+  readonly span: number;
+  readonly note: StepNote | null;
+}
+
+/** Collapse a 16-step lane (one row's worth) into render segments: each placed
+ *  note becomes one span-N bar (absorbing the grid gaps), each gap an empty
+ *  cell. A note's visible span is capped at the next placed note so a stretch
+ *  never hides a later hit (the scheduler still honors the full length). */
+function laneSegments(noteAt: (i: number) => StepNote | null): LaneSeg[] {
+  const segs: LaneSeg[] = [];
+  let i = 0;
+  while (i < STEP_COUNT) {
+    const note = noteAt(i);
+    if (!note) {
+      segs.push({ index: i, span: 1, note: null });
+      i += 1;
+      continue;
+    }
+    let next = i + 1;
+    while (next < STEP_COUNT && !noteAt(next)) next += 1;
+    const span = Math.max(1, Math.min(note.length, next - i));
+    segs.push({ index: i, span, note });
+    i += span;
+  }
+  return segs;
+}
 
 // ── Editable label ───────────────────────────────────────────────────────────
 // Tap the name to rename it (a recording's name, a lane's name). Kept tiny and
@@ -494,7 +531,8 @@ const BeatMakerCanvas: FC = () => {
         {DRUM_SOUNDS.map((drum) => {
           const id = `beat-${drum.assetId}`;
           const layer = project.layers.find((l) => l.id === id);
-          const steps = layer?.steps ?? new Array<boolean>(STEP_COUNT).fill(false);
+          const steps =
+            layer?.steps ?? new Array<StepNote | null>(STEP_COUNT).fill(null);
           const clip: Clip = {
             id,
             source: { kind: "builtin", assetId: drum.assetId },
@@ -692,11 +730,76 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const { sound, dispatch } = useApp();
   const project = useProject();
   const { selected, select } = useLoopSelection();
+  // Pending drum-cell removal, held open for a double-tap → roll (see onDrumTap).
+  const pendingRemove = useRef<{ index: number; timer: number } | null>(null);
   const layer = project.layers.find((l) => l.id === layerId);
   if (!layer) return null;
   const clip = project.clips[layer.clipId];
   const isVoice = clip?.source.kind === "recording";
   const prefix = layer.kind === "melody" ? "🎵 " : isVoice ? "🎤 " : "";
+
+  // Drag a note's right-edge handle to stretch it ("pull it like taffy"). We
+  // resolve the step under the pointer from the lane's own width, so it snaps to
+  // whole steps. resizeNote no-ops when the length doesn't change, so dragging
+  // doesn't spam undo. `laneSel` scopes the math to the dragged row.
+  const beginStretch = (
+    e: React.PointerEvent,
+    laneSel: string,
+    index: number,
+    row: number,
+  ): void => {
+    e.stopPropagation();
+    e.preventDefault();
+    const handle = e.currentTarget as HTMLElement;
+    const laneEl = handle.closest(laneSel) as HTMLElement | null;
+    if (!laneEl) return;
+    handle.setPointerCapture?.(e.pointerId);
+    const onMove = (ev: PointerEvent): void => {
+      const rect = laneEl.getBoundingClientRect();
+      const frac = (ev.clientX - rect.left) / rect.width;
+      const step = Math.max(
+        index,
+        Math.min(STEP_COUNT - 1, Math.floor(frac * STEP_COUNT)),
+      );
+      dispatch({
+        type: "resizeNote",
+        layerId: layer.id,
+        index,
+        row,
+        length: step - index + 1,
+      });
+    };
+    const onUp = (): void => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+  };
+
+  // Tap a placed drum cell: remove it — UNLESS a second tap lands inside the
+  // double-tap window, which cycles its roll instead ("tap-tap to roll!"). The
+  // deferral only delays *removal* of an existing hit; placing is instant.
+  const onDrumTap = (i: number): void => {
+    const pending = pendingRemove.current;
+    if (pending && pending.index === i) {
+      clearTimeout(pending.timer);
+      pendingRemove.current = null;
+      dispatch({
+        type: "setRoll",
+        layerId: layer.id,
+        index: i,
+        row: 0,
+        roll: nextRoll(layer.steps[i]?.roll),
+      });
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      pendingRemove.current = null;
+      dispatch({ type: "toggleStep", layerId: layer.id, index: i });
+    }, DOUBLE_TAP_MS);
+    pendingRemove.current = { index: i, timer };
+  };
 
   return (
     <div
@@ -741,35 +844,42 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           {Array.from({ length: MELODY_ROWS }, (_, r) => MELODY_ROWS - 1 - r).map(
             (row) => (
               <div className="melody-row" key={row}>
-                {layer.notes.map((rows, i) => {
-                  const on = rows.includes(row);
-                  return (
+                {laneSegments(
+                  (i) => layer.notes[i]?.find((n) => n.row === row) ?? null,
+                ).map((seg) =>
+                  seg.note ? (
                     <button
-                      key={i}
-                      className={
-                        "note-cell" +
-                        (on ? " on" : "") +
-                        (i % 4 === 0 ? " downbeat" : "")
-                      }
+                      key={seg.index}
+                      className="note-cell on"
+                      style={seg.span > 1 ? { gridColumn: `span ${seg.span}` } : undefined}
+                      title="Tap to remove · drag the edge to stretch"
                       onPointerDown={(e) => {
                         e.stopPropagation();
                         select(layer.id);
-                        dispatch({
-                          type: "toggleNote",
-                          layerId: layer.id,
-                          index: i,
-                          row,
-                        });
-                        if (!on) {
-                          sound.previewNote(
-                            degreeToNote(project.scaleId, project.keyId, row),
-                            layer.wave,
-                          );
-                        }
+                        dispatch({ type: "toggleNote", layerId: layer.id, index: seg.index, row });
+                      }}
+                    >
+                      <span
+                        className="note-handle"
+                        onPointerDown={(e) => beginStretch(e, ".melody-row", seg.index, row)}
+                      />
+                    </button>
+                  ) : (
+                    <button
+                      key={seg.index}
+                      className={"note-cell" + (seg.index % 4 === 0 ? " downbeat" : "")}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        select(layer.id);
+                        dispatch({ type: "toggleNote", layerId: layer.id, index: seg.index, row });
+                        sound.previewNote(
+                          degreeToNote(project.scaleId, project.keyId, row),
+                          layer.wave,
+                        );
                       }}
                     />
-                  );
-                })}
+                  ),
+                )}
               </div>
             ),
           )}
@@ -777,20 +887,42 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
         </div>
       ) : (
         <div className="loop-lane">
-          {layer.steps.map((on, i) => (
-            <button
-              key={i}
-              className={
-                "loop-cell" + (on ? " on" : "") + (i % 4 === 0 ? " downbeat" : "")
-              }
-              onPointerDown={(e) => {
-                e.stopPropagation();
-                select(layer.id);
-                dispatch({ type: "toggleStep", layerId: layer.id, index: i });
-                if (!on && clip) sound.play(clip);
-              }}
-            />
-          ))}
+          {laneSegments((i) => layer.steps[i] ?? null).map((seg) =>
+            seg.note ? (
+              <button
+                key={seg.index}
+                className={"loop-cell on" + (seg.note.roll ? " has-roll" : "")}
+                style={seg.span > 1 ? { gridColumn: `span ${seg.span}` } : undefined}
+                title="Tap to remove · tap-tap to roll · drag the edge to stretch"
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  select(layer.id);
+                  onDrumTap(seg.index);
+                }}
+              >
+                {seg.note.roll && (
+                  <span className="roll-pips" aria-hidden>
+                    {"•".repeat(seg.note.roll)}
+                  </span>
+                )}
+                <span
+                  className="note-handle"
+                  onPointerDown={(e) => beginStretch(e, ".loop-lane", seg.index, 0)}
+                />
+              </button>
+            ) : (
+              <button
+                key={seg.index}
+                className={"loop-cell" + (seg.index % 4 === 0 ? " downbeat" : "")}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  select(layer.id);
+                  dispatch({ type: "toggleStep", layerId: layer.id, index: seg.index });
+                  if (clip) sound.play(clip);
+                }}
+              />
+            ),
+          )}
           <div className="loop-playhead" />
         </div>
       )}

@@ -57,6 +57,26 @@ export interface Clip {
  *  note (a grid row) per step. Both share the Loop Stage timeline. */
 export type LaneKind = "drum" | "melody";
 
+/** How many sub-hits a `roll` packs into the start step (drum fills). 1 is the
+ *  default and is represented by an ABSENT `roll` field, so the common case
+ *  stays field-free (same "absent = default" convention as `swing`/`loopBeats`). */
+export type Roll = 2 | 4;
+
+/** The one placed note/hit behind BOTH melody and drum lanes ("everything is a
+ *  note"). `row` is the melody scale-degree — Magic Notes maps it to an in-scale
+ *  pitch at schedule time (`degreeToNote`); drum hits ignore it (row 0). */
+export interface StepNote {
+  /** Melody grid-row / scale degree; 0 for drum hits. */
+  readonly row: number;
+  /** Steps this note spans (sustain). >= 1; clamped to the bar end on edit. */
+  readonly length: number;
+  /** Sub-hits packed into the start step (a fill). Absent = a single hit. */
+  readonly roll?: Roll;
+  /** FUTURE bend pass: target scale degree to glide to. Defined now so saves are
+   *  forward-stable; the scheduler does NOT honor it yet. */
+  readonly slideTo?: number;
+}
+
 /** A layer on the Stage — one looping/triggerable lane in the mix. */
 export interface Layer {
   readonly id: string;
@@ -65,11 +85,12 @@ export interface Layer {
   readonly muted: boolean;
   /** "drum" → use `steps`; "melody" → use `notes`. */
   readonly kind: LaneKind;
-  /** Step pattern for drum lanes; empty for melody lanes. */
-  readonly steps: readonly boolean[];
-  /** Per-step melody: the set of grid-row indices sounding on that step (a
+  /** Drum lane: one hit (a `StepNote`) or `null` (rest) per step. Empty for
+   *  melody lanes. (Was `boolean[]`; `null`/object preserve on/off truthiness.) */
+  readonly steps: readonly (StepNote | null)[];
+  /** Melody lane: the chord of notes sounding from each step (multiple = a
    *  chord). Empty inner array = a rest. Empty outer array for drum lanes. */
-  readonly notes: readonly (readonly number[])[];
+  readonly notes: readonly (readonly StepNote[])[];
   /** Melody timbre (ignored by drum lanes). */
   readonly wave: ThereminWave;
   /** Per-lane echo send, 0..1 (0 = dry). */
@@ -111,6 +132,11 @@ export type Command =
   | { readonly type: "toggleLayerMuted"; readonly layerId: string }
   | { readonly type: "toggleStep"; readonly layerId: string; readonly index: number }
   | { readonly type: "toggleNote"; readonly layerId: string; readonly index: number; readonly row: number }
+  // Note model (length/roll). `row` picks the note within a step (drums pass 0).
+  | { readonly type: "addNote"; readonly layerId: string; readonly index: number; readonly row: number; readonly length?: number }
+  | { readonly type: "removeNote"; readonly layerId: string; readonly index: number; readonly row: number }
+  | { readonly type: "resizeNote"; readonly layerId: string; readonly index: number; readonly row: number; readonly length: number }
+  | { readonly type: "setRoll"; readonly layerId: string; readonly index: number; readonly row: number; readonly roll: 1 | Roll }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }

@@ -14,7 +14,11 @@ import {
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
-import { stepIndexFromProgress, swingDelayFraction } from "../core/timeline.ts";
+import {
+  stepIndexFromProgress,
+  subHitOffsets,
+  swingDelayFraction,
+} from "../core/timeline.ts";
 import {
   MicDeniedError,
   NoMicError,
@@ -348,10 +352,14 @@ export class ToneSoundPort implements SoundPort {
     setTimeout(() => synth.dispose(), 700);
   }
 
+  /** Duration of one step in seconds at the live tempo. */
+  private stepDurationSec(totalSteps: number): number {
+    return Tone.Time("1m").toSeconds() / Math.max(1, totalSteps);
+  }
+
   /** Seconds-into-the-bar a step fires, with swing leaning the off-beats late. */
   private stepOffset(stepIndex: number, totalSteps: number, swing: number): number {
-    const measure = Tone.Time("1m").toSeconds();
-    const stepDur = measure / totalSteps;
+    const stepDur = this.stepDurationSec(totalSteps);
     return stepDur * (stepIndex + swingDelayFraction(stepIndex, swing));
   }
 
@@ -390,8 +398,14 @@ export class ToneSoundPort implements SoundPort {
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
+    _lengthSteps = 1,
+    roll = 1,
   ): void {
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
+    // A roll fires `roll` evenly-spaced hits within the start step (a fill).
+    // length is intentionally unused here: a one-shot drum sample rings at its
+    // own natural length, so "stretching" a drum is a visual/placement concept.
+    const subs = subHitOffsets(roll, this.stepDurationSec(totalSteps));
     // Resolve through resolveClip so effected clips (a "funny" voice recording
     // sent to Home) loop with their baked effects, not the dry source. Drums are
     // un-effected builtins, so this resolves on the next microtask — inaudibly
@@ -404,7 +418,13 @@ export class ToneSoundPort implements SoundPort {
       );
       player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => player.start(time), "1m", offset);
+      Tone.getTransport().scheduleRepeat(
+        (time) => {
+          for (const s of subs) player.start(time + s);
+        },
+        "1m",
+        offset,
+      );
     });
   }
 
@@ -414,6 +434,8 @@ export class ToneSoundPort implements SoundPort {
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
+    lengthSteps = 1,
+    roll = 1,
   ): void {
     const synth = new Tone.Synth({
       oscillator: { type: wave },
@@ -422,8 +444,22 @@ export class ToneSoundPort implements SoundPort {
     synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
     this.scheduledSynths.push(synth);
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
+    const stepDur = this.stepDurationSec(totalSteps);
     Tone.getTransport().scheduleRepeat(
-      (time) => synth.triggerAttackRelease(noteName, "16n", time),
+      (time) => {
+        if (roll > 1) {
+          // Re-pluck the note `roll` times inside the start step (a melody fill).
+          const subDur = (stepDur / roll) * 0.9;
+          for (const s of subHitOffsets(roll, stepDur)) {
+            synth.triggerAttackRelease(noteName, subDur, time + s);
+          }
+        } else {
+          // Sustain the voice across the note's length (Stretch), held just shy
+          // of the next note so consecutive notes don't smear together.
+          const dur = Math.max(0.05, lengthSteps * stepDur * 0.92);
+          synth.triggerAttackRelease(noteName, dur, time);
+        }
+      },
       "1m",
       offset,
     );
