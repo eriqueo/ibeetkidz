@@ -14,6 +14,9 @@ import { usePhoneLayout } from "../app/use-viewport.ts";
 import {
   TOOLS,
   LoopSelectionProvider,
+  TracksStrip,
+  TrainModeProvider,
+  useTrainVisible,
   type ToolDescriptor,
 } from "../machines/tools.tsx";
 import { VizPanel } from "./VizPanel.tsx";
@@ -206,37 +209,44 @@ export const Shell: FC = () => {
   return (
     <div id="app">
       <div className="shell-root">
-        <LoopSelectionProvider>
-          <div className={"shell-grid" + (sideRail ? " shell-grid--rail" : "")}>
-            <Palette activeId={active.id} />
-            <header className="options-bar">
-              <OptionsBar tool={active} />
-            </header>
-            <main className="canvas">
-              <Canvas />
-            </main>
-            {sideRail && Rail && (
-              <aside className="rail" data-rail={active.id}>
+        <TrainModeProvider>
+          <LoopSelectionProvider>
+            <div className={"shell-grid" + (sideRail ? " shell-grid--rail" : "")}>
+              <Palette activeId={active.id} />
+              <header className="options-bar">
+                <OptionsBar tool={active} />
+              </header>
+              <main className="canvas">
+                <Canvas />
+              </main>
+              {sideRail && Rail && (
+                <aside className="rail" data-rail={active.id}>
+                  <Rail />
+                </aside>
+              )}
+              <PlayBar
+                watching={watching}
+                onToggleWatch={() => setWatching((w) => !w)}
+              />
+            </div>
+            <TracksRegion />
+            {sheetRail && Rail && (
+              <RailSheet
+                toolId={active.id}
+                open={sheetOpen}
+                onToggle={() => setSheetOpen((o) => !o)}
+              >
                 <Rail />
-              </aside>
+              </RailSheet>
             )}
-            <PlayBar
-              watching={watching}
-              onToggleWatch={() => setWatching((w) => !w)}
-            />
-          </div>
-          {sheetRail && Rail && (
-            <RailSheet
-              toolId={active.id}
-              open={sheetOpen}
-              onToggle={() => setSheetOpen((o) => !o)}
-            >
-              <Rail />
-            </RailSheet>
-          )}
-          {watching && <VizPanel onClose={() => setWatching(false)} />}
-        </LoopSelectionProvider>
+            {watching && <VizPanel onClose={() => setWatching(false)} />}
+          </LoopSelectionProvider>
+        </TrainModeProvider>
       </div>
     </div>
   );
 };
+
+// The Tracks strip lives below the play bar as its own flex row, mounted only
+// once the kid has a train (≥2 cars or after "Send to Tracks").
+const TracksRegion: FC = () => (useTrainVisible() ? <TracksStrip /> : null);

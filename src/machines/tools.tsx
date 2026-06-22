@@ -15,9 +15,9 @@ import {
   type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import type { Clip, EffectId, StepNote } from "../core/types.ts";
+import type { Clip, EffectId, Project, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
-import { activeLayers, makeLayer } from "../core/project-state.ts";
+import { activeLayers, makeLayer, songBars } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
@@ -62,6 +62,42 @@ export const LoopSelectionProvider: FC<{ children: ReactNode }> = ({
   );
 };
 const useLoopSelection = (): LoopSelection => useContext(LoopSelectionCtx);
+
+// ── Song Train reveal (progressive disclosure) ───────────────────────────────
+// Nothing about trains shows until the kid taps "Send to Tracks" (or already
+// has ≥2 cars). The flag lives in a tiny context so the Home button that flips
+// it and the Shell that renders the strip both read the same state.
+interface TrainMode {
+  readonly revealed: boolean;
+  reveal(): void;
+}
+const TrainModeCtx = createContext<TrainMode>({ revealed: false, reveal() {} });
+export const TrainModeProvider: FC<{ children: ReactNode }> = ({ children }) => {
+  const [revealed, setRevealed] = useState(false);
+  return (
+    <TrainModeCtx.Provider
+      value={{ revealed, reveal: () => setRevealed(true) }}
+    >
+      {children}
+    </TrainModeCtx.Provider>
+  );
+};
+const useTrainMode = (): TrainMode => useContext(TrainModeCtx);
+
+/** Whether the Tracks strip should be on screen: once revealed, or as soon as a
+ *  second car exists (so a reloaded multi-car song shows its train). */
+const trainVisible = (project: Project, revealed: boolean): boolean =>
+  revealed || project.parts.length >= 2;
+
+/** Hook form for the Shell, which renders the strip region. */
+export const useTrainVisible = (): boolean =>
+  trainVisible(useProject(), useTrainMode().revealed);
+
+// Unique car ids minted in the (impure) UI shell. Time-based so they never clash
+// with ids from a previously-saved project after a reload (addCar no-ops on a
+// clashing id, which would otherwise silently swallow the new car).
+let carSeq = 0;
+const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 
 // Friendly colors cycled onto new melody lanes.
 const MELODY_COLORS = ["#8338ec", "#3a86ff", "#06d6a0", "#fb5607"];
@@ -609,6 +645,7 @@ const BeatMakerCanvas: FC = () => {
 const LoopStageCanvas: FC = () => {
   const { sound, dispatch } = useApp();
   const project = useProject();
+  const { revealed, reveal } = useTrainMode();
   const boardRef = useRef<HTMLDivElement>(null);
 
   // Sweep the playhead from the live transport position via a CSS var on the
@@ -710,6 +747,16 @@ const LoopStageCanvas: FC = () => {
         >
           ➕ ✨ Magic
         </button>
+        {!trainVisible(project, revealed) && (
+          <button
+            className="t-btn loop-train"
+            data-act="send-tracks"
+            onClick={reveal}
+            title="Turn this loop into the first car of a song train"
+          >
+            🚂 Send to Tracks
+          </button>
+        )}
         <span className="loop-hint">
           Stack sounds, melodies, your voice & Magic Pad — then shape it with
           Studio.
@@ -1220,6 +1267,142 @@ const LoopStageRail: FC = () => {
         <p className="coach">Add a lane, then tap it to tweak its sound here.</p>
       )}
     </div>
+  );
+};
+
+// ── Song Train: the Tracks strip ─────────────────────────────────────────────
+// A new region below the play bar (shown only once there's a train). Cars sit
+// left→right in song order as colored blocks; tap one to open it in Home, ▶ Ride
+// plays the whole song through. The riding car lights up while it plays.
+
+/** Map an absolute bar to the arrangement index currently sounding, so the strip
+ *  can highlight the riding car. -1 when stopped or the song is empty. */
+const ridingIndex = (project: Project, bar: number): number => {
+  if (bar < 0) return -1;
+  const total = songBars(project);
+  let pos = bar % total;
+  for (let i = 0; i < project.arrangement.length; i++) {
+    const reps = Math.max(1, project.arrangement[i]!.repeats);
+    if (pos < reps) return i;
+    pos -= reps;
+  }
+  return -1;
+};
+
+/** One car in the strip: colored block, tap to open in Home, double-tap the
+ *  name to rename. The active (editing) car gets a ring; the riding car pulses. */
+const CarBlock: FC<{
+  partId: string;
+  index: number;
+  riding: boolean;
+}> = ({ partId, index, riding }) => {
+  const { dispatch } = useApp();
+  const project = useProject();
+  const part = project.parts.find((p) => p.id === partId);
+  const [editing, setEditing] = useState(false);
+  if (!part) return null;
+  const active = project.activePartId === partId;
+  const open = (): void => {
+    dispatch({ type: "selectCar", partId });
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
+  const commit = (name: string): void => {
+    setEditing(false);
+    dispatch({ type: "renameCar", partId, name });
+  };
+  return (
+    <button
+      type="button"
+      className={
+        "car-block" + (active ? " active" : "") + (riding ? " riding" : "")
+      }
+      data-car={partId}
+      style={cssVar("--car-color", part.color)}
+      onClick={open}
+    >
+      <span className="car-num">{index + 1}</span>
+      {editing ? (
+        <input
+          className="car-rename"
+          defaultValue={part.name}
+          autoFocus
+          onClick={(e) => e.stopPropagation()}
+          onBlur={(e) => commit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(e.currentTarget.value);
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+      ) : (
+        <span
+          className="car-name"
+          onDoubleClick={(e) => {
+            e.stopPropagation();
+            setEditing(true);
+          }}
+        >
+          {part.name}
+        </span>
+      )}
+    </button>
+  );
+};
+
+export const TracksStrip: FC = () => {
+  const { dispatch, engine, getProject } = useApp();
+  const project = useProject();
+  const [riding, setRiding] = useState(-1);
+
+  // Light up the riding car each bar. rAF reads the transport; we only re-render
+  // when the active car actually changes (about once per bar), not every frame.
+  useEffect(() => {
+    let raf = 0;
+    const tick = (): void => {
+      const idx = ridingIndex(getProject(), engine.getTransportBar());
+      setRiding((prev) => (prev === idx ? prev : idx));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [engine, getProject]);
+
+  const addCar = (): void => {
+    dispatch({ type: "addCar", id: newCarId() });
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
+
+  return (
+    <section className="tracks-strip" data-region="tracks">
+      <div className="tracks-head">🚂 Song Train</div>
+      <div className="tracks-cars">
+        {project.arrangement.map((car, i) => (
+          <CarBlock
+            key={`${car.partId}-${i}`}
+            partId={car.partId}
+            index={i}
+            riding={riding === i}
+          />
+        ))}
+        <button
+          type="button"
+          className="car-add"
+          data-act="new-car"
+          onClick={addCar}
+          title="Add a new car (a copy of this one to change)"
+        >
+          ＋<span>New Car</span>
+        </button>
+      </div>
+      <button
+        type="button"
+        className="tracks-ride"
+        data-act="ride"
+        onClick={() => engine.playRide(getProject())}
+        title="Play the whole song, car after car"
+      >
+        ▶ Ride
+      </button>
+    </section>
   );
 };
 
