@@ -12,6 +12,14 @@ export type BufferId = string;
 // (the Tone adapter, the UI tools) can keep pulling it from the port boundary.
 export type { ThereminWave };
 
+/** One target of a pitch-bend glide: the (already scale-resolved) note to reach
+ *  at fraction `t` of the note's length. The core resolves pin rows → note names
+ *  so the adapter stays free of music theory. */
+export interface BendPoint {
+  readonly t: number;
+  readonly noteName: string;
+}
+
 /** Mix + groove options shared by every transport-scheduled voice. */
 export interface StepOptions {
   /** Linear mix level, 0..1. */
@@ -82,7 +90,9 @@ export interface SoundPort {
   /** Schedule a looping melody note (pitched synth voice) on the transport at
    *  the given step. `noteName` is scientific pitch (e.g. "C4"). `lengthSteps`
    *  sustains the voice across that many steps; `roll` subdivides the start step
-   *  into that many sub-hits (a fill). */
+   *  into that many sub-hits (a fill). `bend`, when present, glides the voice's
+   *  pitch through its points over the note's length (a swoop) — bend and roll
+   *  are mutually exclusive (the core guarantees it). */
   scheduleNote(
     noteName: string,
     wave: ThereminWave,
@@ -91,6 +101,7 @@ export interface SoundPort {
     opts: StepOptions,
     lengthSteps?: number,
     roll?: number,
+    bend?: readonly BendPoint[],
   ): void;
 
   /** Real-time XY control for the theremin machine (resolved live, not baked). */
