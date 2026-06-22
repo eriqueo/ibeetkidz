@@ -331,6 +331,26 @@ body {
   border-color: var(--accent);
 }
 
+/* Magic Pad top bar: record the performance, then name + send it Home. */
+.magic-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+}
+.magic-record {
+  width: auto;
+  height: auto;
+  padding: 0.6rem 1.1rem;
+  font-size: 1.05rem;
+  background: #8338ec;
+}
+.magic-record.recording {
+  background: #ff0040;
+  animation: pulse 0.6s infinite;
+}
+
 /* XY theremin pad */
 .xy-pad {
   position: relative;

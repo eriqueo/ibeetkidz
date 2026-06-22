@@ -455,11 +455,14 @@ const LoopStageCanvas: FC = () => {
   const { select } = useLoopSelection();
   const [picking, setPicking] = useState(false);
 
-  // Add (or just re-select) a SPECIFIC drum the kid chose — no more random.
-  const addDrum = (assetId: string): void => {
-    const drum = DRUM_SOUNDS.find((d) => d.assetId === assetId);
-    if (!drum) return;
-    const id = `beat-${drum.assetId}`;
+  // Add (or just re-select) a SPECIFIC built-in sound the kid chose — any pad
+  // from the Sound Pads pack (drums + melodic blips) becomes a Home lane,
+  // triggered once per step. Same rule as the sidebar: a Sound Pad on Home is
+  // just that pad as a track.
+  const addSound = (assetId: string): void => {
+    const snd = BUILTIN_SOUNDS.find((s) => s.assetId === assetId);
+    if (!snd) return;
+    const id = `beat-${snd.assetId}`;
     setPicking(false);
     if (project.layers.some((l) => l.id === id)) {
       select(id); // already on the stage → highlight it
@@ -467,15 +470,15 @@ const LoopStageCanvas: FC = () => {
     }
     const clip: Clip = {
       id,
-      source: { kind: "builtin", assetId: drum.assetId },
+      source: { kind: "builtin", assetId: snd.assetId },
       effects: [],
-      color: drum.color,
-      label: drum.label,
+      color: snd.color,
+      label: snd.label,
     };
     dispatch({ type: "addClip", clip });
     dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum" }) });
     select(id);
-    sound.play(clip); // a quick taste of the drum you just picked
+    sound.play(clip); // a quick taste of the sound you just picked
   };
 
   // Add an empty melody lane the kid fills in by tapping the note grid.
@@ -501,7 +504,7 @@ const LoopStageCanvas: FC = () => {
           data-act="add-drum"
           onClick={() => setPicking((p) => !p)}
         >
-          ➕ 🥁 Drum
+          ➕ 🥁 Sound
         </button>
         <button className="t-btn" data-act="add-melody" onClick={addMelody}>
           ➕ 🎵 Melody
@@ -515,14 +518,24 @@ const LoopStageCanvas: FC = () => {
         >
           ➕ 🎤 Voice
         </button>
+        <button
+          className="t-btn"
+          data-act="go-magic"
+          onClick={() =>
+            dispatch({ type: "setActiveMachine", machineId: "theremin-xy" })
+          }
+        >
+          ➕ ✨ Magic
+        </button>
         <span className="loop-hint">
-          Stack drums, melodies & your voice — then shape it with Studio.
+          Stack sounds, melodies, your voice & Magic Pad — then shape it with
+          Studio.
         </span>
       </div>
 
       {picking && (
         <div className="drum-picker" data-picker="drums">
-          {DRUM_SOUNDS.map((d) => {
+          {BUILTIN_SOUNDS.map((d) => {
             const present = project.layers.some((l) => l.id === `beat-${d.assetId}`);
             return (
               <button
@@ -530,7 +543,7 @@ const LoopStageCanvas: FC = () => {
                 className={"drum-chip" + (present ? " present" : "")}
                 data-drum={d.assetId}
                 style={cssVar("--pad-color", d.color)}
-                onClick={() => addDrum(d.assetId)}
+                onClick={() => addSound(d.assetId)}
               >
                 <span className="drum-emoji">{d.emoji}</span>
                 <span>{d.label}</span>
@@ -825,6 +838,48 @@ const LoopStageRail: FC = () => {
               }
             />
           </RailControl>
+
+          <RailControl
+            title={`🎨 Tone · ${toneLabel(lane.tone)}`}
+            coach="Bright = sparkly and clear; dark = soft and muffled, like it's far away."
+          >
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={lane.tone}
+              onChange={(e) =>
+                dispatch({
+                  type: "setLayerTone",
+                  layerId: lane.id,
+                  tone: Number(e.target.value),
+                })
+              }
+            />
+          </RailControl>
+
+          <RailControl
+            title={`🎢 This Lane's Groove · ${
+              (lane.swing ?? project.swing) > 0.05 ? "Bouncy" : "Straight"
+            }`}
+            coach="Swing just this lane — let one part bounce while the rest marches."
+          >
+            <input
+              type="range"
+              min="0"
+              max="1"
+              step="0.05"
+              value={lane.swing ?? project.swing}
+              onChange={(e) =>
+                dispatch({
+                  type: "setLayerSwing",
+                  layerId: lane.id,
+                  swing: Number(e.target.value),
+                })
+              }
+            />
+          </RailControl>
         </>
       ) : (
         <p className="coach">Add a lane, then tap it to tweak its sound here.</p>
@@ -844,13 +899,65 @@ const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
 
 const clamp01 = (n: number): number => Math.max(0, Math.min(1, n));
 
+/** Kid-readable name for a tone (brightness) value. */
+const toneLabel = (tone: number): string =>
+  tone > 0.66 ? "Bright" : tone > 0.33 ? "Mellow" : "Dark";
+
+let magicCount = 0; // numbers Magic Pad recordings so they're tellable apart
+
 const MagicPadCanvas: FC = () => {
-  const { sound } = useApp();
+  const { sound, dispatch } = useApp();
+  const project = useProject();
+  const { select } = useLoopSelection();
   const padRef = useRef<HTMLDivElement>(null);
   const dotRef = useRef<HTMLDivElement>(null);
   const active = useRef(false);
 
+  const [recording, setRecording] = useState(false);
+  const [clipId, setClipId] = useState<string | null>(null);
+  const clip = clipId ? project.clips[clipId] : undefined;
+  const onHome = clipId ? project.layers.some((l) => l.id === clipId) : false;
+
   useEffect(() => () => sound.thereminOff(), [sound]);
+
+  const toggleRecord = async (): Promise<void> => {
+    if (!recording) {
+      await sound.startPerformanceRecording();
+      setRecording(true);
+      return;
+    }
+    setRecording(false);
+    sound.thereminOff(); // make sure the held voice (if any) is released
+    try {
+      const bufferId = await sound.stopPerformanceRecording();
+      const newClip: Clip = {
+        id: `clip-${clipSeq++}`,
+        source: { kind: "recording", bufferId },
+        effects: [],
+        color: "#8338ec",
+        label: `Magic Pad ${++magicCount}`,
+      };
+      dispatch({ type: "addClip", clip: newClip });
+      setClipId(newClip.id);
+      sound.play(newClip);
+    } catch {
+      // No-op: nothing was captured. The pad stays ready to try again.
+    }
+  };
+
+  // Stack the captured performance onto Home as a once-per-loop lane, then jump
+  // to Home with it selected — the same rule as a voice recording.
+  const sendToHome = (): void => {
+    if (!clipId || onHome) return;
+    const steps = new Array<boolean>(STEP_COUNT).fill(false);
+    steps[0] = true;
+    dispatch({
+      type: "addLayer",
+      layer: makeLayer({ id: clipId, clipId, kind: "drum", steps }),
+    });
+    select(clipId);
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
 
   const norm = (e: React.PointerEvent): { x: number; y: number } => {
     const r = padRef.current!.getBoundingClientRect();
@@ -887,6 +994,38 @@ const MagicPadCanvas: FC = () => {
 
   return (
     <section className="machine machine--theremin" data-machine="theremin-xy">
+      <div className="magic-bar">
+        <button
+          className={"t-btn magic-record" + (recording ? " recording" : "")}
+          data-act="magic-record"
+          onClick={toggleRecord}
+        >
+          {recording ? "⏺️ Stop & keep it" : "🎙️ Record my song"}
+        </button>
+        {clip && (
+          <div
+            className="voice-clip-card"
+            style={cssVar("--tile-color", clip.color)}
+          >
+            <span className="voice-clip-name">
+              ✨ <EditableLabel
+                value={clip.label}
+                onCommit={(label) =>
+                  dispatch({ type: "renameClip", clipId: clip.id, label })
+                }
+              />
+            </span>
+            <button
+              className="t-btn send-home"
+              data-act="send-home"
+              disabled={onHome}
+              onClick={sendToHome}
+            >
+              {onHome ? "✓ On Home" : "➡️ 🏠 Send to Home"}
+            </button>
+          </div>
+        )}
+      </div>
       <div
         className="xy-pad"
         ref={padRef}
@@ -896,7 +1035,11 @@ const MagicPadCanvas: FC = () => {
         onPointerCancel={up}
       >
         <div className="xy-dot" ref={dotRef} hidden />
-        <p className="xy-hint">Drag your finger to play! ✨</p>
+        <p className="xy-hint">
+          {recording
+            ? "Recording… drag to play, then Stop! ✨"
+            : "Drag your finger to play! ✨"}
+        </p>
       </div>
     </section>
   );

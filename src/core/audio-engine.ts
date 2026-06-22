@@ -46,7 +46,13 @@ export class AudioEngine {
       if (layer.muted) continue;
       const clip = project.clips[layer.clipId];
       if (!clip) continue;
-      const opts = { volume: layer.volume, swing: project.swing, echo: layer.echo };
+      // Per-lane groove overrides the song swing once a kid tweaks it.
+      const opts = {
+        volume: layer.volume,
+        swing: layer.swing ?? project.swing,
+        echo: layer.echo,
+        tone: layer.tone,
+      };
       if (layer.kind === "melody") {
         layer.notes.forEach((rows, i) => {
           for (const row of rows) {

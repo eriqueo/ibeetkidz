@@ -1,0 +1,92 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="620" viewBox="0 0 900 620" font-family="'Baloo 2','Comic Sans MS',sans-serif">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#7fb7e8"/>
+      <stop offset="1" stop-color="#bfa6e0"/>
+    </linearGradient>
+  </defs>
+  <rect width="900" height="620" fill="url(#sky)"/>
+
+  <!-- soft clouds for warmth, not neon -->
+  <g fill="#ffffff" opacity="0.6">
+    <ellipse cx="160" cy="90" rx="60" ry="22"/><ellipse cx="210" cy="80" rx="40" ry="20"/>
+    <ellipse cx="740" cy="120" rx="70" ry="24"/><ellipse cx="690" cy="110" rx="44" ry="20"/>
+  </g>
+
+  <!-- title banner: paper + dark text = legible -->
+  <g>
+    <rect x="300" y="40" width="300" height="64" rx="10" fill="#fbf3d9" stroke="#2b2440" stroke-width="4"/>
+    <rect x="300" y="98" width="300" height="6" fill="#2b2440" opacity="0.25"/>
+    <text x="450" y="84" fill="#2b2440" font-size="30" font-weight="800" text-anchor="middle" letter-spacing="1">iBeetKidz</text>
+  </g>
+  <text x="450" y="135" fill="#2b2440" font-size="16" text-anchor="middle" opacity="0.85">Make sound. Make it silly. See it move.</text>
+
+  <!-- the "Beet crew" mascot — cute, outlined, flat fill, has a FACE -->
+  <g transform="translate(120,200)">
+    <text x="90" y="-12" fill="#2b2440" font-size="14" font-weight="700" text-anchor="middle">ICON LANGUAGE</text>
+    <rect x="0" y="0" width="180" height="190" rx="14" fill="#fbf3d9" stroke="#2b2440" stroke-width="4"/>
+    <!-- leaves -->
+    <g stroke="#2b2440" stroke-width="4">
+      <path d="M90 55 C70 25 50 30 60 60 C75 65 88 62 90 55 Z" fill="#5bbf52"/>
+      <path d="M90 55 C110 25 130 30 120 60 C105 65 92 62 90 55 Z" fill="#5bbf52"/>
+    </g>
+    <!-- beet body -->
+    <path d="M90 60 C140 60 150 110 120 150 C108 168 72 168 60 150 C30 110 40 60 90 60 Z" fill="#8a5cc4" stroke="#2b2440" stroke-width="4"/>
+    <!-- cheeks -->
+    <circle cx="68" cy="120" r="8" fill="#e8503a"/><circle cx="112" cy="120" r="8" fill="#e8503a"/>
+    <!-- eyes + smile (the personality) -->
+    <circle cx="76" cy="104" r="9" fill="#fff" stroke="#2b2440" stroke-width="3"/><circle cx="76" cy="106" r="4" fill="#2b2440"/>
+    <circle cx="104" cy="104" r="9" fill="#fff" stroke="#2b2440" stroke-width="3"/><circle cx="104" cy="106" r="4" fill="#2b2440"/>
+    <path d="M78 128 Q90 140 102 128" fill="none" stroke="#2b2440" stroke-width="3" stroke-linecap="round"/>
+    <text x="90" y="183" fill="#2b2440" font-size="15" font-weight="700" text-anchor="middle">My Voice</text>
+  </g>
+
+  <!-- tool tile + chunky legible button -->
+  <g transform="translate(340,200)">
+    <text x="0" y="-12" fill="#2b2440" font-size="14" font-weight="700">UI: PAPER PANELS, DARK TEXT, HARD SHADOW (no glow)</text>
+    <!-- panel -->
+    <rect x="0" y="6" width="440" height="190" rx="14" fill="#f4e8c1" stroke="#2b2440" stroke-width="4"/>
+    <!-- a row of tool tiles -->
+    <g>
+      <rect x="20" y="28" width="74" height="74" rx="10" fill="#fbf3d9" stroke="#2b2440" stroke-width="3"/>
+      <rect x="20" y="98" width="74" height="6" fill="#2b2440" opacity="0.25"/>
+      <circle cx="57" cy="58" r="18" fill="#e8503a" stroke="#2b2440" stroke-width="3"/>
+      <text x="57" y="120" fill="#2b2440" font-size="12" font-weight="700" text-anchor="middle">Pads</text>
+
+      <rect x="110" y="28" width="74" height="74" rx="10" fill="#fbf3d9" stroke="#2b2440" stroke-width="3"/>
+      <rect x="110" y="98" width="74" height="6" fill="#2b2440" opacity="0.25"/>
+      <rect x="135" cy="0" y="40" width="24" height="32" rx="4" fill="#4aa3df" stroke="#2b2440" stroke-width="3"/>
+      <text x="147" y="120" fill="#2b2440" font-size="12" font-weight="700" text-anchor="middle">Beat</text>
+
+      <rect x="200" y="28" width="74" height="74" rx="10" fill="#fbf3d9" stroke="#2b2440" stroke-width="3"/>
+      <rect x="200" y="98" width="74" height="6" fill="#2b2440" opacity="0.25"/>
+      <path d="M223 70 l16 -28 16 28 z" fill="#5bbf52" stroke="#2b2440" stroke-width="3" stroke-linejoin="round"/>
+      <text x="237" y="120" fill="#2b2440" font-size="12" font-weight="700" text-anchor="middle">Loop</text>
+    </g>
+    <!-- chunky start button: legible dark text on bright fill -->
+    <g transform="translate(20,132)">
+      <rect x="0" y="6" width="400" height="48" rx="10" fill="#2b2440" opacity="0.3"/>
+      <rect x="0" y="0" width="400" height="48" rx="10" fill="#ffcc3e" stroke="#2b2440" stroke-width="4"/>
+      <text x="200" y="32" fill="#2b2440" font-size="22" font-weight="800" text-anchor="middle" letter-spacing="1">▶ TAP TO START</text>
+    </g>
+  </g>
+
+  <!-- palette: flat console primaries, no neon -->
+  <g transform="translate(120,430)">
+    <text x="0" y="-10" fill="#2b2440" font-size="14" font-weight="700">PALETTE — flat, warm, legible</text>
+    <g stroke="#2b2440" stroke-width="3">
+      <rect x="0" y="0" width="74" height="46" fill="#e8503a"/>
+      <rect x="80" y="0" width="74" height="46" fill="#f08a3c"/>
+      <rect x="160" y="0" width="74" height="46" fill="#ffcc3e"/>
+      <rect x="240" y="0" width="74" height="46" fill="#5bbf52"/>
+      <rect x="320" y="0" width="74" height="46" fill="#37b6a4"/>
+      <rect x="400" y="0" width="74" height="46" fill="#4aa3df"/>
+      <rect x="480" y="0" width="74" height="46" fill="#8a5cc4"/>
+      <rect x="560" y="0" width="74" height="46" fill="#d94f86"/>
+      <rect x="640" y="0" width="60" height="46" fill="#fbf3d9"/>
+      <rect x="706" y="0" width="60" height="46" fill="#2b2440"/>
+    </g>
+  </g>
+
+  <text x="120" y="540" fill="#2b2440" font-size="14" opacity="0.85">vs v1: warmer, brighter, dark-text-on-paper, characters with faces — not dark neon glow.</text>
+</svg>

@@ -1,0 +1,49 @@
+{
+  "$comment": "iBeetKidz v2 — warm retro-console palette (Mario Paint era). Flat, saturated but NOT neon. One shared set; nothing off-palette. Maps to the app CSS vars.",
+  "surface": {
+    "paper": "#fbf3d9",
+    "paper-2": "#f4e8c1",
+    "ink": "#2b2440",
+    "ink-soft": "#5a4f6e"
+  },
+  "backdrop": {
+    "sky-top": "#7fb7e8",
+    "sky-bottom": "#bfa6e0",
+    "$note": "friendly daylight-to-dusk, not near-black; light panels must pop on it"
+  },
+  "primaries": {
+    "tomato": "#e8503a",
+    "sunshine": "#ffcc3e",
+    "grass": "#5bbf52",
+    "sky": "#4aa3df",
+    "grape": "#8a5cc4",
+    "orange": "#f08a3c",
+    "berry": "#d94f86",
+    "teal": "#37b6a4"
+  },
+  "appCssVarMapping": {
+    "--bg": "backdrop.sky-bottom (or a sky gradient)",
+    "--panel": "surface.paper",
+    "--ink": "surface.ink",
+    "--accent": "primaries.tomato"
+  },
+  "rules": {
+    "fills": "flat only on UI; sprite shading = 1-2 darker steps of the same hue or dithering",
+    "outline": "1px (base res) deep plum #2b2440, consistent on every sprite",
+    "depth": "hard drop-shadow 0 3px 0 rgba(43,36,64,0.35) — NO blur/glow",
+    "light": "top-left",
+    "image-rendering": "pixelated",
+    "perIconColors": "<=5 from primaries + ink outline + one highlight"
+  },
+  "font": {
+    "display": "chunky pixel face (logo + titles only)",
+    "body": "\"Baloo 2\", system-ui, rounded sans — legibility first",
+    "$note": "self-host woff2, offline"
+  },
+  "visualizer": {
+    "$comment": "JS-controlled in retro-scope.ts; keep it calm + recessed",
+    "waveform": "#4aa3df",
+    "spectrum": ["#e8503a", "#ffcc3e", "#5bbf52"],
+    "dimBehindPanels": true
+  }
+}

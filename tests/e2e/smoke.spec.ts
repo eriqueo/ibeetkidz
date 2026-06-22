@@ -225,3 +225,33 @@ test("voice → Home: record, then send the clip onto the Home stack", async ({
   await expect(page.locator(".loop-track")).toHaveCount(1);
   await expect(page.locator(".loop-track .layer-name")).toContainText("My Voice");
 });
+
+test("Magic Pad → Home: record a performance and send it onto the stack", async ({
+  page,
+}) => {
+  await boot(page);
+  await page.locator(".palette").getByRole("button", { name: /magic pad/i }).click();
+
+  // Record, drag the pad to make a sound, then stop — no mic needed.
+  // The record button pulses while recording, so force clicks past the
+  // animation-stability wait (a real kid just taps it).
+  const rec = page.locator('[data-act="magic-record"]');
+  await rec.click({ force: true });
+  const pad = page.locator(".xy-pad");
+  await pad.dispatchEvent("pointerdown", { pointerId: 1, clientX: 100, clientY: 100 });
+  await page.waitForTimeout(300);
+  await pad.dispatchEvent("pointerup", { pointerId: 1 });
+  await rec.click({ force: true });
+
+  // A named clip card appears with a Send-to-Home action.
+  const send = page.locator('[data-act="send-home"]');
+  await expect(send).toBeVisible({ timeout: 4000 });
+  await send.click();
+
+  // We land on Home and the Magic Pad performance is now a lane in the stack.
+  await expect(
+    page.locator('section[data-machine="looper-stage"]'),
+  ).toBeVisible();
+  await expect(page.locator(".loop-track")).toHaveCount(1);
+  await expect(page.locator(".loop-track .layer-name")).toContainText("Magic Pad");
+});

@@ -70,6 +70,11 @@ export interface Layer {
   readonly wave: ThereminWave;
   /** Per-lane echo send, 0..1 (0 = dry). */
   readonly echo: number;
+  /** Per-lane tone/brightness, 0..1 (1 = fully open/bright, lower = darker). */
+  readonly tone: number;
+  /** Per-lane groove/swing, 0..1. Absent = inherit the song-level swing, so a
+   *  lane only departs from the global groove once a kid tweaks it. */
+  readonly swing?: number;
 }
 
 /** The serializable source of truth. Save/load round-trips this exactly. */
@@ -102,6 +107,8 @@ export type Command =
   | { readonly type: "toggleNote"; readonly layerId: string; readonly index: number; readonly row: number }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
+  | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }
+  | { readonly type: "setLayerSwing"; readonly layerId: string; readonly swing: number }
   | { readonly type: "setTempo"; readonly bpm: number }
   | { readonly type: "setScale"; readonly scaleId: ScaleId }
   | { readonly type: "setKey"; readonly keyId: KeyId }

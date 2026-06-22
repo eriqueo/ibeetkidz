@@ -1,0 +1,48 @@
+{
+  "$comment": "Proposed synthwave starting tokens for iBeetKidz. Maps to the app's CSS custom properties (override these in theme.css :root). Iterate freely in Claude Design.",
+  "color": {
+    "bg": "#0d0221",
+    "bg-2": "#1a0b2e",
+    "panel": "#241046",
+    "ink": "#f6f2ff",
+    "muted": "#b39ddb",
+    "neon-pink": "#ff2e97",
+    "neon-magenta": "#ff5d8f",
+    "neon-cyan": "#2de2e6",
+    "neon-purple": "#b14aed",
+    "neon-orange": "#ff8a3d",
+    "neon-yellow": "#ffd23f",
+    "grid": "#ff2e97",
+    "grid-2": "#2de2e6",
+    "accent": "#ff2e97"
+  },
+  "appCssVarMapping": {
+    "--bg": "color.bg",
+    "--panel": "color.panel",
+    "--ink": "color.ink",
+    "--accent": "color.accent"
+  },
+  "gradient": {
+    "sunset": "linear-gradient(180deg, #2b0a52 0%, #7a1f6e 45%, #ff2e97 70%, #ff8a3d 100%)",
+    "panel-glow": "linear-gradient(180deg, #241046 0%, #1a0b2e 100%)"
+  },
+  "font": {
+    "display": "\"Press Start 2P\", monospace",
+    "body": "\"VT323\", \"Comic Sans MS\", system-ui, sans-serif",
+    "note": "Self-host both as woff2 (offline). Use display sparingly (labels/headers); body must stay readable for kids."
+  },
+  "radius": { "sm": "4px", "md": "8px", "pill": "999px" },
+  "border": { "pixel": "2px solid", "note": "hard pixel edges, no soft 1px hairlines" },
+  "effect": {
+    "neon-glow": "0 0 8px var(--accent), 0 0 16px var(--accent)",
+    "hard-shadow": "0 4px 0 rgba(0,0,0,0.5)",
+    "scanlines": "repeating-linear-gradient(rgba(255,255,255,0.04) 0 1px, transparent 1px 3px)",
+    "image-rendering": "pixelated"
+  },
+  "visualizer": {
+    "$comment": "JS-controlled in src/visualizer/styles/retro-scope.ts — engineer wires these.",
+    "waveform": "#2de2e6",
+    "spectrum": ["#ff2e97", "#b14aed", "#2de2e6"],
+    "dimBehindPanels": true
+  }
+}

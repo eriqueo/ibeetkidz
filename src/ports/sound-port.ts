@@ -20,6 +20,8 @@ export interface StepOptions {
   readonly swing: number;
   /** Echo send, 0..1 (0 = dry). */
   readonly echo: number;
+  /** Tone/brightness, 0..1 (1 = fully open; lower darkens via a low-pass). */
+  readonly tone: number;
 }
 
 export interface SoundPort {
@@ -33,6 +35,12 @@ export interface SoundPort {
    *  Rejects with MicDeniedError / NoMicError on permission/hardware failure. */
   startRecording(): Promise<void>;
   stopRecording(): Promise<BufferId>;
+
+  /** Capture a live Magic Pad performance: start a recorder that the theremin
+   *  voice feeds into, then resolve with a new BufferId on stop. No mic needed —
+   *  this records the synthesized voice, so it always works. */
+  startPerformanceRecording(): Promise<void>;
+  stopPerformanceRecording(): Promise<BufferId>;
 
   /** Bake an effect chain onto a source buffer, returning a new baked BufferId
    *  (render-once model). */

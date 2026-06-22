@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="660" viewBox="0 0 900 660" font-family="monospace">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b0a52"/>
+      <stop offset="0.45" stop-color="#7a1f6e"/>
+      <stop offset="0.7" stop-color="#ff2e97"/>
+      <stop offset="1" stop-color="#ff8a3d"/>
+    </linearGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffd23f"/>
+      <stop offset="1" stop-color="#ff2e97"/>
+    </linearGradient>
+    <filter id="glow"><feGaussianBlur stdDeviation="3" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+
+  <rect width="900" height="660" fill="#0d0221"/>
+
+  <!-- Hero: sunset + grid horizon -->
+  <rect x="20" y="20" width="860" height="300" rx="8" fill="url(#sky)"/>
+  <clipPath id="hero"><rect x="20" y="20" width="860" height="300" rx="8"/></clipPath>
+  <g clip-path="url(#hero)">
+    <!-- chrome sun with scanline gaps -->
+    <circle cx="450" cy="210" r="95" fill="url(#sun)"/>
+    <g fill="#2b0a52">
+      <rect x="350" y="200" width="200" height="6"/>
+      <rect x="350" y="216" width="200" height="8"/>
+      <rect x="350" y="236" width="200" height="10"/>
+      <rect x="350" y="260" width="200" height="12"/>
+    </g>
+    <!-- neon grid -->
+    <g stroke="#ff2e97" stroke-width="2" opacity="0.9">
+      <line x1="20" y1="230" x2="880" y2="230"/>
+      <line x1="20" y1="250" x2="880" y2="250"/>
+      <line x1="20" y1="276" x2="880" y2="276"/>
+      <line x1="20" y1="310" x2="880" y2="310"/>
+    </g>
+    <g stroke="#2de2e6" stroke-width="2" opacity="0.8">
+      <line x1="450" y1="230" x2="60" y2="320"/>
+      <line x1="450" y1="230" x2="250" y2="320"/>
+      <line x1="450" y1="230" x2="450" y2="320"/>
+      <line x1="450" y1="230" x2="650" y2="320"/>
+      <line x1="450" y1="230" x2="840" y2="320"/>
+    </g>
+    <text x="450" y="90" fill="#f6f2ff" font-size="44" font-weight="bold" text-anchor="middle" filter="url(#glow)" letter-spacing="3">iBEETKIDZ</text>
+    <text x="450" y="120" fill="#2de2e6" font-size="16" text-anchor="middle" letter-spacing="6">RETRO · SYNTHWAVE · PIXEL</text>
+  </g>
+
+  <!-- Palette swatches -->
+  <g>
+    <text x="20" y="350" fill="#b39ddb" font-size="13" letter-spacing="2">PALETTE</text>
+    <g>
+      <rect x="20" y="360" width="80" height="44" fill="#ff2e97"/>
+      <rect x="106" y="360" width="80" height="44" fill="#ff5d8f"/>
+      <rect x="192" y="360" width="80" height="44" fill="#b14aed"/>
+      <rect x="278" y="360" width="80" height="44" fill="#2de2e6"/>
+      <rect x="364" y="360" width="80" height="44" fill="#ff8a3d"/>
+      <rect x="450" y="360" width="80" height="44" fill="#ffd23f"/>
+      <rect x="536" y="360" width="80" height="44" fill="#241046" stroke="#ff2e97" stroke-width="2"/>
+      <rect x="622" y="360" width="80" height="44" fill="#1a0b2e" stroke="#2de2e6" stroke-width="2"/>
+      <rect x="708" y="360" width="80" height="44" fill="#0d0221" stroke="#b39ddb" stroke-width="2"/>
+      <rect x="794" y="360" width="80" height="44" fill="#f6f2ff"/>
+    </g>
+  </g>
+
+  <!-- Sample tool button (pixel, neon border, hard shadow) -->
+  <g>
+    <text x="20" y="440" fill="#b39ddb" font-size="13" letter-spacing="2">TOOL BUTTON</text>
+    <rect x="20" y="452" width="120" height="120" rx="6" fill="#241046" stroke="#ff2e97" stroke-width="3"/>
+    <rect x="20" y="566" width="120" height="6" fill="#000" opacity="0.5"/>
+    <text x="80" y="520" font-size="40" text-anchor="middle">🥁</text>
+    <text x="80" y="552" fill="#f6f2ff" font-size="13" text-anchor="middle" letter-spacing="1">BEAT</text>
+  </g>
+
+  <!-- Sample beat lane with playhead -->
+  <g>
+    <text x="170" y="440" fill="#b39ddb" font-size="13" letter-spacing="2">LOOP LANE + PLAYHEAD</text>
+    <rect x="170" y="452" width="710" height="60" rx="6" fill="#1a0b2e" stroke="#241046" stroke-width="2"/>
+    <g>
+      <!-- 16 cells, some on -->
+      <g fill="#241046" stroke="#3a1a66" stroke-width="1">
+        <rect x="182" y="466" width="36" height="32" rx="3"/><rect x="226" y="466" width="36" height="32" rx="3"/>
+        <rect x="270" y="466" width="36" height="32" rx="3"/><rect x="314" y="466" width="36" height="32" rx="3"/>
+        <rect x="358" y="466" width="36" height="32" rx="3"/><rect x="402" y="466" width="36" height="32" rx="3"/>
+        <rect x="446" y="466" width="36" height="32" rx="3"/><rect x="490" y="466" width="36" height="32" rx="3"/>
+        <rect x="534" y="466" width="36" height="32" rx="3"/><rect x="578" y="466" width="36" height="32" rx="3"/>
+        <rect x="622" y="466" width="36" height="32" rx="3"/><rect x="666" y="466" width="36" height="32" rx="3"/>
+        <rect x="710" y="466" width="36" height="32" rx="3"/><rect x="754" y="466" width="36" height="32" rx="3"/>
+        <rect x="798" y="466" width="36" height="32" rx="3"/><rect x="842" y="466" width="32" height="32" rx="3"/>
+      </g>
+      <!-- on cells (downbeats) glowing -->
+      <g fill="#2de2e6" filter="url(#glow)">
+        <rect x="182" y="466" width="36" height="32" rx="3"/>
+        <rect x="358" y="466" width="36" height="32" rx="3"/>
+        <rect x="534" y="466" width="36" height="32" rx="3"/>
+        <rect x="710" y="466" width="36" height="32" rx="3"/>
+      </g>
+      <!-- playhead -->
+      <rect x="402" y="458" width="4" height="48" fill="#ffd23f" filter="url(#glow)"/>
+    </g>
+  </g>
+
+  <!-- Play bar -->
+  <g>
+    <text x="20" y="600" fill="#b39ddb" font-size="13" letter-spacing="2">PLAY BAR</text>
+    <rect x="20" y="612" width="860" height="40" rx="6" fill="#1a0b2e" stroke="#241046" stroke-width="2"/>
+    <g fill="#241046" stroke="#ff2e97" stroke-width="2">
+      <rect x="32" y="620" width="26" height="26" rx="5"/><rect x="66" y="620" width="26" height="26" rx="5"/>
+    </g>
+    <rect x="120" y="630" width="120" height="6" rx="3" fill="#3a1a66"/><circle cx="200" cy="633" r="8" fill="#2de2e6"/>
+    <rect x="270" y="620" width="26" height="26" rx="5" fill="#ff2e97" filter="url(#glow)"/>
+    <g fill="#241046" stroke="#b39ddb" stroke-width="2">
+      <rect x="320" y="620" width="26" height="26" rx="5"/><rect x="354" y="620" width="26" height="26" rx="5"/>
+      <rect x="388" y="620" width="26" height="26" rx="5"/><rect x="422" y="620" width="26" height="26" rx="5"/>
+    </g>
+  </g>
+</svg>

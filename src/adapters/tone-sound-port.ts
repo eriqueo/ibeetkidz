@@ -35,6 +35,10 @@ export class ToneSoundPort implements SoundPort {
   private readonly bakedCache = new Map<string, AudioBuffer>();
   private mic?: Tone.UserMedia | undefined;
   private recorder?: Tone.Recorder | undefined;
+  /** Active while capturing a Magic Pad performance; live theremin voices
+   *  connect to it (see thereminOn) so the whole performance — gaps and all —
+   *  is recorded without needing the mic. */
+  private perfRecorder?: Tone.Recorder | undefined;
   private bufferSeq = 0;
   private builtinsLoaded = false;
   private keepAliveBound = false;
@@ -135,8 +139,7 @@ export class ToneSoundPort implements SoundPort {
     this.mic.close();
     // Back to loud, silent-switch-defying playback now the mic is closed.
     setAudioSession("playback");
-    const arrayBuf = await blob.arrayBuffer();
-    const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
+    const audioBuf = await this.decodeRecording(blob);
     const id = `rec-${this.bufferSeq++}`;
     this.buffers.set(id, audioBuf);
     this.recordingBlobs.set(id, blob);
@@ -147,10 +150,41 @@ export class ToneSoundPort implements SoundPort {
 
   async rehydrate(bufferId: BufferId, blob: Blob): Promise<void> {
     if (this.buffers.has(bufferId)) return;
-    const arrayBuf = await blob.arrayBuffer();
-    const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
+    const audioBuf = await this.decodeRecording(blob);
     this.buffers.set(bufferId, audioBuf);
     this.recordingBlobs.set(bufferId, blob);
+  }
+
+  /** Decode a recorded blob and lift it to a consistent, audible level. Phone
+   *  and laptop mics capture wildly different (often very low) input; raw
+   *  recordings played quiet on every device. Peak-normalizing on decode — for
+   *  both fresh and rehydrated recordings — makes "my voice" loud and even.
+   *  The stored blob stays raw; the boost is reapplied on every reload. */
+  private async decodeRecording(blob: Blob): Promise<AudioBuffer> {
+    const arrayBuf = await blob.arrayBuffer();
+    const audioBuf = await this.ctx.decodeAudioData(arrayBuf.slice(0));
+    normalizeBuffer(audioBuf);
+    return audioBuf;
+  }
+
+  async startPerformanceRecording(): Promise<void> {
+    this.perfRecorder = new Tone.Recorder();
+    this.perfRecorder.start();
+    // A voice already playing won't be connected; thereminOn wires up voices
+    // started after this point (the kid presses Record, then drags to play).
+  }
+
+  async stopPerformanceRecording(): Promise<BufferId> {
+    const rec = this.perfRecorder;
+    this.perfRecorder = undefined;
+    if (!rec) throw new NoMicError();
+    const blob = await rec.stop();
+    rec.dispose();
+    const audioBuf = await this.decodeRecording(blob);
+    const id = `perf-${this.bufferSeq++}`;
+    this.buffers.set(id, audioBuf);
+    this.recordingBlobs.set(id, blob);
+    return id;
   }
 
   getRecordingBlob(bufferId: BufferId): Blob | null {
@@ -293,18 +327,34 @@ export class ToneSoundPort implements SoundPort {
     return stepDur * (stepIndex + swingDelayFraction(stepIndex, swing));
   }
 
-  /** Build the destination for a scheduled voice: a per-lane echo send when
-   *  echo > 0, otherwise the main output. Tracked nodes are torn down in
-   *  stopAll so re-scheduling never leaks. */
-  private scheduledDestination(echo: number): Tone.ToneAudioNode {
-    if (echo <= 0) return Tone.getDestination();
-    const delay = new Tone.FeedbackDelay({
-      delayTime: "8n",
-      feedback: 0.2 + echo * 0.5,
-      wet: Math.min(0.6, echo),
-    }).toDestination();
-    this.scheduledFx.push(delay);
-    return delay;
+  /** Build the input node for a scheduled voice: an optional tone (low-pass)
+   *  stage feeding an optional echo send, ending at the main output. Returns
+   *  the head of the chain (what the voice connects into). Created nodes are
+   *  tracked in `scheduledFx` so re-scheduling never leaks. */
+  private scheduledDestination(opts: StepOptions): Tone.ToneAudioNode {
+    // Build back-to-front so each stage targets the next; default = master out.
+    let head: Tone.ToneAudioNode = Tone.getDestination();
+
+    if (opts.echo > 0) {
+      const delay = new Tone.FeedbackDelay({
+        delayTime: "8n",
+        feedback: 0.2 + opts.echo * 0.5,
+        wet: Math.min(0.6, opts.echo),
+      }).toDestination();
+      this.scheduledFx.push(delay);
+      head = delay;
+    }
+
+    if (opts.tone < 0.999) {
+      // tone 1 → ~14 kHz (open); tone 0 → ~500 Hz (muffled). Log-ish mapping.
+      const cutoff = 500 + opts.tone * opts.tone * 13500;
+      const filter = new Tone.Filter(cutoff, "lowpass");
+      filter.connect(head);
+      this.scheduledFx.push(filter);
+      head = filter;
+    }
+
+    return head;
   }
 
   scheduleStep(
@@ -322,7 +372,7 @@ export class ToneSoundPort implements SoundPort {
     void this.resolveClip(clip).then((buf) => {
       if (!buf || gen !== this.scheduleGen) return;
       const player = new Tone.Player(buf).connect(
-        this.scheduledDestination(opts.echo),
+        this.scheduledDestination(opts),
       );
       player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
       this.scheduledVoices.push(player);
@@ -340,7 +390,7 @@ export class ToneSoundPort implements SoundPort {
     const synth = new Tone.Synth({
       oscillator: { type: wave },
       envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
-    }).connect(this.scheduledDestination(opts.echo));
+    }).connect(this.scheduledDestination(opts));
     synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
     this.scheduledSynths.push(synth);
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
@@ -366,6 +416,9 @@ export class ToneSoundPort implements SoundPort {
     const gain = new Tone.Gain(0).toDestination();
     osc.connect(filter);
     filter.connect(gain);
+    // While a performance is being captured, also feed this voice to the
+    // recorder so the Magic Pad track records what you hear.
+    if (this.perfRecorder) gain.connect(this.perfRecorder);
     osc.start();
     gain.gain.rampTo(0.25, 0.05);
     this.theremin = { osc, filter, gain };
@@ -594,6 +647,29 @@ function expandCrazy(amount: number): EffectDescriptor[] {
     out.push({ id: rng.pick(palette), amount: rng.next() });
   }
   return out;
+}
+
+/** Peak-normalize an AudioBuffer in place toward a target ceiling. Quiet mic
+ *  input (the common case on phones) gets boosted; near-silent buffers are left
+ *  alone so we never amplify pure noise into a roar. */
+function normalizeBuffer(buf: AudioBuffer, target = 0.97): void {
+  let peak = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const a = Math.abs(data[i] as number);
+      if (a > peak) peak = a;
+    }
+  }
+  if (peak < 1e-4) return; // effectively silent — nothing worth lifting
+  const gain = target / peak;
+  if (gain <= 1.0001) return; // already at/above target — don't attenuate
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = (data[i] as number) * gain;
+    }
+  }
 }
 
 function reverseBuffer(ctx: AudioContext, src: AudioBuffer): AudioBuffer {

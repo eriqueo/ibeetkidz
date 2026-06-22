@@ -176,6 +176,19 @@ describe("melody + song settings", () => {
   it("clamps swing and echo to 0..1", () => {
     expect(reduce(emptyProject("p"), { type: "setSwing", swing: 9 }).swing).toBe(1);
   });
+
+  it("sets per-lane tone and swing, clamped, leaving others alone", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "l1", clipId: "c1" }) });
+    // A fresh lane is fully bright and inherits the song groove (swing absent).
+    expect(s.layers[0]?.tone).toBe(1);
+    expect(s.layers[0]?.swing).toBeUndefined();
+
+    s = reduce(s, { type: "setLayerTone", layerId: "l1", tone: 0.4 });
+    s = reduce(s, { type: "setLayerSwing", layerId: "l1", swing: 9 });
+    expect(s.layers[0]?.tone).toBe(0.4);
+    expect(s.layers[0]?.swing).toBe(1); // clamped to 0..1
+  });
 });
 
 describe("normalizeProject (back-compat)", () => {
