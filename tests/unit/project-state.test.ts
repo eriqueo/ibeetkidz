@@ -525,3 +525,101 @@ describe("normalizeProject (back-compat)", () => {
     expect(activeLayers(p)[0]?.notes[2]).toEqual([{ row: 5, length: 1 }]);
   });
 });
+
+// ── Song Train: cars + arrangement ──────────────────────────────────────────
+
+describe("Song Train cars", () => {
+  /** A one-car project with a single drum lane carrying one hit at step 0. */
+  const oneCarWithLane = () => {
+    let s = reduce(emptyProject("st"), { type: "addClip", clip: clip("d1") });
+    s = reduce(s, { type: "addLayer", layer: layer("d1", "d1") });
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
+    return s;
+  };
+
+  it("addCar duplicates the active car, appends it, and selects the copy", () => {
+    const base = oneCarWithLane();
+    const car1 = base.activePartId;
+    const s = reduce(base, { type: "addCar", id: "car-2" });
+
+    expect(s.parts).toHaveLength(2);
+    expect(s.activePartId).toBe("car-2"); // opens the copy for editing
+    expect(s.arrangement).toEqual([
+      { partId: car1, repeats: 1 },
+      { partId: "car-2", repeats: 1 },
+    ]);
+    // The copy carries the same lanes (with the hit), but its own array.
+    expect(activeLayers(s).map((l) => l.id)).toEqual(["d1"]);
+    expect(activeLayers(s)[0]?.steps[0]).toEqual({ row: 0, length: 1 });
+    expect(activeLayers(s)).not.toBe(activePart(base).layers);
+    expect(s.parts[1]?.color).not.toBe(s.parts[0]?.color); // distinct car color
+  });
+
+  it("edits to one car don't bleed into its duplicate (copy-on-write)", () => {
+    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const car1 = s.parts[0]!.id;
+    // Edit car 2 (active): add a second hit. Car 1 must be untouched.
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 4 });
+    const car2Lane = s.parts.find((p) => p.id === "car-2")!.layers[0]!;
+    const car1Lane = s.parts.find((p) => p.id === car1)!.layers[0]!;
+    expect(car2Lane.steps[4]).toEqual({ row: 0, length: 1 });
+    expect(car1Lane.steps[4]).toBeNull();
+  });
+
+  it("addCar with a clashing id is a no-op", () => {
+    const s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    expect(reduce(s, { type: "addCar", id: "car-2" })).toBe(s);
+  });
+
+  it("selectCar switches the editing focus; no-ops on active/unknown", () => {
+    const base = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const car1 = base.parts[0]!.id;
+    const s = reduce(base, { type: "selectCar", partId: car1 });
+    expect(s.activePartId).toBe(car1);
+    expect(reduce(s, { type: "selectCar", partId: car1 })).toBe(s); // already active
+    expect(reduce(s, { type: "selectCar", partId: "ghost" })).toBe(s); // unknown
+  });
+
+  it("renameCar trims; no-ops on blank/unchanged/unknown", () => {
+    const base = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const s = reduce(base, { type: "renameCar", partId: "car-2", name: "  Chorus  " });
+    expect(s.parts.find((p) => p.id === "car-2")?.name).toBe("Chorus");
+    expect(reduce(s, { type: "renameCar", partId: "car-2", name: "   " })).toBe(s);
+    expect(reduce(s, { type: "renameCar", partId: "car-2", name: "Chorus" })).toBe(s);
+    expect(reduce(s, { type: "renameCar", partId: "ghost", name: "x" })).toBe(s);
+  });
+
+  it("removeCar drops the car + its arrangement entries, keeps clips, picks a neighbor", () => {
+    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    s = reduce(s, { type: "addCar", id: "car-3" }); // active = car-3
+    const car1 = s.parts[0]!.id;
+    s = reduce(s, { type: "removeCar", partId: "car-3" });
+    expect(s.parts.map((p) => p.id)).toEqual([car1, "car-2"]);
+    expect(s.arrangement.map((c) => c.partId)).toEqual([car1, "car-2"]);
+    expect(s.activePartId).toBe("car-2"); // neighbor of the removed active car
+    expect(s.clips["d1"]).toBeDefined(); // shared clip survives
+  });
+
+  it("removeCar refuses to delete the last car", () => {
+    const s = oneCarWithLane();
+    expect(reduce(s, { type: "removeCar", partId: s.activePartId })).toBe(s);
+  });
+
+  it("undo covers a car add (Project-level history)", () => {
+    let h = initHistory(oneCarWithLane());
+    h = dispatch(h, { type: "addCar", id: "car-2" });
+    expect(h.present.parts).toHaveLength(2);
+    h = undo(h);
+    expect(h.present.parts).toHaveLength(1);
+    h = redo(h);
+    expect(h.present.parts).toHaveLength(2);
+  });
+
+  it("round-trips a multi-car song through serialize → deserialize", () => {
+    const s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const back = deserialize(JSON.stringify(s));
+    expect(back.parts.map((p) => p.id)).toEqual(s.parts.map((p) => p.id));
+    expect(back.arrangement).toEqual(s.arrangement);
+    expect(back.activePartId).toBe(s.activePartId);
+  });
+});

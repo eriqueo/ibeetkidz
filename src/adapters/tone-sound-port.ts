@@ -354,6 +354,11 @@ export class ToneSoundPort implements SoundPort {
     setTimeout(() => synth.dispose(), 700);
   }
 
+  /** Duration of one bar (measure) in seconds at the live tempo. */
+  private barSec(): number {
+    return Tone.Time("1m").toSeconds();
+  }
+
   /** Duration of one step in seconds at the live tempo. */
   private stepDurationSec(totalSteps: number): number {
     return Tone.Time("1m").toSeconds() / Math.max(1, totalSteps);
@@ -403,8 +408,12 @@ export class ToneSoundPort implements SoundPort {
     lengthSteps = 1,
     roll = 1,
     pitch = 0,
+    cycleBars = 1,
+    barOffset = 0,
   ): void {
-    const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
+    const interval = `${Math.max(1, cycleBars)}m`;
+    const offset =
+      this.barSec() * barOffset + this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
     // A roll fires `roll` evenly-spaced hits within the start step with a rising
     // velocity (a crescendo fill).
@@ -436,7 +445,7 @@ export class ToneSoundPort implements SoundPort {
         this.drumBuffer(kind, durationSec, pitch),
       ).connect(this.scheduledDestination(opts));
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), "1m", offset);
+      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
       return;
     }
 
@@ -447,7 +456,7 @@ export class ToneSoundPort implements SoundPort {
         this.scheduledDestination(opts),
       );
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), "1m", offset);
+      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
     });
   }
 
@@ -474,6 +483,8 @@ export class ToneSoundPort implements SoundPort {
     lengthSteps = 1,
     roll = 1,
     bend?: readonly BendPoint[],
+    cycleBars = 1,
+    barOffset = 0,
   ): void {
     const synth = new Tone.Synth({
       oscillator: { type: wave },
@@ -481,7 +492,9 @@ export class ToneSoundPort implements SoundPort {
     }).connect(this.scheduledDestination(opts));
     synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
     this.scheduledSynths.push(synth);
-    const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
+    const interval = `${Math.max(1, cycleBars)}m`;
+    const offset =
+      this.barSec() * barOffset + this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
     const hasBend = !!bend && bend.length > 0;
     Tone.getTransport().scheduleRepeat(
@@ -512,7 +525,7 @@ export class ToneSoundPort implements SoundPort {
           synth.triggerAttackRelease(noteName, dur, time);
         }
       },
-      "1m",
+      interval,
       offset,
     );
   }
@@ -612,6 +625,14 @@ export class ToneSoundPort implements SoundPort {
     const ticksPerBar = t.PPQ * beatsPerBar;
     const progress = (t.ticks % ticksPerBar) / ticksPerBar;
     return stepIndexFromProgress(progress, totalSteps);
+  }
+
+  getTransportBar(): number {
+    const t = Tone.getTransport();
+    if (t.state !== "started") return -1;
+    const beatsPerBar = typeof t.timeSignature === "number" ? t.timeSignature : 4;
+    const ticksPerBar = t.PPQ * beatsPerBar;
+    return Math.floor(t.ticks / ticksPerBar);
   }
 
   getAnalyser(): AnalyserNode {

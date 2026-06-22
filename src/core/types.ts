@@ -186,7 +186,14 @@ export type Command =
   | { readonly type: "setScale"; readonly scaleId: ScaleId }
   | { readonly type: "setKey"; readonly keyId: KeyId }
   | { readonly type: "setSwing"; readonly swing: number }
-  | { readonly type: "setActiveMachine"; readonly machineId: string };
+  | { readonly type: "setActiveMachine"; readonly machineId: string }
+  // Song Train (Capability 4). Cars are full independent loops; the arrangement
+  // plays them in order. `addCar` duplicates the active car (the kid tweaks the
+  // copy) and selects it; the rest target a car by id.
+  | { readonly type: "addCar"; readonly id: string }
+  | { readonly type: "selectCar"; readonly partId: string }
+  | { readonly type: "renameCar"; readonly partId: string; readonly name: string }
+  | { readonly type: "removeCar"; readonly partId: string };
 
 export const MIN_BPM = 40;
 export const MAX_BPM = 220;

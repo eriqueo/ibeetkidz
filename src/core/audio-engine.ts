@@ -2,16 +2,22 @@
 // It owns NO DSP itself — everything routes through SoundPort. Its job is the
 // state -> sound reconciliation loop and gesture-gated startup.
 
-import type { Project } from "./types.ts";
+import type { Layer, Project } from "./types.ts";
 import { STEP_COUNT } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
-import { activeLayers } from "./project-state.ts";
+import { activeLayers, songBars } from "./project-state.ts";
+
+/** What the transport is playing: "loop" repeats the active car forever (Home's
+ *  Play — today's behavior); "ride" plays the whole arrangement, car after car,
+ *  then loops the song (the Tracks strip's Ride). */
+type PlayMode = "loop" | "ride";
 
 export class AudioEngine {
   private started = false;
   private playing = false;
+  private mode: PlayMode = "loop";
 
   constructor(private readonly sound: SoundPort) {}
 
@@ -36,16 +42,50 @@ export class AudioEngine {
     this.sound.setQuantize(grid);
   }
 
-  /** Reconcile transport + scheduled steps to match the project's layers. */
+  /** Reconcile transport + scheduled voices to match the project. Clears and
+   *  reschedules WITHOUT stopping the transport, so the groove keeps playing
+   *  seamlessly while the kid edits. Honors the current play mode: "loop" rides
+   *  the active car alone (one bar); "ride" lays out the whole arrangement. */
   reconcile(project: Project): void {
     if (!this.started) return;
     this.sound.setTempo(project.tempoBpm);
-    // Clear + reschedule WITHOUT stopping the transport, so a loop keeps
-    // playing seamlessly while the kid adds lanes or toggles steps.
     this.sound.clearScheduled();
-    // Schedule the active car's loop. (The Song Train's arrangement cursor will
-    // choose which car here in a later increment; today there's one.)
-    for (const layer of activeLayers(project)) {
+    if (this.mode === "ride") this.scheduleArrangement(project);
+    else this.scheduleLayers(project, activeLayers(project), 1, 0);
+  }
+
+  /** Lay out the whole song as one long, repeating loop: each car occupies its
+   *  bars in sequence (a car repeated N times fills N consecutive bars), and the
+   *  whole arrangement repeats every `songBars`. This reuses the proven 1-bar
+   *  scheduler at a longer cycle, so section changes are gapless (Tone handles
+   *  the timeline) without any mid-bar reschedule that would clip a bar. */
+  private scheduleArrangement(project: Project): void {
+    const ids = new Set(project.parts.map((p) => p.id));
+    const arrangement = project.arrangement.filter((c) => ids.has(c.partId));
+    const total = songBars(project);
+    let bar = 0;
+    for (const car of arrangement) {
+      const part = project.parts.find((p) => p.id === car.partId);
+      const reps = Math.max(1, car.repeats);
+      if (part) {
+        for (let r = 0; r < reps; r++) {
+          this.scheduleLayers(project, part.layers, total, bar + r);
+        }
+      }
+      bar += reps;
+    }
+  }
+
+  /** Schedule one car's lanes onto the transport. `cycleBars` is the loop length
+   *  in bars (1 for a single car; the song length when riding) and `barOffset`
+   *  positions this car within that cycle. */
+  private scheduleLayers(
+    project: Project,
+    layers: readonly Layer[],
+    cycleBars: number,
+    barOffset: number,
+  ): void {
+    for (const layer of layers) {
       if (layer.muted) continue;
       const clip = project.clips[layer.clipId];
       if (!clip) continue;
@@ -69,6 +109,7 @@ export class AudioEngine {
             }));
             this.sound.scheduleNote(
               note, layer.wave, i, total, opts, n.length, n.roll ?? 1, bend,
+              cycleBars, barOffset,
             );
           }
         });
@@ -79,16 +120,40 @@ export class AudioEngine {
           if (cell)
             this.sound.scheduleStep(
               clip, i, total, opts, cell.length, cell.roll ?? 1, cell.row,
+              cycleBars, barOffset,
             );
         });
       }
     }
   }
 
-  play(): void {
+  /** Start (or restart) playback in a mode: reschedule for it, then run the
+   *  transport. "loop" = Home's Play (active car); "ride" = the whole song. */
+  private playIn(mode: PlayMode, project: Project): void {
     if (!this.started) return;
+    this.mode = mode;
+    this.reconcile(project);
     this.sound.startTransport();
     this.playing = true;
+  }
+
+  /** Home's Play: loop the active car forever (unchanged single-loop behavior). */
+  playLoop(project: Project): void {
+    this.playIn("loop", project);
+  }
+
+  /** The Tracks strip's Ride: play through the whole arrangement, then loop it. */
+  playRide(project: Project): void {
+    this.playIn("ride", project);
+  }
+
+  /** Absolute bar index since playback started, or -1 when stopped. */
+  getTransportBar(): number {
+    return this.sound.getTransportBar();
+  }
+
+  get playMode(): PlayMode {
+    return this.mode;
   }
 
   stop(): void {
