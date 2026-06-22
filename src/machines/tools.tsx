@@ -18,6 +18,7 @@ import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
 import { makeLayer } from "../core/project-state.ts";
+import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
   SCALES,
@@ -118,6 +119,86 @@ const EditableLabel: FC<{
   );
 };
 
+// ── Clip card ─────────────────────────────────────────────────────────────
+// The "take you just made" before it goes Home: name it, preview it, snap it to
+// the beat, re-record, undo/redo, or trash it. Reused by My Voice and Magic Pad
+// so editing a take feels identical everywhere. Trash routes through removeClip,
+// so the play-bar (and the card's own) undo/redo cover deleting a take.
+const ClipCard: FC<{
+  clip: Clip;
+  /** Emoji that fronts the name (🎤 voice, ✨ Magic Pad). */
+  icon: string;
+  onPreview: () => void;
+  onTrash: () => void;
+  snapped: boolean;
+  onToggleSnap: () => void;
+  /** Hold-to-re-record handlers. Omitted when the tool owns its own recorder
+   *  button (Magic Pad keeps its toggle in the options bar). */
+  onReRecordDown?: () => void;
+  onReRecordUp?: () => void;
+  recording?: boolean;
+}> = ({
+  clip,
+  icon,
+  onPreview,
+  onTrash,
+  snapped,
+  onToggleSnap,
+  onReRecordDown,
+  onReRecordUp,
+  recording,
+}) => {
+  const { dispatch, undo, redo } = useApp();
+  return (
+    <div className="voice-clip-card" style={cssVar("--tile-color", clip.color)}>
+      <span className="voice-clip-name">
+        {icon}{" "}
+        <EditableLabel
+          value={clip.label}
+          onCommit={(label) =>
+            dispatch({ type: "renameClip", clipId: clip.id, label })
+          }
+        />
+      </span>
+      <div className="clip-card-controls">
+        <button className="t-btn" data-act="clip-preview" title="Play it" onClick={onPreview}>
+          ▶
+        </button>
+        {onReRecordDown && (
+          <button
+            className={"t-btn" + (recording ? " recording" : "")}
+            data-act="clip-rerecord"
+            title="Record again"
+            onPointerDown={onReRecordDown}
+            onPointerUp={onReRecordUp}
+            onPointerLeave={onReRecordUp}
+          >
+            ⏺
+          </button>
+        )}
+        <button className="t-btn" data-act="clip-undo" title="Undo" onClick={undo}>
+          ↶
+        </button>
+        <button className="t-btn" data-act="clip-redo" title="Redo" onClick={redo}>
+          ↷
+        </button>
+        <button
+          className={"t-btn" + (snapped ? " active" : "")}
+          data-act="clip-snap"
+          title="Snap to the beat"
+          aria-pressed={snapped}
+          onClick={onToggleSnap}
+        >
+          🧲
+        </button>
+        <button className="t-btn" data-act="clip-trash" title="Delete this take" onClick={onTrash}>
+          🗑️
+        </button>
+      </div>
+    </div>
+  );
+};
+
 // ── My Voice (hero) ─────────────────────────────────────────────────────────
 
 const EFFECT_TILES: { id: EffectId; label: string; emoji: string; color: string }[] =
@@ -161,6 +242,7 @@ const MyVoiceCanvas: FC = () => {
   const stopRec = async (): Promise<void> => {
     if (!recording) return;
     setRecording(false);
+    const prevId = clipId; // re-record replaces the take we were shaping
     try {
       const bufferId = await sound.stopRecording();
       const newClip: Clip = {
@@ -171,12 +253,37 @@ const MyVoiceCanvas: FC = () => {
         label: `My Voice ${++voiceCount}`,
       };
       dispatch({ type: "addClip", clip: newClip });
+      // Re-record swaps the take: drop the old one unless it's already on Home.
+      if (prevId && !getProject().layers.some((l) => l.id === prevId)) {
+        dispatch({ type: "removeClip", clipId: prevId });
+      }
       setClipId(newClip.id);
       sound.play(newClip);
       setStatus("Make it funny with an effect, then send it Home! 🎉");
     } catch {
       setStatus("Hmm, that didn't record. Try again!");
     }
+  };
+
+  // Trash the take — undoable, since removeClip is a Command in history.
+  const trashTake = (): void => {
+    if (!clipId) return;
+    dispatch({ type: "removeClip", clipId });
+    setStatus("Trashed it. Hold the mic to record again! 🎤");
+  };
+
+  // Snap-to-beat: loop/trim the take to a whole number of beats at the current
+  // tempo so it sits in the groove. Toggle off to play it at natural length.
+  const toggleSnap = (): void => {
+    const c = clipId ? getProject().clips[clipId] : undefined;
+    if (!c || c.source.kind !== "recording") return;
+    if (c.loopBeats !== undefined) {
+      dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: null });
+      return;
+    }
+    const dur = sound.getBufferDuration(c.source.bufferId);
+    const beats = dur ? nearestBeatLoop(dur, getProject().tempoBpm).beats : 1;
+    dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: beats });
   };
 
   const applyFx = (tile: (typeof EFFECT_TILES)[number]): void => {
@@ -207,28 +314,51 @@ const MyVoiceCanvas: FC = () => {
     dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
   };
 
+  // Empty state = the big Record button only. Once a take exists it becomes the
+  // clip card (preview/snap/re-record/undo/trash) → FX tiles → Send to Home.
   return (
     <section className="machine machine--voicefx" data-machine="record-voicefx">
-      <button
-        className={recording ? "big-record recording" : "big-record"}
-        onPointerDown={startRec}
-        onPointerUp={stopRec}
-        onPointerLeave={stopRec}
-      >
-        🎤 HOLD TO RECORD
-      </button>
-      <p className="voicefx-status">{status}</p>
+      {!clip ? (
+        <>
+          <button
+            className={recording ? "big-record recording" : "big-record"}
+            onPointerDown={startRec}
+            onPointerUp={stopRec}
+            onPointerLeave={stopRec}
+          >
+            🎤 HOLD TO RECORD
+          </button>
+          <p className="voicefx-status">{status}</p>
+        </>
+      ) : (
+        <>
+          <ClipCard
+            clip={clip}
+            icon="🎤"
+            onPreview={() => sound.play(clip)}
+            onTrash={trashTake}
+            snapped={clip.loopBeats !== undefined}
+            onToggleSnap={toggleSnap}
+            onReRecordDown={startRec}
+            onReRecordUp={stopRec}
+            recording={recording}
+          />
+          <p className="voicefx-status">{status}</p>
 
-      {clip && (
-        <div className="voice-clip-card" style={cssVar("--tile-color", clip.color)}>
-          <span className="voice-clip-name">
-            🎤 <EditableLabel
-              value={clip.label}
-              onCommit={(label) =>
-                dispatch({ type: "renameClip", clipId: clip.id, label })
-              }
-            />
-          </span>
+          <div className="fx-tiles">
+            {EFFECT_TILES.map((t) => (
+              <button
+                key={t.id}
+                className="fx-tile"
+                style={cssVar("--tile-color", t.color)}
+                onClick={() => applyFx(t)}
+              >
+                <span className="fx-emoji">{t.emoji}</span>
+                <span>{t.label}</span>
+              </button>
+            ))}
+          </div>
+
           <button
             className="t-btn send-home"
             data-act="send-home"
@@ -237,22 +367,8 @@ const MyVoiceCanvas: FC = () => {
           >
             {onHome ? "✓ On Home" : "➡️ 🏠 Send to Home"}
           </button>
-        </div>
+        </>
       )}
-
-      <div className="fx-tiles">
-        {EFFECT_TILES.map((t) => (
-          <button
-            key={t.id}
-            className="fx-tile"
-            style={cssVar("--tile-color", t.color)}
-            onClick={() => applyFx(t)}
-          >
-            <span className="fx-emoji">{t.emoji}</span>
-            <span>{t.label}</span>
-          </button>
-        ))}
-      </div>
     </section>
   );
 };
@@ -959,6 +1075,25 @@ const MagicPadCanvas: FC = () => {
     dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
   };
 
+  // Trash the captured performance — undoable via removeClip.
+  const trashTake = (): void => {
+    if (!clipId) return;
+    dispatch({ type: "removeClip", clipId });
+  };
+
+  // Snap-to-beat: same loop-to-beat treatment as a voice take.
+  const toggleSnap = (): void => {
+    const c = clipId ? project.clips[clipId] : undefined;
+    if (!c || c.source.kind !== "recording") return;
+    if (c.loopBeats !== undefined) {
+      dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: null });
+      return;
+    }
+    const dur = sound.getBufferDuration(c.source.bufferId);
+    const beats = dur ? nearestBeatLoop(dur, project.tempoBpm).beats : 1;
+    dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: beats });
+  };
+
   const norm = (e: React.PointerEvent): { x: number; y: number } => {
     const r = padRef.current!.getBoundingClientRect();
     return {
@@ -1003,18 +1138,15 @@ const MagicPadCanvas: FC = () => {
           {recording ? "⏺️ Stop & keep it" : "🎙️ Record my song"}
         </button>
         {clip && (
-          <div
-            className="voice-clip-card"
-            style={cssVar("--tile-color", clip.color)}
-          >
-            <span className="voice-clip-name">
-              ✨ <EditableLabel
-                value={clip.label}
-                onCommit={(label) =>
-                  dispatch({ type: "renameClip", clipId: clip.id, label })
-                }
-              />
-            </span>
+          <>
+            <ClipCard
+              clip={clip}
+              icon="✨"
+              onPreview={() => sound.play(clip)}
+              onTrash={trashTake}
+              snapped={clip.loopBeats !== undefined}
+              onToggleSnap={toggleSnap}
+            />
             <button
               className="t-btn send-home"
               data-act="send-home"
@@ -1023,7 +1155,7 @@ const MagicPadCanvas: FC = () => {
             >
               {onHome ? "✓ On Home" : "➡️ 🏠 Send to Home"}
             </button>
-          </div>
+          </>
         )}
       </div>
       <div

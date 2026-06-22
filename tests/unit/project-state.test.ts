@@ -57,6 +57,34 @@ describe("reduce", () => {
     expect(reduce(base, { type: "renameClip", clipId: "ghost", label: "x" })).toBe(base);
   });
 
+  it("removes a clip and any lane referencing it (undoable in one step)", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, { type: "addLayer", layer: layer("c1", "c1") });
+    expect(s.layers).toHaveLength(1);
+    const removed = reduce(s, { type: "removeClip", clipId: "c1" });
+    expect(removed.clips["c1"]).toBeUndefined();
+    expect(removed.layers).toHaveLength(0); // lane went with its clip
+    // Unknown clip → same reference (no history churn).
+    expect(reduce(removed, { type: "removeClip", clipId: "c1" })).toBe(removed);
+  });
+
+  it("sets and clears a clip's snap-to-beat loop (min 1 beat, no-op when same)", () => {
+    const base = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    const snapped = reduce(base, { type: "setClipLoop", clipId: "c1", loopBeats: 2 });
+    expect(snapped.clips["c1"]?.loopBeats).toBe(2);
+    // Rounds + floors to a whole beat ≥ 1.
+    expect(reduce(base, { type: "setClipLoop", clipId: "c1", loopBeats: 0 }).clips["c1"]?.loopBeats).toBe(1);
+    expect(reduce(base, { type: "setClipLoop", clipId: "c1", loopBeats: 2.4 }).clips["c1"]?.loopBeats).toBe(2);
+    // Same value + clearing an already-natural clip are no-ops (same reference).
+    expect(reduce(snapped, { type: "setClipLoop", clipId: "c1", loopBeats: 2 })).toBe(snapped);
+    expect(reduce(base, { type: "setClipLoop", clipId: "c1", loopBeats: null })).toBe(base);
+    // Clearing a snapped clip drops the field entirely.
+    const cleared = reduce(snapped, { type: "setClipLoop", clipId: "c1", loopBeats: null });
+    expect(cleared.clips["c1"]?.loopBeats).toBeUndefined();
+    // Unknown clip → same reference.
+    expect(reduce(base, { type: "setClipLoop", clipId: "ghost", loopBeats: 2 })).toBe(base);
+  });
+
   it("refuses to add a layer for an unknown clip", () => {
     const s = reduce(emptyProject("p"), { type: "addLayer", layer: layer("l1", "ghost") });
     expect(s.layers).toHaveLength(0);

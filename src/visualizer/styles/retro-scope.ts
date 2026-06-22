@@ -19,27 +19,31 @@ export const retroScopeStyle: VisualStyle = {
   draw(ctx: CanvasRenderingContext2D, frame: VisualFrame, _project: Project): void {
     const { width: w, height: h } = ctx.canvas;
 
-    // Fading trail instead of a hard clear → classic screensaver smear. Tinted
-    // to the theme ground so the trail melts into the dark instead of going grey.
-    ctx.fillStyle = "rgba(41, 36, 46, 0.25)";
+    // Fading trail instead of a hard clear → classic screensaver smear. A
+    // heavier fade than before clears faster, so the scope reads as a calm glow
+    // rather than a strobing neon rave.
+    ctx.fillStyle = "rgba(41, 36, 46, 0.4)";
     ctx.fillRect(0, 0, w, h);
 
-    // Chunky mirrored spectrum bars, cycling the warm→cool theme palette.
+    // Chunky mirrored spectrum bars, cycling the warm→cool theme palette. Kept
+    // shorter and semi-transparent so they sit back instead of flashing.
     const bars = 32;
     const step = Math.floor(frame.spectrum.length / bars);
     const barW = w / bars;
+    ctx.globalAlpha *= 0.55;
     for (let i = 0; i < bars; i++) {
       const v = (frame.spectrum[i * step] ?? 0) / 255;
-      const bh = v * h * 0.4;
+      const bh = v * h * 0.3;
       ctx.fillStyle = SPECTRUM[i % SPECTRUM.length] ?? WAVEFORM;
       ctx.fillRect(i * barW + 1, h - bh, barW - 2, bh);
     }
+    ctx.globalAlpha /= 0.55;
 
-    // Glowing oscilloscope line — brand pink.
+    // Softly-glowing oscilloscope line — brand pink, gentler blur than before.
     ctx.lineWidth = 3;
     ctx.strokeStyle = WAVEFORM;
     ctx.shadowColor = WAVEFORM;
-    ctx.shadowBlur = 16;
+    ctx.shadowBlur = 8;
     ctx.beginPath();
     const wf = frame.waveform;
     for (let i = 0; i < wf.length; i++) {

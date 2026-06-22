@@ -54,6 +54,10 @@ export interface SoundPort {
    *  or if the buffer was synthesized rather than recorded. */
   getRecordingBlob(bufferId: BufferId): Blob | null;
 
+  /** Decoded length in seconds of a held buffer, or null if unknown. Lets the
+   *  UI snap a take to the nearest whole beat (see `nearestBeatLoop`). */
+  getBufferDuration(bufferId: BufferId): number | null;
+
   /** Trigger a clip once, now. */
   play(clip: Clip): void;
 

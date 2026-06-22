@@ -1,10 +1,10 @@
 // The kidpix 4-region layout in React: palette (left), per-tool options bar
-// (top), canvas (center), play bar (bottom), with the full-screen visualizer
-// behind. Only the active tool renders, so panels can't stack.
+// (top), canvas (center), play bar (bottom). The visualizer is opt-in (the
+// "Watch" panel), never an always-on background. Only the active tool renders,
+// so panels can't stack.
 
 import {
   useEffect,
-  useRef,
   useState,
   type FC,
   type ReactNode,
@@ -16,7 +16,7 @@ import {
   LoopSelectionProvider,
   type ToolDescriptor,
 } from "../machines/tools.tsx";
-import { createVisualizer } from "../visualizer/visualizer.ts";
+import { VizPanel } from "./VizPanel.tsx";
 
 const Palette: FC<{ activeId: string }> = ({ activeId }) => {
   const { dispatch } = useApp();
@@ -54,7 +54,10 @@ const OptionsBar: FC<{ tool: ToolDescriptor }> = ({ tool }) => {
   );
 };
 
-const PlayBar: FC = () => {
+const PlayBar: FC<{ watching: boolean; onToggleWatch: () => void }> = ({
+  watching,
+  onToggleWatch,
+}) => {
   const { engine, dispatch, undo, redo, save, surprise, getProject } = useApp();
   const [snap, setSnap] = useState(true);
   return (
@@ -133,30 +136,17 @@ const PlayBar: FC = () => {
       >
         💾
       </button>
+      <button
+        className={watching ? "t-btn active" : "t-btn"}
+        data-act="watch"
+        title="Watch the sound"
+        aria-pressed={watching}
+        onClick={onToggleWatch}
+      >
+        👁
+      </button>
     </footer>
   );
-};
-
-const Visualizer: FC = () => {
-  const { engine, getProject } = useApp();
-  const ref = useRef<HTMLCanvasElement>(null);
-  useEffect(() => {
-    const canvas = ref.current;
-    if (!canvas) return;
-    const fit = (): void => {
-      canvas.width = window.innerWidth;
-      canvas.height = window.innerHeight;
-    };
-    fit();
-    const viz = createVisualizer(canvas, engine.getAnalyser(), getProject);
-    viz.start();
-    window.addEventListener("resize", fit);
-    return () => {
-      viz.stop();
-      window.removeEventListener("resize", fit);
-    };
-  }, [engine, getProject]);
-  return <canvas className="viz-canvas" ref={ref} />;
 };
 
 // On phones the Studio rail slides up from the bottom on demand, keeping the
@@ -196,12 +186,13 @@ export const Shell: FC = () => {
   const sideRail = Rail && !isPhone;
   const sheetRail = Rail && isPhone;
   const [sheetOpen, setSheetOpen] = useState(false);
+  // The visualizer is opt-in and off by default — no background motion.
+  const [watching, setWatching] = useState(false);
   // A fresh tool starts with its rail tucked away — never surprise the kid with
   // a panel covering the canvas they just switched to.
   useEffect(() => setSheetOpen(false), [active.id]);
   return (
     <div id="app">
-      <Visualizer />
       <div className="shell-root">
         <LoopSelectionProvider>
           <div className={"shell-grid" + (sideRail ? " shell-grid--rail" : "")}>
@@ -217,7 +208,10 @@ export const Shell: FC = () => {
                 <Rail />
               </aside>
             )}
-            <PlayBar />
+            <PlayBar
+              watching={watching}
+              onToggleWatch={() => setWatching((w) => !w)}
+            />
           </div>
           {sheetRail && Rail && (
             <RailSheet
@@ -228,6 +222,7 @@ export const Shell: FC = () => {
               <Rail />
             </RailSheet>
           )}
+          {watching && <VizPanel onClose={() => setWatching(false)} />}
         </LoopSelectionProvider>
       </div>
     </div>

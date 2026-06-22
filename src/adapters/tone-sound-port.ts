@@ -33,6 +33,8 @@ export class ToneSoundPort implements SoundPort {
   private readonly recordingBlobs = new Map<BufferId, Blob>();
   /** Baked effect-chain results, keyed by source+chain signature. */
   private readonly bakedCache = new Map<string, AudioBuffer>();
+  /** Beat-snapped (looped/trimmed) buffers, keyed by source+chain+beats@bpm. */
+  private readonly loopCache = new Map<string, AudioBuffer>();
   private mic?: Tone.UserMedia | undefined;
   private recorder?: Tone.Recorder | undefined;
   /** Active while capturing a Magic Pad performance; live theremin voices
@@ -191,6 +193,10 @@ export class ToneSoundPort implements SoundPort {
     return this.recordingBlobs.get(bufferId) ?? null;
   }
 
+  getBufferDuration(bufferId: BufferId): number | null {
+    return this.buffers.get(bufferId)?.duration ?? null;
+  }
+
   // ── Effect baking (render-once) ──────────────────────────────────────────
 
   async renderEffects(
@@ -245,17 +251,39 @@ export class ToneSoundPort implements SoundPort {
     return rendered.get() as AudioBuffer;
   }
 
-  /** Resolve a clip to a playable AudioBuffer (baking effects, cached). */
+  /** Resolve a clip to a playable AudioBuffer (baking effects + beat-snapping,
+   *  both cached). */
   private async resolveClip(clip: Clip): Promise<AudioBuffer | undefined> {
     const base = this.resolveSource(clip.source);
     if (!base) return undefined;
-    if (clip.effects.length === 0) return base;
-    const key = bakeKey(clip);
-    const cached = this.bakedCache.get(key);
-    if (cached) return cached;
-    const baked = await this.renderChain(base, clip.effects);
-    this.bakedCache.set(key, baked);
-    return baked;
+
+    let buf = base;
+    if (clip.effects.length > 0) {
+      const key = bakeKey(clip);
+      const cached = this.bakedCache.get(key);
+      if (cached) buf = cached;
+      else {
+        buf = await this.renderChain(base, clip.effects);
+        this.bakedCache.set(key, buf);
+      }
+    }
+
+    // Snap-to-beat: loop/trim the (possibly effected) buffer to a whole number
+    // of beats at the LIVE tempo, so it stays in the groove even after a tempo
+    // change. Keyed off the bake signature + beats@bpm so it recomputes only
+    // when something it depends on actually moves.
+    if (clip.loopBeats !== undefined) {
+      const bpm = Tone.getTransport().bpm.value || 120;
+      const lkey = `${bakeKey(clip)}|loop:${clip.loopBeats}@${bpm.toFixed(2)}`;
+      const cached = this.loopCache.get(lkey);
+      if (cached) buf = cached;
+      else {
+        buf = loopToBeats(this.ctx, buf, clip.loopBeats, bpm);
+        this.loopCache.set(lkey, buf);
+      }
+    }
+
+    return buf;
   }
 
   private resolveSource(source: ClipSource): AudioBuffer | undefined {
@@ -670,6 +698,29 @@ function normalizeBuffer(buf: AudioBuffer, target = 0.97): void {
       data[i] = (data[i] as number) * gain;
     }
   }
+}
+
+/** Loop/trim a buffer to exactly `beats` whole beats at `bpm`. Shorter takes
+ *  wrap (repeat) to fill the length; longer takes are trimmed. This is the
+ *  buffer-side of snap-to-beat — the pure beat math lives in `nearestBeatLoop`. */
+function loopToBeats(
+  ctx: AudioContext,
+  src: AudioBuffer,
+  beats: number,
+  bpm: number,
+): AudioBuffer {
+  const sr = src.sampleRate;
+  const targetLen = Math.max(1, Math.round((beats * (60 / bpm)) * sr));
+  const out = ctx.createBuffer(src.numberOfChannels, targetLen, sr);
+  for (let ch = 0; ch < src.numberOfChannels; ch++) {
+    const inData = src.getChannelData(ch);
+    const outData = out.getChannelData(ch);
+    const n = inData.length;
+    for (let i = 0; i < targetLen; i++) {
+      outData[i] = inData[i % n] as number; // wrap = loop; first slice = trim
+    }
+  }
+  return out;
 }
 
 function reverseBuffer(ctx: AudioContext, src: AudioBuffer): AudioBuffer {

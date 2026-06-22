@@ -47,6 +47,10 @@ export interface Clip {
   /** Display color/label for the playful UI. */
   readonly color: string;
   readonly label: string;
+  /** Snap-to-beat: when set, this clip is looped/trimmed to exactly this many
+   *  whole beats (at the live tempo) when it plays, so a recorded take sits in
+   *  the groove on Home. Absent = play the take at its natural length. */
+  readonly loopBeats?: number;
 }
 
 /** Drum lanes toggle a sound on/off per step; melody lanes place a pitched
@@ -97,8 +101,10 @@ export interface Project {
  *  enabling undo/redo and deterministic tests. */
 export type Command =
   | { readonly type: "addClip"; readonly clip: Clip }
+  | { readonly type: "removeClip"; readonly clipId: string }
   | { readonly type: "applyEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
   | { readonly type: "renameClip"; readonly clipId: string; readonly label: string }
+  | { readonly type: "setClipLoop"; readonly clipId: string; readonly loopBeats: number | null }
   | { readonly type: "addLayer"; readonly layer: Layer }
   | { readonly type: "removeLayer"; readonly layerId: string }
   | { readonly type: "setLayerVolume"; readonly layerId: string; readonly volume: number }
