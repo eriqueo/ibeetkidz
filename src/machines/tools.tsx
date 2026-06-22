@@ -107,6 +107,31 @@ function laneSegments(noteAt: (i: number) => StepNote | null): LaneSeg[] {
   return segs;
 }
 
+/** Polyline points (in a 0..100 × 0..100 box) tracing each bent note's pitch
+ *  path across the melody grid — base row → each pin — so the swoop is visible.
+ *  Flat notes (no pins) contribute nothing. Row 0 sits at the bottom. */
+function bendPolylines(
+  notes: readonly (readonly StepNote[])[],
+): { key: string; points: string }[] {
+  const xAt = (p: number): number => (p / STEP_COUNT) * 100;
+  const yAt = (row: number): number =>
+    ((MELODY_ROWS - 1 - row + 0.5) / MELODY_ROWS) * 100;
+  const out: { key: string; points: string }[] = [];
+  notes.forEach((chord, i) => {
+    for (const n of chord) {
+      if (!n.pins || n.pins.length === 0) continue;
+      // Slope across the note's full cell width so even a 1-step note reads as a
+      // diagonal swoop, not a vertical jump.
+      const xStart = xAt(i);
+      const span = xAt(i + n.length) - xStart;
+      const pts = [`${xStart},${yAt(n.row)}`];
+      for (const pin of n.pins) pts.push(`${xStart + pin.t * span},${yAt(pin.row)}`);
+      out.push({ key: `${i}:${n.row}`, points: pts.join(" ") });
+    }
+  });
+  return out;
+}
+
 // ── Editable label ───────────────────────────────────────────────────────────
 // Tap the name to rename it (a recording's name, a lane's name). Kept tiny and
 // reused so renaming feels the same everywhere. Stops pointer propagation so
@@ -738,36 +763,57 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const isVoice = clip?.source.kind === "recording";
   const prefix = layer.kind === "melody" ? "🎵 " : isVoice ? "🎤 " : "";
 
-  // Drag a note's right-edge handle to stretch it ("pull it like taffy"). We
-  // resolve the step under the pointer from the lane's own width, so it snaps to
-  // whole steps. resizeNote no-ops when the length doesn't change, so dragging
-  // doesn't spam undo. `laneSel` scopes the math to the dragged row.
-  const beginStretch = (
+  // Drag a note's right-edge handle. Horizontal = STRETCH ("pull it like
+  // taffy"); on a melody lane, a dominant VERTICAL drag instead BENDS — it sets
+  // an end pin at the row under the pointer so the note swoops there (drag back
+  // to its own row to flatten it). The first decisive move locks the axis so a
+  // drag is one or the other, never both. `gridSel` (melody only) gives the
+  // vertical extent for the bend; drums pass none and only stretch.
+  const beginNoteDrag = (
     e: React.PointerEvent,
     laneSel: string,
     index: number,
     row: number,
+    gridSel?: string,
   ): void => {
     e.stopPropagation();
     e.preventDefault();
     const handle = e.currentTarget as HTMLElement;
     const laneEl = handle.closest(laneSel) as HTMLElement | null;
+    const gridEl = gridSel
+      ? (handle.closest(gridSel) as HTMLElement | null)
+      : null;
     if (!laneEl) return;
     handle.setPointerCapture?.(e.pointerId);
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let mode: "stretch" | "bend" | null = null;
+
     const onMove = (ev: PointerEvent): void => {
-      const rect = laneEl.getBoundingClientRect();
-      const frac = (ev.clientX - rect.left) / rect.width;
-      const step = Math.max(
-        index,
-        Math.min(STEP_COUNT - 1, Math.floor(frac * STEP_COUNT)),
-      );
-      dispatch({
-        type: "resizeNote",
-        layerId: layer.id,
-        index,
-        row,
-        length: step - index + 1,
-      });
+      const dx = ev.clientX - startX;
+      const dy = ev.clientY - startY;
+      if (mode === null) {
+        if (Math.hypot(dx, dy) < 6) return; // wait for a decisive move
+        mode = gridEl && Math.abs(dy) > Math.abs(dx) ? "bend" : "stretch";
+      }
+      if (mode === "stretch") {
+        const rect = laneEl.getBoundingClientRect();
+        const step = Math.max(
+          index,
+          Math.min(STEP_COUNT - 1, Math.floor(((ev.clientX - rect.left) / rect.width) * STEP_COUNT)),
+        );
+        dispatch({ type: "resizeNote", layerId: layer.id, index, row, length: step - index + 1 });
+      } else if (gridEl) {
+        const rect = gridEl.getBoundingClientRect();
+        const fromTop = (ev.clientY - rect.top) / rect.height;
+        const bucket = Math.max(0, Math.min(MELODY_ROWS - 1, Math.floor(fromTop * MELODY_ROWS)));
+        const toRow = MELODY_ROWS - 1 - bucket; // row 0 sits at the bottom
+        if (toRow === row) {
+          dispatch({ type: "clearPins", layerId: layer.id, index, row });
+        } else {
+          dispatch({ type: "addPin", layerId: layer.id, index, row, t: 1, toRow });
+        }
+      }
     };
     const onUp = (): void => {
       window.removeEventListener("pointermove", onMove);
@@ -861,7 +907,10 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                     >
                       <span
                         className="note-handle"
-                        onPointerDown={(e) => beginStretch(e, ".melody-row", seg.index, row)}
+                        title="Drag sideways to stretch · up/down to bend"
+                        onPointerDown={(e) =>
+                          beginNoteDrag(e, ".melody-row", seg.index, row, ".melody-grid")
+                        }
                       />
                     </button>
                   ) : (
@@ -883,6 +932,21 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
               </div>
             ),
           )}
+          <svg
+            className="bend-layer"
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+            aria-hidden
+          >
+            {bendPolylines(layer.notes).map((b) => (
+              <polyline
+                key={b.key}
+                className="bend-line"
+                points={b.points}
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
           <div className="loop-playhead" />
         </div>
       ) : (
@@ -907,7 +971,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                 )}
                 <span
                   className="note-handle"
-                  onPointerDown={(e) => beginStretch(e, ".loop-lane", seg.index, 0)}
+                  onPointerDown={(e) => beginNoteDrag(e, ".loop-lane", seg.index, 0)}
                 />
               </button>
             ) : (
