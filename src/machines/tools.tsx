@@ -17,7 +17,7 @@ import {
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
-import { makeLayer } from "../core/project-state.ts";
+import { activeLayers, makeLayer } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
@@ -289,7 +289,7 @@ const MyVoiceCanvas: FC = () => {
   const [clipId, setClipId] = useState<string | null>(null);
   const clip = clipId ? project.clips[clipId] : undefined;
   // Once a clip is on Home its lane id equals the clip id (see sendToHome).
-  const onHome = clipId ? project.layers.some((l) => l.id === clipId) : false;
+  const onHome = clipId ? activeLayers(project).some((l) => l.id === clipId) : false;
 
   const startRec = async (): Promise<void> => {
     try {
@@ -316,7 +316,7 @@ const MyVoiceCanvas: FC = () => {
       };
       dispatch({ type: "addClip", clip: newClip });
       // Re-record swaps the take: drop the old one unless it's already on Home.
-      if (prevId && !getProject().layers.some((l) => l.id === prevId)) {
+      if (prevId && !activeLayers(getProject()).some((l) => l.id === prevId)) {
         dispatch({ type: "removeClip", clipId: prevId });
       }
       setClipId(newClip.id);
@@ -552,7 +552,7 @@ const BeatMakerCanvas: FC = () => {
       <div className="beat-rows">
         {DRUM_SOUNDS.map((drum) => {
           const id = `beat-${drum.assetId}`;
-          const layer = project.layers.find((l) => l.id === id);
+          const layer = activeLayers(project).find((l) => l.id === id);
           const steps =
             layer?.steps ?? new Array<StepNote | null>(STEP_COUNT).fill(null);
           const clip: Clip = {
@@ -585,7 +585,7 @@ const BeatMakerCanvas: FC = () => {
                   }
                   onPointerDown={() => {
                     // Lazily add this drum's layer the first time it's touched.
-                    if (!getProject().layers.some((l) => l.id === id)) {
+                    if (!activeLayers(getProject()).some((l) => l.id === id)) {
                       dispatch({
                         type: "addLayer",
                         layer: makeLayer({ id, clipId: id, kind: "drum" }),
@@ -647,7 +647,7 @@ const LoopStageCanvas: FC = () => {
     if (!snd) return;
     const id = `beat-${snd.assetId}`;
     setPicking(false);
-    if (project.layers.some((l) => l.id === id)) {
+    if (activeLayers(project).some((l) => l.id === id)) {
       select(id); // already on the stage → highlight it
       return;
     }
@@ -719,7 +719,7 @@ const LoopStageCanvas: FC = () => {
       {picking && (
         <div className="drum-picker" data-picker="drums">
           {BUILTIN_SOUNDS.map((d) => {
-            const present = project.layers.some((l) => l.id === `beat-${d.assetId}`);
+            const present = activeLayers(project).some((l) => l.id === `beat-${d.assetId}`);
             return (
               <button
                 key={d.assetId}
@@ -737,7 +737,7 @@ const LoopStageCanvas: FC = () => {
         </div>
       )}
 
-      {project.layers.length === 0 ? (
+      {activeLayers(project).length === 0 ? (
         <p className="stub-note">
           🏠 This is <b>Home</b> — where your sounds stack up. Add a{" "}
           <b>➕ Drum</b>, a <b>➕ Melody</b>, or record your <b>➕ Voice</b>. Or
@@ -745,7 +745,7 @@ const LoopStageCanvas: FC = () => {
         </p>
       ) : (
         <div className="loop-board" ref={boardRef} data-playing="false">
-          {project.layers.map((layer) => (
+          {activeLayers(project).map((layer) => (
             <LoopTrack key={layer.id} layerId={layer.id} />
           ))}
         </div>
@@ -761,7 +761,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const { selected, select } = useLoopSelection();
   // Pending drum-cell removal, held open for a double-tap → roll (see onDrumTap).
   const pendingRemove = useRef<{ index: number; timer: number } | null>(null);
-  const layer = project.layers.find((l) => l.id === layerId);
+  const layer = activeLayers(project).find((l) => l.id === layerId);
   if (!layer) return null;
   const clip = project.clips[layer.clipId];
   const isVoice = clip?.source.kind === "recording";
@@ -1037,7 +1037,7 @@ const LoopStageRail: FC = () => {
   const project = useProject();
   const { selected } = useLoopSelection();
   const lane =
-    project.layers.find((l) => l.id === selected) ?? project.layers[0] ?? null;
+    activeLayers(project).find((l) => l.id === selected) ?? activeLayers(project)[0] ?? null;
   const magicOn = project.scaleId === "magic";
 
   return (
@@ -1251,7 +1251,7 @@ const MagicPadCanvas: FC = () => {
   const [recording, setRecording] = useState(false);
   const [clipId, setClipId] = useState<string | null>(null);
   const clip = clipId ? project.clips[clipId] : undefined;
-  const onHome = clipId ? project.layers.some((l) => l.id === clipId) : false;
+  const onHome = clipId ? activeLayers(project).some((l) => l.id === clipId) : false;
 
   useEffect(() => () => sound.thereminOff(), [sound]);
 

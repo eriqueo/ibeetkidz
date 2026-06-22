@@ -7,6 +7,7 @@ import { STEP_COUNT } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
+import { activeLayers } from "./project-state.ts";
 
 export class AudioEngine {
   private started = false;
@@ -42,7 +43,9 @@ export class AudioEngine {
     // Clear + reschedule WITHOUT stopping the transport, so a loop keeps
     // playing seamlessly while the kid adds lanes or toggles steps.
     this.sound.clearScheduled();
-    for (const layer of project.layers) {
+    // Schedule the active car's loop. (The Song Train's arrangement cursor will
+    // choose which car here in a later increment; today there's one.)
+    for (const layer of activeLayers(project)) {
       if (layer.muted) continue;
       const clip = project.clips[layer.clipId];
       if (!clip) continue;

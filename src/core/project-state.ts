@@ -5,10 +5,12 @@
 // serialized to storage (the kidpix "undo persists across reloads" pattern).
 
 import {
+  type ArrangeCar,
   type Clip,
   type Command,
   type Layer,
   type LaneKind,
+  type Part,
   type Project,
   type Roll,
   type StepNote,
@@ -85,17 +87,62 @@ function coerceNote(raw: unknown, index: number): StepNote | null {
   return null;
 }
 
+/** Friendly colors cycled onto new cars (Song Train). */
+const CAR_COLORS = ["#fb5607", "#3a86ff", "#06d6a0", "#8338ec", "#ffd166"];
+
+/** Build a car (Part). The default project has exactly one. */
+export function makePart(
+  id: string,
+  name: string,
+  color: string,
+  layers: readonly Layer[] = [],
+): Part {
+  return { id, name, color, layers };
+}
+
 export function emptyProject(id: string, name = "My Beat"): Project {
+  const partId = `${id}-part-1`;
   return {
     id,
     name,
     tempoBpm: 100,
     clips: {},
-    layers: [],
+    parts: [makePart(partId, "Loop 1", CAR_COLORS[0] as string)],
+    arrangement: [{ partId, repeats: 1 }],
+    activePartId: partId,
     scaleId: "magic",
     keyId: "C",
     swing: 0,
     activeMachineId: "looper-stage", // boot into Home, the stacked mix
+  };
+}
+
+// ── Part (car) selectors + active-part editing ───────────────────────────────
+
+/** The car Home is editing (falls back to the first car — there's always ≥1). */
+export function activePart(state: Project): Part {
+  return state.parts.find((p) => p.id === state.activePartId) ?? state.parts[0]!;
+}
+
+/** The active car's lanes — the "current loop". Replaces the old `project.layers`
+ *  for every reader (engine, UI). */
+export function activeLayers(state: Project): readonly Layer[] {
+  return activePart(state).layers;
+}
+
+/** Rewrite the active car's lanes via `fn`; identity-stable (no-op `fn` →
+ *  same Project, so undo history stays clean). All layer reducers go through
+ *  this, so they operate on the car Home is focused on. */
+function editActivePart(
+  state: Project,
+  fn: (layers: readonly Layer[]) => readonly Layer[],
+): Project {
+  const part = activePart(state);
+  const layers = fn(part.layers);
+  if (layers === part.layers) return state;
+  return {
+    ...state,
+    parts: state.parts.map((p) => (p.id === part.id ? { ...p, layers } : p)),
   };
 }
 
@@ -176,16 +223,20 @@ function editLane(
   index: number,
   fn: (layer: Layer) => Layer,
 ): Project {
-  let changed = false;
-  const layers = state.layers.map((l) => {
-    if (l.id !== layerId) return l;
-    const span = l.kind === "melody" ? l.notes.length : l.steps.length;
-    if (index < 0 || index >= span) return l;
-    const next = fn(l);
-    if (next !== l) changed = true;
-    return next;
+  return editActivePart(state, (layers) => {
+    let changed = false;
+    const next = layers.map((l) => {
+      if (l.id !== layerId) return l;
+      const span = l.kind === "melody" ? l.notes.length : l.steps.length;
+      if (index < 0 || index >= span) return l;
+      const r = fn(l);
+      if (r !== l) changed = true;
+      return r;
+    });
+    // Return the SAME array when nothing changed so editActivePart (and thus the
+    // reducer) is identity-stable → no-op edits never pollute undo history.
+    return changed ? next : layers;
   });
-  return changed ? { ...state, layers } : state;
 }
 
 /** Structural equality for cells, so a resize/roll that lands on the SAME value
@@ -250,13 +301,17 @@ export function reduce(state: Project, cmd: Command): Project {
 
     case "removeClip": {
       if (!state.clips[cmd.clipId]) return state;
-      // Drop the clip AND any lane that referenced it — a layer can never point
-      // at an unknown clip. One command, so undo restores clip + lanes together.
+      // Drop the clip AND any lane that referenced it — in EVERY car, since a
+      // clip is shared song-wide and a layer can never point at an unknown clip.
+      // One command, so undo restores clip + lanes together.
       const { [cmd.clipId]: _removed, ...rest } = state.clips;
       return {
         ...state,
         clips: rest,
-        layers: state.layers.filter((l) => l.clipId !== cmd.clipId),
+        parts: state.parts.map((p) => ({
+          ...p,
+          layers: p.layers.filter((l) => l.clipId !== cmd.clipId),
+        })),
       };
     }
 
@@ -291,34 +346,32 @@ export function reduce(state: Project, cmd: Command): Project {
 
     case "addLayer": {
       if (!state.clips[cmd.layer.clipId]) return state; // can't layer an unknown clip
-      // Enforce the CPU ceiling: steal the oldest layer when at capacity.
-      const base =
-        state.layers.length >= MAX_LAYERS ? state.layers.slice(1) : state.layers;
       const layer = makeLayer({ ...cmd.layer, volume: clamp(cmd.layer.volume, 0, 1) });
-      return { ...state, layers: [...base, layer] };
+      return editActivePart(state, (layers) => {
+        // Enforce the CPU ceiling per car: steal the oldest layer at capacity.
+        const base = layers.length >= MAX_LAYERS ? layers.slice(1) : layers;
+        return [...base, layer];
+      });
     }
 
     case "removeLayer":
-      return {
-        ...state,
-        layers: state.layers.filter((l) => l.id !== cmd.layerId),
-      };
+      return editActivePart(state, (layers) =>
+        layers.filter((l) => l.id !== cmd.layerId),
+      );
 
     case "setLayerVolume":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, volume: clamp(cmd.volume, 0, 1) } : l,
         ),
-      };
+      );
 
     case "toggleLayerMuted":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, muted: !l.muted } : l,
         ),
-      };
+      );
 
     // Tap a drum cell: place a single hit, or clear it if already on. Row 0 —
     // drums have no pitch. (Element type went boolean → StepNote|null, so this
@@ -423,36 +476,32 @@ export function reduce(state: Project, cmd: Command): Project {
       );
 
     case "setLayerWave":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, wave: cmd.wave } : l,
         ),
-      };
+      );
 
     case "setLayerEcho":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, echo: clamp(cmd.echo, 0, 1) } : l,
         ),
-      };
+      );
 
     case "setLayerTone":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, tone: clamp(cmd.tone, 0, 1) } : l,
         ),
-      };
+      );
 
     case "setLayerSwing":
-      return {
-        ...state,
-        layers: state.layers.map((l) =>
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
           l.id === cmd.layerId ? { ...l, swing: clamp(cmd.swing, 0, 1) } : l,
         ),
-      };
+      );
 
     case "setTempo":
       return { ...state, tempoBpm: clamp(Math.round(cmd.bpm), MIN_BPM, MAX_BPM) };
@@ -526,16 +575,58 @@ export function deserialize(json: string): Project {
 const SCALE_SET = new Set<ScaleId>(["magic", "rainbow"]);
 const KEY_SET = new Set<KeyId>(["C", "D", "F", "G", "A"]);
 
-/** Back-fill fields that older saves predate (melody lanes, scale/key/swing)
- *  so a jam saved before this feature still loads and plays. */
-export function normalizeProject(raw: Partial<Project>): Project {
-  const base = emptyProject(raw.id ?? "proj", raw.name ?? "My Beat");
+/** Normalize a raw car (Part): complete its lanes through makeLayer. */
+function normalizePart(raw: Partial<Part>, fallbackColor: string, index: number): Part {
+  const name =
+    typeof raw.name === "string" && raw.name.trim() ? raw.name : `Loop ${index + 1}`;
+  const color = typeof raw.color === "string" ? raw.color : fallbackColor;
+  const layers = (raw.layers ?? []).map((l) => makeLayer(l as Layer));
+  return makePart(raw.id ?? `part-${index + 1}`, name, color, layers);
+}
+
+/** Back-fill fields that older saves predate so any past jam still loads and
+ *  plays. Handles the pre-Song-Train shape (flat `layers`) by wrapping it in a
+ *  single car, and validates parts/arrangement/activePartId of newer saves. */
+export function normalizeProject(
+  raw: Partial<Project> & { readonly layers?: readonly Layer[] },
+): Project {
+  const id = raw.id ?? "proj";
+  const base = emptyProject(id, raw.name ?? "My Beat");
   const scaleId =
     raw.scaleId && SCALE_SET.has(raw.scaleId) ? raw.scaleId : base.scaleId;
   const keyId = raw.keyId && KEY_SET.has(raw.keyId) ? raw.keyId : base.keyId;
+
+  // Parts: a Song-Train save carries `parts`; a legacy save carries flat
+  // `layers` → wrap into one car (with the default car's id, so it stays stable).
+  const rawParts: readonly Partial<Part>[] =
+    Array.isArray(raw.parts) && raw.parts.length > 0
+      ? raw.parts
+      : [{ id: base.parts[0]!.id, name: "Loop 1", color: CAR_COLORS[0], layers: raw.layers ?? [] }];
+  const parts = rawParts.map((p, i) =>
+    normalizePart(p, CAR_COLORS[i % CAR_COLORS.length] as string, i),
+  );
+
+  // Arrangement: keep only entries pointing at a real car; default to each car
+  // once, in order. Repeats clamp to 1 | 2 | 4.
+  const partIds = new Set(parts.map((p) => p.id));
+  let arrangement: ArrangeCar[] = (raw.arrangement ?? [])
+    .filter((c) => c && partIds.has(c.partId))
+    .map((c) => ({
+      partId: c.partId,
+      repeats: c.repeats === 2 || c.repeats === 4 ? c.repeats : 1,
+    }));
+  if (arrangement.length === 0) {
+    arrangement = parts.map((p) => ({ partId: p.id, repeats: 1 }));
+  }
+
+  const activePartId =
+    raw.activePartId && partIds.has(raw.activePartId)
+      ? raw.activePartId
+      : (parts[0] as Part).id;
+
   return {
-    ...base,
-    ...raw,
+    id,
+    name: raw.name ?? base.name,
     scaleId,
     keyId,
     swing: typeof raw.swing === "number" ? clamp(raw.swing, 0, 1) : base.swing,
@@ -544,7 +635,9 @@ export function normalizeProject(raw: Partial<Project>): Project {
         ? clamp(Math.round(raw.tempoBpm), MIN_BPM, MAX_BPM)
         : base.tempoBpm,
     clips: raw.clips ?? {},
-    layers: (raw.layers ?? []).map((l) => makeLayer(l as Layer)),
+    parts,
+    arrangement,
+    activePartId,
     activeMachineId: raw.activeMachineId ?? base.activeMachineId,
   };
 }
