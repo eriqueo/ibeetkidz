@@ -134,14 +134,12 @@ it plays," and is a bigger leap. Revisit only if per-bar swaps prove audibly sea
 8. **Undo confusion across loop vs arrangement edits.** → Project-level history
    already unifies them; one Undo stack covers both. Verify in an e2e.
 
-## Open questions for Eric (before Inc 0)
+## Decisions (locked 2026-06-22)
 
-- **Empty-car default:** when "+ New Car" makes a car, start it blank, or
-  pre-seed a copy of the current car so the kid tweaks a variation? (BeepBox starts
-  blank; "duplicate then change" is often friendlier.)
-- **Tempo/key per car:** confirm song-wide is fine for v1 (recommended), or do you
-  want a car to be able to change speed/key?
-- **Tracks placement:** a new bottom strip (above the play bar) on Home, or a
-  separate "Tracks" tool in the left palette?
-- **Repeat caps:** ×1/×2/×4 enough, or want ×8?
+- **Home's loop is Car 1 by default** — you never have to build a train; the
+  Tracks only exist once you choose to "Send to Tracks" and add a second car.
+- **+ New Car = duplicate the current car**, then change it (not blank).
+- **Tempo/key/swing are song-wide** for v1.
+- **Tracks strip sits at the bottom, underneath the play/control bar.**
+- **Repeats: ×1 / ×2 / ×4.**
 </content>
