@@ -11,13 +11,19 @@ describe("sound catalog", () => {
     expect(new Set(ids).size).toBe(ids.length);
   });
 
-  it("exposes 12 pads", () => {
-    expect(BUILTIN_SOUNDS).toHaveLength(12);
+  it("exposes 16 pads (10 drums + 6 melodic blips)", () => {
+    expect(BUILTIN_SOUNDS).toHaveLength(16);
   });
 
   it("DRUM_SOUNDS is exactly the drum-recipe subset", () => {
     expect(DRUM_SOUNDS.every((s) => s.recipe.kind === "drum")).toBe(true);
-    expect(DRUM_SOUNDS).toHaveLength(6);
+    expect(DRUM_SOUNDS).toHaveLength(10);
+  });
+
+  it("keeps the original 6 drum ids (saved beats reference them)", () => {
+    for (const id of ["kick", "snare", "hihat", "clap", "tom", "cowbell"]) {
+      expect(getBuiltin(id)?.recipe.kind).toBe("drum");
+    }
   });
 
   it("getBuiltin resolves known ids and rejects unknown", () => {

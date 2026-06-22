@@ -55,8 +55,8 @@ test("sound pads render the full pack and respond to taps", async ({
 }) => {
   await boot(page);
   await page.getByRole("button", { name: /sound pads/i }).click();
-  // 12 built-in pads.
-  await expect(page.locator(".pad")).toHaveCount(12);
+  // 16 built-in pads (10 drums + 6 melodic blips).
+  await expect(page.locator(".pad")).toHaveCount(16);
   await page.locator(".pad").first().dispatchEvent("pointerdown");
 });
 

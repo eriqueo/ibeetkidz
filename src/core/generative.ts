@@ -25,8 +25,12 @@ export function generateBeat(rng: RngPort): Command[] {
   cmds.push({ type: "setTempo", bpm: rng.int(95, 140) });
 
   // Core groove is always kick + snare + hihat; clap/tom are seeded extras.
+  // Surprise stays musical by drawing only from the original groove kit — the
+  // wider rework palette (openhat/rim/shaker/conga) is for hands-on use.
   const always = new Set(["kick", "snare", "hihat"]);
+  const grooveKit = new Set(["kick", "snare", "hihat", "clap", "tom"]);
   for (const drum of DRUM_SOUNDS) {
+    if (!grooveKit.has(drum.assetId)) continue;
     const include = always.has(drum.assetId) || rng.next() < 0.4;
     if (!include) continue;
 
