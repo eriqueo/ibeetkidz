@@ -66,22 +66,31 @@ export interface SoundPort {
   previewNote(noteName: string, wave: ThereminWave): void;
 
   /** Schedule looping playback of a drum clip on the transport at the given
-   *  step. Swing leans the off-beats late; echo adds a per-lane delay tail. */
+   *  step. Swing leans the off-beats late; echo adds a per-lane delay tail.
+   *  `roll` subdivides the step into that many evenly-spaced sub-hits (a fill);
+   *  `lengthSteps` is the note's span (accepted for parity — a one-shot sample
+   *  rings at its natural length, so length is mainly a melody/visual concept). */
   scheduleStep(
     clip: Clip,
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
+    lengthSteps?: number,
+    roll?: number,
   ): void;
 
   /** Schedule a looping melody note (pitched synth voice) on the transport at
-   *  the given step. `noteName` is scientific pitch (e.g. "C4"). */
+   *  the given step. `noteName` is scientific pitch (e.g. "C4"). `lengthSteps`
+   *  sustains the voice across that many steps; `roll` subdivides the start step
+   *  into that many sub-hits (a fill). */
   scheduleNote(
     noteName: string,
     wave: ThereminWave,
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
+    lengthSteps?: number,
+    roll?: number,
   ): void;
 
   /** Real-time XY control for the theremin machine (resolved live, not baked). */

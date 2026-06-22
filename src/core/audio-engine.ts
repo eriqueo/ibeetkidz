@@ -54,16 +54,19 @@ export class AudioEngine {
         tone: layer.tone,
       };
       if (layer.kind === "melody") {
-        layer.notes.forEach((rows, i) => {
-          for (const row of rows) {
-            const note = degreeToNote(project.scaleId, project.keyId, row);
-            this.sound.scheduleNote(note, layer.wave, i, layer.notes.length, opts);
+        const total = layer.notes.length || STEP_COUNT;
+        layer.notes.forEach((chord, i) => {
+          for (const n of chord) {
+            const note = degreeToNote(project.scaleId, project.keyId, n.row);
+            this.sound.scheduleNote(
+              note, layer.wave, i, total, opts, n.length, n.roll ?? 1,
+            );
           }
         });
       } else {
         const total = layer.steps.length || STEP_COUNT;
-        layer.steps.forEach((on, i) => {
-          if (on) this.sound.scheduleStep(clip, i, total, opts);
+        layer.steps.forEach((cell, i) => {
+          if (cell) this.sound.scheduleStep(clip, i, total, opts, cell.length, cell.roll ?? 1);
         });
       }
     }

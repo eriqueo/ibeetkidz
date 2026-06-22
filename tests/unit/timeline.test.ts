@@ -2,8 +2,23 @@ import { describe, expect, it } from "vitest";
 import {
   nearestBeatLoop,
   stepIndexFromProgress,
+  subHitOffsets,
   swingDelayFraction,
 } from "../../src/core/timeline.ts";
+
+describe("subHitOffsets", () => {
+  it("spreads roll hits evenly across one step, first at 0", () => {
+    expect(subHitOffsets(1, 0.25)).toEqual([0]);
+    expect(subHitOffsets(2, 0.25)).toEqual([0, 0.125]);
+    expect(subHitOffsets(4, 0.2)).toEqual([0, 0.05, 0.1, 0.15000000000000002]);
+  });
+
+  it("treats roll < 1 as a single hit and never lands past the step", () => {
+    expect(subHitOffsets(0, 0.25)).toEqual([0]);
+    const last = subHitOffsets(4, 0.4).at(-1) as number;
+    expect(last).toBeLessThan(0.4);
+  });
+});
 
 describe("swingDelayFraction", () => {
   it("leaves on-beats (even steps) put", () => {
