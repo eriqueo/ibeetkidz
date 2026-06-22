@@ -82,11 +82,19 @@ a `usePhoneLayout()` resolver (`src/app/use-viewport.ts`): on phones the Studio
 rail becomes a slide-up bottom sheet so the canvas stays full-width;
 iPad/desktop keep the side-by-side rail.
 
-Gates: `typecheck` clean, 53 unit tests, 14 Playwright E2E (incl. full hero
-journey, save→reload, and voice→Home). `BUILD_RUNBOOK.md` retains the original
-build order. Note: looped clips schedule through `resolveClip` (async, baked +
-cached), so effected voice lanes loop with their effects — and a `scheduleGen`
-guard discards stale async (re)schedules.
+Notes carry length + roll (Capability 1 of `design/PLAN_notes-and-song.md`):
+melody and drum cells are `StepNote { row, length, roll?, slideTo? }` (slideTo
+reserved for the future bend pass). On Home, drag a note's right-edge handle to
+**stretch** it; tap-tap a drum cell to cycle a **roll** fill (none→2→4). Pure
+commands `addNote/removeNote/resizeNote/setRoll` (plus the kept toggles); the
+scheduler sustains melody for `length` and subdivides the start step for `roll`.
+Tolerant deserialize upgrades old boolean/number cells to length-1 notes.
+
+Gates: `typecheck` clean, 71 unit tests, 22 Playwright E2E (incl. full hero
+journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
+`BUILD_RUNBOOK.md` retains the original build order. Note: looped clips schedule
+through `resolveClip` (async, baked + cached), so effected voice lanes loop with
+their effects — and a `scheduleGen` guard discards stale async (re)schedules.
 
 Known follow-ups: `robot` is a comb-delay approximation (not vocoded);
 `scheduleStep` only resolves un-effected source buffers synchronously (beat-grid
