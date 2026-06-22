@@ -78,7 +78,11 @@ export interface SoundPort {
    *  `roll` subdivides the step into that many sub-hits (a fill) with a rising
    *  velocity; `lengthSteps` rings a built-in drum longer (stretch); `pitch`
    *  tunes it (semitones). For recordings/effected clips these last three are
-   *  honored where they make sense (a sample still rings at its own length). */
+   *  honored where they make sense (a sample still rings at its own length).
+   *  `cycleBars` is how many bars the loop spans before repeating (1 = a single
+   *  bar, today's default); `barOffset` places this voice that many bars into
+   *  the cycle. The Song Train rides a whole arrangement by scheduling every
+   *  car at `cycleBars` = the song length, each at its own `barOffset`. */
   scheduleStep(
     clip: Clip,
     stepIndex: number,
@@ -87,6 +91,8 @@ export interface SoundPort {
     lengthSteps?: number,
     roll?: number,
     pitch?: number,
+    cycleBars?: number,
+    barOffset?: number,
   ): void;
 
   /** Schedule a looping melody note (pitched synth voice) on the transport at
@@ -94,7 +100,8 @@ export interface SoundPort {
    *  sustains the voice across that many steps; `roll` subdivides the start step
    *  into that many sub-hits (a fill). `bend`, when present, glides the voice's
    *  pitch through its points over the note's length (a swoop) — bend and roll
-   *  are mutually exclusive (the core guarantees it). */
+   *  are mutually exclusive (the core guarantees it). `cycleBars`/`barOffset`
+   *  work as in `scheduleStep` (Song Train arrangement playback). */
   scheduleNote(
     noteName: string,
     wave: ThereminWave,
@@ -104,6 +111,8 @@ export interface SoundPort {
     lengthSteps?: number,
     roll?: number,
     bend?: readonly BendPoint[],
+    cycleBars?: number,
+    barOffset?: number,
   ): void;
 
   /** Real-time XY control for the theremin machine (resolved live, not baked). */
@@ -129,6 +138,11 @@ export interface SoundPort {
   /** Current playhead step (0..totalSteps-1) from the running transport, or -1
    *  when stopped. Drives the Loop Stage playhead. */
   getTransportStep(totalSteps: number): number;
+
+  /** Absolute bar index since the transport started (0-based), or -1 when
+   *  stopped. The Song Train Tracks strip maps `bar % songBars` to the car
+   *  currently riding, to light it up. */
+  getTransportBar(): number;
 
   /** Analyser node feeding the visualizer. */
   getAnalyser(): AnalyserNode;

@@ -130,6 +130,17 @@ export function activeLayers(state: Project): readonly Layer[] {
   return activePart(state).layers;
 }
 
+/** Total length of the arrangement in bars — the sum of each car's repeats
+ *  (every car is a one-bar loop). At least 1 (a single car). Only arrangement
+ *  entries pointing at a real car count, so a stale entry can't inflate it. */
+export function songBars(state: Project): number {
+  const ids = new Set(state.parts.map((p) => p.id));
+  const bars = state.arrangement
+    .filter((c) => ids.has(c.partId))
+    .reduce((n, c) => n + Math.max(1, c.repeats), 0);
+  return Math.max(1, bars);
+}
+
 /** Rewrite the active car's lanes via `fn`; identity-stable (no-op `fn` →
  *  same Project, so undo history stays clean). All layer reducers go through
  *  this, so they operate on the car Home is focused on. */

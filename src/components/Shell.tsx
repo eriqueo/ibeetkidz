@@ -67,10 +67,7 @@ const PlayBar: FC<{ watching: boolean; onToggleWatch: () => void }> = ({
           className="pb-btn pb-play"
           data-act="play"
           title="Play"
-          onClick={() => {
-            engine.reconcile(getProject());
-            engine.play();
-          }}
+          onClick={() => engine.playLoop(getProject())}
         >
           <span className="pb-icon">▶</span>
           <span className="pb-label">Play</span>
