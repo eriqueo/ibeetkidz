@@ -27,6 +27,9 @@ const clamp = (v: number, lo: number, hi: number): number =>
 export const maxLengthAt = (index: number): number =>
   Math.max(1, STEP_COUNT - index);
 
+/** Drum tune range: ±1 octave of semitone offset, stored in the hit's `row`. */
+export const MAX_DRUM_PITCH = 12;
+
 /** Coerce raw pin data into a clean, sorted bend path: each pin clamped to a
  *  real grid row and to t∈(0,1], de-duped by t (last wins), sorted. A pin at
  *  t≤0 is dropped (t=0 IS the note's base row). Returns undefined for an empty
@@ -398,6 +401,25 @@ export function reduce(state: Project, cmd: Command): Project {
         editNote(l, cmd.index, cmd.row, (note) =>
           note ? makeNote(note.row, cmd.index, note.length, note.roll) : null,
         ),
+      );
+
+    // Tune a drum hit by storing the pitch in its `row` (drums have no chord, so
+    // there's exactly one cell per step — match it at row 0). Clamped to ±1
+    // octave. No-op on melody lanes or an empty cell.
+    case "tuneDrum":
+      return editLane(state, cmd.layerId, cmd.index, (l) =>
+        l.kind === "drum"
+          ? editNote(l, cmd.index, 0, (note) =>
+              note
+                ? makeNote(
+                    clamp(Math.round(cmd.pitch), -MAX_DRUM_PITCH, MAX_DRUM_PITCH),
+                    cmd.index,
+                    note.length,
+                    note.roll,
+                  )
+                : null,
+            )
+          : l,
       );
 
     case "setLayerWave":
