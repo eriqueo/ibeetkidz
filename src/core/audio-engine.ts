@@ -72,7 +72,11 @@ export class AudioEngine {
       } else {
         const total = layer.steps.length || STEP_COUNT;
         layer.steps.forEach((cell, i) => {
-          if (cell) this.sound.scheduleStep(clip, i, total, opts, cell.length, cell.roll ?? 1);
+          // A drum hit's `row` is its tune (semitone offset); 0 = natural.
+          if (cell)
+            this.sound.scheduleStep(
+              clip, i, total, opts, cell.length, cell.roll ?? 1, cell.row,
+            );
         });
       }
     }

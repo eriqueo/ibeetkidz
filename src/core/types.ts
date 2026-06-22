@@ -152,6 +152,9 @@ export type Command =
   // its base `row`. `addPin` upserts a pin at fraction `t` targeting `toRow`.
   | { readonly type: "addPin"; readonly layerId: string; readonly index: number; readonly row: number; readonly t: number; readonly toRow: number }
   | { readonly type: "clearPins"; readonly layerId: string; readonly index: number; readonly row: number }
+  // Tune a drum hit: its `row` doubles as a semitone pitch offset (drums have no
+  // chord, so row is free). Melody lanes ignore this.
+  | { readonly type: "tuneDrum"; readonly layerId: string; readonly index: number; readonly pitch: number }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }

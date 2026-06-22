@@ -87,6 +87,29 @@ test("melody: drag a note's edge UP bends it (a swoop line appears)", async ({ p
   await expect(row.locator(".note-cell.on")).toHaveCount(1);
 });
 
+test("drum: drag a hit's edge UP tunes it (a pitch badge appears)", async ({ page }) => {
+  await boot(page);
+  await page.locator('[data-act="add-drum"]').click();
+  await page.locator('[data-drum="kick"]').click();
+
+  const lane = page.locator(".loop-track .loop-lane").first();
+  await lane.locator(".loop-cell").nth(2).click();
+  const hit = lane.locator(".loop-cell.on").first();
+  await expect(hit).toHaveCount(1);
+  await expect(lane.locator(".tune-badge")).toHaveCount(0);
+
+  // Drag the handle straight up → tune up; a "+n" badge shows on the hit.
+  const handle = hit.locator(".note-handle");
+  const hBox = (await handle.boundingBox())!;
+  await page.mouse.move(hBox.x + hBox.width / 2, hBox.y + hBox.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(hBox.x + hBox.width / 2, hBox.y - 50, { steps: 10 });
+  await page.mouse.up();
+
+  await expect(lane.locator(".tune-badge")).toHaveCount(1);
+  await expect(lane.locator(".tune-badge")).toContainText("+");
+});
+
 test("drum: double-tap cycles a cell's roll 1 → 2 → 4 → off", async ({ page }) => {
   await boot(page);
   // Add a kick lane via the Sound picker.

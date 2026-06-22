@@ -400,34 +400,69 @@ export class ToneSoundPort implements SoundPort {
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
-    _lengthSteps = 1,
+    lengthSteps = 1,
     roll = 1,
+    pitch = 0,
   ): void {
     const offset = this.stepOffset(stepIndex, totalSteps, opts.swing);
-    // A roll fires `roll` evenly-spaced hits within the start step (a fill).
-    // length is intentionally unused here: a one-shot drum sample rings at its
-    // own natural length, so "stretching" a drum is a visual/placement concept.
-    const subs = subHitOffsets(roll, this.stepDurationSec(totalSteps));
-    // Resolve through resolveClip so effected clips (a "funny" voice recording
-    // sent to Home) loop with their baked effects, not the dry source. Drums are
-    // un-effected builtins, so this resolves on the next microtask — inaudibly
-    // soon. The generation guard discards a result that a reschedule superseded.
+    const stepDur = this.stepDurationSec(totalSteps);
+    // A roll fires `roll` evenly-spaced hits within the start step with a rising
+    // velocity (a crescendo fill).
+    const subs = subHitOffsets(roll, stepDur);
+    const baseVol = Math.max(0.0001, opts.volume);
+    const startAll = (player: Tone.Player, time: number): void => {
+      subs.forEach((s, k) => {
+        const v =
+          roll > 1 ? baseVol * (0.5 + 0.5 * (k / (roll - 1))) : baseVol;
+        player.volume.setValueAtTime(Tone.gainToDb(Math.max(0.0001, v)), time + s);
+        player.start(time + s);
+      });
+    };
+
+    // Built-in, un-effected drums render parametrically: `length` rings them
+    // longer (stretch now audible) and `pitch` tunes them. Effected clips and
+    // recordings (a "funny" voice sent to Home) still go through resolveClip so
+    // they loop with their baked effects.
+    const kind = builtinDrumKind(clip);
+    if (kind) {
+      // A rolled drum stays its natural length (crisp sub-hits); otherwise length
+      // stretches the ring up to the note's span.
+      const defDur = ToneSoundPort.DRUM_DUR[kind];
+      const durationSec =
+        roll > 1
+          ? defDur
+          : Math.max(defDur, Math.min(lengthSteps, totalSteps) * stepDur);
+      const player = new Tone.Player(
+        this.drumBuffer(kind, durationSec, pitch),
+      ).connect(this.scheduledDestination(opts));
+      this.scheduledVoices.push(player);
+      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), "1m", offset);
+      return;
+    }
+
     const gen = this.scheduleGen;
     void this.resolveClip(clip).then((buf) => {
       if (!buf || gen !== this.scheduleGen) return;
       const player = new Tone.Player(buf).connect(
         this.scheduledDestination(opts),
       );
-      player.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat(
-        (time) => {
-          for (const s of subs) player.start(time + s);
-        },
-        "1m",
-        offset,
-      );
+      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), "1m", offset);
     });
+  }
+
+  /** Synthesize-and-cache a built-in drum at a requested ring duration + pitch.
+   *  Bucketed so the cache actually hits while the kid drags length/tune. */
+  private drumBuffer(kind: DrumKind, durationSec: number, pitch: number): AudioBuffer {
+    const durBucket = Math.round(durationSec * 20) / 20; // 0.05s steps
+    const pitchBucket = Math.max(-24, Math.min(24, Math.round(pitch)));
+    const key = `drum:${kind}:${durBucket}:${pitchBucket}`;
+    let buf = this.buffers.get(key);
+    if (!buf) {
+      buf = this.synthDrum(kind, { durationSec: durBucket, pitch: pitchBucket });
+      this.buffers.set(key, buf);
+    }
+    return buf;
   }
 
   scheduleNote(
@@ -875,6 +910,16 @@ function bakeKey(clip: Clip): string {
         : `s:${clip.source.note}`;
   const fx = clip.effects.map((e) => `${e.id}@${e.amount.toFixed(3)}`).join(",");
   return `${srcKey}|${fx}`;
+}
+
+/** The DrumKind of a clip IFF it's a plain built-in drum (no effects, not
+ *  beat-snapped) — the case we can render parametrically for length/pitch.
+ *  Recordings, tone blips, and effected clips return null (resolveClip path). */
+function builtinDrumKind(clip: Clip): DrumKind | null {
+  if (clip.source.kind !== "builtin") return null;
+  if (clip.effects.length > 0 || clip.loopBeats !== undefined) return null;
+  const recipe = getBuiltin(clip.source.assetId)?.recipe;
+  return recipe?.kind === "drum" ? recipe.drum : null;
 }
 
 /** Scale a channel down so its peak sits at `ceil` (no boost). Keeps the fuller,

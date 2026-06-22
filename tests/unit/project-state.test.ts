@@ -228,6 +228,21 @@ describe("note model (length + roll)", () => {
     expect(s.layers[0]?.notes[0]?.[0]).toEqual({ row: 2, length: 1, pins: [{ t: 1, row: 5 }] });
   });
 
+  it("tunes a drum hit via its row, clamped to ±1 octave; no-op on melody", () => {
+    let s = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
+    s = reduce(s, { type: "tuneDrum", layerId: "d1", index: 0, pitch: 5 });
+    expect(s.layers[0]?.steps[0]).toEqual({ row: 5, length: 1 });
+    // Clamped to ±12.
+    s = reduce(s, { type: "tuneDrum", layerId: "d1", index: 0, pitch: 99 });
+    expect(s.layers[0]?.steps[0]?.row).toBe(12);
+    // Tuning preserves length; same pitch is a no-op (no undo churn).
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 12, length: 2 });
+    expect(reduce(s, { type: "tuneDrum", layerId: "d1", index: 0, pitch: 12 })).toBe(s);
+    // No-op on a melody lane.
+    let m = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
+    expect(reduce(m, { type: "tuneDrum", layerId: "m1", index: 0, pitch: 3 })).toBe(m);
+  });
+
   it("clearPins removes the bend; addPin is a no-op on drums", () => {
     let s = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 2 });
     s = reduce(s, { type: "addPin", layerId: "m1", index: 0, row: 2, t: 1, toRow: 5 });

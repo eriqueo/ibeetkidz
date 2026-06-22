@@ -779,6 +779,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
     index: number,
     row: number,
     gridSel?: string,
+    tuneFrom?: number,
   ): void => {
     e.stopPropagation();
     e.preventDefault();
@@ -791,14 +792,20 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
     handle.setPointerCapture?.(e.pointerId);
     const startX = e.clientX;
     const startY = e.clientY;
-    let mode: "stretch" | "bend" | null = null;
+    const canVert = gridEl !== null || tuneFrom !== undefined;
+    let mode: "stretch" | "bend" | "tune" | null = null;
 
     const onMove = (ev: PointerEvent): void => {
       const dx = ev.clientX - startX;
       const dy = ev.clientY - startY;
       if (mode === null) {
         if (Math.hypot(dx, dy) < 6) return; // wait for a decisive move
-        mode = gridEl && Math.abs(dy) > Math.abs(dx) ? "bend" : "stretch";
+        mode =
+          canVert && Math.abs(dy) > Math.abs(dx)
+            ? gridEl
+              ? "bend"
+              : "tune"
+            : "stretch";
       }
       if (mode === "stretch") {
         const rect = laneEl.getBoundingClientRect();
@@ -807,7 +814,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           Math.min(STEP_COUNT - 1, Math.floor(((ev.clientX - rect.left) / rect.width) * STEP_COUNT)),
         );
         dispatch({ type: "resizeNote", layerId: layer.id, index, row, length: step - index + 1 });
-      } else if (gridEl) {
+      } else if (mode === "bend" && gridEl) {
         const rect = gridEl.getBoundingClientRect();
         const fromTop = (ev.clientY - rect.top) / rect.height;
         const bucket = Math.max(0, Math.min(MELODY_ROWS - 1, Math.floor(fromTop * MELODY_ROWS)));
@@ -817,6 +824,10 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
         } else {
           dispatch({ type: "addPin", layerId: layer.id, index, row, t: 1, toRow });
         }
+      } else if (mode === "tune") {
+        // Drag up = higher; ~10px per semitone. Reducer clamps to ±1 octave.
+        const pitch = (tuneFrom ?? 0) - Math.round(dy / 10);
+        dispatch({ type: "tuneDrum", layerId: layer.id, index, pitch });
       }
     };
     const onUp = (): void => {
@@ -973,9 +984,17 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                     {"•".repeat(seg.note.roll)}
                   </span>
                 )}
+                {seg.note.row !== 0 && (
+                  <span className="tune-badge" aria-hidden>
+                    {seg.note.row > 0 ? `+${seg.note.row}` : seg.note.row}
+                  </span>
+                )}
                 <span
                   className="note-handle"
-                  onPointerDown={(e) => beginNoteDrag(e, ".loop-lane", seg.index, 0)}
+                  title="Drag sideways to stretch · up/down to tune"
+                  onPointerDown={(e) =>
+                    beginNoteDrag(e, ".loop-lane", seg.index, 0, undefined, seg.note?.row ?? 0)
+                  }
                 />
               </button>
             ) : (

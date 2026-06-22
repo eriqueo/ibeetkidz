@@ -75,9 +75,10 @@ export interface SoundPort {
 
   /** Schedule looping playback of a drum clip on the transport at the given
    *  step. Swing leans the off-beats late; echo adds a per-lane delay tail.
-   *  `roll` subdivides the step into that many evenly-spaced sub-hits (a fill);
-   *  `lengthSteps` is the note's span (accepted for parity — a one-shot sample
-   *  rings at its natural length, so length is mainly a melody/visual concept). */
+   *  `roll` subdivides the step into that many sub-hits (a fill) with a rising
+   *  velocity; `lengthSteps` rings a built-in drum longer (stretch); `pitch`
+   *  tunes it (semitones). For recordings/effected clips these last three are
+   *  honored where they make sense (a sample still rings at its own length). */
   scheduleStep(
     clip: Clip,
     stepIndex: number,
@@ -85,6 +86,7 @@ export interface SoundPort {
     opts: StepOptions,
     lengthSteps?: number,
     roll?: number,
+    pitch?: number,
   ): void;
 
   /** Schedule a looping melody note (pitched synth voice) on the transport at
