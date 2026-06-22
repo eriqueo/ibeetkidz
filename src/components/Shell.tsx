@@ -62,27 +62,32 @@ const PlayBar: FC<{ watching: boolean; onToggleWatch: () => void }> = ({
   const [snap, setSnap] = useState(true);
   return (
     <footer className="playbar">
-      <button
-        className="t-btn"
-        data-act="play"
-        title="Play"
-        onClick={() => {
-          engine.reconcile(getProject());
-          engine.play();
-        }}
-      >
-        ▶
-      </button>
-      <button
-        className="t-btn"
-        data-act="stop"
-        title="Stop"
-        onClick={() => engine.stop()}
-      >
-        ■
-      </button>
+      <div className="pb-group">
+        <button
+          className="pb-btn pb-play"
+          data-act="play"
+          title="Play"
+          onClick={() => {
+            engine.reconcile(getProject());
+            engine.play();
+          }}
+        >
+          <span className="pb-icon">▶</span>
+          <span className="pb-label">Play</span>
+        </button>
+        <button
+          className="pb-btn"
+          data-act="stop"
+          title="Stop"
+          onClick={() => engine.stop()}
+        >
+          <span className="pb-icon">■</span>
+          <span className="pb-label">Stop</span>
+        </button>
+      </div>
+
       <label className="tempo">
-        Speed
+        <span className="pb-label">🐢 Speed 🐇</span>
         <input
           data-act="tempo"
           type="range"
@@ -96,55 +101,65 @@ const PlayBar: FC<{ watching: boolean; onToggleWatch: () => void }> = ({
           }}
         />
       </label>
-      <button
-        className={snap ? "t-btn active" : "t-btn"}
-        data-act="snap"
-        title="Snap to beat"
-        onClick={() => {
-          const next = !snap;
-          setSnap(next);
-          engine.setQuantize(next ? "beat" : "off");
-        }}
-      >
-        🧲
-      </button>
-      <button className="t-btn" data-act="undo" title="Undo" onClick={undo}>
-        ↶
-      </button>
-      <button className="t-btn" data-act="redo" title="Redo" onClick={redo}>
-        ↷
-      </button>
-      <button
-        className="t-btn"
-        data-act="surprise"
-        title="Surprise me"
-        onClick={surprise}
-      >
-        🎲
-      </button>
-      <button
-        className="t-btn"
-        data-act="save"
-        title="Save"
-        onClick={(e) => {
-          save();
-          const b = e.currentTarget;
-          b.classList.remove("flash");
-          void b.offsetWidth; // restart the animation
-          b.classList.add("flash");
-        }}
-      >
-        💾
-      </button>
-      <button
-        className={watching ? "t-btn active" : "t-btn"}
-        data-act="watch"
-        title="Watch the sound"
-        aria-pressed={watching}
-        onClick={onToggleWatch}
-      >
-        👁
-      </button>
+
+      <div className="pb-group">
+        <button
+          className={"pb-btn" + (snap ? " active" : "")}
+          data-act="snap"
+          title="Snap to beat"
+          aria-pressed={snap}
+          onClick={() => {
+            const next = !snap;
+            setSnap(next);
+            engine.setQuantize(next ? "beat" : "off");
+          }}
+        >
+          <span className="pb-icon">🧲</span>
+          <span className="pb-label">Snap</span>
+        </button>
+        <button className="pb-btn" data-act="undo" title="Undo" onClick={undo}>
+          <span className="pb-icon">↶</span>
+          <span className="pb-label">Undo</span>
+        </button>
+        <button className="pb-btn" data-act="redo" title="Redo" onClick={redo}>
+          <span className="pb-icon">↷</span>
+          <span className="pb-label">Redo</span>
+        </button>
+        <button
+          className="pb-btn"
+          data-act="surprise"
+          title="Surprise me"
+          onClick={surprise}
+        >
+          <span className="pb-icon">🎲</span>
+          <span className="pb-label">Surprise</span>
+        </button>
+        <button
+          className="pb-btn"
+          data-act="save"
+          title="Save"
+          onClick={(e) => {
+            save();
+            const b = e.currentTarget;
+            b.classList.remove("flash");
+            void b.offsetWidth; // restart the animation
+            b.classList.add("flash");
+          }}
+        >
+          <span className="pb-icon">💾</span>
+          <span className="pb-label">Save</span>
+        </button>
+        <button
+          className={"pb-btn" + (watching ? " active" : "")}
+          data-act="watch"
+          title="Watch the sound"
+          aria-pressed={watching}
+          onClick={onToggleWatch}
+        >
+          <span className="pb-icon">👁</span>
+          <span className="pb-label">Watch</span>
+        </button>
+      </div>
     </footer>
   );
 };

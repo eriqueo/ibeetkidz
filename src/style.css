@@ -251,15 +251,61 @@ body {
   grid-auto-columns: min(100%, 56rem);
 }
 
-/* Play bar (bottom: transport + snap) */
+/* Play bar (bottom: transport + speed + tools), centered with labeled buttons. */
 .playbar {
   grid-area: playbar;
   display: flex;
-  gap: 0.5rem;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
   align-items: center;
+  justify-content: center;
   padding: 0.5rem;
   background: rgba(26, 20, 48, 0.85);
   backdrop-filter: blur(6px);
+}
+.pb-group {
+  display: flex;
+  align-items: stretch;
+  gap: 0.4rem;
+}
+/* A big, labeled control: emoji/glyph on top, kid-readable label under it. */
+.pb-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.12rem;
+  min-width: 3.6rem;
+  padding: 0.35rem 0.55rem;
+  border: none;
+  border-radius: 0.9rem;
+  background: var(--panel);
+  color: white;
+  font-family: inherit;
+  cursor: pointer;
+}
+.pb-btn:active {
+  transform: scale(0.92);
+}
+.pb-btn.active {
+  background: var(--accent);
+  color: #1a1430;
+}
+.pb-play {
+  background: #06d6a0;
+  color: #08221b;
+}
+.pb-icon {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+.pb-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.02em;
+  opacity: 0.92;
+}
+.pb-btn.flash {
+  animation: flash 0.5s ease-out;
 }
 .t-btn {
   font-size: 1.5rem;
@@ -282,6 +328,10 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
+  gap: 0.2rem;
+}
+.tempo input[type="range"] {
+  width: 8rem;
 }
 /* The machine switcher hides inactive machines via the [hidden] attribute, but
    the author rule `.machine { display: grid }` above beats the UA stylesheet's
