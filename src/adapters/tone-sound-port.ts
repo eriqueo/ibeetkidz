@@ -125,6 +125,10 @@ export class ToneSoundPort implements SoundPort {
   private readonly bakedCache = new Map<string, AudioBuffer>();
   /** Beat-snapped (looped/trimmed) buffers, keyed by source+chain+beats@bpm. */
   private readonly loopCache = new Map<string, AudioBuffer>();
+  /** Silence-trimmed copies of recordings, keyed by buffer id, used as the
+   *  Voice Keys sampler one-shot so a note speaks immediately (a raw take has
+   *  dead air before the voice starts — a short note would otherwise be silent). */
+  private readonly voiceSampleCache = new Map<BufferId, Tone.ToneAudioBuffer>();
   private mic?: Tone.UserMedia | undefined;
   private recorder?: Tone.Recorder | undefined;
   /** Active while capturing a Magic Pad performance; live theremin voices
@@ -435,13 +439,25 @@ export class ToneSoundPort implements SoundPort {
   private buildMelodyVoice(instrument: InstrumentId): MelodyVoice {
     const bufId = voiceBufferId(instrument);
     if (bufId !== null) {
-      const buf = this.buffers.get(bufId);
-      if (buf) {
-        return new Tone.Sampler({ urls: { C4: new Tone.ToneAudioBuffer(buf) } });
-      }
+      const sample = this.voiceSample(bufId);
+      if (sample) return new Tone.Sampler({ urls: { C4: sample } });
       return makeMelodyVoice("soft"); // buffer not ready → still make sound
     }
     return makeMelodyVoice(instrument);
+  }
+
+  /** The silence-trimmed sampler buffer for a recording, built (and cached) on
+   *  first use. A raw take leads with dead air before the voice starts; a short
+   *  melody note would play only that silence. Trimming makes the sampled voice
+   *  speak the instant a note fires. Returns null until the recording decodes. */
+  private voiceSample(bufId: BufferId): Tone.ToneAudioBuffer | null {
+    const cached = this.voiceSampleCache.get(bufId);
+    if (cached) return cached;
+    const buf = this.buffers.get(bufId);
+    if (!buf) return null;
+    const trimmed = new Tone.ToneAudioBuffer(trimSilence(this.ctx, buf));
+    this.voiceSampleCache.set(bufId, trimmed);
+    return trimmed;
   }
 
   previewNote(noteName: string, instrument: InstrumentId): void {
@@ -979,6 +995,48 @@ function normalizeBuffer(buf: AudioBuffer, target = 0.97): void {
       data[i] = (data[i] as number) * gain;
     }
   }
+}
+
+/** Trim leading and trailing near-silence from a recording so it works as a
+ *  sampled instrument: a note (often a fraction of a second) must hit the voice
+ *  immediately, not the dead air before the singer starts. The threshold is
+ *  relative to the take's own peak so it works for quiet and loud recordings;
+ *  a few ms of head-room is kept so the onset isn't clipped. Returns the source
+ *  unchanged if it's silent or already tight. */
+function trimSilence(ctx: AudioContext, buf: AudioBuffer): AudioBuffer {
+  let peak = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      const a = Math.abs(data[i] as number);
+      if (a > peak) peak = a;
+    }
+  }
+  if (peak < 1e-4) return buf; // effectively silent — nothing to trim against
+  const threshold = Math.max(peak * 0.05, 0.01);
+  let start = buf.length;
+  let end = 0;
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      if (Math.abs(data[i] as number) >= threshold) {
+        if (i < start) start = i;
+        if (i > end) end = i;
+      }
+    }
+  }
+  if (start >= end) return buf; // no sustained signal found — leave it be
+  const pad = Math.round(buf.sampleRate * 0.005); // 5ms onset head-room
+  const tail = Math.round(buf.sampleRate * 0.05); // 50ms release tail
+  start = Math.max(0, start - pad);
+  end = Math.min(buf.length - 1, end + tail);
+  const length = end - start + 1;
+  if (length >= buf.length) return buf; // already tight
+  const out = ctx.createBuffer(buf.numberOfChannels, length, buf.sampleRate);
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    out.getChannelData(ch).set(buf.getChannelData(ch).subarray(start, end + 1));
+  }
+  return out;
 }
 
 /** Loop/trim a buffer to exactly `beats` whole beats at `bpm`. Shorter takes
