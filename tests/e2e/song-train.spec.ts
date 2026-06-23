@@ -24,20 +24,33 @@ test("song train: send to tracks, add a car, edit it, ride the song", async ({
   await page.locator('[data-act="add-melody"]').click();
   await page.locator(".melody-row").nth(3).locator(".note-cell").nth(0).click();
 
+  // Reorder lanes: add a drum under the melody, then bump it to the top.
+  await page.locator('[data-act="add-drum"]').click();
+  await page.locator('[data-drum="kick"]').click();
+  const lanes = page.locator(".loop-board .loop-track");
+  await expect(lanes).toHaveCount(2);
+  // The drum lane (2nd) moves up above the melody.
+  await lanes.nth(1).locator('[data-act="move-up"]').click();
+  await expect(lanes.nth(0).locator(".loop-lane")).toBeVisible(); // drum lane now first
+
   // No train yet → the Tracks strip is hidden.
   await expect(page.locator(".tracks-strip")).toHaveCount(0);
 
-  // Send to Tracks → the strip appears with exactly one car (today's loop).
+  // Send to Tracks → the strip appears with exactly one car (today's loop),
+  // and Home now wears the "which loop am I editing" banner.
   await page.locator('[data-act="send-tracks"]').click();
   await expect(page.locator(".tracks-strip")).toBeVisible();
   await expect(page.locator(".car-block")).toHaveCount(1);
+  await expect(page.locator(".car-banner")).toBeVisible();
+  await expect(page.locator(".car-banner-num")).toContainText("Car 1");
 
   // + New Car → duplicate the current car, open it on Home to edit.
   await page.locator('[data-act="new-car"]').click();
   await expect(page.locator(".car-block")).toHaveCount(2);
   await expect(page.locator('section[data-machine="looper-stage"]')).toBeVisible();
-  // The new (2nd) car is the active one.
+  // The new (2nd) car is the active one — banner and strip ring agree.
   await expect(page.locator(".car-block").nth(1)).toHaveClass(/active/);
+  await expect(page.locator(".car-banner-num")).toContainText("Car 2");
   // The copy carries Car 1's melody lane.
   await expect(page.locator(".melody-grid")).toBeVisible();
 
@@ -52,4 +65,10 @@ test("song train: send to tracks, add a car, edit it, ride the song", async ({
   await page.locator('[data-act="stop"]').click();
   await page.locator(".car-block").nth(0).click();
   await expect(page.locator(".car-block").nth(0)).toHaveClass(/active/);
+  await expect(page.locator(".car-banner-num")).toContainText("Car 1");
+
+  // The banner's ‹ › flips to the neighbouring car right from Home.
+  await page.locator('[data-act="next-car"]').click();
+  await expect(page.locator(".car-banner-num")).toContainText("Car 2");
+  await expect(page.locator(".car-block").nth(1)).toHaveClass(/active/);
 });

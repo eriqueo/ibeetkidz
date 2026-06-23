@@ -15,9 +15,9 @@ import {
   type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import type { Clip, EffectId, Project, StepNote } from "../core/types.ts";
+import type { Clip, EffectId, LaneKind, Project, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
-import { activeLayers, makeLayer, songBars } from "../core/project-state.ts";
+import { activeLayers, activePart, makeLayer, songBars } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
@@ -102,6 +102,29 @@ const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 // Friendly colors cycled onto new melody lanes.
 const MELODY_COLORS = ["#8338ec", "#3a86ff", "#06d6a0", "#fb5607"];
 let melodySeq = 0;
+
+/** Instrument FAMILY a Home lane belongs to. Lane color is DERIVED from this —
+ *  consistent per group (all drums share a hue, all melodies another, your voice
+ *  another), so the mix reads by color = kind, never a random per-clip swatch. */
+type LaneGroup = "drum" | "tone" | "melody" | "voice";
+const GROUP_COLORS: Record<LaneGroup, string> = {
+  drum: "#ef476f", // percussion — warm red/pink
+  tone: "#3a86ff", // pitched pads (Do/Re/Mi…) — blue
+  melody: "#06d6a0", // melody grid — green/teal
+  voice: "#ffd166", // recordings (voice + Magic Pad) — gold
+};
+const laneGroup = (kind: LaneKind, clip?: Clip): LaneGroup => {
+  if (kind === "melody") return "melody";
+  const source = clip?.source;
+  if (source?.kind === "recording") return "voice";
+  if (source?.kind === "builtin") {
+    const snd = BUILTIN_SOUNDS.find((s) => s.assetId === source.assetId);
+    if (snd?.recipe.kind === "tone") return "tone";
+  }
+  return "drum";
+};
+const laneColor = (kind: LaneKind, clip?: Clip): string =>
+  GROUP_COLORS[laneGroup(kind, clip)];
 
 const cssVar = (name: string, value: string): CSSProperties =>
   ({ [name]: value }) as CSSProperties;
@@ -642,6 +665,61 @@ const BeatMakerCanvas: FC = () => {
 
 // ── Loop Stage (mixer) ───────────────────────────────────────────────────────
 
+/** The "you are editing THIS car" banner across the top of Home. Only shows once
+ *  a train exists (≥2 cars or revealed) — until then there is just one loop and
+ *  naming it would be noise. Big color swatch + car number + editable name, with
+ *  ‹ › to flip to the neighbouring car without diving into the strip. This is the
+ *  primary "which loop am I on" cue; the Tracks strip ring is the secondary one. */
+const CarBanner: FC = () => {
+  const { dispatch } = useApp();
+  const project = useProject();
+  const part = activePart(project);
+  const [editing, setEditing] = useState(false);
+  const idx = project.parts.findIndex((p) => p.id === part.id);
+  const count = project.parts.length;
+  const commit = (name: string): void => {
+    setEditing(false);
+    dispatch({ type: "renameCar", partId: part.id, name });
+  };
+  const step = (delta: number): void => {
+    const next = project.parts[(idx + delta + count) % count];
+    if (next) dispatch({ type: "selectCar", partId: next.id });
+  };
+  return (
+    <div className="car-banner" style={cssVar("--car-color", part.color)}>
+      <span className="car-banner-swatch" aria-hidden="true" />
+      <span className="car-banner-num">Car {idx + 1}<span className="car-banner-of"> / {count}</span></span>
+      {editing ? (
+        <input
+          className="car-banner-rename"
+          defaultValue={part.name}
+          autoFocus
+          onBlur={(e) => commit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(e.currentTarget.value);
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="car-banner-name"
+          title="Tap to rename this loop"
+          onClick={() => setEditing(true)}
+        >
+          {part.name} <span className="car-banner-pencil" aria-hidden="true">✏️</span>
+        </button>
+      )}
+      {count > 1 && (
+        <span className="car-banner-nav">
+          <button type="button" className="car-banner-step" data-act="prev-car" title="Previous car" onClick={() => step(-1)}>‹</button>
+          <button type="button" className="car-banner-step" data-act="next-car" title="Next car" onClick={() => step(1)}>›</button>
+        </span>
+      )}
+    </div>
+  );
+};
+
 const LoopStageCanvas: FC = () => {
   const { sound, dispatch } = useApp();
   const project = useProject();
@@ -718,6 +796,7 @@ const LoopStageCanvas: FC = () => {
 
   return (
     <section className="machine machine--stage" data-machine="looper-stage">
+      {trainVisible(project, revealed) && <CarBanner />}
       <div className="loop-add">
         <button
           className={"t-btn" + (picking ? " active" : "")}
@@ -912,7 +991,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   return (
     <div
       className={"loop-track" + (selected === layer.id ? " selected" : "")}
-      style={cssVar("--row-color", clip?.color ?? "#888")}
+      style={cssVar("--row-color", laneColor(layer.kind, clip))}
       onPointerDown={() => select(layer.id)}
     >
       <div className="loop-track-head">
@@ -928,6 +1007,24 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           ) : (
             layer.clipId
           )}
+        </span>
+        <span className="layer-move">
+          <button
+            className="layer-move-btn t-btn"
+            data-act="move-up"
+            title="Move this lane up"
+            onClick={() => dispatch({ type: "moveLayer", layerId: layer.id, dir: -1 })}
+          >
+            ▲
+          </button>
+          <button
+            className="layer-move-btn t-btn"
+            data-act="move-down"
+            title="Move this lane down"
+            onClick={() => dispatch({ type: "moveLayer", layerId: layer.id, dir: 1 })}
+          >
+            ▼
+          </button>
         </span>
         <button
           className="layer-mute t-btn"

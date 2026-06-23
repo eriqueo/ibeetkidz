@@ -370,6 +370,16 @@ export function reduce(state: Project, cmd: Command): Project {
         layers.filter((l) => l.id !== cmd.layerId),
       );
 
+    case "moveLayer":
+      return editActivePart(state, (layers) => {
+        const i = layers.findIndex((l) => l.id === cmd.layerId);
+        const j = i + cmd.dir;
+        if (i < 0 || j < 0 || j >= layers.length) return layers; // edge → no-op
+        const next = [...layers];
+        [next[i], next[j]] = [next[j]!, next[i]!];
+        return next;
+      });
+
     case "setLayerVolume":
       return editActivePart(state, (layers) =>
         layers.map((l) =>

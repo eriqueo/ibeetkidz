@@ -545,10 +545,26 @@ body {
 }
 .loop-track-head {
   display: grid;
-  grid-template-columns: 1fr auto;
-  grid-template-areas: "name mute" "vol remove";
+  grid-template-columns: auto 1fr auto;
+  grid-template-areas: "move name mute" "move vol remove";
   gap: 0.25rem 0.4rem;
   align-items: center;
+}
+.loop-track-head .layer-move {
+  grid-area: move;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+.loop-track-head .layer-move-btn {
+  width: 1.7rem !important;
+  height: 1.5rem !important;
+  font-size: 0.7rem !important;
+  padding: 0;
+  opacity: 0.75;
+}
+.loop-track-head .layer-move-btn:active {
+  opacity: 1;
 }
 .loop-track-head .layer-name {
   grid-area: name;
@@ -1162,4 +1178,84 @@ body {
 }
 .tracks-ride:active {
   transform: scale(0.96);
+}
+
+/* "Now editing THIS car" banner across the top of Home — the primary cue for
+ * which loop you're on. Tinted with the car's --car-color so it matches the
+ * strip block you tapped. */
+.car-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0 0 0.5rem;
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.8rem;
+  border: 2px solid var(--car-color, var(--panel));
+  background: color-mix(in srgb, var(--car-color, var(--panel)) 16%, var(--panel));
+  flex-wrap: wrap;
+}
+.car-banner-swatch {
+  width: 1.1rem;
+  height: 1.1rem;
+  border-radius: 0.3rem;
+  background: var(--car-color, var(--panel));
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  flex: 0 0 auto;
+}
+.car-banner-num {
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.car-banner-of {
+  font-weight: 600;
+  opacity: 0.6;
+}
+.car-banner-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  max-width: 14rem;
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.06);
+  font-size: 1.05rem;
+  font-weight: 800;
+  cursor: text;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.car-banner-pencil {
+  font-size: 0.75rem;
+  opacity: 0.55;
+}
+.car-banner-rename {
+  width: 11rem;
+  font-size: 1.05rem;
+  font-weight: 800;
+  border: 2px solid var(--car-color, var(--panel));
+  border-radius: 0.5rem;
+  padding: 0.18rem 0.45rem;
+}
+.car-banner-nav {
+  display: inline-flex;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+.car-banner-step {
+  width: 2rem;
+  height: 2rem;
+  border: 2px solid var(--car-color, var(--panel));
+  border-radius: 0.5rem;
+  background: var(--panel);
+  font-size: 1.2rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+.car-banner-step:active {
+  transform: scale(0.94);
 }

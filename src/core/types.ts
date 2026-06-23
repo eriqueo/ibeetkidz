@@ -162,6 +162,10 @@ export type Command =
   | { readonly type: "setClipLoop"; readonly clipId: string; readonly loopBeats: number | null }
   | { readonly type: "addLayer"; readonly layer: Layer }
   | { readonly type: "removeLayer"; readonly layerId: string }
+  // Reorder a lane within the active car: move it one slot toward the top (-1)
+  // or bottom (+1). Lets a kid group drums together / put melody up top. No-op
+  // (identity-stable) at the edges.
+  | { readonly type: "moveLayer"; readonly layerId: string; readonly dir: -1 | 1 }
   | { readonly type: "setLayerVolume"; readonly layerId: string; readonly volume: number }
   | { readonly type: "toggleLayerMuted"; readonly layerId: string }
   | { readonly type: "toggleStep"; readonly layerId: string; readonly index: number }
