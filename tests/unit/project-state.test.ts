@@ -143,6 +143,24 @@ describe("reduce", () => {
     expect(activeLayers(round)[0]?.instrument).toBe("bells");
   });
 
+  it("a voice-sampler melody lane (instrument voice:<bufferId>) survives a save round-trip", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("rec1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({
+        id: "rec1",
+        clipId: "rec1",
+        kind: "melody",
+        instrument: "voice:buf-rec1",
+        notes: Array.from({ length: STEP_COUNT }, (_, i) => (i === 0 ? [0] : null)),
+      }),
+    });
+    expect(activeLayers(s)[0]?.instrument).toBe("voice:buf-rec1");
+    const round = deserialize(serialize(s));
+    expect(activeLayers(round)[0]?.instrument).toBe("voice:buf-rec1");
+    expect(activeLayers(round)[0]?.kind).toBe("melody");
+  });
+
   it("clamps tempo to [MIN_BPM, MAX_BPM]", () => {
     expect(reduce(emptyProject("p"), { type: "setTempo", bpm: 9999 }).tempoBpm).toBe(MAX_BPM);
     expect(reduce(emptyProject("p"), { type: "setTempo", bpm: 1 }).tempoBpm).toBe(MIN_BPM);

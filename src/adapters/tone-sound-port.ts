@@ -14,7 +14,7 @@ import {
   type DrumKind,
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
-import type { InstrumentId } from "../core/instruments.ts";
+import { voiceBufferId, type InstrumentId } from "../core/instruments.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
 import {
   stepIndexFromProgress,
@@ -31,10 +31,13 @@ import {
   type ThereminWave,
 } from "../ports/sound-port.ts";
 
-/** A monophonic melody voice. All these Tone classes share `.frequency`,
- *  `.volume`, trigger methods and `.connect/.dispose`, so the scheduler treats
- *  them uniformly — bend/roll/stretch work the same for every instrument. */
-type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth;
+/** A melody voice. The Mono-family synths share `.frequency`, so bend/roll/
+ *  stretch all work on them. `Tone.Sampler` (Voice Keys — the kid's recording
+ *  repitched chromatically) has NO `.frequency` signal, so it cannot bend; the
+ *  scheduler degrades a bend to a flat note for samplers (roll + stretch still
+ *  work via `triggerAttackRelease`). All four share `.volume`/`.connect`/
+ *  `.triggerAttackRelease`/`.dispose`, so the scheduler is otherwise uniform. */
+type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth | Tone.Sampler;
 
 /** Build a fresh voice for an instrument id. The recipe (oscillator + envelope
  *  + modulation/filter) lives HERE — it's the vendor detail the core delegates.
@@ -425,9 +428,25 @@ export class ToneSoundPort implements SoundPort {
     }
   }
 
+  /** Build a melody voice for an instrument id. A `voice:<bufferId>` id makes a
+   *  `Tone.Sampler` from the kid's recording (mapped to C4, repitched across the
+   *  scale); everything else is a built-in synth. Falls back to a synth if the
+   *  recording buffer isn't loaded yet, so a lane always makes sound. */
+  private buildMelodyVoice(instrument: InstrumentId): MelodyVoice {
+    const bufId = voiceBufferId(instrument);
+    if (bufId !== null) {
+      const buf = this.buffers.get(bufId);
+      if (buf) {
+        return new Tone.Sampler({ urls: { C4: new Tone.ToneAudioBuffer(buf) } });
+      }
+      return makeMelodyVoice("soft"); // buffer not ready → still make sound
+    }
+    return makeMelodyVoice(instrument);
+  }
+
   previewNote(noteName: string, instrument: InstrumentId): void {
     // Audition with the lane's real instrument so the tap matches Play.
-    const synth = makeMelodyVoice(instrument).toDestination();
+    const synth = this.buildMelodyVoice(instrument).toDestination();
     synth.triggerAttackRelease(noteName, "8n");
     // One-shot: free the voice after it has rung out (bells/piano ring longer).
     setTimeout(() => synth.dispose(), 1600);
@@ -565,7 +584,7 @@ export class ToneSoundPort implements SoundPort {
     cycleBars = 1,
     barOffset = 0,
   ): void {
-    const synth = makeMelodyVoice(instrument).connect(
+    const synth = this.buildMelodyVoice(instrument).connect(
       this.scheduledDestination(opts),
     );
     synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
@@ -578,11 +597,12 @@ export class ToneSoundPort implements SoundPort {
     Tone.getTransport().scheduleRepeat(
       (time) => {
         const dur = Math.max(0.05, lengthSteps * stepDur * 0.92);
-        if (hasBend) {
+        if (hasBend && !(synth instanceof Tone.Sampler)) {
           // Swoop: hold one voice and ramp its pitch through the bend points.
           // triggerAttack anchors the start frequency; each point is an
           // exponential ramp (equal pitch steps sound even). Clear last loop's
-          // ramps first so they don't bleed into this one.
+          // ramps first so they don't bleed into this one. (Samplers have no
+          // `.frequency` signal, so they fall through to a flat note below.)
           synth.frequency.cancelScheduledValues(time);
           synth.triggerAttack(noteName, time);
           for (const pt of bend) {

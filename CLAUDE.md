@@ -61,9 +61,16 @@ key/groove/volume/echo, and seamless reschedule-while-playing. The satellite
 tools feed Home: `record-voicefx` (record → 8 effect tiles → **Send to Home**,
 where the funny clip becomes a 16-step voice lane), `beat-grid` (16-step drum
 machine over the same drum lanes), `sound-pads` (soundboard of the built-in pack
-+ your recordings), `theremin-xy` (Magic Pad, live oscillator+filter voice).
-Clip names are editable inline (`renameClip`) so voice lanes are tellable apart
-on Home.
++ your recordings), `theremin-xy` (Magic Pad, live oscillator+filter voice),
+`voice-keys` (record one voice clip → play it as a CHROMATIC melody instrument
+via `Tone.Sampler`; audition keyboard → **Add to Home** as a melody lane voiced
+by the recording, `instrument: voice:<bufferId>`). Melody lanes also pick a
+real instrument (`src/core/instruments.ts` data + adapter `makeMelodyVoice`
+recipe): synths (soft/smooth/buzzy/sharp/piano/bells/organ/pluck/brass) or a
+`voice:<bufferId>` sampler. Samplers can't pitch-bend (no `.frequency` signal),
+so the note-grid bend gesture + curve are suppressed on voice lanes (stretch +
+roll still work). Clip names are editable inline (`renameClip`) so voice lanes
+are tellable apart on Home.
 
 Audio adapter (`tone-sound-port.ts`) implements: procedural built-in synthesis
 (no binary assets — stays offline), offline effect baking via `Tone.Offline`

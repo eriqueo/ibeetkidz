@@ -414,6 +414,41 @@ body {
   opacity: 0.85;
   cursor: default;
 }
+
+/* Voice Keys audition keyboard: tap a key to hear the recording repitched to
+   that in-scale note. A row of fat, touch-friendly keys (low → high). */
+.audition-keyboard {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin: 0.3rem 0 0.2rem;
+}
+.audition-key {
+  min-width: 3rem;
+  height: 4.2rem;
+  padding: 0.4rem 0.5rem;
+  border: none;
+  border-radius: 0.7rem;
+  background: var(--key-color, var(--accent));
+  color: #3a2b00;
+  font-size: 1.1rem;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.25);
+  touch-action: none;
+}
+.audition-key:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.25);
+  filter: brightness(1.1);
+}
+.machine--voicekeys {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+}
 /* Edit-the-take controls on the clip card: preview / re-record / undo / redo /
    snap / trash. Compact transport buttons that wrap on a phone. */
 .clip-card-controls {

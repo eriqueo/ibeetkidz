@@ -29,7 +29,12 @@ import {
   type KeyId,
 } from "../core/scale.ts";
 import type { ThereminWave } from "../ports/sound-port.ts";
-import { INSTRUMENTS, resolveInstrument } from "../core/instruments.ts";
+import {
+  INSTRUMENTS,
+  isVoiceInstrument,
+  resolveInstrument,
+  voiceInstrumentId,
+} from "../core/instruments.ts";
 
 export interface ToolDescriptor {
   readonly id: string;
@@ -516,6 +521,205 @@ const MyVoiceOptions: FC = () => {
   );
 };
 
+// ── Voice Keys (record a voice → play it as a chromatic instrument) ───────────
+// Records ONE short voice clip and turns it into a playable melody instrument:
+// a Tone.Sampler maps the take to C4 and repitches it across the scale. The kid
+// auditions on a little keyboard, names it, then sends it Home as a MELODY lane
+// whose voice IS the recording (instrument = `voice:<bufferId>`). Same record/
+// ClipCard dialect as My Voice; the difference is the keyboard + a melody lane.
+
+let voiceKeysCount = 0;
+
+/** Hold-to-sing phases (see `recState`). Named so reads survive the mic-open
+ *  await without TS narrowing the ref to a single literal. */
+type RecPhase = "idle" | "opening" | "recording" | "stopping";
+
+const VoiceKeysCanvas: FC = () => {
+  const { sound, dispatch, getProject } = useApp();
+  const project = useProject();
+  const { select } = useLoopSelection();
+  const [status, setStatus] = useState(
+    "Hold the mic and sing one sound — then play it like a piano! 🎤🎹",
+  );
+  const [recording, setRecording] = useState(false);
+  // Hold-to-sing state machine. A ref (not the async `recording` state) so a
+  // release that lands DURING the mic-open await still tears the recorder down
+  // instead of leaving the mic stuck open with no take.
+  const recState = useRef<RecPhase>("idle");
+  const [clipId, setClipId] = useState<string | null>(null);
+  const clip = clipId ? project.clips[clipId] : undefined;
+  const bufferId =
+    clip && clip.source.kind === "recording" ? clip.source.bufferId : null;
+  const onHome = clipId
+    ? activeLayers(project).some((l) => l.id === clipId)
+    : false;
+
+  // Finalize: pull the take, make a clip, drop the previous unsent take.
+  const finishRec = async (): Promise<void> => {
+    recState.current = "idle";
+    setRecording(false);
+    const prevId = clipId; // re-record replaces the take we were shaping
+    try {
+      const buf = await sound.stopRecording();
+      const newClip: Clip = {
+        id: `clip-${clipSeq++}`,
+        source: { kind: "recording", bufferId: buf },
+        effects: [],
+        color: "#ffd166", // voice family (gold)
+        label: `Voice Keys ${++voiceKeysCount}`,
+      };
+      dispatch({ type: "addClip", clip: newClip });
+      if (prevId && !activeLayers(getProject()).some((l) => l.id === prevId)) {
+        dispatch({ type: "removeClip", clipId: prevId });
+      }
+      setClipId(newClip.id);
+      sound.previewNote("C4", voiceInstrumentId(buf));
+      setStatus("Tap the keys to hear it as notes — then send it Home! 🎹");
+    } catch {
+      setStatus("Hmm, that didn't record. Try again!");
+    }
+  };
+
+  const startRec = async (): Promise<void> => {
+    if (recState.current !== "idle") return;
+    recState.current = "opening";
+    setRecording(true); // responsive UI before the mic finishes opening
+    setStatus("Singing… let go to stop! (try one long 'aaah')");
+    try {
+      await sound.startRecording();
+    } catch {
+      recState.current = "idle";
+      setRecording(false);
+      setStatus("No mic? No problem — try the Magic Pad or Sound Pads! ✨");
+      return;
+    }
+    // Released during the open gap → stop now so the mic never sticks open.
+    // (Cast: stopRec may have mutated the ref during the await above.)
+    if ((recState.current as RecPhase) === "stopping") void finishRec();
+    else recState.current = "recording";
+  };
+  const stopRec = (): void => {
+    if (recState.current === "recording") void finishRec();
+    else if (recState.current === "opening") recState.current = "stopping";
+    // idle / stopping → nothing to do
+  };
+
+  const trashTake = (): void => {
+    if (!clipId) return;
+    dispatch({ type: "removeClip", clipId });
+    setStatus("Trashed it. Hold the mic to sing again! 🎤");
+  };
+
+  const toggleSnap = (): void => {
+    const c = clipId ? getProject().clips[clipId] : undefined;
+    if (!c || c.source.kind !== "recording") return;
+    if (c.loopBeats !== undefined) {
+      dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: null });
+      return;
+    }
+    const dur = sound.getBufferDuration(c.source.bufferId);
+    const beats = dur ? nearestBeatLoop(dur, getProject().tempoBpm).beats : 1;
+    dispatch({ type: "setClipLoop", clipId: c.id, loopBeats: beats });
+  };
+
+  // Audition: tap an in-scale key → preview the recording repitched to that note.
+  const auditionKey = (row: number): void => {
+    if (!bufferId) return;
+    sound.previewNote(
+      degreeToNote(project.scaleId, project.keyId, row),
+      voiceInstrumentId(bufferId),
+    );
+  };
+
+  // Add the voice as a MELODY lane on Home, seeded with a tiny up-and-down motif
+  // so it sings the moment you press Play. The lane id = clip id (stable undo);
+  // its instrument is the recording, so the Studio rail shows it as 🎤 Your Voice.
+  const sendToHome = (): void => {
+    if (!clipId || !bufferId) return;
+    if (!onHome) {
+      const notes: (number[] | null)[] = Array.from(
+        { length: STEP_COUNT },
+        () => null,
+      );
+      ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => {
+        notes[i] = [row];
+      });
+      dispatch({
+        type: "addLayer",
+        layer: makeLayer({
+          id: clipId,
+          clipId,
+          kind: "melody",
+          instrument: voiceInstrumentId(bufferId),
+          notes,
+        }),
+      });
+    }
+    select(clipId);
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
+
+  return (
+    <section className="machine machine--voicekeys" data-machine="voice-keys">
+      {!clip ? (
+        <>
+          <button
+            className={recording ? "big-record recording" : "big-record"}
+            data-act="vk-record"
+            onPointerDown={startRec}
+            onPointerUp={stopRec}
+            onPointerLeave={stopRec}
+          >
+            🎙️ HOLD TO SING
+          </button>
+          <p className="voicefx-status">{status}</p>
+        </>
+      ) : (
+        <>
+          <ClipCard
+            clip={clip}
+            icon="🎙️"
+            onPreview={() => bufferId && sound.previewNote("C4", voiceInstrumentId(bufferId))}
+            onTrash={trashTake}
+            snapped={clip.loopBeats !== undefined}
+            onToggleSnap={toggleSnap}
+            onReRecordDown={startRec}
+            onReRecordUp={stopRec}
+            recording={recording}
+          />
+          <p className="voicefx-status">{status}</p>
+
+          <div className="audition-keyboard" data-act="vk-keys">
+            {Array.from({ length: MELODY_ROWS }, (_, r) => r).map((row) => (
+              <button
+                key={row}
+                className="audition-key"
+                data-key={row}
+                style={cssVar("--key-color", "#ffd166")}
+                onPointerDown={() => auditionKey(row)}
+              >
+                {degreeToNote(project.scaleId, project.keyId, row).replace(
+                  /\d/,
+                  "",
+                )}
+              </button>
+            ))}
+          </div>
+
+          <button
+            className="t-btn send-home"
+            data-act="vk-send-home"
+            disabled={onHome}
+            onClick={sendToHome}
+          >
+            {onHome ? "✓ On Home" : "➡️ 🏠 Add to Home"}
+          </button>
+        </>
+      )}
+    </section>
+  );
+};
+
 // ── Sound Pads ──────────────────────────────────────────────────────────────
 
 const SoundPadsCanvas: FC = () => {
@@ -893,6 +1097,12 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const clip = project.clips[layer.clipId];
   const isVoice = clip?.source.kind === "recording";
   const prefix = layer.kind === "melody" ? "🎵 " : isVoice ? "🎤 " : "";
+  // A melody lane voiced by a recording plays through a Sampler, which can't
+  // bend — so suppress the bend gesture + curve on it (keep stretch) to hold the
+  // see==hear contract. Switching it to a synth in the rail re-enables bend.
+  const isVoiceLane = isVoiceInstrument(
+    resolveInstrument(layer.instrument, layer.wave),
+  );
 
   // Drag a note's right-edge handle. Horizontal = STRETCH ("pull it like
   // taffy"); on a melody lane, a dominant VERTICAL drag instead BENDS — it sets
@@ -1067,9 +1277,20 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                     >
                       <span
                         className="note-handle"
-                        title="Drag sideways to stretch · up/down to bend"
+                        title={
+                          isVoiceLane
+                            ? "Drag sideways to stretch"
+                            : "Drag sideways to stretch · up/down to bend"
+                        }
                         onPointerDown={(e) =>
-                          beginNoteDrag(e, ".melody-row", seg.index, row, ".melody-grid")
+                          beginNoteDrag(
+                            e,
+                            ".melody-row",
+                            seg.index,
+                            row,
+                            // Voice lanes only stretch (no gridSel = no bend axis).
+                            isVoiceLane ? undefined : ".melody-grid",
+                          )
                         }
                       />
                     </button>
@@ -1092,21 +1313,23 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
               </div>
             ),
           )}
-          <svg
-            className="bend-layer"
-            viewBox="0 0 100 100"
-            preserveAspectRatio="none"
-            aria-hidden
-          >
-            {bendPolylines(layer.notes).map((b) => (
-              <polyline
-                key={b.key}
-                className="bend-line"
-                points={b.points}
-                vectorEffect="non-scaling-stroke"
-              />
-            ))}
-          </svg>
+          {!isVoiceLane && (
+            <svg
+              className="bend-layer"
+              viewBox="0 0 100 100"
+              preserveAspectRatio="none"
+              aria-hidden
+            >
+              {bendPolylines(layer.notes).map((b) => (
+                <polyline
+                  key={b.key}
+                  className="bend-line"
+                  points={b.points}
+                  vectorEffect="non-scaling-stroke"
+                />
+              ))}
+            </svg>
+          )}
           <div className="loop-playhead" />
         </div>
       ) : (
@@ -1183,6 +1406,10 @@ const LoopStageRail: FC = () => {
   const { selected } = useLoopSelection();
   const lane =
     activeLayers(project).find((l) => l.id === selected) ?? activeLayers(project)[0] ?? null;
+  const laneClip = lane ? project.clips[lane.clipId] : undefined;
+  // A melody lane backed by a recording can be voiced by it (Voice Keys).
+  const laneRecBufferId =
+    laneClip?.source.kind === "recording" ? laneClip.source.bufferId : null;
   const magicOn = project.scaleId === "magic";
 
   return (
@@ -1263,6 +1490,31 @@ const LoopStageRail: FC = () => {
               coach="The voice of this tune — try Piano, Bells, Organ, Pluck or Brass. Each note you tap previews in the new sound."
             >
               <div className="rail-pills">
+                {/* If this lane's clip is a recording (came from Voice Keys),
+                    always offer the 🎤 voice — active when it's the current
+                    voice, tappable to switch back after trying a synth. */}
+                {laneRecBufferId && (
+                  <button
+                    type="button"
+                    data-inst="voice"
+                    className={
+                      "rail-pill" +
+                      (isVoiceInstrument(resolveInstrument(lane.instrument, lane.wave))
+                        ? " active"
+                        : "")
+                    }
+                    title="Your Voice (from Voice Keys)"
+                    onClick={() =>
+                      dispatch({
+                        type: "setLayerInstrument",
+                        layerId: lane.id,
+                        instrument: voiceInstrumentId(laneRecBufferId),
+                      })
+                    }
+                  >
+                    🎤
+                  </button>
+                )}
                 {INSTRUMENTS.map((inst) => (
                   <button
                     key={inst.id}
@@ -1714,6 +1966,7 @@ const MagicPadOptions: FC = () => {
 export const TOOLS: readonly ToolDescriptor[] = [
   { id: "looper-stage", label: "Home", icon: "🏠", Canvas: LoopStageCanvas, Rail: LoopStageRail },
   { id: "record-voicefx", label: "My Voice", icon: "🎤", Canvas: MyVoiceCanvas, Options: MyVoiceOptions },
+  { id: "voice-keys", label: "Voice Keys", icon: "🎙️", Canvas: VoiceKeysCanvas },
   { id: "sound-pads", label: "Sound Pads", icon: "🥁", Canvas: SoundPadsCanvas },
   { id: "beat-grid", label: "Beat Maker", icon: "🎛️", Canvas: BeatMakerCanvas },
   { id: "theremin-xy", label: "Magic Pad", icon: "✨", Canvas: MagicPadCanvas, Options: MagicPadOptions },

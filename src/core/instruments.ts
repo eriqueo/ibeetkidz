@@ -13,7 +13,8 @@
 
 import type { ThereminWave } from "./types.ts";
 
-export type InstrumentId =
+/** The built-in synth voices (the adapter has a Tone recipe per id). */
+export type SynthInstrumentId =
   | "soft" // triangle synth — the gentle default
   | "smooth" // sine synth
   | "buzzy" // square synth
@@ -24,10 +25,37 @@ export type InstrumentId =
   | "pluck" // short filtered pluck (guitar-ish)
   | "brass"; // reedy filtered lead
 
+/** A melody lane's voice. Either a built-in synth, OR `voice:<bufferId>` — the
+ *  kid's own recording played chromatically through a sampler (Voice Keys). The
+ *  bufferId is encoded into the id so it threads through `scheduleNote(instrument)`
+ *  without widening any signature; the lane's `clipId` still points at the same
+ *  recording Clip (for color, naming, persistence). */
+export type InstrumentId = SynthInstrumentId | `voice:${string}`;
+
 export interface Instrument {
-  readonly id: InstrumentId;
+  readonly id: SynthInstrumentId;
   readonly label: string;
   readonly emoji: string;
+}
+
+/** Prefix marking a recording-backed sampler instrument. */
+export const VOICE_PREFIX = "voice:";
+
+/** Build the instrument id for a melody lane voiced by a recording buffer. */
+export function voiceInstrumentId(bufferId: string): InstrumentId {
+  return `${VOICE_PREFIX}${bufferId}`;
+}
+
+/** True when an instrument id is a recording-backed sampler voice. */
+export function isVoiceInstrument(
+  id: InstrumentId | undefined,
+): id is `voice:${string}` {
+  return !!id && id.startsWith(VOICE_PREFIX);
+}
+
+/** The recording bufferId behind a voice instrument id, or null for synths. */
+export function voiceBufferId(id: InstrumentId): string | null {
+  return id.startsWith(VOICE_PREFIX) ? id.slice(VOICE_PREFIX.length) : null;
 }
 
 /** The picker order (data-driven). Append-only so saved `instrument` ids hold. */
@@ -45,7 +73,7 @@ export const INSTRUMENTS: readonly Instrument[] = [
 
 export const DEFAULT_INSTRUMENT: InstrumentId = "soft";
 
-const VALID = new Set<InstrumentId>(INSTRUMENTS.map((i) => i.id));
+const VALID = new Set<SynthInstrumentId>(INSTRUMENTS.map((i) => i.id));
 
 /** Map the four legacy oscillator shapes onto their equivalent instrument, so a
  *  melody lane saved before instruments (only a `wave`) shows the right picker
@@ -69,7 +97,7 @@ export function resolveInstrument(
   instrument: InstrumentId | undefined,
   wave: ThereminWave,
 ): InstrumentId {
-  return instrument && VALID.has(instrument)
-    ? instrument
-    : instrumentForWave(wave);
+  if (instrument && (isVoiceInstrument(instrument) || VALID.has(instrument)))
+    return instrument;
+  return instrumentForWave(wave);
 }
