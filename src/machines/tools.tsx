@@ -17,7 +17,7 @@ import {
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId, Project, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
-import { activeLayers, makeLayer, songBars } from "../core/project-state.ts";
+import { activeLayers, activePart, makeLayer, songBars } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
@@ -642,6 +642,61 @@ const BeatMakerCanvas: FC = () => {
 
 // ── Loop Stage (mixer) ───────────────────────────────────────────────────────
 
+/** The "you are editing THIS car" banner across the top of Home. Only shows once
+ *  a train exists (≥2 cars or revealed) — until then there is just one loop and
+ *  naming it would be noise. Big color swatch + car number + editable name, with
+ *  ‹ › to flip to the neighbouring car without diving into the strip. This is the
+ *  primary "which loop am I on" cue; the Tracks strip ring is the secondary one. */
+const CarBanner: FC = () => {
+  const { dispatch } = useApp();
+  const project = useProject();
+  const part = activePart(project);
+  const [editing, setEditing] = useState(false);
+  const idx = project.parts.findIndex((p) => p.id === part.id);
+  const count = project.parts.length;
+  const commit = (name: string): void => {
+    setEditing(false);
+    dispatch({ type: "renameCar", partId: part.id, name });
+  };
+  const step = (delta: number): void => {
+    const next = project.parts[(idx + delta + count) % count];
+    if (next) dispatch({ type: "selectCar", partId: next.id });
+  };
+  return (
+    <div className="car-banner" style={cssVar("--car-color", part.color)}>
+      <span className="car-banner-swatch" aria-hidden="true" />
+      <span className="car-banner-num">Car {idx + 1}<span className="car-banner-of"> / {count}</span></span>
+      {editing ? (
+        <input
+          className="car-banner-rename"
+          defaultValue={part.name}
+          autoFocus
+          onBlur={(e) => commit(e.currentTarget.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit(e.currentTarget.value);
+            if (e.key === "Escape") setEditing(false);
+          }}
+        />
+      ) : (
+        <button
+          type="button"
+          className="car-banner-name"
+          title="Tap to rename this loop"
+          onClick={() => setEditing(true)}
+        >
+          {part.name} <span className="car-banner-pencil" aria-hidden="true">✏️</span>
+        </button>
+      )}
+      {count > 1 && (
+        <span className="car-banner-nav">
+          <button type="button" className="car-banner-step" data-act="prev-car" title="Previous car" onClick={() => step(-1)}>‹</button>
+          <button type="button" className="car-banner-step" data-act="next-car" title="Next car" onClick={() => step(1)}>›</button>
+        </span>
+      )}
+    </div>
+  );
+};
+
 const LoopStageCanvas: FC = () => {
   const { sound, dispatch } = useApp();
   const project = useProject();
@@ -718,6 +773,7 @@ const LoopStageCanvas: FC = () => {
 
   return (
     <section className="machine machine--stage" data-machine="looper-stage">
+      {trainVisible(project, revealed) && <CarBanner />}
       <div className="loop-add">
         <button
           className={"t-btn" + (picking ? " active" : "")}
