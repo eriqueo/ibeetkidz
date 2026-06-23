@@ -15,7 +15,7 @@ import {
   type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import type { Clip, EffectId, Project, StepNote } from "../core/types.ts";
+import type { Clip, EffectId, LaneKind, Project, StepNote } from "../core/types.ts";
 import { STEP_COUNT } from "../core/types.ts";
 import { activeLayers, activePart, makeLayer, songBars } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
@@ -102,6 +102,29 @@ const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 // Friendly colors cycled onto new melody lanes.
 const MELODY_COLORS = ["#8338ec", "#3a86ff", "#06d6a0", "#fb5607"];
 let melodySeq = 0;
+
+/** Instrument FAMILY a Home lane belongs to. Lane color is DERIVED from this —
+ *  consistent per group (all drums share a hue, all melodies another, your voice
+ *  another), so the mix reads by color = kind, never a random per-clip swatch. */
+type LaneGroup = "drum" | "tone" | "melody" | "voice";
+const GROUP_COLORS: Record<LaneGroup, string> = {
+  drum: "#ef476f", // percussion — warm red/pink
+  tone: "#3a86ff", // pitched pads (Do/Re/Mi…) — blue
+  melody: "#06d6a0", // melody grid — green/teal
+  voice: "#ffd166", // recordings (voice + Magic Pad) — gold
+};
+const laneGroup = (kind: LaneKind, clip?: Clip): LaneGroup => {
+  if (kind === "melody") return "melody";
+  const source = clip?.source;
+  if (source?.kind === "recording") return "voice";
+  if (source?.kind === "builtin") {
+    const snd = BUILTIN_SOUNDS.find((s) => s.assetId === source.assetId);
+    if (snd?.recipe.kind === "tone") return "tone";
+  }
+  return "drum";
+};
+const laneColor = (kind: LaneKind, clip?: Clip): string =>
+  GROUP_COLORS[laneGroup(kind, clip)];
 
 const cssVar = (name: string, value: string): CSSProperties =>
   ({ [name]: value }) as CSSProperties;
@@ -968,7 +991,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   return (
     <div
       className={"loop-track" + (selected === layer.id ? " selected" : "")}
-      style={cssVar("--row-color", clip?.color ?? "#888")}
+      style={cssVar("--row-color", laneColor(layer.kind, clip))}
       onPointerDown={() => select(layer.id)}
     >
       <div className="loop-track-head">
@@ -984,6 +1007,24 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           ) : (
             layer.clipId
           )}
+        </span>
+        <span className="layer-move">
+          <button
+            className="layer-move-btn t-btn"
+            data-act="move-up"
+            title="Move this lane up"
+            onClick={() => dispatch({ type: "moveLayer", layerId: layer.id, dir: -1 })}
+          >
+            ▲
+          </button>
+          <button
+            className="layer-move-btn t-btn"
+            data-act="move-down"
+            title="Move this lane down"
+            onClick={() => dispatch({ type: "moveLayer", layerId: layer.id, dir: 1 })}
+          >
+            ▼
+          </button>
         </span>
         <button
           className="layer-mute t-btn"

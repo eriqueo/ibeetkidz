@@ -24,6 +24,15 @@ test("song train: send to tracks, add a car, edit it, ride the song", async ({
   await page.locator('[data-act="add-melody"]').click();
   await page.locator(".melody-row").nth(3).locator(".note-cell").nth(0).click();
 
+  // Reorder lanes: add a drum under the melody, then bump it to the top.
+  await page.locator('[data-act="add-drum"]').click();
+  await page.locator('[data-drum="kick"]').click();
+  const lanes = page.locator(".loop-board .loop-track");
+  await expect(lanes).toHaveCount(2);
+  // The drum lane (2nd) moves up above the melody.
+  await lanes.nth(1).locator('[data-act="move-up"]').click();
+  await expect(lanes.nth(0).locator(".loop-lane")).toBeVisible(); // drum lane now first
+
   // No train yet → the Tracks strip is hidden.
   await expect(page.locator(".tracks-strip")).toHaveCount(0);
 

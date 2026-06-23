@@ -107,6 +107,26 @@ describe("reduce", () => {
     expect(activeLayers(s)[0]?.id).toBe(`l${3}`); // first three stolen
   });
 
+  it("reorders lanes within the car (moveLayer up/down, edges are no-ops)", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    for (const id of ["a", "b", "c"]) {
+      s = reduce(s, { type: "addLayer", layer: layer(id, "c1") });
+    }
+    const ids = (st: typeof s): string[] => activeLayers(st).map((l) => l.id);
+    expect(ids(s)).toEqual(["a", "b", "c"]);
+    // move "c" up one → [a, c, b]
+    s = reduce(s, { type: "moveLayer", layerId: "c", dir: -1 });
+    expect(ids(s)).toEqual(["a", "c", "b"]);
+    // move "a" up at the top edge → no-op (identity-stable)
+    const before = s;
+    s = reduce(s, { type: "moveLayer", layerId: "a", dir: -1 });
+    expect(s).toBe(before);
+    // move "b" down at the bottom edge → no-op
+    expect(reduce(s, { type: "moveLayer", layerId: "b", dir: 1 })).toBe(s);
+    // unknown lane → no-op
+    expect(reduce(s, { type: "moveLayer", layerId: "zzz", dir: -1 })).toBe(s);
+  });
+
   it("clamps tempo to [MIN_BPM, MAX_BPM]", () => {
     expect(reduce(emptyProject("p"), { type: "setTempo", bpm: 9999 }).tempoBpm).toBe(MAX_BPM);
     expect(reduce(emptyProject("p"), { type: "setTempo", bpm: 1 }).tempoBpm).toBe(MIN_BPM);
