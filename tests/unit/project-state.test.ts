@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deserialize,
+  serialize,
   dispatch,
   activeLayers,
   activePart,
@@ -125,6 +126,21 @@ describe("reduce", () => {
     expect(reduce(s, { type: "moveLayer", layerId: "b", dir: 1 })).toBe(s);
     // unknown lane → no-op
     expect(reduce(s, { type: "moveLayer", layerId: "zzz", dir: -1 })).toBe(s);
+  });
+
+  it("sets a melody lane's instrument (identity-stable, survives a save round-trip)", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
+    });
+    s = reduce(s, { type: "setLayerInstrument", layerId: "m1", instrument: "bells" });
+    expect(activeLayers(s)[0]?.instrument).toBe("bells");
+    // No-op when unchanged → same Project ref (clean undo history).
+    expect(reduce(s, { type: "setLayerInstrument", layerId: "m1", instrument: "bells" })).toBe(s);
+    // Persists through serialize → deserialize.
+    const round = deserialize(serialize(s));
+    expect(activeLayers(round)[0]?.instrument).toBe("bells");
   });
 
   it("clamps tempo to [MIN_BPM, MAX_BPM]", () => {

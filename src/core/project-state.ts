@@ -184,11 +184,16 @@ export function makeLayer(partial: LayerInit): Layer {
     echo: clamp(partial.echo ?? 0, 0, 1),
     tone: clamp(partial.tone ?? 1, 0, 1),
   };
-  // `swing` is genuinely optional (absent = inherit song groove); only set it
-  // when provided so we don't pin every lane to a value under exactOptional.
-  return partial.swing === undefined
-    ? layer
-    : { ...layer, swing: clamp(partial.swing, 0, 1) };
+  // `swing` and `instrument` are genuinely optional (absent = inherit song
+  // groove / derive from wave); only set them when provided so we don't pin
+  // every lane to a value under exactOptionalPropertyTypes.
+  const withSwing =
+    partial.swing === undefined
+      ? layer
+      : { ...layer, swing: clamp(partial.swing, 0, 1) };
+  return partial.instrument === undefined
+    ? withSwing
+    : { ...withSwing, instrument: partial.instrument };
 }
 
 /** Coerce any saved drum `steps` shape (boolean[] legacy, or (StepNote|null)[])
@@ -502,6 +507,15 @@ export function reduce(state: Project, cmd: Command): Project {
           l.id === cmd.layerId ? { ...l, wave: cmd.wave } : l,
         ),
       );
+
+    case "setLayerInstrument":
+      return editActivePart(state, (layers) => {
+        const i = layers.findIndex((l) => l.id === cmd.layerId);
+        if (i < 0 || layers[i]!.instrument === cmd.instrument) return layers; // no-op
+        const next = [...layers];
+        next[i] = { ...layers[i]!, instrument: cmd.instrument };
+        return next;
+      });
 
     case "setLayerEcho":
       return editActivePart(state, (layers) =>

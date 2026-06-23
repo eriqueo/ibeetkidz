@@ -29,6 +29,7 @@ import {
   type KeyId,
 } from "../core/scale.ts";
 import type { ThereminWave } from "../ports/sound-port.ts";
+import { INSTRUMENTS, resolveInstrument } from "../core/instruments.ts";
 
 export interface ToolDescriptor {
   readonly id: string;
@@ -1082,7 +1083,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
                         dispatch({ type: "toggleNote", layerId: layer.id, index: seg.index, row });
                         sound.previewNote(
                           degreeToNote(project.scaleId, project.keyId, row),
-                          layer.wave,
+                          resolveInstrument(layer.instrument, layer.wave),
                         );
                       }}
                     />
@@ -1258,20 +1259,30 @@ const LoopStageRail: FC = () => {
         <>
           {lane.kind === "melody" && (
             <RailControl
-              title="🔊 Sound"
-              coach="The voice of this tune. Soft & Smooth are gentle; Buzzy & Sharp cut through."
+              title="🎹 Instrument"
+              coach="The voice of this tune — try Piano, Bells, Organ, Pluck or Brass. Each note you tap previews in the new sound."
             >
               <div className="rail-pills">
-                {WAVES.map((w) => (
+                {INSTRUMENTS.map((inst) => (
                   <button
-                    key={w.wave}
-                    className={"rail-pill" + (lane.wave === w.wave ? " active" : "")}
-                    onClick={() =>
-                      dispatch({ type: "setLayerWave", layerId: lane.id, wave: w.wave })
+                    key={inst.id}
+                    data-inst={inst.id}
+                    className={
+                      "rail-pill" +
+                      (resolveInstrument(lane.instrument, lane.wave) === inst.id
+                        ? " active"
+                        : "")
                     }
-                    title={w.label}
+                    onClick={() =>
+                      dispatch({
+                        type: "setLayerInstrument",
+                        layerId: lane.id,
+                        instrument: inst.id,
+                      })
+                    }
+                    title={inst.label}
                   >
-                    {w.emoji}
+                    {inst.emoji}
                   </button>
                 ))}
               </div>

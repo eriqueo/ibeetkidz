@@ -8,6 +8,7 @@ import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
 import { activeLayers, songBars } from "./project-state.ts";
+import { resolveInstrument } from "./instruments.ts";
 
 /** What the transport is playing: "loop" repeats the active car forever (Home's
  *  Play — today's behavior); "ride" plays the whole arrangement, car after car,
@@ -98,6 +99,7 @@ export class AudioEngine {
       };
       if (layer.kind === "melody") {
         const total = layer.notes.length || STEP_COUNT;
+        const instrument = resolveInstrument(layer.instrument, layer.wave);
         layer.notes.forEach((chord, i) => {
           for (const n of chord) {
             const note = degreeToNote(project.scaleId, project.keyId, n.row);
@@ -108,7 +110,7 @@ export class AudioEngine {
               noteName: degreeToNote(project.scaleId, project.keyId, p.row),
             }));
             this.sound.scheduleNote(
-              note, layer.wave, i, total, opts, n.length, n.roll ?? 1, bend,
+              note, instrument, i, total, opts, n.length, n.roll ?? 1, bend,
               cycleBars, barOffset,
             );
           }

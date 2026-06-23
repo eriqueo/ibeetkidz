@@ -3,6 +3,7 @@
 // swappable and the core stays unit-testable with a fake implementation.
 
 import type { Clip, EffectDescriptor, ThereminWave } from "../core/types.ts";
+import type { InstrumentId } from "../core/instruments.ts";
 import type { QuantizeGrid } from "../core/quantize.ts";
 
 /** Opaque handle to an audio buffer held by the adapter (keyed by id). */
@@ -70,8 +71,9 @@ export interface SoundPort {
   play(clip: Clip): void;
 
   /** Audition a single melody note now (used when a kid taps a note cell), so
-   *  the grid gives instant feedback without waiting for Play. */
-  previewNote(noteName: string, wave: ThereminWave): void;
+   *  the grid gives instant feedback without waiting for Play. Voiced with the
+   *  lane's `instrument` so the preview matches what Play will sound like. */
+  previewNote(noteName: string, instrument: InstrumentId): void;
 
   /** Schedule looping playback of a drum clip on the transport at the given
    *  step. Swing leans the off-beats late; echo adds a per-lane delay tail.
@@ -104,7 +106,7 @@ export interface SoundPort {
    *  work as in `scheduleStep` (Song Train arrangement playback). */
   scheduleNote(
     noteName: string,
-    wave: ThereminWave,
+    instrument: InstrumentId,
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,

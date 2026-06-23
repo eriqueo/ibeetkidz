@@ -14,6 +14,7 @@ import {
   type DrumKind,
 } from "../core/sound-catalog.ts";
 import { createRng } from "../core/rng.ts";
+import type { InstrumentId } from "../core/instruments.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
 import {
   stepIndexFromProgress,
@@ -29,6 +30,86 @@ import {
   type StepOptions,
   type ThereminWave,
 } from "../ports/sound-port.ts";
+
+/** A monophonic melody voice. All these Tone classes share `.frequency`,
+ *  `.volume`, trigger methods and `.connect/.dispose`, so the scheduler treats
+ *  them uniformly — bend/roll/stretch work the same for every instrument. */
+type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth;
+
+/** Build a fresh voice for an instrument id. The recipe (oscillator + envelope
+ *  + modulation/filter) lives HERE — it's the vendor detail the core delegates.
+ *  Adding a timbre = one case here + one entry in `INSTRUMENTS` (core). */
+function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
+  switch (instrument) {
+    case "smooth":
+      return new Tone.Synth({
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.2 },
+      });
+    case "buzzy":
+      return new Tone.Synth({
+        oscillator: { type: "square" },
+        envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
+      });
+    case "sharp":
+      return new Tone.Synth({
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
+      });
+    case "piano":
+      // FM electric-piano: instant attack, plucky decay, low sustain.
+      return new Tone.FMSynth({
+        harmonicity: 2,
+        modulationIndex: 6,
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.002, decay: 0.9, sustain: 0.08, release: 0.6 },
+        modulation: { type: "sine" },
+        modulationEnvelope: { attack: 0.002, decay: 0.3, sustain: 0, release: 0.2 },
+      });
+    case "bells":
+      // Bright inharmonic FM → bell / music box (no sustain, long ring).
+      return new Tone.FMSynth({
+        harmonicity: 3.01,
+        modulationIndex: 12,
+        oscillator: { type: "sine" },
+        envelope: { attack: 0.001, decay: 1.4, sustain: 0, release: 1.2 },
+        modulation: { type: "sine" },
+        modulationEnvelope: { attack: 0.001, decay: 0.7, sustain: 0, release: 0.5 },
+      });
+    case "organ":
+      // Held, fat, no decay → sustained organ pad.
+      return new Tone.Synth({
+        oscillator: { type: "fatsawtooth" },
+        envelope: { attack: 0.02, decay: 0.0, sustain: 1, release: 0.12 },
+      });
+    case "pluck":
+      // Filtered short pluck (guitar-ish) via a fast filter envelope.
+      return new Tone.MonoSynth({
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.005, decay: 0.25, sustain: 0, release: 0.2 },
+        filterEnvelope: {
+          attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.2,
+          baseFrequency: 300, octaves: 3,
+        },
+      });
+    case "brass":
+      // Reedy sustained lead with a slower filter sweep.
+      return new Tone.MonoSynth({
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.06, decay: 0.2, sustain: 0.7, release: 0.2 },
+        filterEnvelope: {
+          attack: 0.08, decay: 0.3, sustain: 0.6, release: 0.3,
+          baseFrequency: 200, octaves: 3.5,
+        },
+      });
+    case "soft":
+    default:
+      return new Tone.Synth({
+        oscillator: { type: "triangle" },
+        envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
+      });
+  }
+}
 
 export class ToneSoundPort implements SoundPort {
   private analyser!: AnalyserNode;
@@ -60,7 +141,7 @@ export class ToneSoundPort implements SoundPort {
   private readonly liveVoices = new Set<Tone.Player>();
   private readonly scheduledVoices: Tone.Player[] = [];
   /** Per-melody-lane synth voices, scheduled on the transport. */
-  private readonly scheduledSynths: Tone.Synth[] = [];
+  private readonly scheduledSynths: MelodyVoice[] = [];
   /** Per-lane echo sends (FeedbackDelay nodes), torn down with the transport. */
   private readonly scheduledFx: Tone.ToneAudioNode[] = [];
 
@@ -344,14 +425,12 @@ export class ToneSoundPort implements SoundPort {
     }
   }
 
-  previewNote(noteName: string, wave: ThereminWave): void {
-    const synth = new Tone.Synth({
-      oscillator: { type: wave },
-      envelope: { attack: 0.01, decay: 0.18, sustain: 0.15, release: 0.2 },
-    }).toDestination();
+  previewNote(noteName: string, instrument: InstrumentId): void {
+    // Audition with the lane's real instrument so the tap matches Play.
+    const synth = makeMelodyVoice(instrument).toDestination();
     synth.triggerAttackRelease(noteName, "8n");
-    // One-shot: free the voice after it has rung out.
-    setTimeout(() => synth.dispose(), 700);
+    // One-shot: free the voice after it has rung out (bells/piano ring longer).
+    setTimeout(() => synth.dispose(), 1600);
   }
 
   /** Duration of one bar (measure) in seconds at the live tempo. */
@@ -476,7 +555,7 @@ export class ToneSoundPort implements SoundPort {
 
   scheduleNote(
     noteName: string,
-    wave: ThereminWave,
+    instrument: InstrumentId,
     stepIndex: number,
     totalSteps: number,
     opts: StepOptions,
@@ -486,10 +565,9 @@ export class ToneSoundPort implements SoundPort {
     cycleBars = 1,
     barOffset = 0,
   ): void {
-    const synth = new Tone.Synth({
-      oscillator: { type: wave },
-      envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
-    }).connect(this.scheduledDestination(opts));
+    const synth = makeMelodyVoice(instrument).connect(
+      this.scheduledDestination(opts),
+    );
     synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
     this.scheduledSynths.push(synth);
     const interval = `${Math.max(1, cycleBars)}m`;

@@ -8,6 +8,7 @@
 // ─────────────────────────────────────────────────────────────────────────
 
 import type { ScaleId, KeyId } from "./scale.ts";
+import type { InstrumentId } from "./instruments.ts";
 
 /** Oscillator shape for melody lanes and the Magic Pad / theremin voice. */
 export type ThereminWave = "sine" | "triangle" | "square" | "sawtooth";
@@ -102,8 +103,13 @@ export interface Layer {
   /** Melody lane: the chord of notes sounding from each step (multiple = a
    *  chord). Empty inner array = a rest. Empty outer array for drum lanes. */
   readonly notes: readonly (readonly StepNote[])[];
-  /** Melody timbre (ignored by drum lanes). */
+  /** Melody timbre — legacy oscillator shape. Kept for back-compat and as the
+   *  fallback when `instrument` is absent; new lanes set `instrument` instead. */
   readonly wave: ThereminWave;
+  /** Melody instrument (richer voices than the four raw waves). Absent on lanes
+   *  saved before instruments existed — `resolveInstrument` derives one from
+   *  `wave` so they sound unchanged. Ignored by drum lanes. */
+  readonly instrument?: InstrumentId;
   /** Per-lane echo send, 0..1 (0 = dry). */
   readonly echo: number;
   /** Per-lane tone/brightness, 0..1 (1 = fully open/bright, lower = darker). */
@@ -183,6 +189,7 @@ export type Command =
   // chord, so row is free). Melody lanes ignore this.
   | { readonly type: "tuneDrum"; readonly layerId: string; readonly index: number; readonly pitch: number }
   | { readonly type: "setLayerWave"; readonly layerId: string; readonly wave: ThereminWave }
+  | { readonly type: "setLayerInstrument"; readonly layerId: string; readonly instrument: InstrumentId }
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }
   | { readonly type: "setLayerSwing"; readonly layerId: string; readonly swing: number }
