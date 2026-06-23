@@ -253,7 +253,7 @@ export class ToneSoundPort implements SoundPort {
 
   /** Decode a recorded blob and lift it to a consistent, audible level. Phone
    *  and laptop mics capture wildly different (often very low) input; raw
-   *  recordings played quiet on every device. Peak-normalizing on decode — for
+   *  recordings played quiet on every device. RMS-normalizing on decode — for
    *  both fresh and rehydrated recordings — makes "my voice" loud and even.
    *  The stored blob stays raw; the boost is reapplied on every reload. */
   private async decodeRecording(blob: Blob): Promise<AudioBuffer> {
@@ -460,12 +460,27 @@ export class ToneSoundPort implements SoundPort {
     return trimmed;
   }
 
+  /** Natural (trimmed) length of a voice instrument's recording, or null for a
+   *  synth / not-yet-loaded buffer. Used to ring the sampled voice for its whole
+   *  duration instead of cutting it off at a short note. */
+  private voiceSampleDuration(instrument: InstrumentId): number | null {
+    const bufId = voiceBufferId(instrument);
+    if (bufId === null) return null;
+    const sample = this.voiceSample(bufId);
+    return sample ? sample.duration : null;
+  }
+
   previewNote(noteName: string, instrument: InstrumentId): void {
     // Audition with the lane's real instrument so the tap matches Play.
     const synth = this.buildMelodyVoice(instrument).toDestination();
-    synth.triggerAttackRelease(noteName, "8n");
-    // One-shot: free the voice after it has rung out (bells/piano ring longer).
-    setTimeout(() => synth.dispose(), 1600);
+    // A sampled voice rings for its whole recorded length (clamped) so the tap
+    // plays the full "aaah" instead of cutting it short; synths stay snappy.
+    const voiceDur = this.voiceSampleDuration(instrument);
+    const dur = voiceDur !== null ? Math.min(4, Math.max(0.4, voiceDur)) : "8n";
+    synth.triggerAttackRelease(noteName, dur);
+    // Free the voice once it has rung out (bells/piano + long takes ring longer).
+    const holdMs = typeof dur === "number" ? dur * 1000 + 600 : 1600;
+    setTimeout(() => synth.dispose(), holdMs);
   }
 
   /** Duration of one bar (measure) in seconds at the live tempo. */
@@ -610,9 +625,15 @@ export class ToneSoundPort implements SoundPort {
       this.barSec() * barOffset + this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
     const hasBend = !!bend && bend.length > 0;
+    // A sampled voice rings for at least its whole recorded length, so a short
+    // note doesn't chop the "aaah" off; a longer note still stretches past it.
+    const voiceDur = synth instanceof Tone.Sampler
+      ? this.voiceSampleDuration(instrument)
+      : null;
     Tone.getTransport().scheduleRepeat(
       (time) => {
-        const dur = Math.max(0.05, lengthSteps * stepDur * 0.92);
+        const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
+        const dur = voiceDur !== null ? Math.max(noteDur, Math.min(4, voiceDur)) : noteDur;
         if (hasBend && !(synth instanceof Tone.Sampler)) {
           // Swoop: hold one voice and ramp its pitch through the bend points.
           // triggerAttack anchors the start frequency; each point is an
@@ -974,10 +995,15 @@ function expandCrazy(amount: number): EffectDescriptor[] {
   return out;
 }
 
-/** Peak-normalize an AudioBuffer in place toward a target ceiling. Quiet mic
- *  input (the common case on phones) gets boosted; near-silent buffers are left
- *  alone so we never amplify pure noise into a roar. */
-function normalizeBuffer(buf: AudioBuffer, target = 0.97): void {
+/** Make a recording LOUD in place. Peak-normalizing alone left takes quiet: one
+ *  stray click sets the peak while the voice's average energy — what we actually
+ *  hear as loudness — stays low. Instead, normalize toward a target RMS measured
+ *  over the *active* signal (samples above a small absolute floor, so silence
+ *  doesn't deflate the estimate and — unlike a peak-relative floor — a single
+ *  click can't exclude the real, quieter voice), then soft-clip every sample
+ *  through `tanh` so the boost saturates gently instead of clipping harshly.
+ *  Near-silent buffers are left alone so we never amplify pure noise into a roar. */
+function normalizeBuffer(buf: AudioBuffer, targetRms = 0.25): void {
   let peak = 0;
   for (let ch = 0; ch < buf.numberOfChannels; ch++) {
     const data = buf.getChannelData(ch);
@@ -987,12 +1013,31 @@ function normalizeBuffer(buf: AudioBuffer, target = 0.97): void {
     }
   }
   if (peak < 1e-4) return; // effectively silent — nothing worth lifting
-  const gain = target / peak;
-  if (gain <= 1.0001) return; // already at/above target — don't attenuate
+  // Absolute floor: counts real (even quiet) signal, skips digital silence, and
+  // isn't thrown off by a lone transient the way a 5%-of-peak floor would be.
+  const floor = 0.003;
+  let sumSq = 0;
+  let n = 0;
   for (let ch = 0; ch < buf.numberOfChannels; ch++) {
     const data = buf.getChannelData(ch);
     for (let i = 0; i < data.length; i++) {
-      data[i] = (data[i] as number) * gain;
+      const x = data[i] as number;
+      if (Math.abs(x) >= floor) {
+        sumSq += x * x;
+        n++;
+      }
+    }
+  }
+  if (n === 0) return;
+  const rms = Math.sqrt(sumSq / n);
+  if (rms < 1e-5) return;
+  // Cap the gain so a whisper-quiet take isn't blown up to pure saturation.
+  const gain = Math.min(60, Math.max(1, targetRms / rms));
+  if (gain <= 1.0001) return; // already loud enough — leave it
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) {
+      data[i] = Math.tanh(gain * (data[i] as number));
     }
   }
 }
