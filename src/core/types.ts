@@ -89,6 +89,16 @@ export interface StepNote {
   readonly pins?: readonly PitchPin[];
 }
 
+/** One saved pattern for a lane (a BeepBox-style numbered variation). Holds the
+ *  same per-step shape as the lane itself: `steps` for a drum lane, `notes` for
+ *  a melody lane (the other is empty). The lane's LIVE pattern stays in
+ *  `Layer.steps`/`notes`; `variations` only stashes the INACTIVE slots, so the
+ *  scheduler + every note-edit reducer keep reading `steps`/`notes` unchanged. */
+export interface LayerPattern {
+  readonly steps: readonly (StepNote | null)[];
+  readonly notes: readonly (readonly StepNote[])[];
+}
+
 /** A layer on the Stage — one looping/triggerable lane in the mix. */
 export interface Layer {
   readonly id: string;
@@ -117,6 +127,13 @@ export interface Layer {
   /** Per-lane groove/swing, 0..1. Absent = inherit the song-level swing, so a
    *  lane only departs from the global groove once a kid tweaks it. */
   readonly swing?: number;
+  /** Numbered pattern variations (BeepBox "0-9"). The INACTIVE slots only — the
+   *  live one is in `steps`/`notes`. Absent = a single-pattern lane (today). */
+  readonly variations?: readonly LayerPattern[];
+  /** Which slot the live pattern occupies in the full ordered list (active +
+   *  variations). 0..variations.length. Absent = 0. Lets the chips number
+   *  stably as a kid switches. */
+  readonly patternIndex?: number;
 }
 
 /** One "car" of the Song Train: a full, independent loop (its own lanes). The
@@ -164,6 +181,9 @@ export type Command =
   | { readonly type: "addClip"; readonly clip: Clip }
   | { readonly type: "removeClip"; readonly clipId: string }
   | { readonly type: "applyEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
+  // Remove one effect from a clip's chain by position (full FX editing: a kid can
+  // re-open a recording later and peel an effect back off). No-op out of range.
+  | { readonly type: "removeEffect"; readonly clipId: string; readonly index: number }
   | { readonly type: "renameClip"; readonly clipId: string; readonly label: string }
   | { readonly type: "setClipLoop"; readonly clipId: string; readonly loopBeats: number | null }
   | { readonly type: "addLayer"; readonly layer: Layer }
@@ -204,10 +224,33 @@ export type Command =
   | { readonly type: "addCar"; readonly id: string }
   | { readonly type: "selectCar"; readonly partId: string }
   | { readonly type: "renameCar"; readonly partId: string; readonly name: string }
-  | { readonly type: "removeCar"; readonly partId: string };
+  | { readonly type: "removeCar"; readonly partId: string }
+  // Per-lane numbered patterns (BeepBox 0-9). All target a lane on the active
+  // car. `addPattern` copies the live pattern into a fresh slot and makes it
+  // active; `selectPattern` swaps slot N live; `removePattern` drops slot N
+  // (never below one). The live pattern always stays in the lane's steps/notes.
+  | { readonly type: "addPattern"; readonly layerId: string }
+  | { readonly type: "selectPattern"; readonly layerId: string; readonly index: number }
+  | { readonly type: "removePattern"; readonly layerId: string; readonly index: number }
+  // Duplicate a SPECIFIC car (not just the active one) into a fresh car, inserted
+  // right after the source in the arrangement, and select the copy. `id` is the
+  // new car's id (minted by the UI, like `addCar`).
+  | { readonly type: "duplicateCar"; readonly partId: string; readonly id: string }
+  // Copy a lane from the active car onto another car (Song Train: "send this
+  // track to that car"). The copy keeps the same clip (clips are song-wide) but
+  // gets `newLayerId` so the two cars diverge copy-on-write. No-op if the target
+  // is the active car, is unknown, or already holds `newLayerId`.
+  | {
+      readonly type: "copyLayerToCar";
+      readonly layerId: string;
+      readonly targetPartId: string;
+      readonly newLayerId: string;
+    };
 
 export const MIN_BPM = 40;
 export const MAX_BPM = 220;
 export const STEP_COUNT = 16;
 /** CPU ceiling for cheap tablets: cap simultaneous layers (oldest gets stolen). */
 export const MAX_LAYERS = 8;
+/** Numbered pattern slots a single lane can hold (BeepBox-style 1-9). */
+export const MAX_PATTERNS = 9;

@@ -10,12 +10,14 @@ import {
   type Command,
   type Layer,
   type LaneKind,
+  type LayerPattern,
   type Part,
   type Project,
   type Roll,
   type StepNote,
   MAX_BPM,
   MAX_LAYERS,
+  MAX_PATTERNS,
   MIN_BPM,
   STEP_COUNT,
 } from "./types.ts";
@@ -162,10 +164,25 @@ function editActivePart(
  *  cells. `makeLayer` normalizes everything into the StepNote model, so those
  *  call sites stay untouched. */
 export type LayerInit = Pick<Layer, "id" | "clipId"> &
-  Partial<Omit<Layer, "steps" | "notes">> & {
+  Partial<Omit<Layer, "steps" | "notes" | "variations">> & {
     readonly steps?: readonly (StepNote | boolean | null)[];
     readonly notes?: readonly (readonly (StepNote | number)[] | number | null)[];
+    readonly variations?: readonly Partial<LayerPattern>[];
   };
+
+/** Normalize saved pattern variations into the per-step model for this lane
+ *  kind (drum → steps, melody → notes; the other stays empty). Returns
+ *  undefined for an absent/empty list so single-pattern lanes carry no field. */
+function normalizePatterns(
+  kind: LaneKind,
+  raw?: readonly Partial<LayerPattern>[],
+): LayerPattern[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined;
+  return raw.map((p) => ({
+    steps: kind === "drum" ? normalizeSteps(p?.steps) : [],
+    notes: kind === "melody" ? normalizeNotes(p?.notes) : [],
+  }));
+}
 
 /** Build a fully-formed Layer from the bits a caller cares about; the melody/
  *  drum-specific fields get sane defaults so every call site stays terse and
@@ -191,9 +208,20 @@ export function makeLayer(partial: LayerInit): Layer {
     partial.swing === undefined
       ? layer
       : { ...layer, swing: clamp(partial.swing, 0, 1) };
-  return partial.instrument === undefined
-    ? withSwing
-    : { ...withSwing, instrument: partial.instrument };
+  const withInstrument =
+    partial.instrument === undefined
+      ? withSwing
+      : { ...withSwing, instrument: partial.instrument };
+  // Pattern variations are optional; only attach them (with a clamped active
+  // index) when a saved lane actually carried some, so the common lane stays
+  // field-free under exactOptionalPropertyTypes.
+  const variations = normalizePatterns(kind, partial.variations);
+  if (!variations) return withInstrument;
+  return {
+    ...withInstrument,
+    variations,
+    patternIndex: clamp(partial.patternIndex ?? 0, 0, variations.length),
+  };
 }
 
 /** Coerce any saved drum `steps` shape (boolean[] legacy, or (StepNote|null)[])
@@ -310,6 +338,61 @@ function editNote(
   return { ...layer, steps };
 }
 
+// ── Numbered pattern slots (BeepBox 0-9) ─────────────────────────────────────
+// The lane's LIVE pattern always lives in `steps`/`notes`; `variations` stashes
+// the inactive slots, with `patternIndex` recording where the live one sits in
+// the full ordered list. These helpers reconstruct that full list, mutate it,
+// then write the chosen slot back into steps/notes — so the scheduler and every
+// note reducer keep reading steps/notes with zero awareness of patterns.
+
+/** The lane's live pattern as a standalone slot. */
+function activeSlot(l: Layer): LayerPattern {
+  return { steps: l.steps, notes: l.notes };
+}
+
+/** The full ordered slot list (active spliced back into its index). */
+function fullPatterns(l: Layer): LayerPattern[] {
+  const vars = [...(l.variations ?? [])];
+  const idx = clamp(l.patternIndex ?? 0, 0, vars.length);
+  vars.splice(idx, 0, activeSlot(l));
+  return vars;
+}
+
+/** Write `active` into steps/notes and stash the rest as `variations` at
+ *  `index`. Drops the optional fields entirely when only one slot remains, so a
+ *  collapsed lane round-trips identically to a lane that never had variations. */
+function withPatterns(
+  l: Layer,
+  active: LayerPattern,
+  variations: readonly LayerPattern[],
+  index: number,
+): Layer {
+  const base: Layer = { ...l, steps: active.steps, notes: active.notes };
+  if (variations.length === 0) {
+    const { variations: _v, patternIndex: _p, ...bare } = base;
+    return bare;
+  }
+  return { ...base, variations, patternIndex: clamp(index, 0, variations.length) };
+}
+
+/** Apply `fn` to the matched lane on the active car (identity-stable). */
+function editLayer(
+  state: Project,
+  layerId: string,
+  fn: (l: Layer) => Layer,
+): Project {
+  return editActivePart(state, (layers) => {
+    let changed = false;
+    const next = layers.map((l) => {
+      if (l.id !== layerId) return l;
+      const r = fn(l);
+      if (r !== l) changed = true;
+      return r;
+    });
+    return changed ? next : layers;
+  });
+}
+
 export function reduce(state: Project, cmd: Command): Project {
   switch (cmd.type) {
     case "addClip":
@@ -336,6 +419,13 @@ export function reduce(state: Project, cmd: Command): Project {
       if (!clip) return state;
       const updated: Clip = { ...clip, effects: [...clip.effects, cmd.effect] };
       return { ...state, clips: { ...state.clips, [clip.id]: updated } };
+    }
+
+    case "removeEffect": {
+      const clip = state.clips[cmd.clipId];
+      if (!clip || cmd.index < 0 || cmd.index >= clip.effects.length) return state;
+      const effects = clip.effects.filter((_, i) => i !== cmd.index);
+      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, effects } } };
     }
 
     case "renameClip": {
@@ -617,6 +707,105 @@ export function reduce(state: Project, cmd: Command): Project {
         activePartId,
       };
     }
+
+    // Duplicate a specific car: clone its lanes into a fresh car, insert the
+    // copy right after the source (both in `parts` and the arrangement), select
+    // it. Shares clip ids + immutable layer objects — cars diverge copy-on-write
+    // (every lane edit is scoped to the active car via editActivePart).
+    case "duplicateCar": {
+      if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
+      const idx = state.parts.findIndex((p) => p.id === cmd.partId);
+      if (idx < 0) return state;
+      const src = state.parts[idx]!;
+      const color = CAR_COLORS[state.parts.length % CAR_COLORS.length] as string;
+      const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
+        ...src.layers,
+      ]);
+      const parts = [
+        ...state.parts.slice(0, idx + 1),
+        part,
+        ...state.parts.slice(idx + 1),
+      ];
+      // Insert the new car right after the source's FIRST arrangement entry; if
+      // the source somehow isn't arranged, append (keeps it playable).
+      const ai = state.arrangement.findIndex((c) => c.partId === cmd.partId);
+      const entry: ArrangeCar = { partId: cmd.id, repeats: 1 };
+      const arrangement =
+        ai < 0
+          ? [...state.arrangement, entry]
+          : [
+              ...state.arrangement.slice(0, ai + 1),
+              entry,
+              ...state.arrangement.slice(ai + 1),
+            ];
+      return { ...state, parts, arrangement, activePartId: cmd.id };
+    }
+
+    // Send a lane to another car (copy). The source lane lives on the active
+    // car; the copy lands on the target with `newLayerId`. Enforces the per-car
+    // lane cap by stealing the oldest (same rule as addLayer).
+    case "copyLayerToCar": {
+      const src = activePart(state);
+      const layer = src.layers.find((l) => l.id === cmd.layerId);
+      if (!layer) return state;
+      const target = state.parts.find((p) => p.id === cmd.targetPartId);
+      if (!target || target.id === src.id) return state; // unknown / same car
+      if (target.layers.some((l) => l.id === cmd.newLayerId)) return state; // already there
+      const copy: Layer = { ...layer, id: cmd.newLayerId };
+      return {
+        ...state,
+        parts: state.parts.map((p) => {
+          if (p.id !== target.id) return p;
+          const base =
+            p.layers.length >= MAX_LAYERS ? p.layers.slice(1) : p.layers;
+          return { ...p, layers: [...base, copy] };
+        }),
+      };
+    }
+
+    // Add a numbered pattern: copy the live slot into a fresh one at the end and
+    // make it active, so the kid tweaks a near-copy (matching addCar's "copy then
+    // diverge" feel). Capped at MAX_PATTERNS.
+    case "addPattern":
+      return editLayer(state, cmd.layerId, (l) => {
+        const full = fullPatterns(l);
+        if (full.length >= MAX_PATTERNS) return l; // at the cap → no-op
+        const copy = activeSlot(l); // immutable StepNotes → a shallow copy is safe
+        // The old full list becomes the stash; the copy is the new last slot.
+        return withPatterns(l, copy, full, full.length);
+      });
+
+    // Switch which numbered slot is live. No-op on the current slot / bad index.
+    case "selectPattern":
+      return editLayer(state, cmd.layerId, (l) => {
+        const full = fullPatterns(l);
+        const cur = clamp(l.patternIndex ?? 0, 0, full.length - 1);
+        if (cmd.index < 0 || cmd.index >= full.length || cmd.index === cur)
+          return l;
+        const active = full[cmd.index]!;
+        const rest = full.filter((_, i) => i !== cmd.index);
+        return withPatterns(l, active, rest, cmd.index);
+      });
+
+    // Drop a numbered slot (never below one). Removing the live slot promotes a
+    // neighbor; removing an inactive one keeps the live slot live.
+    case "removePattern":
+      return editLayer(state, cmd.layerId, (l) => {
+        const full = fullPatterns(l);
+        if (full.length <= 1 || cmd.index < 0 || cmd.index >= full.length)
+          return l;
+        const cur = clamp(l.patternIndex ?? 0, 0, full.length - 1);
+        const remaining = full.filter((_, i) => i !== cmd.index);
+        const nextIdx =
+          cmd.index === cur
+            ? Math.min(cur, remaining.length - 1) // active removed → nearest
+            : cur > cmd.index
+              ? cur - 1 // a slot before the active went away
+              : cur;
+        const active = remaining[nextIdx]!;
+        const rest = remaining.filter((_, i) => i !== nextIdx);
+        return withPatterns(l, active, rest, nextIdx);
+      });
   }
 }
 

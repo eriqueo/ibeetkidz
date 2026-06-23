@@ -15,8 +15,8 @@ import {
   type ReactNode,
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import type { Clip, EffectId, LaneKind, Project, StepNote } from "../core/types.ts";
-import { STEP_COUNT } from "../core/types.ts";
+import type { Clip, EffectId, LaneKind, Layer, Project, StepNote } from "../core/types.ts";
+import { MAX_PATTERNS, STEP_COUNT } from "../core/types.ts";
 import { activeLayers, activePart, makeLayer, songBars } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
@@ -104,6 +104,12 @@ export const useTrainVisible = (): boolean =>
 // clashing id, which would otherwise silently swallow the new car).
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
+
+// Fresh lane ids for copies sent to another car (so the two cars diverge
+// copy-on-write). Same time-based scheme as car ids — never clashes on reload.
+let layerCopySeq = 0;
+const newLayerId = (): string =>
+  `lyr-${Date.now().toString(36)}-${layerCopySeq++}`;
 
 // Friendly colors cycled onto new melody lanes.
 const MELODY_COLORS = ["#8338ec", "#3a86ff", "#06d6a0", "#fb5607"];
@@ -344,14 +350,31 @@ let clipSeq = 0;
 let voiceCount = 0; // numbers the default recording names so they're tellable apart
 let wildness = 0.6; // shared between the canvas tiles and the Options knob
 
+// Handoff: a voice lane on Home asks My Voice to re-open ITS clip for more FX
+// editing. Set right before switching to the record-voicefx machine; consumed
+// once when MyVoiceCanvas mounts (so a fresh open still starts blank).
+let voiceEditTarget: string | null = null;
+export const requestVoiceEdit = (clipId: string): void => {
+  voiceEditTarget = clipId;
+};
+
 const MyVoiceCanvas: FC = () => {
   const { sound, rng, dispatch, getProject } = useApp();
   const project = useProject();
   const { select } = useLoopSelection();
-  const [status, setStatus] = useState("Hold the mic to record your voice! 🎤");
+  const [status, setStatus] = useState(() =>
+    voiceEditTarget
+      ? "Add another effect, or tap one below to peel it off! 🎉"
+      : "Hold the mic to record your voice! 🎤",
+  );
   const [recording, setRecording] = useState(false);
   // The clip this page is currently shaping. Effects + Send-to-Home act on it.
-  const [clipId, setClipId] = useState<string | null>(null);
+  // If a Home voice lane asked to re-edit its clip, pick that up once on mount.
+  const [clipId, setClipId] = useState<string | null>(() => {
+    const t = voiceEditTarget;
+    voiceEditTarget = null;
+    return t;
+  });
   const clip = clipId ? project.clips[clipId] : undefined;
   // Once a clip is on Home its lane id equals the clip id (see sendToHome).
   const onHome = clipId ? activeLayers(project).some((l) => l.id === clipId) : false;
@@ -425,8 +448,8 @@ const MyVoiceCanvas: FC = () => {
     setStatus(`${tile.emoji} ${tile.label}!`);
   };
 
-  // Stack the (funny) recording onto Home as a 16-step lane, firing once per
-  // loop to start. Then jump to Home with the new lane selected to tweak.
+  // Stack the (funny) recording onto Home as a 16-step drum lane, firing once
+  // per loop to start. Then jump to Home with the new lane selected to tweak.
   const sendToHome = (): void => {
     if (!clipId) return;
     if (!onHome) {
@@ -435,6 +458,36 @@ const MyVoiceCanvas: FC = () => {
       dispatch({
         type: "addLayer",
         layer: makeLayer({ id: clipId, clipId, kind: "drum", steps }),
+      });
+    }
+    select(clipId);
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
+
+  // Send the recording as a MAGIC-NOTES melody lane instead: a Sampler plays the
+  // take repitched across the song's scale + key (same path as Voice Keys), so
+  // any voice becomes a chromatic instrument that's always in key. Seeded with a
+  // tiny motif so it sings on Play. Same stable lane id = clip id.
+  const sendAsNotes = (): void => {
+    const c = clipId ? getProject().clips[clipId] : undefined;
+    if (!clipId || !c || c.source.kind !== "recording") return;
+    if (!onHome) {
+      const notes: (number[] | null)[] = Array.from(
+        { length: STEP_COUNT },
+        () => null,
+      );
+      ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => {
+        notes[i] = [row];
+      });
+      dispatch({
+        type: "addLayer",
+        layer: makeLayer({
+          id: clipId,
+          clipId,
+          kind: "melody",
+          instrument: voiceInstrumentId(c.source.bufferId),
+          notes,
+        }),
       });
     }
     select(clipId);
@@ -472,6 +525,34 @@ const MyVoiceCanvas: FC = () => {
           />
           <p className="voicefx-status">{status}</p>
 
+          {clip.effects.length > 0 && (
+            <div className="fx-chips" data-fx-chips>
+              {clip.effects.map((fx, i) => {
+                const tile = EFFECT_TILES.find((t) => t.id === fx.id);
+                return (
+                  <button
+                    key={`${fx.id}-${i}`}
+                    className="fx-chip"
+                    data-act="remove-fx"
+                    style={cssVar("--tile-color", tile?.color ?? "#888")}
+                    title={`Remove ${tile?.label ?? fx.id}`}
+                    onClick={() => {
+                      if (!clipId) return;
+                      dispatch({ type: "removeEffect", clipId, index: i });
+                      const updated = getProject().clips[clipId];
+                      if (updated) sound.play(updated);
+                      setStatus(`Removed ${tile?.label ?? fx.id}.`);
+                    }}
+                  >
+                    <span className="fx-emoji">{tile?.emoji ?? "✨"}</span>
+                    <span>{tile?.label ?? fx.id}</span>
+                    <span className="fx-chip-x">✕</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="fx-tiles">
             {EFFECT_TILES.map((t) => (
               <button
@@ -486,14 +567,25 @@ const MyVoiceCanvas: FC = () => {
             ))}
           </div>
 
-          <button
-            className="t-btn send-home"
-            data-act="send-home"
-            disabled={onHome}
-            onClick={sendToHome}
-          >
-            {onHome ? "✓ On Home" : "➡️ 🏠 Send to Home"}
-          </button>
+          <div className="send-home-row">
+            <button
+              className="t-btn send-home"
+              data-act="send-home"
+              disabled={onHome}
+              onClick={sendToHome}
+            >
+              {onHome ? "✓ On Home" : "🥁 Send as Beat"}
+            </button>
+            <button
+              className="t-btn send-home"
+              data-act="send-notes"
+              disabled={onHome}
+              onClick={sendAsNotes}
+              title="Play your voice as magic notes, always in key"
+            >
+              🎹 Send as Notes
+            </button>
+          </div>
         </>
       )}
     </section>
@@ -1086,6 +1178,65 @@ const LoopStageCanvas: FC = () => {
 };
 
 /** One lane on the Loop Stage — a drum row or a melody mini-grid. */
+// Numbered pattern slots for a lane (BeepBox 0-9). Tap a number to switch which
+// pattern is live; ＋ saves a copy of the current one; 🗑 drops the live slot.
+// Always shown (even at one slot) so the feature is discoverable.
+const LanePatterns: FC<{ layer: Layer }> = ({ layer }) => {
+  const { dispatch } = useApp();
+  const count = (layer.variations?.length ?? 0) + 1;
+  const active = Math.min(layer.patternIndex ?? 0, count - 1);
+  const stop = (e: React.MouseEvent): void => e.stopPropagation();
+  return (
+    <div className="lane-patterns" data-patterns>
+      <span className="lane-patterns-label">🎛️</span>
+      {Array.from({ length: count }, (_, k) => (
+        <button
+          key={k}
+          type="button"
+          className={"pat-chip" + (k === active ? " active" : "")}
+          data-act="select-pattern"
+          data-pat={k}
+          title={`Pattern ${k + 1}`}
+          onClick={(e) => {
+            stop(e);
+            dispatch({ type: "selectPattern", layerId: layer.id, index: k });
+          }}
+        >
+          {k + 1}
+        </button>
+      ))}
+      {count < MAX_PATTERNS && (
+        <button
+          type="button"
+          className="pat-chip pat-add"
+          data-act="add-pattern"
+          title="Add a pattern (a copy of this one to change)"
+          onClick={(e) => {
+            stop(e);
+            dispatch({ type: "addPattern", layerId: layer.id });
+          }}
+        >
+          ＋
+        </button>
+      )}
+      {count > 1 && (
+        <button
+          type="button"
+          className="pat-chip pat-del"
+          data-act="del-pattern"
+          title="Delete this pattern"
+          onClick={(e) => {
+            stop(e);
+            dispatch({ type: "removePattern", layerId: layer.id, index: active });
+          }}
+        >
+          🗑
+        </button>
+      )}
+    </div>
+  );
+};
+
 const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const { sound, dispatch } = useApp();
   const project = useProject();
@@ -1251,6 +1402,9 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
         </button>
       </div>
 
+      <div className="loop-track-body">
+      <LanePatterns layer={layer} />
+
       {layer.kind === "melody" ? (
         <div
           className="melody-grid"
@@ -1381,6 +1535,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           <div className="loop-playhead" />
         </div>
       )}
+      </div>
     </div>
   );
 };
@@ -1484,6 +1639,24 @@ const LoopStageRail: FC = () => {
 
       {lane ? (
         <>
+          {laneRecBufferId && (
+            <RailControl
+              title="🎤 Silly effects"
+              coach="Open your recording back up to add more silly effects — or peel some off."
+            >
+              <button
+                type="button"
+                className="rail-toggle t-btn"
+                data-act="edit-fx"
+                onClick={() => {
+                  requestVoiceEdit(lane.clipId);
+                  dispatch({ type: "setActiveMachine", machineId: "record-voicefx" });
+                }}
+              >
+                ✨ Edit effects
+              </button>
+            </RailControl>
+          )}
           {lane.kind === "melody" && (
             <RailControl
               title="🎹 Instrument"
@@ -1622,6 +1795,38 @@ const LoopStageRail: FC = () => {
               }
             />
           </RailControl>
+
+            {project.parts.length > 1 && (
+              <RailControl
+                title="🚃 Send to car"
+                coach="Copy this lane onto another car in your Song Train. The original stays here — tweak each car on its own."
+              >
+                <div className="rail-pills">
+                  {project.parts
+                    .filter((p) => p.id !== project.activePartId)
+                    .map((p) => (
+                      <button
+                        key={p.id}
+                        type="button"
+                        data-act="send-car"
+                        className="rail-pill"
+                        style={cssVar("--car-color", p.color)}
+                        title={`Copy this lane to ${p.name}`}
+                        onClick={() =>
+                          dispatch({
+                            type: "copyLayerToCar",
+                            layerId: lane.id,
+                            targetPartId: p.id,
+                            newLayerId: newLayerId(),
+                          })
+                        }
+                      >
+                        ➡️ {p.name}
+                      </button>
+                    ))}
+                </div>
+              </RailControl>
+            )}
         </>
       ) : (
         <p className="coach">Add a lane, then tap it to tweak its sound here.</p>
@@ -1662,6 +1867,7 @@ const CarBlock: FC<{
   const [editing, setEditing] = useState(false);
   if (!part) return null;
   const active = project.activePartId === partId;
+  const canDelete = project.parts.length > 1; // never offer to delete the last car
   const open = (): void => {
     dispatch({ type: "selectCar", partId });
     dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
@@ -1670,9 +1876,21 @@ const CarBlock: FC<{
     setEditing(false);
     dispatch({ type: "renameCar", partId, name });
   };
+  // Duplicate THIS car (copy + insert right after) and open the copy.
+  const duplicate = (e: React.MouseEvent): void => {
+    e.stopPropagation();
+    dispatch({ type: "duplicateCar", partId, id: newCarId() });
+    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+  };
+  // Delete THIS car — undoable (removeCar is a Command in history).
+  const remove = (e: React.MouseEvent): void => {
+    e.stopPropagation();
+    dispatch({ type: "removeCar", partId });
+  };
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       className={
         "car-block" + (active ? " active" : "") + (riding ? " riding" : "")
       }
@@ -1680,6 +1898,28 @@ const CarBlock: FC<{
       style={cssVar("--car-color", part.color)}
       onClick={open}
     >
+      <span className="car-acts">
+        <button
+          type="button"
+          className="car-act"
+          data-act="dup-car"
+          title="Make a copy of this car"
+          onClick={duplicate}
+        >
+          ⧉
+        </button>
+        {canDelete && (
+          <button
+            type="button"
+            className="car-act car-act--del"
+            data-act="del-car"
+            title="Delete this car"
+            onClick={remove}
+          >
+            ✕
+          </button>
+        )}
+      </span>
       <span className="car-num">{index + 1}</span>
       {editing ? (
         <input
@@ -1704,7 +1944,7 @@ const CarBlock: FC<{
           {part.name}
         </span>
       )}
-    </button>
+    </div>
   );
 };
 

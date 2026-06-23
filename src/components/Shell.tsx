@@ -209,6 +209,9 @@ export const Shell: FC = () => {
   return (
     <div id="app">
       <div className="shell-root">
+        <header className="brand">
+          <span className="brand-text">ibeetkidz</span>
+        </header>
         <TrainModeProvider>
           <LoopSelectionProvider>
             <div className={"shell-grid" + (sideRail ? " shell-grid--rail" : "")}>

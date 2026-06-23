@@ -97,8 +97,28 @@ commands `addNote/removeNote/resizeNote/setRoll` (plus the kept toggles); the
 scheduler sustains melody for `length` and subdivides the start step for `roll`.
 Tolerant deserialize upgrades old boolean/number cells to length-1 notes.
 
-Gates: `typecheck` clean, 71 unit tests, 22 Playwright E2E (incl. full hero
+Song Train moves + per-lane variations (the "between trains" pass): a lane can
+be **copied to another car** (`copyLayerToCar`, fresh layer id → cars diverge
+copy-on-write) from the Studio rail's **🚃 Send to car** picker; cars can be
+**duplicated** (`duplicateCar`, inserted right after the source) and **deleted**
+(`removeCar`) via ⧉/✕ on each car block. Each lane carries BeepBox-style
+**numbered pattern slots** (`Layer.variations[]` + `patternIndex`, cap
+`MAX_PATTERNS`=9): the LIVE slot stays in `steps`/`notes` (scheduler + every note
+reducer untouched), `variations` only stashes the inactive ones. Commands
+`addPattern` (copies the live slot), `selectPattern`, `removePattern`; UI is the
+🎛️ chip row above each lane grid. The lane grid is wrapped in `.loop-track-body`
+so the chip row doesn't steal the grid's `1fr` column. Voice recordings are
+fully re-editable: effects are removable (`removeEffect` + FX chips in My Voice),
+and any voice lane re-opens its clip for more FX via **✨ Edit effects** in the
+rail (`requestVoiceEdit` handoff). My Voice can **Send as Notes** → a magic-notes
+melody lane voiced by the recording (`voice:<bufferId>`, in the song key/scale),
+alongside **Send as Beat**. A big **ibeetkidz** brand header sits atop the shell.
+
+Gates: `typecheck` clean, 115 unit tests, 27 Playwright E2E (incl. full hero
 journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
+Note: Playwright reuses any Vite already on its port; a stray kidpix dev server
+on 5173 will make the whole suite hit the wrong app — run with `PW_PORT=<free>`
+to pin a dedicated port (`reuseExistingServer` is off once a port is pinned).
 `BUILD_RUNBOOK.md` retains the original build order. Note: looped clips schedule
 through `resolveClip` (async, baked + cached), so effected voice lanes loop with
 their effects — and a `scheduleGen` guard discards stale async (re)schedules.

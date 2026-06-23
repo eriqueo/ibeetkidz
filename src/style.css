@@ -135,6 +135,30 @@ body {
   height: 100%;
 }
 
+/* Brand banner — the big "ibeetkidz" logo across the very top. Flex item in
+   shell-root, so it sits above the 4-region grid without disturbing it. */
+.brand {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.55rem 0.75rem;
+  background: linear-gradient(90deg, #14101f, #1f1730, #14101f);
+  border-bottom: 3px solid var(--edge, #15121b);
+}
+.brand-text {
+  font-family: "Press Start 2P", system-ui, sans-serif;
+  font-size: clamp(1.1rem, 4.2vw, 2.4rem);
+  letter-spacing: 0.06em;
+  line-height: 1;
+  background: linear-gradient(90deg, var(--beet, #ff79c6), var(--sun, #fabd2f), var(--grape, #bd93f9));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 2px 0 rgba(0, 0, 0, 0.35);
+  user-select: none;
+}
+
 /* 4-region kidpix layout:
      palette (left)  | options (top)
      palette (left)  | canvas
@@ -384,6 +408,39 @@ body {
   font-size: 2rem;
 }
 
+/* Applied-effect chips — the recording's current FX chain. Tap a chip to peel
+   that effect back off (full FX editing). */
+.fx-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  justify-content: center;
+}
+.fx-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.55rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--tile-color, var(--panel));
+  color: white;
+  font-size: 0.85rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fx-chip .fx-emoji {
+  font-size: 1.1rem;
+}
+.fx-chip-x {
+  font-size: 0.75rem;
+  opacity: 0.8;
+  margin-left: 0.1rem;
+}
+.fx-chip:active {
+  transform: scale(0.95);
+}
+
 /* The just-recorded clip: name it, then send it to Home. */
 .voice-clip-card {
   display: flex;
@@ -401,6 +458,12 @@ body {
   align-items: center;
   gap: 0.25rem;
   font-size: 1.05rem;
+}
+.send-home-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
 }
 .send-home {
   width: auto;
@@ -620,6 +683,61 @@ body {
   height: 2.2rem;
   font-size: 1.1rem;
 }
+/* Right side of a lane (col 2): the pattern slots stacked above the note grid.
+   Keeps the grid in the wide 1fr column instead of letting the pattern row
+   steal it. */
+.loop-track-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  min-width: 0;
+}
+
+/* Per-lane numbered pattern slots (BeepBox 0-9). */
+.lane-patterns {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.25rem;
+  margin: 0.1rem 0 0.35rem;
+}
+.lane-patterns-label {
+  font-size: 0.85rem;
+  opacity: 0.7;
+  margin-right: 0.1rem;
+}
+.pat-chip {
+  min-width: 1.6rem;
+  height: 1.6rem;
+  padding: 0 0.35rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: white;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-radius: 0.4rem;
+  background: rgba(0, 0, 0, 0.25);
+  cursor: pointer;
+}
+.pat-chip.active {
+  background: var(--row-color, var(--accent));
+  border-color: #fff;
+}
+.pat-chip.pat-add {
+  border-style: dashed;
+  opacity: 0.85;
+}
+.pat-chip.pat-del {
+  border-color: transparent;
+  background: transparent;
+  opacity: 0.7;
+}
+.pat-chip.pat-del:active {
+  opacity: 1;
+}
+
 .loop-lane {
   position: relative;
   display: grid;
@@ -1160,6 +1278,42 @@ body {
   to {
     box-shadow: 0 0 0.7rem 0.15rem rgba(255, 255, 255, 0.85);
   }
+}
+/* Per-car action buttons (duplicate ⧉ / delete ✕), tucked top-right. */
+.car-acts {
+  position: absolute;
+  top: 0.15rem;
+  right: 0.2rem;
+  display: flex;
+  gap: 0.15rem;
+  z-index: 1;
+}
+.car-act {
+  width: 1.35rem;
+  height: 1.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 0.8rem;
+  line-height: 1;
+  border: none;
+  border-radius: 0.35rem;
+  background: rgba(0, 0, 0, 0.32);
+  color: white;
+  cursor: pointer;
+  opacity: 0.65;
+}
+.car-act:hover,
+.car-act:active {
+  opacity: 1;
+}
+.car-act--del:hover,
+.car-act--del:active {
+  background: var(--tomato, #fb4934);
+}
+.car-block .car-num {
+  margin-top: 0.1rem;
 }
 .car-num {
   font-size: 0.65rem;

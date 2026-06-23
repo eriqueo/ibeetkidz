@@ -50,6 +50,16 @@ describe("reduce", () => {
     expect(reduce(s, { type: "applyEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(s);
   });
 
+  it("removeEffect peels one effect by index; no-ops out of range / unknown clip", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, { type: "applyEffect", clipId: "c1", effect: { id: "reverse", amount: 1 } });
+    s = reduce(s, { type: "applyEffect", clipId: "c1", effect: { id: "echo", amount: 0.5 } });
+    const peeled = reduce(s, { type: "removeEffect", clipId: "c1", index: 0 });
+    expect(peeled.clips["c1"]?.effects.map((e) => e.id)).toEqual(["echo"]);
+    expect(reduce(s, { type: "removeEffect", clipId: "c1", index: 9 })).toBe(s); // out of range
+    expect(reduce(s, { type: "removeEffect", clipId: "nope", index: 0 })).toBe(s); // unknown clip
+  });
+
   it("renames a clip (trimmed), no-ops on blank/unchanged/unknown", () => {
     const base = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     const renamed = reduce(base, { type: "renameClip", clipId: "c1", label: "  Dog bark  " });
@@ -659,6 +669,72 @@ describe("Song Train cars", () => {
     expect(reduce(s, { type: "removeCar", partId: s.activePartId })).toBe(s);
   });
 
+  it("duplicateCar copies a specific car, inserts it right after, selects it", () => {
+    // Two cars: car1 (with lane), car-2 (active). Duplicate car1 specifically.
+    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const car1 = s.parts[0]!.id;
+    s = reduce(s, { type: "duplicateCar", partId: car1, id: "car-dup" });
+    // Inserted right AFTER the source in both parts + arrangement.
+    expect(s.parts.map((p) => p.id)).toEqual([car1, "car-dup", "car-2"]);
+    expect(s.arrangement.map((c) => c.partId)).toEqual([car1, "car-dup", "car-2"]);
+    expect(s.activePartId).toBe("car-dup"); // opens the copy
+    // Carries the source's lanes (with the hit), as its own array.
+    expect(activeLayers(s).map((l) => l.id)).toEqual(["d1"]);
+    expect(activeLayers(s)[0]?.steps[0]).toEqual({ row: 0, length: 1 });
+  });
+
+  it("duplicateCar no-ops on a clashing id or unknown source", () => {
+    const s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    expect(reduce(s, { type: "duplicateCar", partId: s.parts[0]!.id, id: "car-2" })).toBe(s);
+    expect(reduce(s, { type: "duplicateCar", partId: "ghost", id: "car-x" })).toBe(s);
+  });
+
+  it("copyLayerToCar copies the active car's lane onto another car (fresh id)", () => {
+    // car1 (active) holds lane d1; add car-2, then copy d1 from car-2... no —
+    // copy is from the ACTIVE car. Build: car1 active with d1, add car-2 (copy),
+    // edit car-2's d1 so it differs, then send a fresh copy back? Simpler: start
+    // on car1, add a SECOND empty car, copy d1 onto it.
+    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    // car-2 is the copy + active; remove its lane so it's an empty target.
+    s = reduce(s, { type: "removeLayer", layerId: "d1" });
+    const car1 = s.parts[0]!.id;
+    s = reduce(s, { type: "selectCar", partId: car1 }); // edit car1 (has d1)
+    s = reduce(s, {
+      type: "copyLayerToCar",
+      layerId: "d1",
+      targetPartId: "car-2",
+      newLayerId: "d1-copy",
+    });
+    const target = s.parts.find((p) => p.id === "car-2")!;
+    expect(target.layers.map((l) => l.id)).toEqual(["d1-copy"]);
+    expect(target.layers[0]?.clipId).toBe("d1"); // shares the song-wide clip
+    expect(target.layers[0]?.steps[0]).toEqual({ row: 0, length: 1 }); // copied data
+    // Source car untouched (still its own d1).
+    expect(s.parts.find((p) => p.id === car1)!.layers.map((l) => l.id)).toEqual(["d1"]);
+  });
+
+  it("copyLayerToCar no-ops on same car, unknown target, unknown lane, or dup id", () => {
+    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const car1 = s.parts[0]!.id;
+    s = reduce(s, { type: "selectCar", partId: car1 });
+    // same car as active
+    expect(
+      reduce(s, { type: "copyLayerToCar", layerId: "d1", targetPartId: car1, newLayerId: "x" }),
+    ).toBe(s);
+    // unknown target
+    expect(
+      reduce(s, { type: "copyLayerToCar", layerId: "d1", targetPartId: "ghost", newLayerId: "x" }),
+    ).toBe(s);
+    // unknown lane
+    expect(
+      reduce(s, { type: "copyLayerToCar", layerId: "nope", targetPartId: "car-2", newLayerId: "x" }),
+    ).toBe(s);
+    // car-2 already has a lane id "d1" (it was duplicated from car1) → dup id no-op
+    expect(
+      reduce(s, { type: "copyLayerToCar", layerId: "d1", targetPartId: "car-2", newLayerId: "d1" }),
+    ).toBe(s);
+  });
+
   it("undo covers a car add (Project-level history)", () => {
     let h = initHistory(oneCarWithLane());
     h = dispatch(h, { type: "addCar", id: "car-2" });
@@ -675,5 +751,75 @@ describe("Song Train cars", () => {
     expect(back.parts.map((p) => p.id)).toEqual(s.parts.map((p) => p.id));
     expect(back.arrangement).toEqual(s.arrangement);
     expect(back.activePartId).toBe(s.activePartId);
+  });
+});
+
+describe("numbered pattern slots", () => {
+  // A drum lane with a single hit at step 0.
+  const oneLane = () => {
+    let s = reduce(emptyProject("pt"), { type: "addClip", clip: clip("d1") });
+    s = reduce(s, { type: "addLayer", layer: layer("d1", "d1") });
+    return reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
+  };
+  const lane0 = (s: ReturnType<typeof oneLane>): Layer => activeLayers(s)[0]!;
+
+  it("a fresh lane carries no pattern fields (single-pattern shape)", () => {
+    const l = lane0(oneLane());
+    expect(l.variations).toBeUndefined();
+    expect(l.patternIndex).toBeUndefined();
+  });
+
+  it("addPattern stashes the current take and makes an editable copy active", () => {
+    let s = oneLane();
+    s = reduce(s, { type: "addPattern", layerId: "d1" });
+    const l = lane0(s);
+    expect(l.variations).toHaveLength(1); // the original, stashed
+    expect(l.patternIndex).toBe(1); // the copy is the new last slot
+    expect(l.steps[0]).toEqual({ row: 0, length: 1 }); // copy carries the hit
+    // Editing the active copy must NOT touch the stashed slot 1.
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 4 });
+    const l2 = lane0(s);
+    expect(l2.steps[4]).toEqual({ row: 0, length: 1 });
+    expect(l2.variations?.[0]?.steps[4]).toBeNull(); // slot 1 untouched
+  });
+
+  it("selectPattern swaps a slot live; no-op on current/out-of-range", () => {
+    let s = oneLane();
+    s = reduce(s, { type: "addPattern", layerId: "d1" }); // slot 2 active (copy)
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 4 }); // edit slot 2
+    s = reduce(s, { type: "selectPattern", layerId: "d1", index: 0 }); // back to slot 1
+    expect(lane0(s).patternIndex).toBe(0);
+    expect(lane0(s).steps[4]).toBeNull(); // slot 1 never got the step-4 hit
+    expect(reduce(s, { type: "selectPattern", layerId: "d1", index: 0 })).toBe(s); // already active
+    expect(reduce(s, { type: "selectPattern", layerId: "d1", index: 9 })).toBe(s); // out of range
+  });
+
+  it("removePattern drops a slot, promotes a neighbor, never below one", () => {
+    let s = oneLane();
+    s = reduce(s, { type: "addPattern", layerId: "d1" }); // 2 slots, slot 2 active
+    s = reduce(s, { type: "removePattern", layerId: "d1", index: 1 }); // drop active
+    const l = lane0(s);
+    expect(l.variations).toBeUndefined(); // collapsed back to single-pattern
+    expect(l.patternIndex).toBeUndefined();
+    // Last slot can't be removed.
+    expect(reduce(s, { type: "removePattern", layerId: "d1", index: 0 })).toBe(s);
+  });
+
+  it("caps at MAX_PATTERNS slots", () => {
+    let s = oneLane();
+    for (let i = 0; i < 12; i++) s = reduce(s, { type: "addPattern", layerId: "d1" });
+    expect((lane0(s).variations?.length ?? 0) + 1).toBe(9);
+  });
+
+  it("round-trips pattern variations through serialize → deserialize", () => {
+    let s = oneLane();
+    s = reduce(s, { type: "addPattern", layerId: "d1" });
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 8 });
+    const back = deserialize(serialize(s));
+    const l = activeLayers(back)[0]!;
+    expect(l.variations).toHaveLength(1);
+    expect(l.patternIndex).toBe(1);
+    expect(l.steps[8]).toEqual({ row: 0, length: 1 });
+    expect(l.variations?.[0]?.steps[8]).toBeNull();
   });
 });
