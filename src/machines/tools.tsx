@@ -1177,6 +1177,202 @@ const LoopStageCanvas: FC = () => {
   );
 };
 
+// A compact rotary knob with ‹ › step arrows — the per-track tweak control.
+// Drag the dial up/down to sweep, or tap an arrow to nudge by one step. Kept
+// tiny so a row of them fits inside a lane.
+const Knob: FC<{
+  label: string;
+  value: number;
+  onChange: (v: number) => void;
+  min?: number;
+  max?: number;
+  step?: number;
+  format?: (v: number) => string;
+  color?: string;
+}> = ({ label, value, onChange, min = 0, max = 1, step = 0.05, format, color }) => {
+  const range = max - min || 1;
+  const frac = Math.max(0, Math.min(1, (value - min) / range));
+  const angle = -135 + frac * 270; // dial sweeps 270°
+  const clampV = (v: number): number => Math.max(min, Math.min(max, v));
+  const snap = (v: number): number =>
+    clampV(Number((Math.round((v - min) / step) * step + min).toFixed(4)));
+  const bump = (dir: number) => (e: React.MouseEvent): void => {
+    e.stopPropagation();
+    onChange(snap(value + dir * step));
+  };
+  const drag = (e: React.PointerEvent): void => {
+    e.stopPropagation();
+    e.preventDefault();
+    const el = e.currentTarget as HTMLElement;
+    el.setPointerCapture?.(e.pointerId);
+    const startY = e.clientY;
+    const startV = value;
+    const move = (ev: PointerEvent): void => {
+      onChange(snap(startV + ((startY - ev.clientY) / 120) * range)); // up = louder
+    };
+    const up = (): void => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+  };
+  const style: CSSProperties = {
+    ...cssVar("--ang", `${angle}deg`),
+    ...(color ? cssVar("--knob-color", color) : {}),
+  };
+  return (
+    <div className="knob" onPointerDown={(e) => e.stopPropagation()}>
+      <div className="knob-label">{label}</div>
+      <div className="knob-controls">
+        <button type="button" className="knob-step" data-act="knob-down" onClick={bump(-1)}>
+          ‹
+        </button>
+        <div
+          className="knob-dial"
+          style={style}
+          role="slider"
+          aria-label={label}
+          aria-valuenow={Math.round(frac * 100)}
+          onPointerDown={drag}
+        >
+          <span className="knob-ind" />
+        </div>
+        <button type="button" className="knob-step" data-act="knob-up" onClick={bump(1)}>
+          ›
+        </button>
+      </div>
+      <div className="knob-val">{format ? format(value) : `${Math.round(frac * 100)}%`}</div>
+    </div>
+  );
+};
+
+// Per-track tweaks, shown INSIDE the selected lane (the right Studio rail keeps
+// only song-wide controls). Instrument + silly-effects + knobs (volume/echo/
+// tone/groove) + send-to-car all act on this one lane.
+const LaneControls: FC<{ layer: Layer }> = ({ layer }) => {
+  const { dispatch } = useApp();
+  const project = useProject();
+  const clip = project.clips[layer.clipId];
+  const recBufferId = clip?.source.kind === "recording" ? clip.source.bufferId : null;
+  const others = project.parts.filter((p) => p.id !== project.activePartId);
+  return (
+    <div className="lane-controls" data-lane-controls>
+      {(layer.kind === "melody" || recBufferId) && (
+        <div className="lane-ctl-group">
+          {layer.kind === "melody" && (
+            <div className="rail-pills lane-inst">
+              {recBufferId && (
+                <button
+                  type="button"
+                  data-inst="voice"
+                  className={
+                    "rail-pill" +
+                    (isVoiceInstrument(resolveInstrument(layer.instrument, layer.wave))
+                      ? " active"
+                      : "")
+                  }
+                  title="Your Voice"
+                  onClick={() =>
+                    dispatch({
+                      type: "setLayerInstrument",
+                      layerId: layer.id,
+                      instrument: voiceInstrumentId(recBufferId),
+                    })
+                  }
+                >
+                  🎤
+                </button>
+              )}
+              {INSTRUMENTS.map((inst) => (
+                <button
+                  key={inst.id}
+                  data-inst={inst.id}
+                  className={
+                    "rail-pill" +
+                    (resolveInstrument(layer.instrument, layer.wave) === inst.id ? " active" : "")
+                  }
+                  title={inst.label}
+                  onClick={() =>
+                    dispatch({ type: "setLayerInstrument", layerId: layer.id, instrument: inst.id })
+                  }
+                >
+                  {inst.emoji}
+                </button>
+              ))}
+            </div>
+          )}
+          {recBufferId && (
+            <button
+              type="button"
+              className="t-btn lane-fx-btn"
+              data-act="edit-fx"
+              title="Open this recording to add/remove silly effects"
+              onClick={() => {
+                requestVoiceEdit(layer.clipId);
+                dispatch({ type: "setActiveMachine", machineId: "record-voicefx" });
+              }}
+            >
+              ✨ Effects
+            </button>
+          )}
+        </div>
+      )}
+
+      <div className="knob-row">
+        <Knob
+          label="📢 Vol"
+          value={layer.volume}
+          onChange={(v) => dispatch({ type: "setLayerVolume", layerId: layer.id, volume: v })}
+        />
+        <Knob
+          label="🌀 Echo"
+          value={layer.echo}
+          onChange={(v) => dispatch({ type: "setLayerEcho", layerId: layer.id, echo: v })}
+        />
+        <Knob
+          label="🎨 Tone"
+          value={layer.tone}
+          format={(v) => toneLabel(v)}
+          onChange={(v) => dispatch({ type: "setLayerTone", layerId: layer.id, tone: v })}
+        />
+        <Knob
+          label="🎢 Groove"
+          value={layer.swing ?? project.swing}
+          format={(v) => (v > 0.05 ? "Bouncy" : "Straight")}
+          onChange={(v) => dispatch({ type: "setLayerSwing", layerId: layer.id, swing: v })}
+        />
+      </div>
+
+      {others.length > 0 && (
+        <div className="rail-pills lane-sendcar">
+          <span className="lane-ctl-label">🚃 Send to car:</span>
+          {others.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              data-act="send-car"
+              className="rail-pill"
+              style={cssVar("--car-color", p.color)}
+              title={`Copy this lane to ${p.name}`}
+              onClick={() =>
+                dispatch({
+                  type: "copyLayerToCar",
+                  layerId: layer.id,
+                  targetPartId: p.id,
+                  newLayerId: newLayerId(),
+                })
+              }
+            >
+              ➡️ {p.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 /** One lane on the Loop Stage — a drum row or a melody mini-grid. */
 // Numbered pattern slots for a lane (BeepBox 0-9). Tap a number to switch which
 // pattern is live; ＋ saves a copy of the current one; 🗑 drops the live slot.
@@ -1535,6 +1731,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
           <div className="loop-playhead" />
         </div>
       )}
+      {selected === layer.id && <LaneControls layer={layer} />}
       </div>
     </div>
   );
@@ -1556,15 +1753,10 @@ const RailControl: FC<{ title: string; coach: string; children: ReactNode }> = (
 );
 
 const LoopStageRail: FC = () => {
+  // The Studio rail now holds ONLY song-wide controls (tempo / scale / key /
+  // groove). Per-track tweaks live inside each lane (LaneControls).
   const { dispatch, engine } = useApp();
   const project = useProject();
-  const { selected } = useLoopSelection();
-  const lane =
-    activeLayers(project).find((l) => l.id === selected) ?? activeLayers(project)[0] ?? null;
-  const laneClip = lane ? project.clips[lane.clipId] : undefined;
-  // A melody lane backed by a recording can be voiced by it (Voice Keys).
-  const laneRecBufferId =
-    laneClip?.source.kind === "recording" ? laneClip.source.bufferId : null;
   const magicOn = project.scaleId === "magic";
 
   return (
@@ -1633,225 +1825,37 @@ const LoopStageRail: FC = () => {
         />
       </RailControl>
 
-      <div className="rail-sep">
-        🎚️ {lane ? `${project.clips[lane.clipId]?.label ?? "Lane"}` : "Lane"}
-      </div>
-
-      {lane ? (
-        <>
-          {laneRecBufferId && (
-            <RailControl
-              title="🎤 Silly effects"
-              coach="Open your recording back up to add more silly effects — or peel some off."
-            >
-              <button
-                type="button"
-                className="rail-toggle t-btn"
-                data-act="edit-fx"
-                onClick={() => {
-                  requestVoiceEdit(lane.clipId);
-                  dispatch({ type: "setActiveMachine", machineId: "record-voicefx" });
-                }}
-              >
-                ✨ Edit effects
-              </button>
-            </RailControl>
-          )}
-          {lane.kind === "melody" && (
-            <RailControl
-              title="🎹 Instrument"
-              coach="The voice of this tune — try Piano, Bells, Organ, Pluck or Brass. Each note you tap previews in the new sound."
-            >
-              <div className="rail-pills">
-                {/* If this lane's clip is a recording (came from Voice Keys),
-                    always offer the 🎤 voice — active when it's the current
-                    voice, tappable to switch back after trying a synth. */}
-                {laneRecBufferId && (
-                  <button
-                    type="button"
-                    data-inst="voice"
-                    className={
-                      "rail-pill" +
-                      (isVoiceInstrument(resolveInstrument(lane.instrument, lane.wave))
-                        ? " active"
-                        : "")
-                    }
-                    title="Your Voice (from Voice Keys)"
-                    onClick={() =>
-                      dispatch({
-                        type: "setLayerInstrument",
-                        layerId: lane.id,
-                        instrument: voiceInstrumentId(laneRecBufferId),
-                      })
-                    }
-                  >
-                    🎤
-                  </button>
-                )}
-                {INSTRUMENTS.map((inst) => (
-                  <button
-                    key={inst.id}
-                    data-inst={inst.id}
-                    className={
-                      "rail-pill" +
-                      (resolveInstrument(lane.instrument, lane.wave) === inst.id
-                        ? " active"
-                        : "")
-                    }
-                    onClick={() =>
-                      dispatch({
-                        type: "setLayerInstrument",
-                        layerId: lane.id,
-                        instrument: inst.id,
-                      })
-                    }
-                    title={inst.label}
-                  >
-                    {inst.emoji}
-                  </button>
-                ))}
-              </div>
-            </RailControl>
-          )}
-
-          <RailControl
-            title="📢 Volume"
-            coach="How loud this lane sits in the mix. Turn down to tuck it behind."
-          >
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.01"
-              value={lane.volume}
-              onChange={(e) =>
-                dispatch({
-                  type: "setLayerVolume",
-                  layerId: lane.id,
-                  volume: Number(e.target.value),
-                })
-              }
-            />
-          </RailControl>
-
-          <RailControl
-            title={`🌀 Echo · ${Math.round(lane.echo * 100)}%`}
-            coach="Adds a spacey echo tail. A little = roomy; a lot = dreamy."
-          >
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={lane.echo}
-              onChange={(e) =>
-                dispatch({
-                  type: "setLayerEcho",
-                  layerId: lane.id,
-                  echo: Number(e.target.value),
-                })
-              }
-            />
-          </RailControl>
-
-          <RailControl
-            title={`🎨 Tone · ${toneLabel(lane.tone)}`}
-            coach="Bright = sparkly and clear; dark = soft and muffled, like it's far away."
-          >
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={lane.tone}
-              onChange={(e) =>
-                dispatch({
-                  type: "setLayerTone",
-                  layerId: lane.id,
-                  tone: Number(e.target.value),
-                })
-              }
-            />
-          </RailControl>
-
-          <RailControl
-            title={`🎢 This Lane's Groove · ${
-              (lane.swing ?? project.swing) > 0.05 ? "Bouncy" : "Straight"
-            }`}
-            coach="Swing just this lane — let one part bounce while the rest marches."
-          >
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.05"
-              value={lane.swing ?? project.swing}
-              onChange={(e) =>
-                dispatch({
-                  type: "setLayerSwing",
-                  layerId: lane.id,
-                  swing: Number(e.target.value),
-                })
-              }
-            />
-          </RailControl>
-
-            {project.parts.length > 1 && (
-              <RailControl
-                title="🚃 Send to car"
-                coach="Copy this lane onto another car in your Song Train. The original stays here — tweak each car on its own."
-              >
-                <div className="rail-pills">
-                  {project.parts
-                    .filter((p) => p.id !== project.activePartId)
-                    .map((p) => (
-                      <button
-                        key={p.id}
-                        type="button"
-                        data-act="send-car"
-                        className="rail-pill"
-                        style={cssVar("--car-color", p.color)}
-                        title={`Copy this lane to ${p.name}`}
-                        onClick={() =>
-                          dispatch({
-                            type: "copyLayerToCar",
-                            layerId: lane.id,
-                            targetPartId: p.id,
-                            newLayerId: newLayerId(),
-                          })
-                        }
-                      >
-                        ➡️ {p.name}
-                      </button>
-                    ))}
-                </div>
-              </RailControl>
-            )}
-        </>
-      ) : (
-        <p className="coach">Add a lane, then tap it to tweak its sound here.</p>
-      )}
+      <p className="rail-foot coach">
+        🎚️ Tap a track to tweak its own sound — instrument, volume, echo &
+        groove live right on the track now.
+      </p>
     </div>
   );
 };
+
 
 // ── Song Train: the Tracks strip ─────────────────────────────────────────────
 // A new region below the play bar (shown only once there's a train). Cars sit
 // left→right in song order as colored blocks; tap one to open it in Home, ▶ Ride
 // plays the whole song through. The riding car lights up while it plays.
 
-/** Map an absolute bar to the arrangement index currently sounding, so the strip
- *  can highlight the riding car. -1 when stopped or the song is empty. */
-const ridingIndex = (project: Project, bar: number): number => {
-  if (bar < 0) return -1;
+/** Where playback is along the song: which arrangement index is sounding and how
+ *  far through that car (0..1, including the sub-bar fraction). index = -1 when
+ *  stopped/empty. Drives BOTH the moving train sprite and the riding highlight. */
+const ridingAt = (
+  project: Project,
+  bar: number,
+  stepFrac: number,
+): { index: number; frac: number } => {
+  if (bar < 0) return { index: -1, frac: 0 };
   const total = songBars(project);
   let pos = bar % total;
   for (let i = 0; i < project.arrangement.length; i++) {
     const reps = Math.max(1, project.arrangement[i]!.repeats);
-    if (pos < reps) return i;
+    if (pos < reps) return { index: i, frac: (pos + stepFrac) / reps };
     pos -= reps;
   }
-  return -1;
+  return { index: -1, frac: 0 };
 };
 
 /** One car in the strip: colored block, tap to open in Home, double-tap the
@@ -1887,12 +1891,19 @@ const CarBlock: FC<{
     e.stopPropagation();
     dispatch({ type: "removeCar", partId });
   };
+  // The front car (first in the arrangement) is the locomotive — engine cab +
+  // smokestack + cowcatcher; the rest are boxcars. Couplers + rails (in CSS)
+  // make them read as a train sitting on a track.
+  const isEngine = index === 0;
   return (
     <div
       role="button"
       tabIndex={0}
       className={
-        "car-block" + (active ? " active" : "") + (riding ? " riding" : "")
+        "car-block" +
+        (isEngine ? " loco" : "") +
+        (active ? " active" : "") +
+        (riding ? " riding" : "")
       }
       data-car={partId}
       style={cssVar("--car-color", part.color)}
@@ -1920,51 +1931,82 @@ const CarBlock: FC<{
           </button>
         )}
       </span>
-      <span className="car-num">{index + 1}</span>
-      {editing ? (
-        <input
-          className="car-rename"
-          defaultValue={part.name}
-          autoFocus
-          onClick={(e) => e.stopPropagation()}
-          onBlur={(e) => commit(e.currentTarget.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") commit(e.currentTarget.value);
-            if (e.key === "Escape") setEditing(false);
-          }}
-        />
-      ) : (
-        <span
-          className="car-name"
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            setEditing(true);
-          }}
-        >
-          {part.name}
-        </span>
-      )}
+      {isEngine && <span className="car-stack" aria-hidden />}
+      <div className="car-body">
+        <span className="car-num">{isEngine ? "🚂" : index + 1}</span>
+        {editing ? (
+          <input
+            className="car-rename"
+            defaultValue={part.name}
+            autoFocus
+            onClick={(e) => e.stopPropagation()}
+            onBlur={(e) => commit(e.currentTarget.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") commit(e.currentTarget.value);
+              if (e.key === "Escape") setEditing(false);
+            }}
+          />
+        ) : (
+          <span
+            className="car-name"
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              setEditing(true);
+            }}
+          >
+            {part.name}
+          </span>
+        )}
+      </div>
+      <span className="car-wheels" aria-hidden>
+        <i className="car-wheel" />
+        <i className="car-wheel" />
+      </span>
     </div>
   );
 };
 
 export const TracksStrip: FC = () => {
-  const { dispatch, engine, getProject } = useApp();
+  const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
   const [riding, setRiding] = useState(-1);
+  const carsRef = useRef<HTMLDivElement>(null);
+  const trainRef = useRef<HTMLDivElement>(null);
 
-  // Light up the riding car each bar. rAF reads the transport; we only re-render
-  // when the active car actually changes (about once per bar), not every frame.
+  // Drive the playback train each frame: a little engine rides the rail to the
+  // car currently sounding (and how far through it), only while RIDING the whole
+  // song. In loop mode (Home Play of one car) it parks off-screen — the active
+  // ring shows which car you're on. Position uses refs (no per-frame re-render);
+  // only the riding-car *index* flips React state, ~once per bar.
   useEffect(() => {
     let raf = 0;
     const tick = (): void => {
-      const idx = ridingIndex(getProject(), engine.getTransportBar());
-      setRiding((prev) => (prev === idx ? prev : idx));
+      const train = trainRef.current;
+      const cars = carsRef.current;
+      const isRide = engine.playMode === "ride";
+      const bar = isRide ? engine.getTransportBar() : -1;
+      const stepFrac = bar < 0 ? 0 : Math.max(0, sound.getTransportStep(1000)) / 1000;
+      const { index, frac } = ridingAt(getProject(), bar, stepFrac);
+      setRiding((prev) => (prev === index ? prev : index));
+      if (train) {
+        const el =
+          index >= 0 && cars
+            ? cars.querySelectorAll<HTMLElement>(".car-block")[index] ?? null
+            : null;
+        if (el) {
+          const x = el.offsetLeft + frac * el.offsetWidth;
+          // scaleX(-1): the 🚂 glyph faces left; flip it to face its travel.
+          train.style.transform = `translateX(${x}px) scaleX(-1)`;
+          train.style.opacity = "1";
+        } else {
+          train.style.opacity = "0";
+        }
+      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [engine, getProject]);
+  }, [engine, sound, getProject]);
 
   const addCar = (): void => {
     dispatch({ type: "addCar", id: newCarId() });
@@ -1974,7 +2016,7 @@ export const TracksStrip: FC = () => {
   return (
     <section className="tracks-strip" data-region="tracks">
       <div className="tracks-head">🚂 Song Train</div>
-      <div className="tracks-cars">
+      <div className="tracks-cars" ref={carsRef}>
         {project.arrangement.map((car, i) => (
           <CarBlock
             key={`${car.partId}-${i}`}
@@ -1992,6 +2034,11 @@ export const TracksStrip: FC = () => {
         >
           ＋<span>New Car</span>
         </button>
+        {/* A bridge the playback engine drives under, and the engine itself. */}
+        <div className="track-bridge" aria-hidden />
+        <div className="train-sprite" ref={trainRef} aria-hidden>
+          🚂
+        </div>
       </div>
       <button
         type="button"

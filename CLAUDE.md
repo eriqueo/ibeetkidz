@@ -114,6 +114,21 @@ rail (`requestVoiceEdit` handoff). My Voice can **Send as Notes** → a magic-no
 melody lane voiced by the recording (`voice:<bufferId>`, in the song key/scale),
 alongside **Send as Beat**. A big **ibeetkidz** brand header sits atop the shell.
 
+Song Train visuals + per-track controls (2026-06-23): the Tracks-strip cars now
+render as **train cars on rails** — boxcars with roof/wheels, a **locomotive**
+(front car: smokestack, rounded nose), couplers, and a CSS rail + ties under the
+row (`.train-sprite`, `.track-bridge`, `.car-wheels`, `.car-block.loco`). During
+**Ride**, a **moving locomotive** (`.train-sprite`, positioned via rAF in
+`TracksStrip` using `ridingAt(project, bar, stepFrac)` + `sound.getTransportStep(1000)`
+for sub-bar smoothness) drives along the rail to the car currently sounding and
+loops past a bridge — so you physically see song position. Only in `ride` mode
+(`engine.playMode`); parks off-screen in `loop`. **Per-track controls moved off
+the right rail INTO each lane**: a new `LaneControls` (instrument pills, ✨
+Effects, and a row of rotary **`Knob`s** — Vol/Echo/Tone/Groove, drag the dial or
+tap ‹ › arrows — plus Send-to-car) renders inside the SELECTED lane; the Studio
+rail (`LoopStageRail`) is now **song-wide only** (tempo/scale/key/groove).
+Instrument pills keep `rail-pill`/`data-inst` so existing selectors hold.
+
 Gates: `typecheck` clean, 115 unit tests, 27 Playwright E2E (incl. full hero
 journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
 Note: Playwright reuses any Vite already on its port; a stray kidpix dev server

@@ -738,6 +738,109 @@ body {
   opacity: 1;
 }
 
+/* ── Per-track controls: shown inside the selected lane (not the right rail) ── */
+.lane-controls {
+  margin-top: 0.45rem;
+  padding: 0.55rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  background: rgba(0, 0, 0, 0.24);
+  border-radius: 0.5rem;
+}
+.lane-ctl-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.lane-ctl-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  opacity: 0.8;
+}
+.lane-fx-btn {
+  width: auto;
+  height: auto;
+  padding: 0.32rem 0.6rem;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.lane-sendcar {
+  align-items: center;
+}
+.knob-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.7rem;
+}
+.knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.15rem;
+  min-width: 3.2rem;
+}
+.knob-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  opacity: 0.9;
+  white-space: nowrap;
+}
+.knob-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.22rem;
+}
+.knob-step {
+  width: 1.35rem;
+  height: 1.7rem;
+  padding: 0;
+  border: none;
+  border-radius: 0.32rem;
+  background: rgba(255, 255, 255, 0.1);
+  color: white;
+  font-size: 1.1rem;
+  font-weight: 700;
+  line-height: 1;
+  cursor: pointer;
+}
+.knob-step:active {
+  background: rgba(255, 255, 255, 0.26);
+}
+.knob-dial {
+  position: relative;
+  width: 2.2rem;
+  height: 2.2rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 32%, #4a4550, #1a1622);
+  border: 2px solid var(--knob-color, var(--accent));
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55), 0 1px 1px rgba(0, 0, 0, 0.4);
+  cursor: ns-resize;
+  touch-action: none;
+}
+.knob-ind {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0.16rem;
+  height: 0.85rem;
+  background: var(--knob-color, #fff);
+  border-radius: 2px;
+  transform-origin: 50% 100%;
+  transform: translate(-50%, -100%) rotate(var(--ang, 0deg));
+}
+.knob-val {
+  font-size: 0.7rem;
+  opacity: 0.82;
+  white-space: nowrap;
+}
+.rail-foot {
+  margin-top: 0.4rem;
+  font-style: italic;
+}
+
 .loop-lane {
   position: relative;
   display: grid;
@@ -1243,40 +1346,201 @@ body {
   white-space: nowrap;
 }
 .tracks-cars {
-  display: flex;
-  align-items: stretch;
-  gap: 0.5rem;
-  flex: 1 1 auto;
-}
-/* One car = a colored block (its --car-color), name + position number. */
-.car-block {
   position: relative;
   display: flex;
+  align-items: flex-end;
+  gap: 0.55rem;
+  flex: 1 1 auto;
+  padding: 0 0.4rem 1rem;
+}
+/* Railroad ties (sleepers) running behind the whole train. */
+.tracks-cars::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.12rem;
+  height: 0.5rem;
+  background: repeating-linear-gradient(
+    90deg,
+    #6b4a32 0 0.34rem,
+    transparent 0.34rem 0.74rem
+  );
+  border-radius: 1px;
+  z-index: 0;
+}
+/* The steel rail the wheels ride on. */
+.tracks-cars::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.5rem;
+  height: 0.2rem;
+  background: linear-gradient(180deg, #cfd3da, #80858f);
+  border-radius: 2px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  z-index: 0;
+}
+/* The playback engine: a little train that rides the rail to the car currently
+   sounding while the song plays (Ride). Positioned via JS transform. */
+.train-sprite {
+  position: absolute;
+  left: 0;
+  bottom: 0.18rem;
+  margin-left: -0.9rem;
+  font-size: 1.7rem;
+  line-height: 1;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 3;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+  transition: opacity 0.18s ease;
+  will-change: transform;
+}
+/* A bridge/overpass the playback engine drives under near the loop point. */
+.track-bridge {
+  position: absolute;
+  right: 0.4rem;
+  bottom: 0.32rem;
+  width: 3.4rem;
+  height: 1.7rem;
+  z-index: 4;
+  pointer-events: none;
+  border: 0.42rem solid #7a6a58;
+  border-bottom: none;
+  border-radius: 1.8rem 1.8rem 0 0;
+  background: linear-gradient(180deg, rgba(122, 106, 88, 0.4), transparent 70%);
+  box-shadow: inset 0 0.2rem 0 rgba(255, 255, 255, 0.12),
+    0 -1px 2px rgba(0, 0, 0, 0.4);
+}
+
+/* One car of the train: a colored boxcar with a roof, wheels, and a coupler
+   linking to the next car. The front car (.loco) is the locomotive. */
+.car-block {
+  position: relative;
+  z-index: 1;
+  display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
   justify-content: center;
-  gap: 0.1rem;
-  min-width: 5rem;
-  padding: 0.45rem 0.6rem;
-  border: 3px solid transparent;
-  border-radius: 0.8rem;
-  background: var(--car-color, var(--panel));
+  gap: 0.05rem;
+  min-width: 5.2rem;
+  min-height: 2.7rem;
+  padding: 0.5rem 0.7rem 0.55rem;
+  border: 3px solid rgba(0, 0, 0, 0.28);
+  border-radius: 0.35rem 0.35rem 0.3rem 0.3rem;
+  background:
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 0.36rem, transparent 0.36rem),
+    linear-gradient(180deg, transparent 68%, rgba(0, 0, 0, 0.2)),
+    var(--car-color, var(--panel));
   color: white;
   cursor: pointer;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.45);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 2px 3px rgba(0, 0, 0, 0.4);
+}
+/* Coupler knuckle linking this car to the next (hidden on the last car). */
+.car-block::after {
+  content: "";
+  position: absolute;
+  right: -0.6rem;
+  bottom: 0.78rem;
+  width: 0.6rem;
+  height: 0.22rem;
+  background: #2b2530;
+  border-radius: 2px;
+  z-index: 0;
+}
+.car-block:last-of-type::after {
+  display: none;
 }
 .car-block.active {
   border-color: #fff;
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3), 0 0 0 2px #fff,
+    0 2px 5px rgba(0, 0, 0, 0.5);
 }
 .car-block.riding {
-  animation: car-ride 0.6s ease-in-out infinite alternate;
+  animation: car-ride 0.5s ease-in-out infinite alternate;
 }
 @keyframes car-ride {
   from {
-    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.5);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+      0 0 0 0 rgba(255, 255, 255, 0.5);
+    transform: translateY(0);
   }
   to {
-    box-shadow: 0 0 0.7rem 0.15rem rgba(255, 255, 255, 0.85);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+      0 0 0.7rem 0.15rem rgba(255, 255, 255, 0.85);
+    transform: translateY(-1px);
+  }
+}
+/* Locomotive: rounded front, a smokestack, and a puff of smoke. */
+.car-block.loco {
+  border-radius: 0.35rem 1rem 0.3rem 0.3rem;
+}
+.car-stack {
+  position: absolute;
+  top: -0.55rem;
+  left: 0.55rem;
+  width: 0.6rem;
+  height: 0.6rem;
+  background: #2b2530;
+  border-radius: 0.16rem 0.16rem 0 0;
+  z-index: 2;
+}
+.car-stack::before {
+  content: "";
+  position: absolute;
+  top: -0.55rem;
+  left: -0.18rem;
+  width: 0.95rem;
+  height: 0.6rem;
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.6), transparent 70%);
+  border-radius: 50%;
+}
+.car-body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.05rem;
+  z-index: 1;
+}
+/* Two wheels resting on the rail; they spin while the car is riding. */
+.car-wheels {
+  position: absolute;
+  left: 0.55rem;
+  right: 0.55rem;
+  bottom: -0.4rem;
+  display: flex;
+  justify-content: space-between;
+  z-index: 2;
+  pointer-events: none;
+}
+.car-wheel {
+  position: relative;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #4a4550 0 0.16rem, #15121b 0.16rem);
+  border: 2px solid #d9d2c4;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+.car-wheel::after {
+  content: "";
+  position: absolute;
+  inset: 0.16rem;
+  border-radius: 50%;
+  background:
+    linear-gradient(0deg, transparent 44%, #d9d2c4 44% 56%, transparent 56%),
+    linear-gradient(90deg, transparent 44%, #d9d2c4 44% 56%, transparent 56%);
+}
+.car-block.riding .car-wheel {
+  animation: wheel-spin 0.5s linear infinite;
+}
+@keyframes wheel-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 /* Per-car action buttons (duplicate ⧉ / delete ✕), tucked top-right. */
@@ -1313,12 +1577,17 @@ body {
   background: var(--tomato, #fb4934);
 }
 .car-block .car-num {
-  margin-top: 0.1rem;
+  margin-top: 0.05rem;
 }
 .car-num {
-  font-size: 0.65rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  opacity: 0.8;
+  opacity: 0.85;
+  line-height: 1;
+}
+.car-block.loco .car-num {
+  font-size: 1.05rem;
+  opacity: 1;
 }
 .car-name {
   font-size: 0.85rem;
@@ -1335,20 +1604,24 @@ body {
 }
 .car-add {
   flex: 0 0 auto;
+  align-self: flex-end;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   gap: 0.1rem;
-  min-width: 4.2rem;
+  min-width: 4.4rem;
+  min-height: 2.7rem;
+  margin-bottom: 0.4rem; /* lift off the rail so it reads as an empty slot */
   padding: 0.45rem 0.6rem;
   border: 3px dashed rgba(255, 255, 255, 0.35);
-  border-radius: 0.8rem;
-  background: transparent;
+  border-radius: 0.35rem;
+  background: rgba(255, 255, 255, 0.04);
   color: white;
   font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
+  z-index: 1;
 }
 .car-add span {
   font-size: 0.62rem;

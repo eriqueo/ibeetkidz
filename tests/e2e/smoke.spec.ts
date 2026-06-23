@@ -137,8 +137,11 @@ test("studio rail: add a melody lane, place notes, tweak guided controls", async
   await notes.nth(7 + 16).click();
   await expect(page.locator(".note-cell.on")).toHaveCount(2);
 
-  // The rail's per-lane Sound picker is shown for the selected melody lane.
-  await expect(page.locator('.rail [title="Buzzy"]')).toBeVisible();
+  // Per-track tweaks live INSIDE the selected lane now (not the right rail):
+  // the Sound picker shows on the lane.
+  await expect(page.locator('.lane-controls [title="Buzzy"]')).toBeVisible();
+  // The right Studio rail is global-only — no per-lane instrument picker there.
+  await expect(page.locator('.rail [title="Buzzy"]')).toHaveCount(0);
 
   // Magic Notes → Rainbow toggles the song scale via the rail.
   await page.getByRole("button", { name: "Magic Notes: ON" }).click();
