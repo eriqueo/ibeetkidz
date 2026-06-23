@@ -6,8 +6,10 @@
 import * as React from "react";
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -17,7 +19,14 @@ import {
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId, LaneKind, Layer, Project, StepNote } from "../core/types.ts";
 import { MAX_PATTERNS, STEP_COUNT } from "../core/types.ts";
-import { activeLayers, activePart, makeLayer, songBars } from "../core/project-state.ts";
+import {
+  activeLayers,
+  activePart,
+  carAtBar,
+  carStartBar,
+  loopRegion,
+  makeLayer,
+} from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import {
@@ -1848,14 +1857,13 @@ const ridingAt = (
   stepFrac: number,
 ): { index: number; frac: number } => {
   if (bar < 0) return { index: -1, frac: 0 };
-  const total = songBars(project);
-  let pos = bar % total;
-  for (let i = 0; i < project.arrangement.length; i++) {
-    const reps = Math.max(1, project.arrangement[i]!.repeats);
-    if (pos < reps) return { index: i, frac: (pos + stepFrac) / reps };
-    pos -= reps;
-  }
-  return { index: -1, frac: 0 };
+  // Playback loops the loop region, so the absolute transport bar maps back into
+  // [start, start+length) — the train rides only the looped cars.
+  const { start, length } = loopRegion(project);
+  const songBar = start + (((bar % length) + length) % length);
+  const car = carAtBar(project, songBar);
+  if (!car) return { index: -1, frac: 0 };
+  return { index: car.index, frac: (songBar - car.startBar + stepFrac) / car.reps };
 };
 
 /** One car in the strip: colored block, tap to open in Home, double-tap the
@@ -1966,6 +1974,140 @@ const CarBlock: FC<{
   );
 };
 
+// The loop bar (BeepBox/UltraBox style): a draggable capsule above the cars that
+// sets the Ride loop region, plus two tunnels at the loop ends — the playback
+// train drives INTO the end tunnel and emerges from the start tunnel each lap.
+// Drag the pill body to move the loop; drag an end handle to stretch/shrink it.
+const LoopPill: FC<{ carsRef: React.RefObject<HTMLDivElement | null> }> = ({
+  carsRef,
+}) => {
+  const { dispatch, getProject } = useApp();
+  const project = useProject();
+  const [geom, setGeom] = useState<{
+    left: number;
+    width: number;
+    leftX: number;
+    rightX: number;
+  } | null>(null);
+
+  const measure = useCallback(() => {
+    const cars = carsRef.current;
+    if (!cars) return null;
+    const els = cars.querySelectorAll<HTMLElement>(".car-block");
+    if (!els.length) return null;
+    const p = getProject();
+    const { start, length } = loopRegion(p);
+    const fc = carAtBar(p, start)?.index ?? 0;
+    const lc = carAtBar(p, start + length - 1)?.index ?? fc;
+    const a = els[fc];
+    const b = els[lc];
+    if (!a || !b) return null;
+    const left = a.offsetLeft;
+    const right = b.offsetLeft + b.offsetWidth;
+    return { left, width: right - left, leftX: left, rightX: right };
+  }, [carsRef, getProject]);
+
+  useLayoutEffect(() => setGeom(measure()), [measure, project]);
+  useEffect(() => {
+    const cars = carsRef.current;
+    if (!cars || typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(() => setGeom(measure()));
+    ro.observe(cars);
+    return () => ro.disconnect();
+  }, [carsRef, measure]);
+
+  // Pointer x → nearest car index (cars don't move while the loop changes).
+  const carIndexAtX = (clientX: number): number => {
+    const cars = carsRef.current;
+    if (!cars) return 0;
+    const rect = cars.getBoundingClientRect();
+    const x = clientX - rect.left + cars.scrollLeft;
+    const els = cars.querySelectorAll<HTMLElement>(".car-block");
+    let best = 0;
+    let bestD = Infinity;
+    els.forEach((el, i) => {
+      const d = Math.abs(x - (el.offsetLeft + el.offsetWidth / 2));
+      if (d < bestD) {
+        bestD = d;
+        best = i;
+      }
+    });
+    return best;
+  };
+
+  const beginDrag =
+    (mode: "start" | "end" | "move") =>
+    (e: React.PointerEvent): void => {
+      e.preventDefault();
+      e.stopPropagation();
+      const p0 = getProject();
+      const nCars = p0.arrangement.length;
+      const { start, length } = loopRegion(p0);
+      const fc0 = carAtBar(p0, start)?.index ?? 0;
+      const lc0 = carAtBar(p0, start + length - 1)?.index ?? fc0;
+      const grab = mode === "move" ? carIndexAtX(e.clientX) - fc0 : 0;
+      let lastFc = -1;
+      let lastLc = -1;
+      const commit = (fc: number, lc: number): void => {
+        if (fc === lastFc && lc === lastLc) return;
+        lastFc = fc;
+        lastLc = lc;
+        const p = getProject();
+        const s = carStartBar(p, fc);
+        const reps = Math.max(1, p.arrangement[lc]?.repeats ?? 1);
+        dispatch({ type: "setLoop", start: s, length: carStartBar(p, lc) + reps - s });
+      };
+      const move = (ev: PointerEvent): void => {
+        const pc = carIndexAtX(ev.clientX);
+        let fc = fc0;
+        let lc = lc0;
+        if (mode === "start") fc = Math.min(Math.max(0, pc), lc0);
+        else if (mode === "end") lc = Math.max(Math.min(nCars - 1, pc), fc0);
+        else {
+          const span = lc0 - fc0;
+          fc = Math.min(Math.max(0, pc - grab), nCars - 1 - span);
+          lc = fc + span;
+        }
+        commit(fc, lc);
+      };
+      const up = (): void => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+    };
+
+  if (!geom) return null;
+  return (
+    <>
+      <div className="loop-bar" aria-hidden={false}>
+        <div
+          className="loop-pill"
+          data-loop-pill
+          style={{ left: `${geom.left}px`, width: `${geom.width}px` }}
+          onPointerDown={beginDrag("move")}
+          title="Drag to move the loop · drag an end to stretch or shrink it"
+        >
+          <span
+            className="loop-handle loop-handle--l"
+            data-act="loop-start"
+            onPointerDown={beginDrag("start")}
+          />
+          <span className="loop-grip" />
+          <span
+            className="loop-handle loop-handle--r"
+            data-act="loop-end"
+            onPointerDown={beginDrag("end")}
+          />
+        </div>
+      </div>
+      <div className="track-tunnel track-tunnel--l" style={{ left: `${geom.leftX}px` }} aria-hidden />
+      <div className="track-tunnel track-tunnel--r" style={{ left: `${geom.rightX}px` }} aria-hidden />
+    </>
+  );
+};
+
 export const TracksStrip: FC = () => {
   const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
@@ -2034,8 +2176,9 @@ export const TracksStrip: FC = () => {
         >
           ＋<span>New Car</span>
         </button>
-        {/* A bridge the playback engine drives under, and the engine itself. */}
-        <div className="track-bridge" aria-hidden />
+        {/* The loop bar (draggable) + its end tunnels, then the playback engine
+            that rides the looped cars and dips through the tunnels each lap. */}
+        <LoopPill carsRef={carsRef} />
         <div className="train-sprite" ref={trainRef} aria-hidden>
           🚂
         </div>

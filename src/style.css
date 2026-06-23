@@ -1330,28 +1330,31 @@ body {
 .tracks-strip {
   flex: 0 0 auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
-  gap: 0.6rem;
-  padding: 0.5rem 0.7rem;
+  gap: 0.5rem;
+  padding: 0.7rem 0.7rem 0.85rem;
   background: rgba(16, 12, 34, 0.92);
   border-top: 2px solid rgba(255, 255, 255, 0.08);
-  overflow-x: auto;
 }
 .tracks-head {
   flex: 0 0 auto;
-  font-size: 0.8rem;
-  font-weight: 700;
+  font-size: 0.95rem;
+  font-weight: 800;
   color: white;
-  opacity: 0.85;
+  opacity: 0.9;
   white-space: nowrap;
+  letter-spacing: 0.02em;
 }
 .tracks-cars {
   position: relative;
   display: flex;
   align-items: flex-end;
-  gap: 0.55rem;
-  flex: 1 1 auto;
-  padding: 0 0.4rem 1rem;
+  justify-content: safe center; /* centered, but scroll-reachable when it overflows */
+  gap: 0.6rem;
+  max-width: 100%;
+  padding: 1.7rem 0.6rem 1.5rem; /* top room for the loop bar, bottom for the rail */
+  overflow-x: auto;
 }
 /* Railroad ties (sleepers) running behind the whole train. */
 .tracks-cars::before {
@@ -1359,12 +1362,12 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0.12rem;
-  height: 0.5rem;
+  bottom: 0.3rem;
+  height: 0.7rem;
   background: repeating-linear-gradient(
     90deg,
-    #6b4a32 0 0.34rem,
-    transparent 0.34rem 0.74rem
+    #6b4a32 0 0.42rem,
+    transparent 0.42rem 0.9rem
   );
   border-radius: 1px;
   z-index: 0;
@@ -1375,8 +1378,8 @@ body {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: 0.5rem;
-  height: 0.2rem;
+  bottom: 0.78rem;
+  height: 0.26rem;
   background: linear-gradient(180deg, #cfd3da, #80858f);
   border-radius: 2px;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
@@ -1387,9 +1390,9 @@ body {
 .train-sprite {
   position: absolute;
   left: 0;
-  bottom: 0.18rem;
-  margin-left: -0.9rem;
-  font-size: 1.7rem;
+  bottom: 0.5rem;
+  margin-left: -1.1rem;
+  font-size: 2.2rem;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
@@ -1398,21 +1401,93 @@ body {
   transition: opacity 0.18s ease;
   will-change: transform;
 }
-/* A bridge/overpass the playback engine drives under near the loop point. */
-.track-bridge {
+/* Tunnels at the loop ends: the playback engine drives INTO the end tunnel and
+   emerges from the start tunnel each lap (centered on the loop boundary, low on
+   the rail). Above the train so it vanishes into the dark mouth. */
+.track-tunnel {
   position: absolute;
-  right: 0.4rem;
-  bottom: 0.32rem;
-  width: 3.4rem;
-  height: 1.7rem;
-  z-index: 4;
+  bottom: 0.4rem;
+  margin-left: -1.3rem; /* center a 2.6rem portal on the boundary x */
+  width: 2.6rem;
+  height: 1.9rem;
+  z-index: 5;
   pointer-events: none;
-  border: 0.42rem solid #7a6a58;
+  /* grassy mound */
+  background: radial-gradient(120% 130% at 50% 100%, #3f7a3a 0 62%, #2c5a2a 62% 100%);
+  border-radius: 1.3rem 1.3rem 0 0;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+/* dark portal mouth */
+.track-tunnel::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 1.5rem;
+  height: 1.25rem;
+  background: radial-gradient(80% 100% at 50% 100%, #050308 0 70%, #1a1322 100%);
+  border-radius: 0.75rem 0.75rem 0 0;
+  box-shadow: inset 0 0 0 2px #2a2030;
+}
+/* stone arch ring around the mouth */
+.track-tunnel::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  width: 1.9rem;
+  height: 1.5rem;
+  border: 0.22rem solid #8a8077;
   border-bottom: none;
-  border-radius: 1.8rem 1.8rem 0 0;
-  background: linear-gradient(180deg, rgba(122, 106, 88, 0.4), transparent 70%);
-  box-shadow: inset 0 0.2rem 0 rgba(255, 255, 255, 0.12),
-    0 -1px 2px rgba(0, 0, 0, 0.4);
+  border-radius: 0.95rem 0.95rem 0 0;
+}
+
+/* ── Loop bar (BeepBox-style capsule above the cars) ── */
+.loop-bar {
+  position: absolute;
+  top: 0.2rem;
+  left: 0;
+  right: 0;
+  height: 1.2rem;
+  pointer-events: none; /* only the pill itself is interactive */
+  z-index: 6;
+}
+.loop-pill {
+  position: absolute;
+  top: 0;
+  height: 1.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: auto;
+  cursor: grab;
+  border-radius: 0.6rem;
+  background: rgba(255, 255, 255, 0.16);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
+  touch-action: none;
+}
+.loop-pill:active {
+  cursor: grabbing;
+}
+.loop-grip {
+  flex: 1 1 auto;
+  height: 100%;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px);
+  background-size: 0.4rem 0.4rem;
+  background-position: center;
+  opacity: 0.5;
+}
+.loop-handle {
+  flex: 0 0 auto;
+  width: 0.85rem;
+  height: 100%;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.95);
+  cursor: ew-resize;
+  touch-action: none;
 }
 
 /* One car of the train: a colored boxcar with a roof, wheels, and a coupler
@@ -1424,15 +1499,15 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.05rem;
-  min-width: 5.2rem;
-  min-height: 2.7rem;
-  padding: 0.5rem 0.7rem 0.55rem;
+  gap: 0.12rem;
+  min-width: 6.8rem;
+  min-height: 4rem;
+  padding: 0.7rem 0.9rem 0.8rem;
   border: 3px solid rgba(0, 0, 0, 0.28);
-  border-radius: 0.35rem 0.35rem 0.3rem 0.3rem;
+  border-radius: 0.4rem 0.4rem 0.35rem 0.35rem;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 0.36rem, transparent 0.36rem),
-    linear-gradient(180deg, transparent 68%, rgba(0, 0, 0, 0.2)),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 0.55rem, transparent 0.55rem),
+    linear-gradient(180deg, transparent 66%, rgba(0, 0, 0, 0.22)),
     var(--car-color, var(--panel));
   color: white;
   cursor: pointer;
@@ -1509,9 +1584,9 @@ body {
 /* Two wheels resting on the rail; they spin while the car is riding. */
 .car-wheels {
   position: absolute;
-  left: 0.55rem;
-  right: 0.55rem;
-  bottom: -0.4rem;
+  left: 0.7rem;
+  right: 0.7rem;
+  bottom: -0.6rem;
   display: flex;
   justify-content: space-between;
   z-index: 2;
@@ -1519,17 +1594,17 @@ body {
 }
 .car-wheel {
   position: relative;
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 1.15rem;
+  height: 1.15rem;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 50%, #4a4550 0 0.16rem, #15121b 0.16rem);
+  background: radial-gradient(circle at 50% 50%, #4a4550 0 0.22rem, #15121b 0.22rem);
   border: 2px solid #d9d2c4;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
 }
 .car-wheel::after {
   content: "";
   position: absolute;
-  inset: 0.16rem;
+  inset: 0.22rem;
   border-radius: 50%;
   background:
     linear-gradient(0deg, transparent 44%, #d9d2c4 44% 56%, transparent 56%),
@@ -1580,18 +1655,18 @@ body {
   margin-top: 0.05rem;
 }
 .car-num {
-  font-size: 0.72rem;
+  font-size: 0.85rem;
   font-weight: 700;
   opacity: 0.85;
   line-height: 1;
 }
 .car-block.loco .car-num {
-  font-size: 1.05rem;
+  font-size: 1.4rem;
   opacity: 1;
 }
 .car-name {
-  font-size: 0.85rem;
-  font-weight: 700;
+  font-size: 1.05rem;
+  font-weight: 800;
   white-space: nowrap;
 }
 .car-rename {
@@ -1609,31 +1684,32 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.1rem;
-  min-width: 4.4rem;
-  min-height: 2.7rem;
-  margin-bottom: 0.4rem; /* lift off the rail so it reads as an empty slot */
-  padding: 0.45rem 0.6rem;
+  gap: 0.15rem;
+  min-width: 5rem;
+  min-height: 4rem;
+  margin-bottom: 0.6rem; /* lift off the rail so it reads as an empty slot */
+  padding: 0.5rem 0.7rem;
   border: 3px dashed rgba(255, 255, 255, 0.35);
-  border-radius: 0.35rem;
+  border-radius: 0.4rem;
   background: rgba(255, 255, 255, 0.04);
   color: white;
-  font-size: 1.1rem;
+  font-size: 1.4rem;
   font-weight: 700;
   cursor: pointer;
   z-index: 1;
 }
 .car-add span {
-  font-size: 0.62rem;
+  font-size: 0.7rem;
 }
 .tracks-ride {
   flex: 0 0 auto;
-  padding: 0.5rem 0.9rem;
+  align-self: center;
+  padding: 0.6rem 1.6rem;
   border: none;
-  border-radius: 0.9rem;
+  border-radius: 1rem;
   background: #06d6a0;
   color: #06231b;
-  font-size: 0.95rem;
+  font-size: 1.1rem;
   font-weight: 800;
   cursor: pointer;
   white-space: nowrap;

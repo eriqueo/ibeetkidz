@@ -151,6 +151,21 @@ describe("AudioEngine play modes", () => {
     ]);
   });
 
+  it("ride honors the loop bar: only the looped cars are scheduled, windowed", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    // 3-car song; loop just the middle+last cars (bars 1..2).
+    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    project = reduce(project, { type: "addCar", id: "car-3" });
+    project = reduce(project, { type: "setLoop", start: 1, length: 2 });
+    engine.playRide(project);
+    // cycleBars = loopLength (2); the window's two bars at offsets 0 and 1.
+    expect(sound.scheduled).toEqual([
+      { clipId: "d1", cycleBars: 2, barOffset: 0 },
+      { clipId: "d1", cycleBars: 2, barOffset: 1 },
+    ]);
+  });
+
   it("a one-car ride is identical to a loop (byte-for-byte schedule)", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);

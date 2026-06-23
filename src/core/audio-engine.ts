@@ -7,7 +7,7 @@ import { STEP_COUNT } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
-import { activeLayers, songBars } from "./project-state.ts";
+import { activeLayers, carAtBar, loopRegion } from "./project-state.ts";
 import { resolveInstrument } from "./instruments.ts";
 
 /** What the transport is playing: "loop" repeats the active car forever (Home's
@@ -61,19 +61,17 @@ export class AudioEngine {
    *  scheduler at a longer cycle, so section changes are gapless (Tone handles
    *  the timeline) without any mid-bar reschedule that would clip a bar. */
   private scheduleArrangement(project: Project): void {
-    const ids = new Set(project.parts.map((p) => p.id));
-    const arrangement = project.arrangement.filter((c) => ids.has(c.partId));
-    const total = songBars(project);
-    let bar = 0;
-    for (const car of arrangement) {
-      const part = project.parts.find((p) => p.id === car.partId);
-      const reps = Math.max(1, car.repeats);
-      if (part) {
-        for (let r = 0; r < reps; r++) {
-          this.scheduleLayers(project, part.layers, total, bar + r);
-        }
-      }
-      bar += reps;
+    // Honor the loop bar: lay out ONLY the looped bars [start, start+length) and
+    // repeat that window every `length` bars (BeepBox's loopStart/loopLength).
+    // Each looped bar plays the car covering it, offset to the window start.
+    const { start, length } = loopRegion(project);
+    for (let k = 0; k < length; k++) {
+      const car = carAtBar(project, start + k);
+      if (!car) continue;
+      const part = project.parts.find(
+        (p) => p.id === project.arrangement[car.index]!.partId,
+      );
+      if (part) this.scheduleLayers(project, part.layers, length, k);
     }
   }
 

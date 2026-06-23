@@ -5,6 +5,9 @@ import {
   dispatch,
   activeLayers,
   activePart,
+  carAtBar,
+  carStartBar,
+  loopRegion,
   emptyProject,
   initHistory,
   makeLayer,
@@ -751,6 +754,62 @@ describe("Song Train cars", () => {
     expect(back.parts.map((p) => p.id)).toEqual(s.parts.map((p) => p.id));
     expect(back.arrangement).toEqual(s.arrangement);
     expect(back.activePartId).toBe(s.activePartId);
+  });
+});
+
+describe("loop bar (Ride loop region)", () => {
+  // Build an N-car song (each car carries the same single-hit lane).
+  const songWith = (cars: number) => {
+    let s = reduce(emptyProject("lp"), { type: "addClip", clip: clip("d1") });
+    s = reduce(s, { type: "addLayer", layer: layer("d1", "d1") });
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
+    for (let i = 2; i <= cars; i++) s = reduce(s, { type: "addCar", id: `car-${i}` });
+    return s;
+  };
+
+  it("loopRegion defaults to the whole song and clamps stale values", () => {
+    const s = songWith(3); // 3 bars
+    expect(loopRegion(s)).toEqual({ start: 0, length: 3 });
+    // Stale/oversized raw values clamp into range.
+    expect(loopRegion({ ...s, loopStart: 5, loopLength: 9 })).toEqual({ start: 2, length: 1 });
+    expect(loopRegion({ ...s, loopStart: 1, loopLength: 9 })).toEqual({ start: 1, length: 2 });
+  });
+
+  it("setLoop stores a sub-region; whole-song clears back to auto (absent)", () => {
+    let s = songWith(4);
+    s = reduce(s, { type: "setLoop", start: 1, length: 2 });
+    expect(s.loopStart).toBe(1);
+    expect(s.loopLength).toBe(2);
+    expect(loopRegion(s)).toEqual({ start: 1, length: 2 });
+    // Selecting the whole song again clears the explicit fields (so it auto-grows).
+    s = reduce(s, { type: "setLoop", start: 0, length: 4 });
+    expect(s.loopStart).toBeUndefined();
+    expect(s.loopLength).toBeUndefined();
+  });
+
+  it("setLoop clamps start/length and is a no-op when unchanged", () => {
+    let s = songWith(3);
+    s = reduce(s, { type: "setLoop", start: 2, length: 5 }); // length clamps to 1
+    expect(loopRegion(s)).toEqual({ start: 2, length: 1 });
+    expect(reduce(s, { type: "setLoop", start: 2, length: 1 })).toBe(s); // unchanged
+  });
+
+  it("carAtBar / carStartBar walk the arrangement (honoring repeats)", () => {
+    let s = songWith(2);
+    const car1 = s.parts[0]!.id;
+    s = { ...s, arrangement: [{ partId: car1, repeats: 2 }, { partId: "car-2", repeats: 1 }] };
+    expect(carAtBar(s, 0)).toEqual({ index: 0, startBar: 0, reps: 2 });
+    expect(carAtBar(s, 1)).toEqual({ index: 0, startBar: 0, reps: 2 });
+    expect(carAtBar(s, 2)).toEqual({ index: 1, startBar: 2, reps: 1 });
+    expect(carAtBar(s, 3)).toBeNull();
+    expect(carStartBar(s, 1)).toBe(2);
+  });
+
+  it("a stored loop region round-trips through serialize → deserialize", () => {
+    let s = songWith(4);
+    s = reduce(s, { type: "setLoop", start: 1, length: 2 });
+    const back = deserialize(serialize(s));
+    expect(loopRegion(back)).toEqual({ start: 1, length: 2 });
   });
 });
 

@@ -143,6 +143,39 @@ export function songBars(state: Project): number {
   return Math.max(1, bars);
 }
 
+/** The Ride loop region, clamped to the current song. Absent fields default to
+ *  the whole song (and auto-grow as cars change, since clamping happens here). */
+export function loopRegion(state: Project): { start: number; length: number } {
+  const total = songBars(state);
+  const start = clamp(Math.floor(state.loopStart ?? 0), 0, Math.max(0, total - 1));
+  const length = clamp(Math.floor(state.loopLength ?? total), 1, total - start);
+  return { start, length };
+}
+
+/** The arrangement entry covering absolute song bar `bar`, with its bar span.
+ *  null when `bar` is past the end. (Cars span `repeats` bars each.) */
+export function carAtBar(
+  state: Project,
+  bar: number,
+): { index: number; startBar: number; reps: number } | null {
+  let acc = 0;
+  for (let i = 0; i < state.arrangement.length; i++) {
+    const reps = Math.max(1, state.arrangement[i]!.repeats);
+    if (bar < acc + reps) return { index: i, startBar: acc, reps };
+    acc += reps;
+  }
+  return null;
+}
+
+/** First song bar of arrangement entry `index` (sum of earlier cars' repeats). */
+export function carStartBar(state: Project, index: number): number {
+  let acc = 0;
+  for (let i = 0; i < index && i < state.arrangement.length; i++) {
+    acc += Math.max(1, state.arrangement[i]!.repeats);
+  }
+  return acc;
+}
+
 /** Rewrite the active car's lanes via `fn`; identity-stable (no-op `fn` →
  *  same Project, so undo history stays clean). All layer reducers go through
  *  this, so they operate on the car Home is focused on. */
@@ -643,6 +676,21 @@ export function reduce(state: Project, cmd: Command): Project {
     case "setActiveMachine":
       return { ...state, activeMachineId: cmd.machineId };
 
+    // Set the Ride loop region (bars), clamped to the song. A whole-song region
+    // clears back to "auto" (absent) so it keeps covering the song as cars grow.
+    case "setLoop": {
+      const total = songBars(state);
+      const start = clamp(Math.floor(cmd.start), 0, Math.max(0, total - 1));
+      const length = clamp(Math.floor(cmd.length), 1, total - start);
+      if (start === 0 && length >= total) {
+        if (state.loopStart === undefined && state.loopLength === undefined) return state;
+        const { loopStart: _s, loopLength: _l, ...rest } = state;
+        return rest;
+      }
+      if (state.loopStart === start && state.loopLength === length) return state;
+      return { ...state, loopStart: start, loopLength: length };
+    }
+
     // ── Song Train (cars + arrangement) ──────────────────────────────────────
 
     // Duplicate the active car into a fresh one (its own id + color, copied
@@ -928,5 +976,9 @@ export function normalizeProject(
     arrangement,
     activePartId,
     activeMachineId: raw.activeMachineId ?? base.activeMachineId,
+    // Loop region: carry raw values through; `loopRegion` clamps them on read,
+    // so a save with a stale region against a changed arrangement still loads.
+    ...(typeof raw.loopStart === "number" ? { loopStart: raw.loopStart } : {}),
+    ...(typeof raw.loopLength === "number" ? { loopLength: raw.loopLength } : {}),
   };
 }

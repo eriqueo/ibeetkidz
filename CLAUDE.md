@@ -129,7 +129,20 @@ tap ‹ › arrows — plus Send-to-car) renders inside the SELECTED lane; the S
 rail (`LoopStageRail`) is now **song-wide only** (tempo/scale/key/groove).
 Instrument pills keep `rail-pill`/`data-inst` so existing selectors hold.
 
-Gates: `typecheck` clean, 115 unit tests, 27 Playwright E2E (incl. full hero
+Song Train loop bar + tunnels (2026-06-23): the strip is now a centered column
+(title / cars / Ride), cars are bigger boxcars. A **loop bar** (BeepBox/UltraBox
+`LoopEditor`) rides above the cars: a draggable capsule (`LoopPill`, `data-loop-pill`)
+sets the Ride **loop region** — `Project.loopStart`/`loopLength` (bars; both absent
+= whole song, auto-grows), clamped on read by `loopRegion(project)`; `setLoop`
+command (whole-song region clears back to absent). Drag the pill body to move,
+the end **handles** (`data-act="loop-start"`/`"loop-end"`) to stretch/shrink;
+snaps to car boundaries via `carAtBar`/`carStartBar`. The engine's
+`scheduleArrangement` now lays out ONLY `[start, start+length)` and repeats every
+`length` bars; `ridingAt` maps the transport bar back into the region. **Tunnels**
+(`.track-tunnel`) sit at the loop ends — the playback engine drives into the end
+tunnel and emerges from the start tunnel each lap (replaced the old bridge).
+
+Gates: `typecheck` clean, 121 unit tests, 28 Playwright E2E (incl. full hero
 journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
 Note: Playwright reuses any Vite already on its port; a stray kidpix dev server
 on 5173 will make the whole suite hit the wrong app — run with `PW_PORT=<free>`

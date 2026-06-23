@@ -166,6 +166,12 @@ export interface Project {
   readonly arrangement: readonly ArrangeCar[];
   /** Which car Home is currently editing. */
   readonly activePartId: string;
+  /** Loop region for Ride (BeepBox-style loop bar), in song bars. `loopStart` is
+   *  the first looped bar; `loopLength` is how many bars loop. BOTH absent = loop
+   *  the whole song (and auto-grow as cars are added). Clamped on read via
+   *  `loopRegion`, so they never need patching when the arrangement changes. */
+  readonly loopStart?: number;
+  readonly loopLength?: number;
   /** Song-level musical settings driving the melody lanes + groove. */
   readonly scaleId: ScaleId;
   readonly keyId: KeyId;
@@ -229,6 +235,9 @@ export type Command =
   // car. `addPattern` copies the live pattern into a fresh slot and makes it
   // active; `selectPattern` swaps slot N live; `removePattern` drops slot N
   // (never below one). The live pattern always stays in the lane's steps/notes.
+  // Loop bar (BeepBox-style): set the Ride loop region in song bars. Clamped to
+  // the song; a whole-song region clears back to "auto" (absent).
+  | { readonly type: "setLoop"; readonly start: number; readonly length: number }
   | { readonly type: "addPattern"; readonly layerId: string }
   | { readonly type: "selectPattern"; readonly layerId: string; readonly index: number }
   | { readonly type: "removePattern"; readonly layerId: string; readonly index: number }
