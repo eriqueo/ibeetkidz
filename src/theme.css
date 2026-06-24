@@ -802,3 +802,453 @@ input[type="range"]::-moz-range-thumb {
   transform: translateY(4px) !important;
   box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), 0 0px 0 var(--leaf-dark) !important;
 }
+
+/* ============================================================================
+   PLAY BAR & TRANSPORT — Hard pixel chrome
+   ========================================================================== */
+
+.playbar {
+  background: var(--paper-2);
+  border-top: 3px solid var(--edge);
+  padding: 0.75rem;
+  gap: 0.75rem;
+}
+
+/* Base transport button: square, hard bevel, SNES chrome */
+.pb-btn {
+  background: var(--paper);
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.15),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 4px 0 rgba(0,0,0,0.4) !important;
+  transition: transform 0.1s steps(2);
+  padding: 0.4rem 0.6rem !important;
+}
+.pb-btn:active {
+  transform: translateY(4px) !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.15),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.pb-btn.active {
+  background: var(--active-fill);
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.4),
+    inset -3px -3px 0 rgba(0,0,0,0.2),
+    0 4px 0 var(--active-shadow) !important;
+  color: var(--edge);
+}
+
+/* Play button gets the leaf green treatment */
+.pb-play {
+  background: var(--leaf) !important;
+  color: var(--edge) !important;
+}
+.pb-play.active {
+  background: var(--leaf) !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.4),
+    inset -3px -3px 0 rgba(0,0,0,0.2),
+    0 4px 0 var(--leaf-dark) !important;
+}
+
+/* Text labels under transport icons */
+.pb-label {
+  font-family: var(--font-display);
+  font-size: 0.5rem !important;
+  margin-top: 0.2rem;
+  letter-spacing: 0.05em;
+  opacity: 0.9;
+}
+
+/* Tempo slider wrapper */
+.tempo {
+  background: var(--paper);
+  border: 3px solid var(--edge);
+  border-radius: 4px;
+  padding: 0.4rem 0.8rem;
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.1), inset -3px -3px 0 rgba(0,0,0,0.3);
+}
+
+/* ============================================================================
+   CAR BANNER (Home header) — Hard pixel matching the cars
+   ========================================================================== */
+
+.car-banner {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  background: var(--car-color, var(--paper)) !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.3),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 4px 6px rgba(0,0,0,0.6) !important;
+  color: #fff;
+  text-shadow: 1px 1px 0 var(--edge);
+  padding: 0.5rem 0.75rem !important;
+}
+
+.car-banner-swatch {
+  display: none !important; /* The whole banner is the color now, swatch is redundant */
+}
+
+.car-banner-num {
+  font-family: var(--font-display);
+  font-size: 0.7rem !important;
+}
+
+.car-banner-name {
+  background: rgba(0,0,0,0.2) !important;
+  border: 2px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 2px 0 rgba(0,0,0,0.4) !important;
+  padding: 0.3rem 0.6rem !important;
+}
+
+.car-banner-rename {
+  font-family: var(--font-body);
+  border: 2px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 0 2px 0 rgba(0,0,0,0.2) !important;
+  background: #fff !important;
+  color: var(--edge) !important;
+  text-shadow: none;
+}
+
+.car-banner-step {
+  border: 2px solid var(--edge) !important;
+  border-radius: 4px !important;
+  background: var(--paper) !important;
+  color: var(--ink) !important;
+  text-shadow: none;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), 0 2px 0 rgba(0,0,0,0.4) !important;
+}
+.car-banner-step:active {
+  transform: translateY(2px) !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), 0 0px 0 rgba(0,0,0,0.4) !important;
+}
+
+/* ============================================================================
+   SEQUENCER & LOOP BOARD — Hard pixel grid wells
+   ========================================================================== */
+
+/* The main loop board container */
+.loop-board {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 4px 4px 0 rgba(0,0,0,0.4), 0 2px 0 rgba(255,255,255,0.05) !important;
+  padding: 0.75rem !important;
+}
+
+/* Individual track rows (drum/melody lanes) */
+.layer-row, .loop-track {
+  background: var(--paper) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 4px 0 rgba(0,0,0,0.3) !important;
+  margin-bottom: 0.5rem;
+}
+
+/* The left color-coded border becomes a hard pixel edge */
+.layer-row {
+  border-left: 6px solid var(--row-color, var(--accent)) !important;
+}
+.loop-track {
+  border-left: 6px solid var(--row-color, var(--accent)) !important;
+}
+
+/* Grid cells (the steps you tap) */
+.loop-cell, .note-cell, .beat-cell {
+  background: #1a1712 !important; /* deep well */
+  border: 2px solid var(--edge) !important;
+  border-radius: 2px !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.8) !important;
+  transition: background 0.05s;
+}
+
+/* Downbeat markers (slightly lighter well) */
+.loop-cell.downbeat, .note-cell.downbeat, .beat-cell.downbeat {
+  background: #241f17 !important;
+}
+
+/* Active/On cells (lit up) */
+.loop-cell.on, .note-cell.on, .beat-cell.on {
+  background: var(--row-color, var(--accent)) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 0 4px var(--row-color, var(--accent)) !important; /* slight phosphor bleed */
+}
+
+/* The moving playhead line */
+.loop-playhead {
+  background: #fff !important;
+  width: 4px !important;
+  box-shadow: 0 0 6px #fff, 0 0 0 2px var(--edge) !important;
+  z-index: 10;
+}
+
+/* ── Drum Picker ── */
+.drum-picker {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 4px 4px 0 rgba(0,0,0,0.4) !important;
+  padding: 0.75rem !important;
+}
+
+.drum-chip {
+  background: var(--paper) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 3px 0 rgba(0,0,0,0.4) !important;
+  transition: transform 0.1s steps(2);
+}
+.drum-chip:active {
+  transform: translateY(3px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+
+/* Present (already added) drum chips */
+.drum-chip.present {
+  background: var(--pad-color, var(--active-fill)) !important;
+  color: var(--edge) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 3px 0 var(--edge) !important;
+}
+
+/* ── Melody Lane Add Bar ── */
+.loop-add .t-btn {
+  border: 3px dashed rgba(255,255,255,0.3) !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 4px !important;
+  color: rgba(255,255,255,0.6) !important;
+}
+.loop-add .t-btn:active {
+  background: rgba(255,255,255,0.05) !important;
+}
+
+/* ============================================================================
+   GLOBAL CHROME — Options Bar, Palette, Boot Gate, and Theremin
+   ========================================================================== */
+
+/* ── Options Bar (Top) ── */
+.options-bar {
+  background: var(--paper-2) !important;
+  border-bottom: 3px solid var(--edge) !important;
+  padding: 0.75rem 1rem !important;
+}
+
+.options-title {
+  font-family: var(--font-display) !important;
+  font-size: 0.9rem !important;
+  text-shadow: 2px 2px 0 var(--edge);
+}
+
+.opt-choice {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 3px 0 rgba(0,0,0,0.4) !important;
+  transition: transform 0.1s steps(2);
+}
+.opt-choice:active {
+  transform: translateY(3px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.opt-choice.active {
+  background: var(--active-fill) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 3px 0 var(--active-shadow) !important;
+}
+
+/* ── Palette Rail (Left) ── */
+.palette {
+  background: var(--paper-2) !important;
+  border-right: 3px solid var(--edge) !important;
+  padding: 0.75rem !important;
+  gap: 0.75rem !important;
+}
+
+.palette button {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 4px 0 rgba(0,0,0,0.4) !important;
+  transition: transform 0.1s steps(2);
+}
+.palette button:active {
+  transform: translateY(4px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.palette button.active {
+  background: var(--active-fill) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 4px 0 var(--active-shadow) !important;
+}
+
+/* ── Boot Gate (Start Screen) ── */
+#boot-button {
+  border: 4px solid var(--edge) !important;
+  border-radius: 8px !important;
+  box-shadow: 
+    inset 4px 4px 0 rgba(255,255,255,0.4),
+    inset -4px -4px 0 rgba(0,0,0,0.2),
+    0 8px 0 var(--beet-dark) !important;
+  font-family: var(--font-display) !important;
+  font-size: 1.5rem !important;
+  padding: 1.5rem 3rem !important;
+  text-transform: uppercase;
+  text-shadow: 2px 2px 0 var(--edge);
+}
+#boot-button:active {
+  transform: translateY(8px) !important;
+  box-shadow: 
+    inset 4px 4px 0 rgba(255,255,255,0.4),
+    inset -4px -4px 0 rgba(0,0,0,0.2),
+    0 0px 0 var(--beet-dark) !important;
+}
+
+/* ── Theremin (Magic Pad) ── */
+.xy-pad {
+  border: 4px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 4px 4px 0 rgba(255,255,255,0.3),
+    inset -4px -4px 0 rgba(0,0,0,0.3),
+    0 8px 12px rgba(0,0,0,0.6) !important;
+}
+.xy-hint {
+  font-family: var(--font-display) !important;
+  font-size: 1.2rem !important;
+  text-shadow: 3px 3px 0 var(--edge) !important;
+}
+.xy-dot {
+  border: 3px solid var(--edge) !important;
+  border-radius: 50% !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.6), 0 4px 0 var(--edge) !important;
+}
+
+/* ── Voice FX Tiles ── */
+.fx-tile {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.15),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 4px 0 rgba(0,0,0,0.4) !important;
+}
+.fx-tile:active {
+  transform: translateY(4px) !important;
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.15),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.big-record {
+  border: 4px solid var(--edge) !important;
+  border-radius: 8px !important;
+  box-shadow: 
+    inset 4px 4px 0 rgba(255,255,255,0.4),
+    inset -4px -4px 0 rgba(0,0,0,0.2),
+    0 6px 0 var(--beet-dark) !important;
+  font-family: var(--font-display) !important;
+  font-size: 1.2rem !important;
+  text-shadow: 2px 2px 0 var(--edge);
+}
+.big-record:active {
+  transform: translateY(6px) !important;
+  box-shadow: 
+    inset 4px 4px 0 rgba(255,255,255,0.4),
+    inset -4px -4px 0 rgba(0,0,0,0.2),
+    0 0px 0 var(--beet-dark) !important;
+}
+
+/* ============================================================================
+   INSTRUMENT SPRITES — Wiring the new workshop-floor sprites
+   ========================================================================== */
+
+/* The drum picker chips — keyed on data-drum={assetId} from tools.tsx */
+.drum-chip[data-drum="kick"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/bass-drum.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="snare"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/snare.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="hihat"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/cymbal.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="openhat"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/cymbal.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="tom"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/tom.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="conga"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/tom.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="cowbell"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/cowbell.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="shaker"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/tambourine.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="clap"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/snare.png") center / contain no-repeat;
+}
+.drum-chip[data-drum="rim"] .drum-emoji {
+  font-size: 0 !important;
+  width: 32px; height: 32px; display: inline-block;
+  background: url("./assets/theme/icons/snare.png") center / contain no-repeat;
+}
+
+/* Lane icons: the TSX already prefixes the layer name with 🎵 / 🎤 emoji.
+   No data-kind attribute is exposed on .loop-track, so we rely on the emoji
+   prefix. The sprites are available for future use if data-kind is added. */
