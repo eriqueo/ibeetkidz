@@ -1,21 +1,34 @@
-import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { STEP_COUNT, MIN_BPM, MAX_BPM } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
+import { SCENE_ASPECT, TRACK_LAYOUT_V2 } from "../game/scene-layout.ts";
+import { useContainedRect, regionStyle, type NormRegion } from "../app/use-overlay-rect.ts";
 
-// Stable scene reference — Phaser instantiates the class; we grab the live
-// instance back via onSceneReady. Must not be rebuilt per render.
 const TRACK_SCENES = [TrackScene];
+
+// A transparent hit-area placed over a painted control.
+const hit = (rect: { x: number; y: number; width: number; height: number }, region: NormRegion) => ({
+  ...regionStyle(rect, region),
+  zIndex: 12,
+  background: "transparent",
+  border: "none",
+  padding: 0,
+  cursor: "pointer",
+});
+
+const C = TRACK_LAYOUT_V2.controls;
+const btn = (cx: number): NormRegion => ({ x: cx - C.w / 2, y: C.y, w: C.w, h: C.h });
 
 export const Track: FC = () => {
   const { dispatch, engine, sound } = useApp();
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
-  const [dir, setDir] = useState<1 | -1>(1);
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const rect = useContainedRect(wrapRef, SCENE_ASPECT);
 
-  // One scene car per live train slot (sprite + colour + tarp from its part).
   const cars = useMemo<TrackCar[]>(() => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
     return liveTrain(project).map((c) => {
@@ -36,11 +49,6 @@ export const Track: FC = () => {
     sceneRef.current?.setCars(cars);
   }, [cars]);
 
-  useEffect(() => {
-    sceneRef.current?.setDirection(dir);
-  }, [dir]);
-
-  // Drive the train: read the transport once per frame and feed progress 0..1.
   useEffect(() => {
     let raf = 0;
     const tick = () => {
@@ -65,119 +73,53 @@ export const Track: FC = () => {
     return () => cancelAnimationFrame(raf);
   }, [engine, sound]);
 
-  const changeTempo = (bpm: number): void => {
+  const nudgeTempo = (delta: number): void => {
+    const bpm = Math.max(MIN_BPM, Math.min(MAX_BPM, project.tempoBpm + delta));
     dispatch({ type: "setTempo", bpm });
     engine.setTempo(bpm);
   };
 
   return (
-    <div style={{
-      display: "flex",
-      flexDirection: "column",
-      height: "100dvh",
-      background: "#201c26",
-      overflow: "hidden",
-    }}>
-      {/* Brand header */}
-      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
-        <button
-          className="t-btn"
-          style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
-          onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
-        >
-          ◀ Yard
-        </button>
-        <span className="brand-text" style={{ fontSize: "1rem" }}>Springvale Loop</span>
-        <div style={{ marginLeft: "auto" }}>
-          <button
-            className="t-btn"
-            style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
-            onClick={() => dispatch({ type: "setActiveView", view: "map" })}
-          >
-            🗺️ Map
-          </button>
-        </div>
-      </header>
+    <div
+      ref={wrapRef}
+      style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}
+    >
+      <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} />
 
-      {/* Phaser playfield — oval + riding train. */}
-      <div style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
-        <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} />
-      </div>
+      {/* Painted transport panel → transparent hit-areas */}
+      <button title="Slower" style={hit(rect, btn(C.rewind))} onClick={() => nudgeTempo(-15)} />
+      <button title="Pause" style={hit(rect, btn(C.pause))} onClick={() => engine.stop()} />
+      <button title="Stop" style={hit(rect, btn(C.stop))} onClick={() => engine.stop()} />
+      <button title="Ride" style={hit(rect, btn(C.play))} onClick={() => engine.playRide(project)} />
+      <button title="Faster" style={hit(rect, btn(C.ff))} onClick={() => nudgeTempo(15)} />
 
-      {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live. */}
-      {cars.length > 0 && (
-        <div style={{
-          flexShrink: 0,
-          display: "flex",
-          gap: 4,
-          padding: "4px 8px",
-          overflowX: "auto",
-          background: "rgba(0,0,0,0.35)",
-          zIndex: 10,
-        }}>
-          {liveTrain(project).map((c, i) => {
-            const part = project.parts.find((p) => p.id === c.partId)!;
-            return (
-              <button
-                key={c.instanceId}
-                title={c.muted ? "Uncover (unmute)" : "Cover with a tarp (mute)"}
-                onClick={() => dispatch({ type: "muteCar", instanceId: c.instanceId, muted: !c.muted })}
-                style={{
-                  flex: "0 0 auto",
-                  minWidth: 34,
-                  height: 30,
-                  background: c.muted ? "rgba(40,40,40,0.9)" : part.color,
-                  border: "2px solid rgba(0,0,0,0.5)",
-                  borderRadius: 4,
-                  color: "#fff",
-                  font: "400 8px/1 var(--font-label, 'Press Start 2P')",
-                  cursor: "pointer",
-                  opacity: c.muted ? 0.6 : 1,
-                }}
-              >
-                {c.muted ? "🛡️" : i + 1}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Transport bar */}
-      <footer className="playbar" style={{ flexShrink: 0, position: "relative", zIndex: 10 }}>
-        <div className="pb-group">
-          <button className="pb-btn pb-play" onClick={() => engine.playRide(project)}>
-            <span className="pb-icon">▶</span>
-            <span className="pb-label">Ride Train</span>
-          </button>
-          <button className="pb-btn" onClick={() => engine.stop()}>
-            <span className="pb-icon">■</span>
-            <span className="pb-label">Stop</span>
-          </button>
-        </div>
-
-        <label className="tempo">
-          <span className="pb-label">🐢 Speed 🐇</span>
-          <input
-            type="range"
-            min={MIN_BPM}
-            max={MAX_BPM}
-            value={project.tempoBpm}
-            onChange={(e) => changeTempo(Number(e.target.value))}
-          />
-        </label>
-
-        <div className="pb-group">
-          <button
-            className="pb-btn"
-            title="Reverse direction"
-            aria-pressed={dir === -1}
-            onClick={() => setDir((d) => (d === 1 ? -1 : 1))}
-          >
-            <span className="pb-icon">{dir === 1 ? "⟳" : "⟲"}</span>
-            <span className="pb-label">{dir === 1 ? "Forward" : "Reverse"}</span>
-          </button>
-        </div>
-      </footer>
+      {/* In-canvas pixel nav (the track art has no painted exit) */}
+      <PixelNav onClick={() => dispatch({ type: "setActiveView", view: "yard" })} label="◀ Yard" left />
+      <PixelNav onClick={() => dispatch({ type: "setActiveView", view: "map" })} label="Map" />
     </div>
   );
 };
+
+// A tiny retro-styled nav chip for scenes whose art lacks a painted exit. Sits
+// INSIDE the canvas, dark inset + pixel font — not a modern HTML button.
+const PixelNav: FC<{ onClick: () => void; label: string; left?: boolean }> = ({ onClick, label, left }) => (
+  <button
+    onClick={onClick}
+    style={{
+      position: "absolute",
+      top: 8,
+      ...(left ? { left: 8 } : { right: 8 }),
+      zIndex: 20,
+      background: "#2a2118",
+      border: "2px solid #6b5836",
+      boxShadow: "inset -2px -2px 0 #1a140d, inset 2px 2px 0 #8a7048",
+      color: "#e8dcc8",
+      font: "400 8px/1 var(--font-label, 'Press Start 2P')",
+      letterSpacing: "1px",
+      padding: "6px 8px",
+      cursor: "pointer",
+    }}
+  >
+    {label}
+  </button>
+);

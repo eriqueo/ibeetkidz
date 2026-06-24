@@ -146,10 +146,16 @@ export class TrackScene extends BackgroundScene {
 
   private layoutFixtures(): void {
     const r = this.backgroundRect;
-    this.signal?.setPosition(
-      r.x + r.width * TRACK_LAYOUT_V2.signal.x,
-      r.y + r.height * TRACK_LAYOUT_V2.signal.y,
-    );
+    if (this.signal) {
+      // Scale the full-res signal art down to a small sprite (was rendering at
+      // native 2560px — the giant monolith).
+      const targetW = r.width * TRACK_LAYOUT_V2.signal.w;
+      if (this.signal.width > 0) this.signal.setScale(targetW / this.signal.width);
+      this.signal.setPosition(
+        r.x + r.width * TRACK_LAYOUT_V2.signal.x,
+        r.y + r.height * TRACK_LAYOUT_V2.signal.y,
+      );
+    }
   }
 
   private placeOnPath(token: Phaser.GameObjects.Container, t: number, index: number): void {
