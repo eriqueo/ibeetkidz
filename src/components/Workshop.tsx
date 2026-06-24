@@ -30,21 +30,21 @@ export const Workshop: FC = () => {
   const layers = activeLayers(project);
 
   return (
-    <div className="view-container">
-      {/* Toolbar */}
-      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button 
-          className="t-btn" 
-          style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto" }}
+    <div className="view-container" style={{ display: "flex", flexDirection: "column", height: "100dvh", background: "var(--ground, #201c26)" }}>
+      {/* Brand header */}
+      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <button
+          className="t-btn"
+          style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
           onClick={() => dispatch({ type: "setActiveView", view: "map" })}
         >
           ◀ Map
         </button>
-        <span className="brand-text">Workshop</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button 
-            className="t-btn" 
-            style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto", width: "auto" }}
+        <span className="brand-text" style={{ fontSize: "1rem" }}>Workshop</span>
+        <div style={{ marginLeft: "auto" }}>
+          <button
+            className="t-btn"
+            style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
             onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
           >
             📦 Yard
@@ -52,21 +52,55 @@ export const Workshop: FC = () => {
         </div>
       </header>
 
-      {/* The train car — sequencer grid IS the side of the car */}
-      <div className="view-playfield" style={{ display: "flex", alignItems: "center", justifyContent: "center", overflow: "visible", background: "transparent", border: "none", boxShadow: "none" }}>
-        <div className="car-block active" style={{ 
-          "--car-color": part.color, 
-          width: "100%", 
-          maxWidth: 800,
-          padding: 20,
-          minHeight: 300,
+      {/* Workshop floor — dark inset panel, car sits here */}
+      <div style={{
+        flex: 1,
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "16px 12px 8px",
+        background: "var(--well, #1a1712)",
+        boxShadow: "inset 0 4px 0 rgba(0,0,0,0.4)",
+        overflow: "auto",
+        gap: 12,
+      }}>
+        {/* The train car — sequencer IS the side of the car */}
+        <div style={{
+          width: "100%",
+          maxWidth: 820,
+          background: part.color,
+          border: "3px solid #1a1712",
+          boxShadow: "inset 3px 3px 0 rgba(255,255,255,0.25), inset -3px -3px 0 rgba(0,0,0,0.35), 0 6px 0 rgba(0,0,0,0.5)",
+          borderRadius: 2,
+          padding: "12px 12px 8px",
           display: "flex",
           flexDirection: "column",
-          gap: 10
-        } as any}>
+          gap: 8,
+          position: "relative",
+        }}>
+          {/* Car label strip */}
+          <div style={{
+            font: "400 9px/1 var(--font-label, 'Press Start 2P')",
+            color: "rgba(0,0,0,0.6)",
+            letterSpacing: "2px",
+            textTransform: "uppercase",
+            paddingBottom: 6,
+            borderBottom: "2px solid rgba(0,0,0,0.2)",
+          }}>
+            Car {project.parts.findIndex(p => p.id === part.id) + 1} / {project.parts.length} — {part.name}
+          </div>
+
+          {/* Sequencer content */}
           {layers.length === 0 ? (
-            <div style={{ textAlign: "center", color: "rgba(255,255,255,0.5)", padding: 40 }}>
-              Empty car. Drag an instrument from the shelf below to start building.
+            <div style={{
+              textAlign: "center",
+              color: "rgba(0,0,0,0.45)",
+              padding: "32px 16px",
+              font: "400 9px/1.6 var(--font-label, 'Press Start 2P')",
+              letterSpacing: "1px",
+            }}>
+              Empty car.<br />Tap an instrument below to start building.
             </div>
           ) : (
             <div className="loop-board" data-playing={engine.isPlaying}>
@@ -75,42 +109,67 @@ export const Workshop: FC = () => {
               ))}
             </div>
           )}
-          <span className="car-wheels" aria-hidden>
+
+          {/* Wheels */}
+          <span className="car-wheels" aria-hidden style={{ marginTop: 4 }}>
             <i className="car-wheel" />
             <i className="car-wheel" />
           </span>
         </div>
       </div>
 
-      {/* Instrument shelf */}
-      <div style={{ display: "flex", gap: 14, justifyContent: "center", alignItems: "flex-end", padding: "0 8px 4px" }}>
+      {/* Instrument shelf — dark panel with sprites sitting on the floor */}
+      <div style={{
+        background: "var(--chrome, #3a3540)",
+        borderTop: "3px solid #1a1712",
+        boxShadow: "inset 0 3px 0 rgba(255,255,255,0.08)",
+        padding: "10px 8px 6px",
+        display: "flex",
+        gap: 8,
+        justifyContent: "center",
+        flexWrap: "wrap",
+        flexShrink: 0,
+      }}>
         {INSTRUMENTS.map((inst) => (
-          <button 
+          <button
             key={inst.id}
-            className="t-btn"
-            style={{ 
-              background: "transparent", 
-              border: "none", 
-              padding: 0, 
-              cursor: "grab" 
-            }}
             title={`Add ${inst.label}`}
+            style={{
+              background: "var(--well, #1a1712)",
+              border: "2px solid #1a1712",
+              boxShadow: "inset 2px 2px 0 rgba(255,255,255,0.08), inset -2px -2px 0 rgba(0,0,0,0.4)",
+              padding: "6px 6px 4px",
+              cursor: "pointer",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: 4,
+              borderRadius: 1,
+            }}
           >
-            <img 
+            <img
               src={inst.url}
-              alt={inst.label} 
-              style={{ 
-                height: 42, 
-                imageRendering: "pixelated", 
-                filter: "drop-shadow(2px 2px 0 rgba(0,0,0,0.5))" 
-              }} 
+              alt={inst.label}
+              style={{
+                height: 52,
+                imageRendering: "pixelated",
+                filter: "drop-shadow(2px 2px 0 rgba(0,0,0,0.7))",
+              }}
             />
+            <span style={{
+              font: "400 7px/1 var(--font-label, 'Press Start 2P')",
+              color: "var(--linen, #e8dcc8)",
+              letterSpacing: "0.5px",
+              textTransform: "uppercase",
+            }}>
+              {inst.label}
+            </span>
           </button>
         ))}
       </div>
 
       {/* Transport bar */}
-      <footer className="playbar" style={{ marginTop: "auto" }}>
+      <footer className="playbar" style={{ flexShrink: 0 }}>
         <div className="pb-group">
           <button className="pb-btn pb-play" onClick={() => engine.playLoop(project)}>
             <span className="pb-icon">▶</span>

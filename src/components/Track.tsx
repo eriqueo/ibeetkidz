@@ -33,21 +33,27 @@ export const Track: FC = () => {
   }, [engine, sound, project.arrangement]);
 
   return (
-    <div className="view-container">
-      {/* Toolbar */}
-      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 16 }}>
-        <button 
-          className="t-btn" 
-          style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto" }}
+    <div style={{
+      display: "flex",
+      flexDirection: "column",
+      height: "100dvh",
+      background: "var(--ground, #201c26)",
+      overflow: "hidden",
+    }}>
+      {/* Brand header */}
+      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 12, flexShrink: 0 }}>
+        <button
+          className="t-btn"
+          style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
           onClick={() => dispatch({ type: "setActiveView", view: "map" })}
         >
           ◀ Map
         </button>
-        <span className="brand-text">Springvale Loop</span>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button 
-            className="t-btn" 
-            style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto", width: "auto" }}
+        <span className="brand-text" style={{ fontSize: "1rem" }}>Springvale Loop</span>
+        <div style={{ marginLeft: "auto" }}>
+          <button
+            className="t-btn"
+            style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
             onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
           >
             📦 Yard
@@ -55,13 +61,20 @@ export const Track: FC = () => {
         </div>
       </header>
 
-      {/* Grass playfield with oval loop */}
-      <div className="view-playfield pattern-diag">
+      {/* Dark trackbed playfield with oval loop */}
+      <div style={{
+        flex: 1,
+        position: "relative",
+        background: "var(--well, #1a1712)",
+        boxShadow: "inset 0 4px 0 rgba(0,0,0,0.4)",
+        overflow: "hidden",
+        minHeight: 0,
+      }}>
         <Loop t={t} project={project} />
       </div>
 
       {/* Actions bar */}
-      <footer className="playbar" style={{ marginTop: "auto" }}>
+      <footer className="playbar" style={{ flexShrink: 0 }}>
         <div className="pb-group">
           <button className="pb-btn pb-play" onClick={() => engine.playRide(project)}>
             <span className="pb-icon">▶</span>
