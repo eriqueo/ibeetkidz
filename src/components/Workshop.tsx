@@ -3,15 +3,24 @@ import { useApp, useProject } from "../app/context.tsx";
 import { activeLayers, activePart } from "../core/project-state.ts";
 import { LoopTrack } from "../machines/tools.tsx";
 
+import bassDrumUrl from "../assets/theme/icons/bass-drum.png";
+import snareUrl from "../assets/theme/icons/snare.png";
+import cymbalUrl from "../assets/theme/icons/cymbal.png";
+import tomUrl from "../assets/theme/icons/tom.png";
+import keyboardUrl from "../assets/theme/icons/keyboard.png";
+import micUrl from "../assets/theme/icons/mic.png";
+import cowbellUrl from "../assets/theme/icons/cowbell.png";
+import tambourineUrl from "../assets/theme/icons/tambourine.png";
+
 const INSTRUMENTS = [
-  { id: "bass-drum", label: "Kick" },
-  { id: "snare", label: "Snare" },
-  { id: "cymbal", label: "Cymbal" },
-  { id: "tom", label: "Tom" },
-  { id: "keyboard", label: "Synth" },
-  { id: "mic", label: "Voice" },
-  { id: "cowbell", label: "Cowbell" },
-  { id: "tambourine", label: "Tambourine" },
+  { id: "bass-drum", label: "Kick", url: bassDrumUrl },
+  { id: "snare", label: "Snare", url: snareUrl },
+  { id: "cymbal", label: "Cymbal", url: cymbalUrl },
+  { id: "tom", label: "Tom", url: tomUrl },
+  { id: "keyboard", label: "Synth", url: keyboardUrl },
+  { id: "mic", label: "Voice", url: micUrl },
+  { id: "cowbell", label: "Cowbell", url: cowbellUrl },
+  { id: "tambourine", label: "Tambourine", url: tambourineUrl },
 ];
 
 export const Workshop: FC = () => {
@@ -88,7 +97,7 @@ export const Workshop: FC = () => {
             title={`Add ${inst.label}`}
           >
             <img 
-              src={`assets/theme/icons/${inst.id}.png`}
+              src={inst.url}
               alt={inst.label} 
               style={{ 
                 height: 42, 
