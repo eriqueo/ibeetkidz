@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The loop bar (BeepBox/UltraBox style): a draggable capsule above the cars that
-// sets the Ride loop region; tunnels sit at its ends.
+// The loop lives on its OWN track below the cars: two big draggable tunnels mark
+// the loop start + end, with a highlighted band between them.
 
 async function boot(page: Page): Promise<void> {
   await page.goto("/");
@@ -11,29 +11,28 @@ async function boot(page: Page): Promise<void> {
   await expect(page.locator("#app")).toBeVisible();
 }
 
-test("loop bar: drag an end handle to shrink the loop region", async ({ page }) => {
+test("loop track: drag the end tunnel to shrink the loop region", async ({ page }) => {
   await boot(page);
   await page.locator('[data-act="add-melody"]').click();
   await page.locator(".melody-row").nth(3).locator(".note-cell").nth(0).click();
   await page.locator('[data-act="send-tracks"]').click();
-  for (let i = 0; i < 3; i++) await page.locator('[data-act="new-car"]').click();
+  for (let i = 0; i < 4; i++) await page.locator('[data-act="new-car"]').click();
 
-  const pill = page.locator("[data-loop-pill]");
-  await expect(pill).toBeVisible();
-  // Two tunnels (loop start + end) are present.
-  await expect(page.locator(".track-tunnel")).toHaveCount(2);
+  // The loop track, its band, and the two tunnels are present.
+  const band = page.locator(".loop-band");
+  await expect(page.locator("[data-loop-track]")).toBeVisible();
+  await expect(page.locator(".loop-tunnel")).toHaveCount(2);
+  const before = (await band.boundingBox())!.width;
 
-  const before = (await pill.boundingBox())!.width;
-
-  // Drag the right handle left to the 2nd car → the loop (and pill) shrinks.
-  const handle = page.locator('[data-act="loop-end"]');
-  const h = (await handle.boundingBox())!;
-  const car2 = (await page.locator(".car-block").nth(1).boundingBox())!;
-  await page.mouse.move(h.x + h.width / 2, h.y + h.height / 2);
+  // Drag the END tunnel toward the middle → the loop band shrinks.
+  const end = page.locator('[data-act="loop-end"]');
+  const eb = (await end.boundingBox())!;
+  const track = (await page.locator("[data-loop-track]").boundingBox())!;
+  await page.mouse.move(eb.x + eb.width / 2, eb.y + eb.height / 2);
   await page.mouse.down();
-  await page.mouse.move(car2.x + car2.width / 2, h.y + h.height / 2, { steps: 8 });
+  await page.mouse.move(track.x + track.width * 0.5, eb.y + eb.height / 2, { steps: 8 });
   await page.mouse.up();
 
-  const after = (await pill.boundingBox())!.width;
+  const after = (await band.boundingBox())!.width;
   expect(after).toBeLessThan(before - 20);
 });

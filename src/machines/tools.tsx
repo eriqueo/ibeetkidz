@@ -6,10 +6,8 @@
 import * as React from "react";
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useRef,
   useState,
   type CSSProperties,
@@ -23,9 +21,9 @@ import {
   activeLayers,
   activePart,
   carAtBar,
-  carStartBar,
   loopRegion,
   makeLayer,
+  songBars,
 } from "../core/project-state.ts";
 import { nearestBeatLoop } from "../core/timeline.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../core/sound-catalog.ts";
@@ -1974,102 +1972,76 @@ const CarBlock: FC<{
   );
 };
 
-// The loop bar (BeepBox/UltraBox style): a draggable capsule above the cars that
-// sets the Ride loop region, plus two tunnels at the loop ends — the playback
-// train drives INTO the end tunnel and emerges from the start tunnel each lap.
-// Drag the pill body to move the loop; drag an end handle to stretch/shrink it.
-const LoopPill: FC<{ carsRef: React.RefObject<HTMLDivElement | null> }> = ({
-  carsRef,
-}) => {
-  const { dispatch, getProject } = useApp();
+// The loop on its OWN track (separate from the cars): a rail divided into one
+// segment per song bar, with two big draggable TUNNELS marking the loop's start
+// and end. Drag a tunnel (or its ‹›grabber) to set the loop range; the playback
+// engine rides between them and dips fully through each tunnel every lap. No
+// car-DOM measuring — positions are pure fractions of the song length.
+const LoopRail: FC = () => {
+  const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
-  const [geom, setGeom] = useState<{
-    left: number;
-    width: number;
-    leftX: number;
-    rightX: number;
-  } | null>(null);
+  const trackRef = useRef<HTMLDivElement>(null);
+  const trainRef = useRef<HTMLDivElement>(null);
+  const total = songBars(project);
+  const { start, length } = loopRegion(project);
+  const leftFrac = start / total;
+  const rightFrac = (start + length) / total;
 
-  const measure = useCallback(() => {
-    const cars = carsRef.current;
-    if (!cars) return null;
-    const els = cars.querySelectorAll<HTMLElement>(".car-block");
-    if (!els.length) return null;
-    const p = getProject();
-    const { start, length } = loopRegion(p);
-    const fc = carAtBar(p, start)?.index ?? 0;
-    const lc = carAtBar(p, start + length - 1)?.index ?? fc;
-    const a = els[fc];
-    const b = els[lc];
-    if (!a || !b) return null;
-    const left = a.offsetLeft;
-    const right = b.offsetLeft + b.offsetWidth;
-    return { left, width: right - left, leftX: left, rightX: right };
-  }, [carsRef, getProject]);
-
-  useLayoutEffect(() => setGeom(measure()), [measure, project]);
+  // Ride the engine along the loop track during Ride: 0→1 across the looped
+  // span each lap, so it enters the end tunnel and re-emerges from the start one.
   useEffect(() => {
-    const cars = carsRef.current;
-    if (!cars || typeof ResizeObserver === "undefined") return;
-    const ro = new ResizeObserver(() => setGeom(measure()));
-    ro.observe(cars);
-    return () => ro.disconnect();
-  }, [carsRef, measure]);
-
-  // Pointer x → nearest car index (cars don't move while the loop changes).
-  const carIndexAtX = (clientX: number): number => {
-    const cars = carsRef.current;
-    if (!cars) return 0;
-    const rect = cars.getBoundingClientRect();
-    const x = clientX - rect.left + cars.scrollLeft;
-    const els = cars.querySelectorAll<HTMLElement>(".car-block");
-    let best = 0;
-    let bestD = Infinity;
-    els.forEach((el, i) => {
-      const d = Math.abs(x - (el.offsetLeft + el.offsetWidth / 2));
-      if (d < bestD) {
-        bestD = d;
-        best = i;
+    let raf = 0;
+    const tick = (): void => {
+      const t = trainRef.current;
+      if (t) {
+        const isRide = engine.playMode === "ride";
+        const bar = isRide ? engine.getTransportBar() : -1;
+        if (bar < 0) {
+          t.style.opacity = "0";
+        } else {
+          const p = getProject();
+          const tot = songBars(p);
+          const { start: s, length: len } = loopRegion(p);
+          const stepFrac = Math.max(0, sound.getTransportStep(1000)) / 1000;
+          const prog = ((((bar % len) + len) % len) + stepFrac) / len; // 0..1 lap
+          t.style.left = `${((s + prog * len) / tot) * 100}%`;
+          t.style.opacity = "1";
+        }
       }
-    });
-    return best;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [engine, sound, getProject]);
+
+  // Pointer x → nearest bar boundary (0..total) on the loop track.
+  const barAtX = (clientX: number): number => {
+    const el = trackRef.current;
+    if (!el) return 0;
+    const r = el.getBoundingClientRect();
+    const tot = songBars(getProject());
+    return Math.max(0, Math.min(tot, Math.round(((clientX - r.left) / r.width) * tot)));
   };
 
-  const beginDrag =
-    (mode: "start" | "end" | "move") =>
+  const dragTunnel =
+    (which: "start" | "end") =>
     (e: React.PointerEvent): void => {
       e.preventDefault();
       e.stopPropagation();
-      const p0 = getProject();
-      const nCars = p0.arrangement.length;
-      const { start, length } = loopRegion(p0);
-      const fc0 = carAtBar(p0, start)?.index ?? 0;
-      const lc0 = carAtBar(p0, start + length - 1)?.index ?? fc0;
-      const grab = mode === "move" ? carIndexAtX(e.clientX) - fc0 : 0;
-      let lastFc = -1;
-      let lastLc = -1;
-      const commit = (fc: number, lc: number): void => {
-        if (fc === lastFc && lc === lastLc) return;
-        lastFc = fc;
-        lastLc = lc;
+      const apply = (clientX: number): void => {
         const p = getProject();
-        const s = carStartBar(p, fc);
-        const reps = Math.max(1, p.arrangement[lc]?.repeats ?? 1);
-        dispatch({ type: "setLoop", start: s, length: carStartBar(p, lc) + reps - s });
-      };
-      const move = (ev: PointerEvent): void => {
-        const pc = carIndexAtX(ev.clientX);
-        let fc = fc0;
-        let lc = lc0;
-        if (mode === "start") fc = Math.min(Math.max(0, pc), lc0);
-        else if (mode === "end") lc = Math.max(Math.min(nCars - 1, pc), fc0);
-        else {
-          const span = lc0 - fc0;
-          fc = Math.min(Math.max(0, pc - grab), nCars - 1 - span);
-          lc = fc + span;
+        const { start: s, length: len } = loopRegion(p);
+        const end = s + len;
+        const b = barAtX(clientX);
+        if (which === "start") {
+          const ns = Math.min(b, end - 1);
+          dispatch({ type: "setLoop", start: ns, length: end - ns });
+        } else {
+          const ne = Math.max(b, s + 1);
+          dispatch({ type: "setLoop", start: s, length: ne - s });
         }
-        commit(fc, lc);
       };
+      const move = (ev: PointerEvent): void => apply(ev.clientX);
       const up = (): void => {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
@@ -2078,33 +2050,42 @@ const LoopPill: FC<{ carsRef: React.RefObject<HTMLDivElement | null> }> = ({
       window.addEventListener("pointerup", up);
     };
 
-  if (!geom) return null;
   return (
-    <>
-      <div className="loop-bar" aria-hidden={false}>
-        <div
-          className="loop-pill"
-          data-loop-pill
-          style={{ left: `${geom.left}px`, width: `${geom.width}px` }}
-          onPointerDown={beginDrag("move")}
-          title="Drag to move the loop · drag an end to stretch or shrink it"
-        >
-          <span
-            className="loop-handle loop-handle--l"
-            data-act="loop-start"
-            onPointerDown={beginDrag("start")}
-          />
-          <span className="loop-grip" />
-          <span
-            className="loop-handle loop-handle--r"
-            data-act="loop-end"
-            onPointerDown={beginDrag("end")}
-          />
-        </div>
+    <div className="song-loop-track" data-loop-track ref={trackRef}>
+      <div className="loop-rail" aria-hidden />
+      <div
+        className="loop-band"
+        aria-hidden
+        style={{ left: `${leftFrac * 100}%`, width: `${(rightFrac - leftFrac) * 100}%` }}
+      />
+      <div className="train-sprite" ref={trainRef} aria-hidden>
+        🚂
       </div>
-      <div className="track-tunnel track-tunnel--l" style={{ left: `${geom.leftX}px` }} aria-hidden />
-      <div className="track-tunnel track-tunnel--r" style={{ left: `${geom.rightX}px` }} aria-hidden />
-    </>
+      <button
+        type="button"
+        className="loop-tunnel loop-tunnel--start"
+        data-act="loop-start"
+        style={{ left: `${leftFrac * 100}%` }}
+        title="Drag to set where the loop starts"
+        onPointerDown={dragTunnel("start")}
+      >
+        <span className="loop-grab" aria-hidden>
+          ‹ ›
+        </span>
+      </button>
+      <button
+        type="button"
+        className="loop-tunnel loop-tunnel--end"
+        data-act="loop-end"
+        style={{ left: `${rightFrac * 100}%` }}
+        title="Drag to set where the loop ends"
+        onPointerDown={dragTunnel("end")}
+      >
+        <span className="loop-grab" aria-hidden>
+          ‹ ›
+        </span>
+      </button>
+    </div>
   );
 };
 
@@ -2112,38 +2093,17 @@ export const TracksStrip: FC = () => {
   const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
   const [riding, setRiding] = useState(-1);
-  const carsRef = useRef<HTMLDivElement>(null);
-  const trainRef = useRef<HTMLDivElement>(null);
 
-  // Drive the playback train each frame: a little engine rides the rail to the
-  // car currently sounding (and how far through it), only while RIDING the whole
-  // song. In loop mode (Home Play of one car) it parks off-screen — the active
-  // ring shows which car you're on. Position uses refs (no per-frame re-render);
-  // only the riding-car *index* flips React state, ~once per bar.
+  // Light up whichever car the loop is currently playing (the moving engine
+  // lives on the separate loop track below). Only the riding index flips state.
   useEffect(() => {
     let raf = 0;
     const tick = (): void => {
-      const train = trainRef.current;
-      const cars = carsRef.current;
       const isRide = engine.playMode === "ride";
       const bar = isRide ? engine.getTransportBar() : -1;
       const stepFrac = bar < 0 ? 0 : Math.max(0, sound.getTransportStep(1000)) / 1000;
-      const { index, frac } = ridingAt(getProject(), bar, stepFrac);
+      const { index } = ridingAt(getProject(), bar, stepFrac);
       setRiding((prev) => (prev === index ? prev : index));
-      if (train) {
-        const el =
-          index >= 0 && cars
-            ? cars.querySelectorAll<HTMLElement>(".car-block")[index] ?? null
-            : null;
-        if (el) {
-          const x = el.offsetLeft + frac * el.offsetWidth;
-          // scaleX(-1): the 🚂 glyph faces left; flip it to face its travel.
-          train.style.transform = `translateX(${x}px) scaleX(-1)`;
-          train.style.opacity = "1";
-        } else {
-          train.style.opacity = "0";
-        }
-      }
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
@@ -2158,7 +2118,7 @@ export const TracksStrip: FC = () => {
   return (
     <section className="tracks-strip" data-region="tracks">
       <div className="tracks-head">🚂 Song Train</div>
-      <div className="tracks-cars" ref={carsRef}>
+      <div className="tracks-cars">
         {project.arrangement.map((car, i) => (
           <CarBlock
             key={`${car.partId}-${i}`}
@@ -2176,19 +2136,16 @@ export const TracksStrip: FC = () => {
         >
           ＋<span>New Car</span>
         </button>
-        {/* The loop bar (draggable) + its end tunnels, then the playback engine
-            that rides the looped cars and dips through the tunnels each lap. */}
-        <LoopPill carsRef={carsRef} />
-        <div className="train-sprite" ref={trainRef} aria-hidden>
-          🚂
-        </div>
       </div>
+      {/* The loop on its OWN track: drag the tunnels to set the looping range;
+          the engine rides between them and dips through each lap. */}
+      <LoopRail />
       <button
         type="button"
         className="tracks-ride"
         data-act="ride"
         onClick={() => engine.playRide(getProject())}
-        title="Play the whole song, car after car"
+        title="Play the looped cars over and over"
       >
         ▶ Ride
       </button>

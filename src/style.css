@@ -1353,7 +1353,7 @@ body {
   justify-content: safe center; /* centered, but scroll-reachable when it overflows */
   gap: 0.6rem;
   max-width: 100%;
-  padding: 1.7rem 0.6rem 1.5rem; /* top room for the loop bar, bottom for the rail */
+  padding: 0.5rem 0.6rem 1.4rem; /* bottom room for the cars' own rail + wheels */
   overflow-x: auto;
 }
 /* Railroad ties (sleepers) running behind the whole train. */
@@ -1385,109 +1385,128 @@ body {
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
   z-index: 0;
 }
-/* The playback engine: a little train that rides the rail to the car currently
-   sounding while the song plays (Ride). Positioned via JS transform. */
+/* ── The loop on its OWN track (separate from the cars) ───────────────────────
+   A rail with two big draggable TUNNELS marking the loop's start + end, and the
+   playback engine riding between them. Tunnel/train/band positions are pure %
+   of the song length (set inline), so no car-DOM measuring is needed. */
+.song-loop-track {
+  position: relative;
+  width: min(100%, 42rem);
+  height: 3.4rem;
+  margin: 0.2rem auto 0.1rem;
+}
+/* ties under the rail */
+.song-loop-track::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.5rem;
+  height: 0.55rem;
+  background: repeating-linear-gradient(
+    90deg,
+    #6b4a32 0 0.4rem,
+    transparent 0.4rem 0.86rem
+  );
+  z-index: 0;
+}
+/* the steel rail */
+.loop-rail {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.95rem;
+  height: 0.26rem;
+  background: linear-gradient(180deg, #cfd3da, #80858f);
+  border-radius: 2px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+  z-index: 1;
+}
+/* the looped span, highlighted on the rail */
+.loop-band {
+  position: absolute;
+  bottom: 0.92rem;
+  height: 0.34rem;
+  background: linear-gradient(180deg, #20e3b2, #06d6a0);
+  border-radius: 3px;
+  box-shadow: 0 0 0.4rem rgba(6, 214, 160, 0.7);
+  z-index: 2;
+  pointer-events: none;
+}
+/* the playback engine on the loop track (positioned by left%, set in JS) */
 .train-sprite {
   position: absolute;
   left: 0;
-  bottom: 0.5rem;
-  margin-left: -1.1rem;
-  font-size: 2.2rem;
+  bottom: 0.66rem;
+  margin-left: -1.15rem; /* center the glyph on its left% point */
+  font-size: 2.3rem;
   line-height: 1;
   opacity: 0;
   pointer-events: none;
   z-index: 3;
+  transform: scaleX(-1); /* 🚂 faces left → flip to face travel (rightward) */
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
   transition: opacity 0.18s ease;
-  will-change: transform;
 }
-/* Tunnels at the loop ends: the playback engine drives INTO the end tunnel and
-   emerges from the start tunnel each lap (centered on the loop boundary, low on
-   the rail). Above the train so it vanishes into the dark mouth. */
-.track-tunnel {
+/* big draggable tunnels = the loop handles (above the train so it dips through) */
+.loop-tunnel {
   position: absolute;
-  bottom: 0.4rem;
-  margin-left: -1.3rem; /* center a 2.6rem portal on the boundary x */
-  width: 2.6rem;
-  height: 1.9rem;
-  z-index: 5;
-  pointer-events: none;
-  /* grassy mound */
-  background: radial-gradient(120% 130% at 50% 100%, #3f7a3a 0 62%, #2c5a2a 62% 100%);
-  border-radius: 1.3rem 1.3rem 0 0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-/* dark portal mouth */
-.track-tunnel::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 1.5rem;
-  height: 1.25rem;
-  background: radial-gradient(80% 100% at 50% 100%, #050308 0 70%, #1a1322 100%);
-  border-radius: 0.75rem 0.75rem 0 0;
-  box-shadow: inset 0 0 0 2px #2a2030;
-}
-/* stone arch ring around the mouth */
-.track-tunnel::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  width: 1.9rem;
-  height: 1.5rem;
-  border: 0.22rem solid #8a8077;
-  border-bottom: none;
-  border-radius: 0.95rem 0.95rem 0 0;
-}
-
-/* ── Loop bar (BeepBox-style capsule above the cars) ── */
-.loop-bar {
-  position: absolute;
-  top: 0.2rem;
   left: 0;
-  right: 0;
-  height: 1.2rem;
-  pointer-events: none; /* only the pill itself is interactive */
-  z-index: 6;
-}
-.loop-pill {
-  position: absolute;
-  top: 0;
-  height: 1.2rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  pointer-events: auto;
-  cursor: grab;
-  border-radius: 0.6rem;
-  background: rgba(255, 255, 255, 0.16);
-  border: 2px solid rgba(255, 255, 255, 0.85);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.45);
-  touch-action: none;
-}
-.loop-pill:active {
-  cursor: grabbing;
-}
-.loop-grip {
-  flex: 1 1 auto;
-  height: 100%;
-  background-image: radial-gradient(rgba(255, 255, 255, 0.7) 1px, transparent 1px);
-  background-size: 0.4rem 0.4rem;
-  background-position: center;
-  opacity: 0.5;
-}
-.loop-handle {
-  flex: 0 0 auto;
-  width: 0.85rem;
-  height: 100%;
-  border-radius: 0.5rem;
-  background: rgba(255, 255, 255, 0.95);
+  bottom: 0.45rem;
+  margin-left: -1.7rem; /* center a 3.4rem portal on its left% */
+  width: 3.4rem;
+  height: 2.7rem;
+  padding: 0;
+  border: none;
+  background: transparent;
   cursor: ew-resize;
   touch-action: none;
+  z-index: 5;
+}
+/* grassy mound */
+.loop-tunnel::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0.5rem;
+  height: 2.1rem;
+  background: radial-gradient(120% 130% at 50% 100%, #3f7a3a 0 58%, #2c5a2a 58% 100%);
+  border-radius: 1.7rem 1.7rem 0 0;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+/* dark mouth + stone ring */
+.loop-tunnel::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: 0.5rem;
+  transform: translateX(-50%);
+  width: 2rem;
+  height: 1.8rem;
+  background: radial-gradient(80% 100% at 50% 100%, #050308 0 72%, #1a1322 100%);
+  border-radius: 1rem 1rem 0 0;
+  box-shadow: 0 0 0 0.22rem #8a8077;
+}
+.loop-tunnel--end::before {
+  background: radial-gradient(120% 130% at 50% 100%, #b06a3a 0 58%, #8a4f2a 58% 100%);
+}
+/* the ‹ › grabber under each tunnel */
+.loop-grab {
+  position: absolute;
+  left: 50%;
+  bottom: -0.35rem;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  font-weight: 900;
+  letter-spacing: 0.12rem;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.6);
+  border-radius: 0.5rem;
+  padding: 0.05rem 0.3rem;
+  line-height: 1.1;
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 /* One car of the train: a colored boxcar with a roof, wheels, and a coupler

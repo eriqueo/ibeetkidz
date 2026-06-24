@@ -129,18 +129,21 @@ tap ‹ › arrows — plus Send-to-car) renders inside the SELECTED lane; the S
 rail (`LoopStageRail`) is now **song-wide only** (tempo/scale/key/groove).
 Instrument pills keep `rail-pill`/`data-inst` so existing selectors hold.
 
-Song Train loop bar + tunnels (2026-06-23): the strip is now a centered column
-(title / cars / Ride), cars are bigger boxcars. A **loop bar** (BeepBox/UltraBox
-`LoopEditor`) rides above the cars: a draggable capsule (`LoopPill`, `data-loop-pill`)
-sets the Ride **loop region** — `Project.loopStart`/`loopLength` (bars; both absent
-= whole song, auto-grows), clamped on read by `loopRegion(project)`; `setLoop`
-command (whole-song region clears back to absent). Drag the pill body to move,
-the end **handles** (`data-act="loop-start"`/`"loop-end"`) to stretch/shrink;
-snaps to car boundaries via `carAtBar`/`carStartBar`. The engine's
-`scheduleArrangement` now lays out ONLY `[start, start+length)` and repeats every
-`length` bars; `ridingAt` maps the transport bar back into the region. **Tunnels**
-(`.track-tunnel`) sit at the loop ends — the playback engine drives into the end
-tunnel and emerges from the start tunnel each lap (replaced the old bridge).
+Song Train loop track (2026-06-23): the strip is a centered column (title /
+cars / loop track / Ride); cars are bigger boxcars. The **loop lives on its own
+track BELOW the cars** (`LoopRail` → `.song-loop-track`, `data-loop-track`) —
+separate from the cars so the loop visual is clear. Two big **draggable tunnels**
+(`.loop-tunnel`, `data-act="loop-start"`/`"loop-end"`, each with a ‹›`.loop-grab`)
+mark the loop start/end; a green `.loop-band` highlights the looped span; the
+playback engine (`.train-sprite`) rides between them and dips fully through each
+tunnel every lap. Loop state = `Project.loopStart`/`loopLength` (bars; both absent
+= whole song, auto-grows), clamped on read by `loopRegion`; `setLoop` clears to
+absent on a whole-song region. The loop track is divided into `songBars` equal
+segments — positions are pure `%` of the song length (no car-DOM measuring);
+dragging snaps to bar boundaries. Engine `scheduleArrangement` lays out ONLY
+`[start, start+length)` and repeats every `length` bars; `ridingAt` maps the
+transport bar into the region. NOTE class collision: the per-lane Home component
+is also `.loop-track` — the song loop rail MUST stay `.song-loop-track`.
 
 Gates: `typecheck` clean, 121 unit tests, 28 Playwright E2E (incl. full hero
 journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
