@@ -102,7 +102,7 @@ export const Workshop: FC = () => {
       </button>
 
       {/* Live sequencer grid, pinned over the painted grid region */}
-      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT.grid), zIndex: 10, overflow: "auto" }}>
+      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT.grid), zIndex: 10, overflow: "hidden" }}>
         {layers.length === 0 ? (
           <div style={{
             display: "flex",

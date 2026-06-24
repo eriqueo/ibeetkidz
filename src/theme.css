@@ -64,6 +64,7 @@
   /* type */
   --font-display: "Press Start 2P", "Cascadia Code", monospace;   /* logo/titles only */
   --font-body: "Cascadia Code", ui-monospace, Menlo, monospace;
+  --font-label: "Press Start 2P", monospace;                       /* pixel labels on scenes */
 
   /* hard pixel shadow (no blur) — near-black on dark */
   --shadow-hard: 0 3px 0 rgba(0, 0, 0, 0.40);
