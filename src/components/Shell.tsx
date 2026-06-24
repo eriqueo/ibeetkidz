@@ -205,44 +205,18 @@ export const Shell: FC = () => {
   // Three-space routing:
   const view = project.activeView;
   
-  // If we're on the map, render just the map.
+  // Three-space routing now shares the same app shell structure
   if (view === "map") {
-    return (
-      <div id="app">
-        <div className="shell-root">
-          <Map />
-        </div>
-      </div>
-    );
+    return <div id="app"><div className="shell-root"><Map /></div></div>;
   }
-  
   if (view === "workshop") {
-    return (
-      <div id="app">
-        <div className="shell-root">
-          <Workshop />
-        </div>
-      </div>
-    );
+    return <div id="app"><div className="shell-root"><Workshop /></div></div>;
   }
-
   if (view === "yard") {
-    return (
-      <div id="app">
-        <div className="shell-root">
-          <Yard />
-        </div>
-      </div>
-    );
+    return <div id="app"><div className="shell-root"><Yard /></div></div>;
   }
   if (view === "track") {
-    return (
-      <div id="app">
-        <div className="shell-root">
-          <Track />
-        </div>
-      </div>
-    );
+    return <div id="app"><div className="shell-root"><Track /></div></div>;
   }
   const Canvas = active.Canvas;
   const Rail = active.Rail;

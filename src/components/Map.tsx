@@ -15,23 +15,18 @@ export const Map: FC = () => {
   const { dispatch } = useApp();
 
   return (
-    <div style={{
-      height: "100%", display: "flex", flexDirection: "column", alignItems: "center",
-      justifyContent: "center", gap: 22, padding: 20,
-    }}>
-      {/* Wordmark plate */}
-      <div className="options-bar" style={{ display: "inline-flex", alignItems: "center", gap: 10, padding: "14px 30px" }}>
-        <span style={{ font: "400 28px/1 var(--font-display)" }}>
-          <span style={{ color: "var(--leaf)" }}>i</span>
-          <span style={{ color: "var(--beet)" }}>Beet</span>
-          <span style={{ color: "var(--sun)" }}>Kidz</span>
-        </span>
-      </div>
-      <p style={{ font: "400 11px/1 var(--font-label)", color: "var(--linen)", letterSpacing: "2px",
-        textTransform: "uppercase", margin: "-10px 0 0" }}>Pick a place to play!</p>
+    <div className="view-container">
+      <header className="brand" style={{ display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="brand-text">iBeetKidz Map</span>
+      </header>
 
-      {/* Destination cards */}
-      <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
+      <div className="view-playfield" style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 30 }}>
+        <p style={{ font: "400 14px/1 var(--font-label)", color: "var(--linen)", letterSpacing: "2px", textTransform: "uppercase" }}>
+          Pick a place to play!
+        </p>
+
+        {/* Destination cards */}
+        <div style={{ display: "flex", gap: 16, flexWrap: "wrap", justifyContent: "center" }}>
         {SPACES.map((s) => (
           <button key={s.key} className="map-card" onClick={() => dispatch({ type: "setActiveView", view: s.key })}>
             <div style={{ 
@@ -61,6 +56,7 @@ export const Map: FC = () => {
             </div>
           </button>
         ))}
+        </div>
       </div>
     </div>
   );

@@ -35,16 +35,21 @@ export const Track: FC = () => {
   return (
     <div className="view-container">
       {/* Toolbar */}
-      <header className="options-bar" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <button 
           className="t-btn" 
+          style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto" }}
           onClick={() => dispatch({ type: "setActiveView", view: "map" })}
         >
           ◀ Map
         </button>
         <span className="brand-text">Springvale Loop</span>
         <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button className="t-btn" onClick={() => dispatch({ type: "setActiveView", view: "yard" })}>
+          <button 
+            className="t-btn" 
+            style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto", width: "auto" }}
+            onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
+          >
             📦 Yard
           </button>
         </div>

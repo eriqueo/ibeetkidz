@@ -9,9 +9,10 @@ export const Yard: FC = () => {
   return (
     <div className="view-container">
       {/* Toolbar */}
-      <header className="options-bar" style={{ display: "flex", alignItems: "center", gap: 10 }}>
+      <header className="brand" style={{ display: "flex", alignItems: "center", gap: 16 }}>
         <button 
           className="t-btn" 
+          style={{ fontSize: "0.8rem", padding: "4px 8px", height: "auto" }}
           onClick={() => dispatch({ type: "setActiveView", view: "map" })}
         >
           ◀ Map
