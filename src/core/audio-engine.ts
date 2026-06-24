@@ -7,7 +7,7 @@ import { STEP_COUNT } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
-import { activeLayers, carAtBar, loopRegion } from "./project-state.ts";
+import { activeLayers, liveTrain, partForCar } from "./project-state.ts";
 import { resolveInstrument } from "./instruments.ts";
 
 /** What the transport is playing: "loop" repeats the active car forever (Home's
@@ -55,24 +55,34 @@ export class AudioEngine {
     else this.scheduleLayers(project, activeLayers(project), 1, 0);
   }
 
-  /** Lay out the whole song as one long, repeating loop: each car occupies its
-   *  bars in sequence (a car repeated N times fills N consecutive bars), and the
-   *  whole arrangement repeats every `songBars`. This reuses the proven 1-bar
-   *  scheduler at a longer cycle, so section changes are gapless (Tone handles
-   *  the timeline) without any mid-bar reschedule that would clip a bar. */
+  /** Lay out the whole train as one long, repeating loop: each slot occupies one
+   *  bar in order, and the whole song repeats every `train.length` bars. This
+   *  reuses the proven 1-bar scheduler at a longer cycle, so section changes are
+   *  gapless (Tone handles the timeline) without any mid-bar reschedule that
+   *  would clip a bar. Muted (tarped) cars are simply skipped — that bar is
+   *  silent while the slot still occupies its place in the timeline. */
   private scheduleArrangement(project: Project): void {
-    // Honor the loop bar: lay out ONLY the looped bars [start, start+length) and
-    // repeat that window every `length` bars (BeepBox's loopStart/loopLength).
-    // Each looped bar plays the car covering it, offset to the window start.
-    const { start, length } = loopRegion(project);
-    for (let k = 0; k < length; k++) {
-      const car = carAtBar(project, start + k);
-      if (!car) continue;
-      const part = project.parts.find(
-        (p) => p.id === project.arrangement[car.index]!.partId,
-      );
+    const train = liveTrain(project);
+    const length = Math.max(1, train.length);
+    train.forEach((car, k) => {
+      if (car.muted) return; // tarped → silent bar
+      const part = partForCar(project, car);
       if (part) this.scheduleLayers(project, part.layers, length, k);
-    }
+    });
+  }
+
+  /** Track view: stop everything, then loop just one library car (one bar). Used
+   *  when a single car should sound on its own — independent of the train order. */
+  playCarLoop(partId: string, project: Project): void {
+    if (!this.started) return;
+    const part = project.parts.find((p) => p.id === partId);
+    if (!part) return;
+    this.mode = "loop";
+    this.sound.setTempo(project.tempoBpm);
+    this.sound.clearScheduled();
+    this.scheduleLayers(project, part.layers, 1, 0);
+    this.sound.startTransport();
+    this.playing = true;
   }
 
   /** Schedule one car's lanes onto the transport. `cycleBars` is the loop length
@@ -159,6 +169,11 @@ export class AudioEngine {
   stop(): void {
     this.sound.stopTransport();
     this.playing = false;
+  }
+
+  /** Alias for `stop()` — reads clearer at call sites that mean "silence all". */
+  stopAll(): void {
+    this.stop();
   }
 
   get isPlaying(): boolean {

@@ -136,22 +136,41 @@ export interface Layer {
   readonly patternIndex?: number;
 }
 
+/** The visual sprite type for a car. Purely cosmetic — picks which sprite is
+ *  rendered in the Yard and on the Track, not the audio. */
+export type CarType = "boxcar" | "tanker" | "hopper" | "flatcar";
+
+export const CAR_TYPES: readonly CarType[] = [
+  "boxcar",
+  "tanker",
+  "hopper",
+  "flatcar",
+];
+
 /** One "car" of the Song Train: a full, independent loop (its own lanes). The
- *  default project has exactly one part — Home edits it and it behaves like the
- *  single loop always did. `clips` and the musical settings stay song-wide on the
- *  Project; only `layers` live per-part. */
+ *  default project has exactly one part — the Workshop edits it and it behaves
+ *  like the single loop always did. `clips` and the musical settings stay
+ *  song-wide on the Project; only `layers` live per-part. `parts` is the LIBRARY
+ *  of built cars; the assembled song is `Project.train`. */
 export interface Part {
   readonly id: string;
   readonly name: string;
   readonly color: string;
+  /** Visual sprite family (Yard/Track). Absent on pre-v2 saves → "boxcar". */
+  readonly carType: CarType;
   readonly layers: readonly Layer[];
 }
 
-/** One entry in the arrangement: which car plays, and how many times before the
- *  song advances. `repeats` is 1 | 2 | 4. */
-export interface ArrangeCar {
+/** One slot in the assembled train — a placement of a `Part` in song order.
+ *  References a Part by id and can be duplicated (the same part can appear in
+ *  several slots). Each slot occupies exactly one bar of the song. */
+export interface TrainCar {
+  /** Unique per slot, minted by the UI when added (e.g. "inst_abc123"). */
+  readonly instanceId: string;
+  /** References a `Part.id`. */
   readonly partId: string;
-  readonly repeats: number;
+  /** Tarp state — when true the car is silenced as it passes the signal. */
+  readonly muted: boolean;
 }
 
 /** The serializable source of truth. Save/load round-trips this exactly. */
@@ -162,18 +181,15 @@ export interface Project {
   readonly name: string;
   readonly tempoBpm: number;
   readonly clips: Readonly<Record<string, Clip>>;
-  /** The cars (loops). At least one always exists; one car = today's single loop. */
+  /** The LIBRARY of built cars (loops). At least one always exists; one car =
+   *  today's single loop. Editing happens here (Workshop). */
   readonly parts: readonly Part[];
-  /** Song order — the cars in sequence with repeats. One car = `[{part,1}]`. */
-  readonly arrangement: readonly ArrangeCar[];
-  /** Which car Home is currently editing. */
+  /** The assembled song — Parts placed in order, one slot (bar) each. A car may
+   *  appear in several slots (repeats = multiple slots). The train rides the
+   *  oval on the Track and loops as a whole. */
+  readonly train: readonly TrainCar[];
+  /** Which car the Workshop is currently editing. */
   readonly activePartId: string;
-  /** Loop region for Ride (BeepBox-style loop bar), in song bars. `loopStart` is
-   *  the first looped bar; `loopLength` is how many bars loop. BOTH absent = loop
-   *  the whole song (and auto-grow as cars are added). Clamped on read via
-   *  `loopRegion`, so they never need patching when the arrangement changes. */
-  readonly loopStart?: number;
-  readonly loopLength?: number;
   /** Song-level musical settings driving the melody lanes + groove. */
   readonly scaleId: ScaleId;
   readonly keyId: KeyId;
@@ -230,25 +246,30 @@ export type Command =
   | { readonly type: "setActiveMachine"; readonly machineId: string }
   | { readonly type: "setActiveView"; readonly view: AppView }
   | { readonly type: "setActivePart"; readonly partId: string }
-  // Song Train (Capability 4). Cars are full independent loops; the arrangement
-  // plays them in order. `addCar` duplicates the active car (the kid tweaks the
-  // copy) and selects it; the rest target a car by id.
+  // Car library (the Workshop). Cars are full independent loops. `addCar`
+  // duplicates the active car into the library (the kid tweaks the copy) and
+  // selects it; the rest target a car by id. Adding a car to the LIBRARY does
+  // not place it in the song — that's `addToTrain` (the Yard).
   | { readonly type: "addCar"; readonly id: string }
   | { readonly type: "selectCar"; readonly partId: string }
   | { readonly type: "renameCar"; readonly partId: string; readonly name: string }
   | { readonly type: "removeCar"; readonly partId: string }
+  // Train assembly (the Yard). The train is the song: each TrainCar is one bar.
+  // `instanceId` is minted by the UI so the add is a pure command.
+  | { readonly type: "addToTrain"; readonly instanceId: string; readonly partId: string }
+  | { readonly type: "removeFromTrain"; readonly instanceId: string }
+  | { readonly type: "reorderTrain"; readonly instanceIds: readonly string[] }
+  | { readonly type: "muteCar"; readonly instanceId: string; readonly muted: boolean }
+  | { readonly type: "setCarType"; readonly partId: string; readonly carType: CarType }
   // Per-lane numbered patterns (BeepBox 0-9). All target a lane on the active
   // car. `addPattern` copies the live pattern into a fresh slot and makes it
   // active; `selectPattern` swaps slot N live; `removePattern` drops slot N
   // (never below one). The live pattern always stays in the lane's steps/notes.
-  // Loop bar (BeepBox-style): set the Ride loop region in song bars. Clamped to
-  // the song; a whole-song region clears back to "auto" (absent).
-  | { readonly type: "setLoop"; readonly start: number; readonly length: number }
   | { readonly type: "addPattern"; readonly layerId: string }
   | { readonly type: "selectPattern"; readonly layerId: string; readonly index: number }
   | { readonly type: "removePattern"; readonly layerId: string; readonly index: number }
-  // Duplicate a SPECIFIC car (not just the active one) into a fresh car, inserted
-  // right after the source in the arrangement, and select the copy. `id` is the
+  // Duplicate a SPECIFIC car (not just the active one) into a fresh library car,
+  // inserted right after the source in `parts`, and select the copy. `id` is the
   // new car's id (minted by the UI, like `addCar`).
   | { readonly type: "duplicateCar"; readonly partId: string; readonly id: string }
   // Copy a lane from the active car onto another car (Song Train: "send this

@@ -1,5 +1,6 @@
-import { FC, useRef } from "react";
-import { useApp } from "../app/context.tsx";
+import { FC, useRef, useState } from "react";
+import { useApp, useProject } from "../app/context.tsx";
+import { liveTrain } from "../core/project-state.ts";
 import { AppView } from "../core/types.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { MapScene } from "../game/scenes/MapScene.ts";
@@ -16,8 +17,20 @@ const DESTINATIONS: { key: Extract<AppView, "workshop" | "yard" | "track">; labe
 
 export const Map: FC = () => {
   const { dispatch } = useApp();
+  const project = useProject();
   const wrapRef = useRef<HTMLDivElement>(null);
   const rect = useContainedRect(wrapRef, SCENE_ASPECT);
+  const [toast, setToast] = useState<string | null>(null);
+
+  // Track needs an assembled train; nudge the kid to the Yard if it's empty.
+  const go = (key: AppView): void => {
+    if (key === "track" && liveTrain(project).length === 0) {
+      setToast("Build a train first! Add cars in the Yard.");
+      window.setTimeout(() => setToast(null), 2200);
+      return;
+    }
+    dispatch({ type: "setActiveView", view: key });
+  };
 
   return (
     <div
@@ -50,7 +63,7 @@ export const Map: FC = () => {
           key={d.key}
           aria-label={d.label}
           title={d.label}
-          onClick={() => dispatch({ type: "setActiveView", view: d.key })}
+          onClick={() => go(d.key)}
           style={{
             ...regionStyle(rect, d.region),
             zIndex: 10,
@@ -70,6 +83,28 @@ export const Map: FC = () => {
           }}
         />
       ))}
+
+      {/* "Build a train first" toast */}
+      {toast && (
+        <div style={{
+          position: "absolute",
+          left: "50%",
+          bottom: "8%",
+          transform: "translateX(-50%)",
+          zIndex: 30,
+          padding: "10px 16px",
+          background: "rgba(0,0,0,0.82)",
+          border: "2px solid #ffd166",
+          borderRadius: 8,
+          color: "#ffd166",
+          font: "400 10px/1.6 var(--font-label, 'Press Start 2P')",
+          letterSpacing: "1px",
+          textAlign: "center",
+          pointerEvents: "none",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 };

@@ -5,7 +5,7 @@
 // serialized to storage (the kidpix "undo persists across reloads" pattern).
 
 import {
-  type ArrangeCar,
+  type CarType,
   type Clip,
   type Command,
   type Layer,
@@ -15,6 +15,8 @@ import {
   type Project,
   type Roll,
   type StepNote,
+  type TrainCar,
+  CAR_TYPES,
   MAX_BPM,
   MAX_CARS,
   MAX_LAYERS,
@@ -121,8 +123,9 @@ export function makePart(
   name: string,
   color: string,
   layers: readonly Layer[] = [],
+  carType: CarType = "boxcar",
 ): Part {
-  return { id, name, color, layers };
+  return { id, name, color, carType, layers };
 }
 
 export function emptyProject(id: string, name = "My Beat"): Project {
@@ -133,7 +136,8 @@ export function emptyProject(id: string, name = "My Beat"): Project {
     tempoBpm: 100,
     clips: {},
     parts: [makePart(partId, "Loop 1", CAR_COLORS[0] as string)],
-    arrangement: [{ partId, repeats: 1 }],
+    // The default car is already on the train so the app is rideable on boot.
+    train: [{ instanceId: `${partId}-inst-1`, partId, muted: false }],
     activePartId: partId,
     scaleId: "magic",
     keyId: "C",
@@ -141,6 +145,17 @@ export function emptyProject(id: string, name = "My Beat"): Project {
     activeMachineId: "looper-stage", // boot into Home, the stacked mix
     activeView: "map",
   };
+}
+
+/** Pick a car's sprite family from its dominant lane kind, so a freshly-built
+ *  car gets a sensible sprite without the kid choosing one: pure drum → hopper,
+ *  pure melody → tanker, mixed/empty → boxcar. The kid can override in Workshop. */
+function carTypeFromLayers(layers: readonly Layer[]): CarType {
+  const drums = layers.filter((l) => l.kind === "drum").length;
+  const melody = layers.filter((l) => l.kind === "melody").length;
+  if (drums > 0 && melody === 0) return "hopper";
+  if (melody > 0 && drums === 0) return "tanker";
+  return "boxcar";
 }
 
 // ── Part (car) selectors + active-part editing ───────────────────────────────
@@ -156,48 +171,33 @@ export function activeLayers(state: Project): readonly Layer[] {
   return activePart(state).layers;
 }
 
-/** Total length of the arrangement in bars — the sum of each car's repeats
- *  (every car is a one-bar loop). At least 1 (a single car). Only arrangement
- *  entries pointing at a real car count, so a stale entry can't inflate it. */
-export function songBars(state: Project): number {
+/** Train slots pointing at a real, existing car (a stale slot can't sound or
+ *  inflate the song length). The audio + visual readers all use this. */
+export function liveTrain(state: Project): readonly TrainCar[] {
   const ids = new Set(state.parts.map((p) => p.id));
-  const bars = state.arrangement
-    .filter((c) => ids.has(c.partId))
-    .reduce((n, c) => n + Math.max(1, c.repeats), 0);
-  return Math.max(1, bars);
+  return state.train.filter((c) => ids.has(c.partId));
 }
 
-/** The Ride loop region, clamped to the current song. Absent fields default to
- *  the whole song (and auto-grow as cars change, since clamping happens here). */
-export function loopRegion(state: Project): { start: number; length: number } {
-  const total = songBars(state);
-  const start = clamp(Math.floor(state.loopStart ?? 0), 0, Math.max(0, total - 1));
-  const length = clamp(Math.floor(state.loopLength ?? total), 1, total - start);
-  return { start, length };
+/** Total length of the song in bars — one bar per live train slot. At least 1
+ *  (a single car), so the schedulers/visuals never divide by zero. */
+export function songBars(state: Project): number {
+  return Math.max(1, liveTrain(state).length);
 }
 
-/** The arrangement entry covering absolute song bar `bar`, with its bar span.
- *  null when `bar` is past the end. (Cars span `repeats` bars each.) */
+/** The car (train slot) covering absolute song bar `bar`, with its bar span
+ *  (always 1 — each slot is one bar). null when `bar` is past the end. */
 export function carAtBar(
   state: Project,
   bar: number,
-): { index: number; startBar: number; reps: number } | null {
-  let acc = 0;
-  for (let i = 0; i < state.arrangement.length; i++) {
-    const reps = Math.max(1, state.arrangement[i]!.repeats);
-    if (bar < acc + reps) return { index: i, startBar: acc, reps };
-    acc += reps;
-  }
-  return null;
+): { index: number; car: TrainCar; startBar: number } | null {
+  const train = liveTrain(state);
+  if (bar < 0 || bar >= train.length) return null;
+  return { index: bar, car: train[bar]!, startBar: bar };
 }
 
-/** First song bar of arrangement entry `index` (sum of earlier cars' repeats). */
-export function carStartBar(state: Project, index: number): number {
-  let acc = 0;
-  for (let i = 0; i < index && i < state.arrangement.length; i++) {
-    acc += Math.max(1, state.arrangement[i]!.repeats);
-  }
-  return acc;
+/** The Part a train slot plays, or undefined if the slot is stale. */
+export function partForCar(state: Project, car: TrainCar): Part | undefined {
+  return state.parts.find((p) => p.id === car.partId);
 }
 
 /** Rewrite the active car's lanes via `fn`; identity-stable (no-op `fn` →
@@ -704,22 +704,66 @@ export function reduce(state: Project, cmd: Command): Project {
     case "setActivePart":
       return { ...state, activePartId: cmd.partId };
 
-    // Set the Ride loop region (bars), clamped to the song. A whole-song region
-    // clears back to "auto" (absent) so it keeps covering the song as cars grow.
-    case "setLoop": {
-      const total = songBars(state);
-      const start = clamp(Math.floor(cmd.start), 0, Math.max(0, total - 1));
-      const length = clamp(Math.floor(cmd.length), 1, total - start);
-      if (start === 0 && length >= total) {
-        if (state.loopStart === undefined && state.loopLength === undefined) return state;
-        const { loopStart: _s, loopLength: _l, ...rest } = state;
-        return rest;
-      }
-      if (state.loopStart === start && state.loopLength === length) return state;
-      return { ...state, loopStart: start, loopLength: length };
+    // ── Train assembly (the Yard) ────────────────────────────────────────────
+
+    // Append a car to the end of the train (one new bar). No-op on an unknown
+    // car or a duplicate instanceId (so a double-tap can't mint two slots).
+    case "addToTrain": {
+      if (!state.parts.some((p) => p.id === cmd.partId)) return state;
+      if (state.train.some((c) => c.instanceId === cmd.instanceId)) return state;
+      const car: TrainCar = {
+        instanceId: cmd.instanceId,
+        partId: cmd.partId,
+        muted: false,
+      };
+      return { ...state, train: [...state.train, car] };
     }
 
-    // ── Song Train (cars + arrangement) ──────────────────────────────────────
+    // Remove a slot by instanceId. No-op if absent (identity-stable).
+    case "removeFromTrain": {
+      const train = state.train.filter((c) => c.instanceId !== cmd.instanceId);
+      if (train.length === state.train.length) return state;
+      return { ...state, train };
+    }
+
+    // Reorder the train to match the given instanceId order. Slots not named in
+    // the list keep their relative order at the end; unknown ids are ignored.
+    case "reorderTrain": {
+      const order = new Map(cmd.instanceIds.map((id, i) => [id, i]));
+      const fallback = state.train.length;
+      const train = [...state.train].sort(
+        (a, b) =>
+          (order.get(a.instanceId) ?? fallback) -
+          (order.get(b.instanceId) ?? fallback),
+      );
+      if (train.every((c, i) => c === state.train[i])) return state; // unchanged
+      return { ...state, train };
+    }
+
+    // Tarp a car on/off (mutes it as it passes the signal). No-op if unchanged.
+    case "muteCar": {
+      let changed = false;
+      const train = state.train.map((c) => {
+        if (c.instanceId !== cmd.instanceId || c.muted === cmd.muted) return c;
+        changed = true;
+        return { ...c, muted: cmd.muted };
+      });
+      return changed ? { ...state, train } : state;
+    }
+
+    // Pick a car's sprite family (purely cosmetic). No-op on unknown / unchanged.
+    case "setCarType": {
+      if (!CAR_TYPES.includes(cmd.carType)) return state;
+      let changed = false;
+      const parts = state.parts.map((p) => {
+        if (p.id !== cmd.partId || p.carType === cmd.carType) return p;
+        changed = true;
+        return { ...p, carType: cmd.carType };
+      });
+      return changed ? { ...state, parts } : state;
+    }
+
+    // ── Car library (Workshop) ───────────────────────────────────────────────
 
     // Duplicate the active car into a fresh one (its own id + color, copied
     // lanes), append it to the arrangement, and open it for editing. The copy
@@ -730,16 +774,19 @@ export function reduce(state: Project, cmd: Command): Project {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
       if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
       const src = activePart(state);
-      // Color is derived from the dominant lane kind so the car block's color
-      // tells the kid what kind of sounds are inside (drum=red, melody=teal, mixed=grape).
+      // Color + sprite are derived from the dominant lane kind so the car reads
+      // as what it IS at a glance (drum=red/hopper, melody=teal/tanker, mixed=grape/boxcar).
       const color = carColorFromLayers(src.layers, state.parts.length);
-      const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
-        ...src.layers,
-      ]);
+      const part = makePart(
+        cmd.id,
+        `Loop ${state.parts.length + 1}`,
+        color,
+        [...src.layers],
+        carTypeFromLayers(src.layers),
+      );
       return {
         ...state,
         parts: [...state.parts, part],
-        arrangement: [...state.arrangement, { partId: cmd.id, repeats: 1 }],
         activePartId: cmd.id,
       };
     }
@@ -763,64 +810,48 @@ export function reduce(state: Project, cmd: Command): Project {
       };
     }
 
-    // Drop a car, keeping ≥1 always. Clips stay shared (a clip used elsewhere
-    // must survive); an orphaned clip is left harmlessly. If the removed car was
-    // active, select its nearest neighbor.
+    // Drop a library car, keeping ≥1 always. Cascades to the train: every slot
+    // that placed this car is removed too (a slot can't point at a gone car).
+    // Clips stay shared (a clip used elsewhere must survive). If the removed car
+    // was active, select its nearest neighbor.
     case "removeCar": {
       if (state.parts.length <= 1) return state; // never delete the last car
       const idx = state.parts.findIndex((p) => p.id === cmd.partId);
       if (idx < 0) return state;
       const parts = state.parts.filter((p) => p.id !== cmd.partId);
-      const arrangement = state.arrangement.filter((c) => c.partId !== cmd.partId);
+      const train = state.train.filter((c) => c.partId !== cmd.partId);
       const activePartId =
         state.activePartId === cmd.partId
           ? (parts[Math.min(idx, parts.length - 1)] as Part).id
           : state.activePartId;
-      return {
-        ...state,
-        parts,
-        arrangement:
-          arrangement.length > 0
-            ? arrangement
-            : parts.map((p) => ({ partId: p.id, repeats: 1 })),
-        activePartId,
-      };
+      return { ...state, parts, train, activePartId };
     }
 
-    // Duplicate a specific car: clone its lanes into a fresh car, insert the
-    // copy right after the source (both in `parts` and the arrangement), select
-    // it. Shares clip ids + immutable layer objects — cars diverge copy-on-write
-    // (every lane edit is scoped to the active car via editActivePart).
+    // Duplicate a specific library car: clone its lanes into a fresh car,
+    // inserted right after the source in `parts`, and select it. Shares clip ids
+    // + immutable layer objects — cars diverge copy-on-write (every lane edit is
+    // scoped to the active car via editActivePart). Does NOT place it in the
+    // train; that's the Yard's job (addToTrain).
     case "duplicateCar": {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
       if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
       const idx = state.parts.findIndex((p) => p.id === cmd.partId);
       if (idx < 0) return state;
       const src = state.parts[idx]!;
-      // Derive color from the source car's lanes so the duplicate immediately
-      // reads as the same instrument family.
-      const color = carColorFromLayers(src.layers, state.parts.length);
-      const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
-        ...src.layers,
-      ]);
+      // Carry the source car's color + sprite so the duplicate reads identically.
+      const part = makePart(
+        cmd.id,
+        `Loop ${state.parts.length + 1}`,
+        src.color,
+        [...src.layers],
+        src.carType,
+      );
       const parts = [
         ...state.parts.slice(0, idx + 1),
         part,
         ...state.parts.slice(idx + 1),
       ];
-      // Insert the new car right after the source's FIRST arrangement entry; if
-      // the source somehow isn't arranged, append (keeps it playable).
-      const ai = state.arrangement.findIndex((c) => c.partId === cmd.partId);
-      const entry: ArrangeCar = { partId: cmd.id, repeats: 1 };
-      const arrangement =
-        ai < 0
-          ? [...state.arrangement, entry]
-          : [
-              ...state.arrangement.slice(0, ai + 1),
-              entry,
-              ...state.arrangement.slice(ai + 1),
-            ];
-      return { ...state, parts, arrangement, activePartId: cmd.id };
+      return { ...state, parts, activePartId: cmd.id };
     }
 
     // Send a lane to another car (copy). The source lane lives on the active
@@ -891,7 +922,6 @@ export function reduce(state: Project, cmd: Command): Project {
         return withPatterns(l, active, rest, nextIdx);
       });
   }
-  return state;
 }
 
 // ── Undo/redo wrapper ──────────────────────────────────────────────────────
@@ -949,20 +979,32 @@ export function deserialize(json: string): Project {
 const SCALE_SET = new Set<ScaleId>(["magic", "rainbow"]);
 const KEY_SET = new Set<KeyId>(["C", "D", "F", "G", "A"]);
 
-/** Normalize a raw car (Part): complete its lanes through makeLayer. */
+/** Normalize a raw car (Part): complete its lanes through makeLayer and pin a
+ *  sprite (pre-v2 saves predate `carType` → derive from the lanes). */
 function normalizePart(raw: Partial<Part>, fallbackColor: string, index: number): Part {
   const name =
     typeof raw.name === "string" && raw.name.trim() ? raw.name : `Loop ${index + 1}`;
   const color = typeof raw.color === "string" ? raw.color : fallbackColor;
   const layers = (raw.layers ?? []).map((l) => makeLayer(l as Layer));
-  return makePart(raw.id ?? `part-${index + 1}`, name, color, layers);
+  const carType: CarType =
+    raw.carType && CAR_TYPES.includes(raw.carType)
+      ? raw.carType
+      : carTypeFromLayers(layers);
+  return makePart(raw.id ?? `part-${index + 1}`, name, color, layers, carType);
 }
 
 /** Back-fill fields that older saves predate so any past jam still loads and
  *  plays. Handles the pre-Song-Train shape (flat `layers`) by wrapping it in a
  *  single car, and validates parts/arrangement/activePartId of newer saves. */
+/** Legacy save fields predating the train model: a flat `layers` (pre-Song-Train)
+ *  and an `arrangement` of `{ partId, repeats }` (pre-v2). Migrated forward. */
+interface LegacyFields {
+  readonly layers?: readonly Layer[];
+  readonly arrangement?: readonly { readonly partId: string; readonly repeats?: number }[];
+}
+
 export function normalizeProject(
-  raw: Partial<Project> & { readonly layers?: readonly Layer[] },
+  raw: Partial<Project> & LegacyFields,
 ): Project {
   const id = raw.id ?? "proj";
   const base = emptyProject(id, raw.name ?? "My Beat");
@@ -980,17 +1022,47 @@ export function normalizeProject(
     normalizePart(p, CAR_COLORS[i % CAR_COLORS.length] as string, i),
   );
 
-  // Arrangement: keep only entries pointing at a real car; default to each car
-  // once, in order. Repeats clamp to 1 | 2 | 4.
+  // Train: prefer a v2 `train` (flat slots); else migrate a pre-v2 `arrangement`
+  // by expanding each entry's `repeats` (1|2|4) into that many one-bar slots;
+  // else default to each library car once, in order. Slots minted here get a
+  // deterministic instanceId (no RNG in the core); only slots pointing at a real
+  // car survive. An empty result still places each car once (always rideable).
   const partIds = new Set(parts.map((p) => p.id));
-  let arrangement: ArrangeCar[] = (raw.arrangement ?? [])
-    .filter((c) => c && partIds.has(c.partId))
-    .map((c) => ({
-      partId: c.partId,
-      repeats: c.repeats === 2 || c.repeats === 4 ? c.repeats : 1,
+  let train: TrainCar[];
+  if (Array.isArray(raw.train) && raw.train.length > 0) {
+    train = raw.train
+      .filter((c) => c && partIds.has(c.partId))
+      .map((c, i) => ({
+        instanceId:
+          typeof c.instanceId === "string" && c.instanceId
+            ? c.instanceId
+            : `${c.partId}-inst-${i + 1}`,
+        partId: c.partId,
+        muted: c.muted === true,
+      }));
+  } else if (Array.isArray(raw.arrangement) && raw.arrangement.length > 0) {
+    train = [];
+    raw.arrangement
+      .filter((c) => c && partIds.has(c.partId))
+      .forEach((c) => {
+        const reps = c.repeats === 2 || c.repeats === 4 ? c.repeats : 1;
+        for (let r = 0; r < reps; r++) {
+          train.push({
+            instanceId: `${c.partId}-r${train.length + 1}`,
+            partId: c.partId,
+            muted: false,
+          });
+        }
+      });
+  } else {
+    train = [];
+  }
+  if (train.length === 0) {
+    train = parts.map((p, i) => ({
+      instanceId: `${p.id}-inst-${i + 1}`,
+      partId: p.id,
+      muted: false,
     }));
-  if (arrangement.length === 0) {
-    arrangement = parts.map((p) => ({ partId: p.id, repeats: 1 }));
   }
 
   const activePartId =
@@ -1010,13 +1082,9 @@ export function normalizeProject(
         : base.tempoBpm,
     clips: raw.clips ?? {},
     parts,
-    arrangement,
+    train,
     activePartId,
     activeMachineId: raw.activeMachineId ?? base.activeMachineId,
     activeView: raw.activeView ?? base.activeView,
-    // Loop region: carry raw values through; `loopRegion` clamps them on read,
-    // so a save with a stale region against a changed arrangement still loads.
-    ...(typeof raw.loopStart === "number" ? { loopStart: raw.loopStart } : {}),
-    ...(typeof raw.loopLength === "number" ? { loopLength: raw.loopLength } : {}),
   };
 }

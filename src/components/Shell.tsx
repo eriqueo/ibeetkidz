@@ -14,9 +14,7 @@ import { usePhoneLayout } from "../app/use-viewport.ts";
 import {
   TOOLS,
   LoopSelectionProvider,
-  TracksStrip,
   TrainModeProvider,
-  useTrainVisible,
   type ToolDescriptor,
 } from "../machines/tools.tsx";
 import { VizPanel } from "./VizPanel.tsx";
@@ -261,7 +259,6 @@ export const Shell: FC = () => {
                 onToggleWatch={() => setWatching((w) => !w)}
               />
             </div>
-            <TracksRegion />
             {sheetRail && Rail && (
               <RailSheet
                 toolId={active.id}
@@ -278,7 +275,3 @@ export const Shell: FC = () => {
     </div>
   );
 };
-
-// The Tracks strip lives below the play bar as its own flex row, mounted only
-// once the kid has a train (≥2 cars or after "Send to Tracks").
-const TracksRegion: FC = () => (useTrainVisible() ? <TracksStrip /> : null);

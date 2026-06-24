@@ -6,8 +6,8 @@ import {
   activeLayers,
   activePart,
   carAtBar,
-  carStartBar,
-  loopRegion,
+  liveTrain,
+  songBars,
   emptyProject,
   initHistory,
   makeLayer,
@@ -426,10 +426,13 @@ describe("melody + song settings", () => {
 });
 
 describe("Song Train structure (Inc 0 — one car, invisible)", () => {
-  it("a fresh project is a single car holding the loop", () => {
+  it("a fresh project is a single car, already on the train", () => {
     const s = emptyProject("p");
     expect(s.parts).toHaveLength(1);
-    expect(s.arrangement).toEqual([{ partId: s.parts[0]!.id, repeats: 1 }]);
+    expect(s.parts[0]!.carType).toBe("boxcar");
+    expect(s.train).toEqual([
+      { instanceId: `${s.parts[0]!.id}-inst-1`, partId: s.parts[0]!.id, muted: false },
+    ]);
     expect(s.activePartId).toBe(s.parts[0]!.id);
     expect(activePart(s).layers).toBe(activeLayers(s));
   });
@@ -450,13 +453,13 @@ describe("Song Train structure (Inc 0 — one car, invisible)", () => {
     });
     const p = deserialize(legacy);
     expect(p.parts).toHaveLength(1);
-    expect(p.arrangement).toHaveLength(1);
+    expect(p.train).toHaveLength(1); // the one car is placed on the train
     expect(p.activePartId).toBe(p.parts[0]!.id);
     expect(activeLayers(p)).toHaveLength(1); // the flat lane survived into the car
     expect(activeLayers(p)[0]?.steps[0]).toEqual({ row: 0, length: 1 });
   });
 
-  it("round-trips a multi-car project (parts + arrangement)", () => {
+  it("migrates a pre-v2 arrangement (repeats) into a flat train", () => {
     const proj = deserialize(
       JSON.stringify({
         id: "song", name: "Song", tempoBpm: 100, clips: {},
@@ -470,25 +473,45 @@ describe("Song Train structure (Inc 0 — one car, invisible)", () => {
       }),
     );
     expect(proj.parts.map((p) => p.name)).toEqual(["Verse", "Chorus"]);
-    expect(proj.arrangement).toEqual([
-      { partId: "a", repeats: 2 },
-      { partId: "b", repeats: 1 },
-    ]);
+    // a×2 + b×1 expands into three one-bar slots, in order.
+    expect(proj.train.map((c) => c.partId)).toEqual(["a", "a", "b"]);
+    expect(proj.train.every((c) => c.muted === false)).toBe(true);
+    expect(new Set(proj.train.map((c) => c.instanceId)).size).toBe(3); // unique ids
     expect(proj.activePartId).toBe("b");
   });
 
-  it("repairs a dangling activePartId and bad repeats", () => {
+  it("round-trips a v2 train save (instanceId + muted)", () => {
+    const proj = deserialize(
+      JSON.stringify({
+        id: "song", name: "Song", tempoBpm: 100, clips: {},
+        parts: [{ id: "a", name: "Verse", color: "#fff", carType: "tanker", layers: [] }],
+        train: [
+          { instanceId: "i1", partId: "a", muted: false },
+          { instanceId: "i2", partId: "a", muted: true },
+        ],
+        activePartId: "a", scaleId: "magic", keyId: "C", swing: 0,
+        activeMachineId: "looper-stage",
+      }),
+    );
+    expect(proj.parts[0]!.carType).toBe("tanker");
+    expect(proj.train).toEqual([
+      { instanceId: "i1", partId: "a", muted: false },
+      { instanceId: "i2", partId: "a", muted: true },
+    ]);
+  });
+
+  it("repairs a dangling activePartId and drops stale arrangement entries", () => {
     const p = deserialize(
       JSON.stringify({
         id: "x", name: "X", tempoBpm: 100, clips: {},
         parts: [{ id: "a", name: "A", color: "#fff", layers: [] }],
-        arrangement: [{ partId: "ghost", repeats: 3 }, { partId: "a", repeats: 7 }],
+        arrangement: [{ partId: "ghost", repeats: 3 }, { partId: "a", repeats: 1 }],
         activePartId: "ghost", scaleId: "magic", keyId: "C", swing: 0,
         activeMachineId: "looper-stage",
       }),
     );
     expect(p.activePartId).toBe("a"); // ghost → first car
-    expect(p.arrangement).toEqual([{ partId: "a", repeats: 1 }]); // ghost dropped, 7 → 1
+    expect(p.train.map((c) => c.partId)).toEqual(["a"]); // ghost dropped
   });
 });
 
@@ -612,10 +635,9 @@ describe("Song Train cars", () => {
 
     expect(s.parts).toHaveLength(2);
     expect(s.activePartId).toBe("car-2"); // opens the copy for editing
-    expect(s.arrangement).toEqual([
-      { partId: car1, repeats: 1 },
-      { partId: "car-2", repeats: 1 },
-    ]);
+    // addCar adds to the LIBRARY only — the train is untouched (that's the Yard's job).
+    expect(s.train).toEqual(base.train);
+    expect(car1).toBe(base.activePartId);
     // The copy carries the same lanes (with the hit), but its own array.
     expect(activeLayers(s).map((l) => l.id)).toEqual(["d1"]);
     expect(activeLayers(s)[0]?.steps[0]).toEqual({ row: 0, length: 1 });
@@ -665,13 +687,18 @@ describe("Song Train cars", () => {
     expect(reduce(s, { type: "renameCar", partId: "ghost", name: "x" })).toBe(s);
   });
 
-  it("removeCar drops the car + its arrangement entries, keeps clips, picks a neighbor", () => {
+  it("removeCar drops the car + cascades to its train slots, keeps clips, picks a neighbor", () => {
     let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
     s = reduce(s, { type: "addCar", id: "car-3" }); // active = car-3
     const car1 = s.parts[0]!.id;
+    // Place car-3 on the train twice so the cascade has something to remove.
+    s = reduce(s, { type: "addToTrain", instanceId: "t3a", partId: "car-3" });
+    s = reduce(s, { type: "addToTrain", instanceId: "t3b", partId: "car-3" });
+    s = reduce(s, { type: "addToTrain", instanceId: "t2", partId: "car-2" });
     s = reduce(s, { type: "removeCar", partId: "car-3" });
     expect(s.parts.map((p) => p.id)).toEqual([car1, "car-2"]);
-    expect(s.arrangement.map((c) => c.partId)).toEqual([car1, "car-2"]);
+    // Both car-3 slots are gone; the car-1 default slot + car-2 slot remain.
+    expect(s.train.map((c) => c.partId)).toEqual([car1, "car-2"]);
     expect(s.activePartId).toBe("car-2"); // neighbor of the removed active car
     expect(s.clips["d1"]).toBeDefined(); // shared clip survives
   });
@@ -686,9 +713,8 @@ describe("Song Train cars", () => {
     let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
     const car1 = s.parts[0]!.id;
     s = reduce(s, { type: "duplicateCar", partId: car1, id: "car-dup" });
-    // Inserted right AFTER the source in both parts + arrangement.
+    // Inserted right AFTER the source in the library (parts); train untouched.
     expect(s.parts.map((p) => p.id)).toEqual([car1, "car-dup", "car-2"]);
-    expect(s.arrangement.map((c) => c.partId)).toEqual([car1, "car-dup", "car-2"]);
     expect(s.activePartId).toBe("car-dup"); // opens the copy
     // Carries the source's lanes (with the hit), as its own array.
     expect(activeLayers(s).map((l) => l.id)).toEqual(["d1"]);
@@ -761,64 +787,86 @@ describe("Song Train cars", () => {
     const s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
     const back = deserialize(JSON.stringify(s));
     expect(back.parts.map((p) => p.id)).toEqual(s.parts.map((p) => p.id));
-    expect(back.arrangement).toEqual(s.arrangement);
+    expect(back.train).toEqual(s.train);
     expect(back.activePartId).toBe(s.activePartId);
   });
 });
 
-describe("loop bar (Ride loop region)", () => {
-  // Build an N-car song (each car carries the same single-hit lane).
-  const songWith = (cars: number) => {
-    let s = reduce(emptyProject("lp"), { type: "addClip", clip: clip("d1") });
+describe("train assembly (the Yard)", () => {
+  // A library with three cars; the train starts with just the default car's slot.
+  const threeCarLibrary = () => {
+    let s = reduce(emptyProject("yd"), { type: "addClip", clip: clip("d1") });
     s = reduce(s, { type: "addLayer", layer: layer("d1", "d1") });
     s = reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
-    for (let i = 2; i <= cars; i++) s = reduce(s, { type: "addCar", id: `car-${i}` });
+    s = reduce(s, { type: "addCar", id: "car-2" });
+    s = reduce(s, { type: "addCar", id: "car-3" });
     return s;
   };
 
-  it("loopRegion defaults to the whole song and clamps stale values", () => {
-    const s = songWith(3); // 3 bars
-    expect(loopRegion(s)).toEqual({ start: 0, length: 3 });
-    // Stale/oversized raw values clamp into range.
-    expect(loopRegion({ ...s, loopStart: 5, loopLength: 9 })).toEqual({ start: 2, length: 1 });
-    expect(loopRegion({ ...s, loopStart: 1, loopLength: 9 })).toEqual({ start: 1, length: 2 });
+  it("addToTrain appends a slot; no-ops on unknown car or duplicate instanceId", () => {
+    let s = threeCarLibrary();
+    const before = s.train.length;
+    s = reduce(s, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    expect(s.train).toHaveLength(before + 1);
+    expect(s.train.at(-1)).toEqual({ instanceId: "i2", partId: "car-2", muted: false });
+    expect(reduce(s, { type: "addToTrain", instanceId: "i2", partId: "car-3" })).toBe(s); // dup id
+    expect(reduce(s, { type: "addToTrain", instanceId: "i9", partId: "ghost" })).toBe(s); // unknown car
   });
 
-  it("setLoop stores a sub-region; whole-song clears back to auto (absent)", () => {
-    let s = songWith(4);
-    s = reduce(s, { type: "setLoop", start: 1, length: 2 });
-    expect(s.loopStart).toBe(1);
-    expect(s.loopLength).toBe(2);
-    expect(loopRegion(s)).toEqual({ start: 1, length: 2 });
-    // Selecting the whole song again clears the explicit fields (so it auto-grows).
-    s = reduce(s, { type: "setLoop", start: 0, length: 4 });
-    expect(s.loopStart).toBeUndefined();
-    expect(s.loopLength).toBeUndefined();
+  it("removeFromTrain drops by instanceId; no-op when absent", () => {
+    let s = reduce(threeCarLibrary(), { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    const n = s.train.length;
+    s = reduce(s, { type: "removeFromTrain", instanceId: "i2" });
+    expect(s.train).toHaveLength(n - 1);
+    expect(s.train.some((c) => c.instanceId === "i2")).toBe(false);
+    expect(reduce(s, { type: "removeFromTrain", instanceId: "nope" })).toBe(s);
   });
 
-  it("setLoop clamps start/length and is a no-op when unchanged", () => {
-    let s = songWith(3);
-    s = reduce(s, { type: "setLoop", start: 2, length: 5 }); // length clamps to 1
-    expect(loopRegion(s)).toEqual({ start: 2, length: 1 });
-    expect(reduce(s, { type: "setLoop", start: 2, length: 1 })).toBe(s); // unchanged
+  it("reorderTrain reorders by the given instanceId list", () => {
+    let s = threeCarLibrary();
+    s = reduce(s, { type: "addToTrain", instanceId: "a", partId: "car-2" });
+    s = reduce(s, { type: "addToTrain", instanceId: "b", partId: "car-3" });
+    const first = s.train[0]!.instanceId; // the default car's slot
+    s = reduce(s, { type: "reorderTrain", instanceIds: ["b", "a", first] });
+    expect(s.train.map((c) => c.instanceId)).toEqual(["b", "a", first]);
+    // Unchanged order is a no-op (identity-stable).
+    expect(reduce(s, { type: "reorderTrain", instanceIds: ["b", "a", first] })).toBe(s);
   });
 
-  it("carAtBar / carStartBar walk the arrangement (honoring repeats)", () => {
-    let s = songWith(2);
+  it("muteCar toggles the tarp flag; no-op when unchanged", () => {
+    let s = reduce(threeCarLibrary(), { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    s = reduce(s, { type: "muteCar", instanceId: "i2", muted: true });
+    expect(s.train.find((c) => c.instanceId === "i2")!.muted).toBe(true);
+    expect(reduce(s, { type: "muteCar", instanceId: "i2", muted: true })).toBe(s); // unchanged
+    expect(reduce(s, { type: "muteCar", instanceId: "ghost", muted: true })).toBe(s); // unknown
+  });
+
+  it("setCarType changes a car's sprite; no-op when unchanged/unknown", () => {
+    let s = threeCarLibrary();
+    s = reduce(s, { type: "setCarType", partId: "car-2", carType: "flatcar" });
+    expect(s.parts.find((p) => p.id === "car-2")!.carType).toBe("flatcar");
+    expect(reduce(s, { type: "setCarType", partId: "car-2", carType: "flatcar" })).toBe(s);
+    expect(reduce(s, { type: "setCarType", partId: "ghost", carType: "tanker" })).toBe(s);
+  });
+
+  it("songBars / carAtBar / liveTrain walk the assembled train (one bar per slot)", () => {
+    let s = threeCarLibrary(); // train = [default car's slot]
     const car1 = s.parts[0]!.id;
-    s = { ...s, arrangement: [{ partId: car1, repeats: 2 }, { partId: "car-2", repeats: 1 }] };
-    expect(carAtBar(s, 0)).toEqual({ index: 0, startBar: 0, reps: 2 });
-    expect(carAtBar(s, 1)).toEqual({ index: 0, startBar: 0, reps: 2 });
-    expect(carAtBar(s, 2)).toEqual({ index: 1, startBar: 2, reps: 1 });
+    s = reduce(s, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    s = reduce(s, { type: "addToTrain", instanceId: "i3", partId: "car-3" });
+    expect(songBars(s)).toBe(3);
+    expect(liveTrain(s).map((c) => c.partId)).toEqual([car1, "car-2", "car-3"]);
+    expect(carAtBar(s, 0)).toEqual({ index: 0, car: s.train[0], startBar: 0 });
+    expect(carAtBar(s, 2)).toEqual({ index: 2, car: s.train[2], startBar: 2 });
     expect(carAtBar(s, 3)).toBeNull();
-    expect(carStartBar(s, 1)).toBe(2);
   });
 
-  it("a stored loop region round-trips through serialize → deserialize", () => {
-    let s = songWith(4);
-    s = reduce(s, { type: "setLoop", start: 1, length: 2 });
-    const back = deserialize(serialize(s));
-    expect(loopRegion(back)).toEqual({ start: 1, length: 2 });
+  it("liveTrain ignores slots pointing at a removed car", () => {
+    let s = reduce(threeCarLibrary(), { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    // Forge a stale slot (as a corrupt save might) and confirm it's filtered.
+    s = { ...s, train: [...s.train, { instanceId: "x", partId: "ghost", muted: false }] };
+    expect(liveTrain(s).some((c) => c.partId === "ghost")).toBe(false);
+    expect(songBars(s)).toBe(2);
   });
 });
 
