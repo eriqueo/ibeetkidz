@@ -551,3 +551,254 @@ input[type="range"]::-moz-range-thumb {
 
 /* Keep the app's hidden-machine contract intact. */
 [hidden] { display: none !important; }
+
+/* ============================================================================
+   SONG TRAIN REDESIGN — Replacing the green oval with the dark SNES track
+   Matches the design system's Workshop/Yard physical pixel aesthetic.
+   ========================================================================== */
+
+/* The outer container for the tracks strip */
+.tracks-strip {
+  background: var(--paper-2);
+  border-top: 3px solid var(--edge);
+  padding: 0.5rem 0.5rem 0.75rem;
+}
+
+.tracks-head {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 1.1rem;
+  color: var(--ink);
+  margin-bottom: 0.5rem;
+  text-shadow: 0 2px 0 var(--edge);
+}
+
+/* The scrollable body that holds both the cars and the loop track */
+.song-train-body {
+  background: #1d1924; /* deep night trackbed */
+  border: 3px solid var(--edge);
+  border-radius: 12px;
+  box-shadow: inset 0 4px 12px rgba(0,0,0,0.6), 0 2px 0 rgba(255,255,255,0.05);
+  padding: 1.5rem 1rem 0.5rem;
+  position: relative;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* subtle dark grid pattern for the ground */
+  background-image: radial-gradient(rgba(255, 255, 255, 0.03) 2px, transparent 2px);
+  background-size: 24px 24px;
+}
+
+/* ── 1. The Train Cars (.tracks-cars & .car-block) ── */
+.tracks-cars {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.15rem; /* tight coupling */
+  min-width: max-content;
+  position: relative;
+  z-index: 10;
+  padding-bottom: 0.2rem;
+}
+
+/* Base car block — replacing the soft gradient box with a hard SNES pixel car */
+.car-block {
+  min-width: 5.5rem;
+  min-height: 3.5rem;
+  border: 3px solid var(--edge) !important; /* override style.css inline opacity border */
+  border-radius: 4px 4px 2px 2px !important;
+  background: var(--car-color, var(--paper)) !important;
+  /* Hard pixel bevels: bright top/left, dark bottom/right */
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.3),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 4px 6px rgba(0,0,0,0.6) !important;
+  transition: transform 0.1s steps(2);
+}
+
+/* The coupler connecting cars */
+.car-block::after {
+  right: -0.45rem !important;
+  bottom: 0.8rem !important;
+  width: 0.45rem !important;
+  height: 0.35rem !important;
+  background: #4a4550 !important;
+  border: 2px solid var(--edge) !important;
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,0.5) !important;
+}
+
+/* Active editing state */
+.car-block.active {
+  transform: translateY(-4px);
+  box-shadow: 
+    inset 3px 3px 0 rgba(255,255,255,0.4),
+    inset -3px -3px 0 rgba(0,0,0,0.3),
+    0 0 0 3px #fff,
+    0 8px 12px rgba(0,0,0,0.8) !important;
+}
+
+/* Locomotive shaping */
+.car-block.loco {
+  border-radius: 4px 16px 2px 2px !important;
+}
+.car-stack {
+  top: -1rem !important;
+  left: 0.75rem !important;
+  width: 0.8rem !important;
+  height: 1rem !important;
+  background: #4a4550 !important;
+  border: 2px solid var(--edge) !important;
+  border-bottom: none !important;
+  border-radius: 2px 2px 0 0 !important;
+}
+.car-stack::before {
+  top: -1.2rem !important;
+  left: -0.6rem !important;
+  width: 1.5rem !important;
+  height: 1rem !important;
+  background: radial-gradient(circle, rgba(235, 219, 178, 0.8), transparent 60%) !important;
+}
+
+/* Chunky SNES wheels */
+.car-wheels {
+  bottom: -0.6rem !important;
+}
+.car-wheel {
+  width: 1.2rem !important;
+  height: 1.2rem !important;
+  border: 2px solid var(--edge) !important;
+  background: #4a4550 !important;
+  box-shadow: inset 2px 2px 0 #7c6f64, inset -2px -2px 0 #282828 !important;
+}
+.car-wheel::after {
+  inset: 0.25rem !important;
+  background: var(--edge) !important;
+}
+
+/* Car typography */
+.car-num {
+  font-family: var(--font-display);
+  font-size: 0.6rem !important;
+  color: rgba(255,255,255,0.9);
+  text-shadow: 1px 1px 0 var(--edge);
+  margin-bottom: 0.2rem;
+}
+.car-name {
+  font-family: var(--font-body);
+  font-weight: 800;
+  font-size: 0.9rem !important;
+  color: #fff;
+  text-shadow: 1px 1px 0 var(--edge);
+  padding: 0 0.2rem;
+}
+.car-rename {
+  font-family: var(--font-body);
+  border: 2px solid var(--edge) !important;
+  box-shadow: inset 0 2px 0 rgba(0,0,0,0.2) !important;
+  background: #fff !important;
+  color: var(--edge) !important;
+}
+
+/* ── 2. The Loop Track (.song-loop-track) ── */
+.song-loop-track {
+  height: 4rem !important;
+  margin: 0 !important;
+  margin-top: 0.5rem !important;
+}
+
+/* Wooden ties */
+.song-loop-track::before {
+  bottom: 1.2rem !important;
+  height: 0.8rem !important;
+  background: repeating-linear-gradient(
+    90deg,
+    #7c6f64 0 0.6rem,
+    transparent 0.6rem 1.2rem
+  ) !important;
+  border-bottom: 2px solid #3c3836 !important;
+}
+
+/* Steel rails (top and bottom) */
+.loop-rail {
+  bottom: 1.6rem !important;
+  height: 0.35rem !important;
+  background: #a89984 !important;
+  border: 2px solid var(--edge) !important;
+  border-radius: 0 !important;
+  box-shadow: 0 20px 0 -2px #a89984, 0 20px 0 0 var(--edge) !important; /* bottom rail */
+}
+
+/* The highlighted loop band (between the rails) */
+.loop-band {
+  bottom: 1.2rem !important;
+  height: 0.8rem !important;
+  background: var(--sun) !important; /* bright yellow loop */
+  border: 2px solid var(--edge) !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  opacity: 0.6;
+}
+
+/* The moving train sprite on the loop track */
+.train-sprite {
+  bottom: 0.9rem !important;
+  font-size: 2rem !important;
+  filter: drop-shadow(2px 2px 0 var(--edge)) !important;
+}
+
+/* ── 3. The Tunnels (.loop-tunnel) ── */
+.loop-tunnel {
+  bottom: 0.5rem !important;
+  width: 4rem !important;
+  height: 3.5rem !important;
+  margin-left: -2rem !important;
+}
+
+/* Stone tunnel structure */
+.loop-tunnel::before {
+  bottom: 0 !important;
+  height: 3.5rem !important;
+  background: var(--paper) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 2rem 2rem 0 0 !important;
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.1), inset -3px -3px 0 rgba(0,0,0,0.3) !important;
+}
+
+/* Dark tunnel mouth */
+.loop-tunnel::after {
+  bottom: 0 !important;
+  width: 2.4rem !important;
+  height: 2.4rem !important;
+  background: var(--edge) !important;
+  border-radius: 1.2rem 1.2rem 0 0 !important;
+  box-shadow: inset 0 6px 12px rgba(0,0,0,0.8) !important;
+}
+
+/* The grabber handles under the tunnels */
+.loop-grab {
+  bottom: -1.2rem !important;
+  background: var(--paper) !important;
+  border: 2px solid var(--edge) !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), 0 2px 0 rgba(0,0,0,0.5) !important;
+  color: var(--ink) !important;
+  font-family: var(--font-body);
+  font-weight: 800;
+  padding: 0.2rem 0.5rem !important;
+  border-radius: 4px !important;
+}
+
+/* ── 4. The Ride CTA ── */
+.tracks-ride {
+  background: var(--leaf) !important;
+  color: var(--edge) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 8px !important;
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), 0 4px 0 var(--leaf-dark) !important;
+  font-family: var(--font-display);
+  font-size: 0.8rem !important;
+  padding: 1rem 2rem !important;
+  margin-top: 0.5rem;
+  text-transform: uppercase;
+}
+.tracks-ride:active {
+  transform: translateY(4px) !important;
+  box-shadow: inset 3px 3px 0 rgba(255,255,255,0.4), 0 0px 0 var(--leaf-dark) !important;
+}
