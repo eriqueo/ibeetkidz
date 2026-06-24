@@ -1,11 +1,13 @@
 import { FC, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { activeLayers, makeLayer } from "../core/project-state.ts";
+import { activeLayers, activePart, makeLayer } from "../core/project-state.ts";
+import { CAR_TYPES, type CarType } from "../core/types.ts";
 import { LoopTrack } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { WorkshopScene } from "../game/scenes/WorkshopScene.ts";
-import { WORKSHOP_LAYOUT, SCENE_ASPECT } from "../game/scene-layout.ts";
+import { WORKSHOP_LAYOUT_V2, SCENE_ASPECT } from "../game/scene-layout.ts";
+import { carSpriteUrl } from "../game/assets.ts";
 import { useContainedRect, regionStyle } from "../app/use-overlay-rect.ts";
 
 import bassDrumUrl from "../assets/theme/icons/bass-drum.png";
@@ -31,9 +33,20 @@ const SHELF_INSTRUMENTS = [
   { assetId: "note-mi",    label: "Voice",      url: micUrl        },
 ];
 
+const CAR_TYPE_LABELS: Record<CarType, string> = {
+  boxcar: "Boxcar",
+  tanker: "Tanker",
+  hopper: "Hopper",
+  flatcar: "Flatcar",
+};
+
+let carSeq = 0;
+const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
+
 export const Workshop: FC = () => {
   const { dispatch, engine, sound } = useApp();
   const project = useProject();
+  const part = activePart(project);
   const layers = activeLayers(project);
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -77,6 +90,12 @@ export const Workshop: FC = () => {
     sound.play(clip);
   }
 
+  // New blank car in the library, opened for editing (it does not auto-join the
+  // train — that's the Yard's job).
+  function newCar() {
+    dispatch({ type: "addCar", id: newCarId() });
+  }
+
   return (
     <div
       ref={wrapRef}
@@ -93,16 +112,26 @@ export const Workshop: FC = () => {
       >
         ◀ Map
       </button>
-      <button
-        className="t-btn"
-        style={{ position: "absolute", top: 8, right: 8, zIndex: 20, fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
-        onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
-      >
-        📦 Yard
-      </button>
+      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20, display: "flex", gap: 6 }}>
+        <button
+          className="t-btn"
+          style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
+          onClick={newCar}
+          title="Start a fresh empty car"
+        >
+          ＋ New Car
+        </button>
+        <button
+          className="t-btn"
+          style={{ fontSize: "0.65rem", padding: "4px 8px", height: "auto", width: "auto" }}
+          onClick={() => dispatch({ type: "setActiveView", view: "yard" })}
+        >
+          📦 Yard
+        </button>
+      </div>
 
-      {/* Live sequencer grid, pinned over the painted grid region */}
-      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT.grid), zIndex: 10, overflow: "hidden" }}>
+      {/* Live sequencer grid, pinned over the painted boxcar interior */}
+      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carInterior), zIndex: 10, overflow: "hidden" }}>
         {layers.length === 0 ? (
           <div style={{
             display: "flex",
@@ -118,7 +147,11 @@ export const Workshop: FC = () => {
             Empty car.<br />Tap an instrument to start.
           </div>
         ) : (
-          <div className="loop-board" data-playing={engine.isPlaying}>
+          <div
+            className="loop-board workshop-board"
+            data-playing={engine.isPlaying}
+            style={{ height: "100%", overflow: "hidden" }}
+          >
             {layers.map((layer) => (
               <LoopTrack key={layer.id} layerId={layer.id} />
             ))}
@@ -126,9 +159,49 @@ export const Workshop: FC = () => {
         )}
       </div>
 
-      {/* Instrument shelf, pinned over the painted instrument band */}
+      {/* Car-type picker — pick the sprite this car wears in the Yard + Track */}
       <div style={{
-        ...regionStyle(rect, WORKSHOP_LAYOUT.shelf),
+        ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carTypePicker),
+        zIndex: 12,
+        display: "flex",
+        gap: 6,
+        alignItems: "center",
+        justifyContent: "center",
+      }}>
+        {CAR_TYPES.map((ct) => {
+          const active = part.carType === ct;
+          return (
+            <button
+              key={ct}
+              title={CAR_TYPE_LABELS[ct]}
+              aria-pressed={active}
+              onClick={() => dispatch({ type: "setCarType", partId: part.id, carType: ct })}
+              style={{
+                flex: "0 1 auto",
+                height: "100%",
+                background: active ? "rgba(255,209,102,0.25)" : "rgba(0,0,0,0.35)",
+                border: active ? "2px solid #ffd166" : "2px solid rgba(255,255,255,0.2)",
+                borderRadius: 6,
+                cursor: "pointer",
+                padding: "2px 4px",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+              }}
+            >
+              <img
+                src={carSpriteUrl[ct]}
+                alt={CAR_TYPE_LABELS[ct]}
+                style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }}
+              />
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Instrument shelf, pinned over the painted instruments on the ground */}
+      <div style={{
+        ...regionStyle(rect, WORKSHOP_LAYOUT_V2.shelf),
         zIndex: 10,
         display: "flex",
         gap: 4,
@@ -183,7 +256,7 @@ export const Workshop: FC = () => {
 
       {/* Transport, pinned over the painted button band */}
       <div style={{
-        ...regionStyle(rect, WORKSHOP_LAYOUT.transport),
+        ...regionStyle(rect, WORKSHOP_LAYOUT_V2.transport),
         zIndex: 10,
         display: "flex",
         gap: 8,
