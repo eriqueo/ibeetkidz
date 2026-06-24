@@ -16,7 +16,10 @@ export class MapScene extends BackgroundScene {
   }
 
   create(): void {
-    this.addBackground("contain");
+    // Cover-fit so the island fills the viewport with no black bars (the painted
+    // WORKSHOP/YARD/TRACK labels stay in the centre band). Map.tsx mirrors this
+    // with a "cover" overlay rect so the hit-areas track the painted buildings.
+    this.addBackground("cover");
     this.announceReady();
   }
 }

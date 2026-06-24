@@ -60,12 +60,14 @@ export class TrackScene extends BackgroundScene {
     this.layoutPath();
     this.loco = this.makeLoco();
     this.signal = this.add.image(0, 0, SPRITES.signalUp.key).setOrigin(0.5, 1).setDepth(7);
+    // The smoke texture is full-res (~1920px); scale particles WAY down so puffs
+    // are small (was 0.5–1.1 → ~1000–2100px monster clouds).
     this.smoke = this.add
       .particles(0, 0, SPRITES.smokePuff.key, {
         lifespan: 1500,
         speedY: { min: -40, max: -20 },
         speedX: { min: -8, max: 8 },
-        scale: { start: 0.5, end: 1.1 },
+        scale: { start: 0.018, end: 0.04 },
         alpha: { start: 0.8, end: 0 },
         frequency: 500,
         emitting: false,

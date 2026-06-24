@@ -13,7 +13,8 @@ async function boot(page: Page): Promise<void> {
 
 test("boots into the Map and shows the three destinations", async ({ page }) => {
   await boot(page);
-  await expect(page.getByText(/pick a place to play/i)).toBeVisible();
+  // The painted WORKSHOP/YARD/TRACK labels live in the art; the hit-areas over
+  // them are the three destination buttons.
   await expect(page.getByRole("button", { name: "Workshop" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Yard" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Track" })).toBeVisible();

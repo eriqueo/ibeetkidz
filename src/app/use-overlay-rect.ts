@@ -23,10 +23,15 @@ export interface NormRegion {
   h: number;
 }
 
-/** The on-screen rectangle a `contain`-fit image of `aspect` occupies in `ref`. */
+/** The on-screen rectangle an image of `aspect` occupies in `ref`, matching
+ *  Phaser's `BackgroundScene` fit. "contain" letterboxes (predictable coords for
+ *  overlays); "cover" fills the viewport and crops (the rect spills past the
+ *  edges, so x/y can be negative — overlays still map correctly, clipped by the
+ *  wrapper's overflow:hidden). Both must match the scene's `addBackground` fit. */
 export function useContainedRect(
   ref: RefObject<HTMLElement | null>,
   aspect: number,
+  fit: "contain" | "cover" = "contain",
 ): Rect {
   const [rect, setRect] = useState<Rect>({ x: 0, y: 0, width: 0, height: 0 });
 
@@ -37,16 +42,18 @@ export function useContainedRect(
       const cw = el.clientWidth;
       const ch = el.clientHeight;
       if (cw <= 0 || ch <= 0) return;
-      // contain: fit whole image, letterbox the shorter axis.
-      const fitW = cw / ch > aspect ? ch * aspect : cw;
-      const fitH = cw / ch > aspect ? ch : cw / aspect;
+      const wide = cw / ch > aspect;
+      const fitW =
+        fit === "cover" ? (wide ? cw : ch * aspect) : wide ? ch * aspect : cw;
+      const fitH =
+        fit === "cover" ? (wide ? cw / aspect : ch) : wide ? ch : cw / aspect;
       setRect({ x: (cw - fitW) / 2, y: (ch - fitH) / 2, width: fitW, height: fitH });
     };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [ref, aspect]);
+  }, [ref, aspect, fit]);
 
   return rect;
 }

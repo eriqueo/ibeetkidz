@@ -19,7 +19,7 @@ export const Map: FC = () => {
   const { dispatch } = useApp();
   const project = useProject();
   const wrapRef = useRef<HTMLDivElement>(null);
-  const rect = useContainedRect(wrapRef, SCENE_ASPECT);
+  const rect = useContainedRect(wrapRef, SCENE_ASPECT, "cover");
   const [toast, setToast] = useState<string | null>(null);
 
   // Track needs an assembled train; nudge the kid to the Yard if it's empty.
@@ -37,25 +37,8 @@ export const Map: FC = () => {
       ref={wrapRef}
       style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}
     >
-      {/* Painted world map */}
+      {/* Painted world map (the WORKSHOP/YARD/TRACK labels are painted in) */}
       <PhaserGame scenes={MAP_SCENES} />
-
-      {/* Brand + hint (overlay) */}
-      <div style={{
-        position: "absolute",
-        top: 10,
-        left: 0,
-        right: 0,
-        zIndex: 20,
-        textAlign: "center",
-        pointerEvents: "none",
-        font: "400 11px/1 var(--font-label, 'Press Start 2P')",
-        color: "#e8dcc8",
-        letterSpacing: "2px",
-        textShadow: "2px 2px 0 #000",
-      }}>
-        iBeetKidz — pick a place to play!
-      </div>
 
       {/* Destination buttons pinned over the painted spots */}
       {DESTINATIONS.map((d) => (
