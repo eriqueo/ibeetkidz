@@ -74,7 +74,10 @@ export const PhaserGame = forwardRef<PhaserGameHandle, PhaserGameProps>(
       <div
         ref={containerRef}
         className={className}
-        style={{ position: "absolute", inset: 0, ...style }}
+        // The canvas is a backdrop — it must never intercept taps meant for the
+        // React control overlays sitting on top. All interaction is handled in
+        // React (Phaser sprites that need taps are shadowed by React hit-areas).
+        style={{ position: "absolute", inset: 0, pointerEvents: "none", ...style }}
       />
     );
   },

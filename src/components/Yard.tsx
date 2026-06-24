@@ -1,8 +1,9 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { PhaserGame } from "./PhaserGame.tsx";
-import { EventBus } from "../game/EventBus.ts";
-import { YardScene, type YardCar } from "../game/scenes/YardScene.ts";
+import { YardScene, yardSlot, type YardCar } from "../game/scenes/YardScene.ts";
+import { SCENE_ASPECT } from "../game/scene-layout.ts";
+import { useContainedRect } from "../app/use-overlay-rect.ts";
 
 const YARD_SCENES = [YardScene];
 
@@ -11,6 +12,8 @@ export const Yard: FC = () => {
   const project = useProject();
   const [sel, setSel] = useState<string>(project.activePartId);
   const sceneRef = useRef<YardScene | null>(null);
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const rect = useContainedRect(fieldRef, SCENE_ASPECT);
 
   const cars = useMemo<YardCar[]>(
     () => project.parts.map((p) => ({ id: p.id, color: p.color, name: p.name })),
@@ -27,15 +30,6 @@ export const Yard: FC = () => {
     sceneRef.current = scene as YardScene;
     sceneRef.current.setCars(carsRef.current);
     sceneRef.current.setSelected(selRef.current);
-  }, []);
-
-  // Tapping a car in Phaser selects it in React.
-  useEffect(() => {
-    const onSelect = (partId: string) => setSel(partId);
-    EventBus.on("car-selected", onSelect);
-    return () => {
-      EventBus.off("car-selected", onSelect);
-    };
   }, []);
 
   useEffect(() => {
@@ -75,9 +69,34 @@ export const Yard: FC = () => {
         </div>
       </header>
 
-      {/* Phaser yard — parked cars on sidings. */}
-      <div style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
+      {/* Phaser yard — parked cars on sidings. React hit-areas shadow each car
+          sprite for selection (the canvas takes no pointer events). */}
+      <div ref={fieldRef} style={{ flex: 1, minHeight: 0, position: "relative", overflow: "hidden" }}>
         <PhaserGame scenes={YARD_SCENES} onSceneReady={handleSceneReady} />
+        {cars.map((car, i) => {
+          const s = yardSlot(rect, i);
+          return (
+            <button
+              key={car.id}
+              aria-label={`Select ${car.name}`}
+              title={car.name}
+              onClick={() => setSel(car.id)}
+              style={{
+                position: "absolute",
+                left: s.cx - s.w / 2,
+                top: s.cy - s.h / 2,
+                width: s.w,
+                height: s.h,
+                zIndex: 10,
+                pointerEvents: "auto",
+                background: "transparent",
+                border: sel === car.id ? "3px solid #ffd166" : "3px solid transparent",
+                borderRadius: 4,
+                cursor: "pointer",
+              }}
+            />
+          );
+        })}
         {project.parts.length === 0 && (
           <div style={{
             position: "absolute",
