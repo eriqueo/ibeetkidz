@@ -53,6 +53,47 @@ discipline as the kidpix repo). Feature branches off `main`; PR; green CI
 
 ## Current state
 
+### v2 sprite rebuild (2026-06-24)
+
+The app is now a **Phaser sprite game** with four views (`Project.activeView`):
+**Map** (landing) → **Workshop** → **Yard** → **Track**. The data model dropped
+`arrangement: ArrangeCar[]` (+ the BeepBox loop-bar) for a **flat `train:
+TrainCar[]`** — each slot is one bar; a car appears in N slots for N repeats;
+muted slots (`muted`) are the "tarp". `Part` gained `carType` (boxcar/tanker/
+hopper/flatcar, cosmetic). New commands: `addToTrain`/`removeFromTrain`/
+`reorderTrain`/`muteCar`/`setCarType`; `addCar`/`duplicateCar` now manage the car
+LIBRARY only (`parts`), `removeCar` cascades to the train. `normalizeProject`
+migrates pre-v2 saves (expands `arrangement` repeats → flat slots) and derives
+`carType`. Engine `scheduleArrangement` walks the train and skips muted cars; new
+`playCarLoop(partId)`. Audio stays **gapless/transport-driven**; the Phaser train
++ crossing signal are driven visually from the transport (no frame-trigger
+inversion). Selectors: `liveTrain`/`songBars`/`carAtBar`/`partForCar`.
+
+- **Workshop** (`bg-workshop-v2`): mixing board = the reused `LoopTrack` grid over
+  the boxcar interior; 4-way car-type picker; **New Car**; a left-edge **stations
+  dock** opens the satellite tools (My Voice/Voice Keys/Sound Pads/Beat Maker/
+  Magic Pad) as panels over the scene — each dispatches into the ACTIVE car, so
+  the lane lands in the board on close. (This is how the BeepBox-spinoff
+  functionality is re-homed into the sprite world.)
+- **Yard** (`YardScene`): palette cars on the 4 sidings (tinted sprites) + the
+  assembled train on the top line; `animatePickup` crane hook; **Add to Train**
+  dispatches in the crane onComplete; per-slot Tarp/Remove; **Send to Track**.
+- **Track** (`TrackScene`): sprite loco + cars ride the painted oval; car i sits
+  at the crossing signal exactly when bar i sounds; signal flips up/down + flashes
+  per pass; loco smoke particles; per-car bounce; speed (tempo) + Forward/Reverse
+  (cosmetic, signal-consistent) + live tarp strip.
+- Layout coords live in `src/game/scene-layout.ts` (`*_LAYOUT_V2`) — **estimates,
+  need a visual tuning pass** against `npm run dev`. Sprites in `assets/sprites/`
+  are still oversized (a downscale pass is a TODO; `_original` dupes removed).
+- The old CSS Song-Train UI (`TracksStrip`/`LoopRail`/loop-bar) was removed; the
+  per-lane editors (`LoopTrack`/`LaneControls`/patterns) live on, reused above.
+
+The rest of this section describes the **pre-v2** looper-stage studio. Its code is
+still present and reused (LoopTrack et al.) but it is no longer a routed view; the
+satellite tools it describes are now reached via the Workshop stations dock.
+
+---
+
 Live on GitHub Pages; the presentation layer migrated to React (hexagonal core
 unchanged). `looper-stage` (UI label **Home**, id unchanged) is the hub and the
 default landing — a BeepBox-style studio where every sound stacks as a lane:
@@ -153,8 +194,10 @@ scroll together. (Still TODO per Eric — brainstorm: the train/tunnel metaphor
 "train under cars" doesn't read; a one-tap "play all loops" / free-the-loop mode;
 tighter car↔segment alignment.)
 
-Gates: `typecheck` clean, 122 unit tests, 28 Playwright E2E (incl. full hero
-journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
+Gates: `typecheck` clean, **126 unit tests**, **5 Playwright E2E** (`v2-flow.spec`:
+boot→Map→Workshop→Yard→Track + stations + Track guard). The v1 machine-shell e2e
+specs were retired with the looper-stage landing; **rebuilding deep per-tool e2e
+through the new Workshop-station nav is a follow-up.**
 Note: Playwright reuses any Vite already on its port; a stray kidpix dev server
 on 5173 will make the whole suite hit the wrong app — run with `PW_PORT=<free>`
 to pin a dedicated port (`reuseExistingServer` is off once a port is pinned).
