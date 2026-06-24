@@ -1440,7 +1440,7 @@ const LanePatterns: FC<{ layer: Layer }> = ({ layer }) => {
   );
 };
 
-const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
+export const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   const { sound, dispatch } = useApp();
   const project = useProject();
   const { selected, select } = useLoopSelection();

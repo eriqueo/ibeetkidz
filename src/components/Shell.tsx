@@ -20,6 +20,10 @@ import {
   type ToolDescriptor,
 } from "../machines/tools.tsx";
 import { VizPanel } from "./VizPanel.tsx";
+import { Workshop } from "./Workshop.tsx";
+import { Yard } from "./Yard.tsx";
+import { Track } from "./Track.tsx";
+import { Map } from "./Map.tsx";
 
 const Palette: FC<{ activeId: string }> = ({ activeId }) => {
   const { dispatch } = useApp();
@@ -194,8 +198,52 @@ const RailSheet: FC<{
 
 export const Shell: FC = () => {
   const project = useProject();
+  const { dispatch } = useApp();
   const isPhone = usePhoneLayout();
   const active = TOOLS.find((t) => t.id === project.activeMachineId) ?? TOOLS[0]!;
+  
+  // Three-space routing:
+  const view = project.activeView;
+  
+  // If we're on the map, render just the map.
+  if (view === "map") {
+    return (
+      <div id="app">
+        <div className="shell-root">
+          <Map />
+        </div>
+      </div>
+    );
+  }
+  
+  if (view === "workshop") {
+    return (
+      <div id="app">
+        <div className="shell-root">
+          <Workshop />
+        </div>
+      </div>
+    );
+  }
+
+  if (view === "yard") {
+    return (
+      <div id="app">
+        <div className="shell-root">
+          <Yard />
+        </div>
+      </div>
+    );
+  }
+  if (view === "track") {
+    return (
+      <div id="app">
+        <div className="shell-root">
+          <Track />
+        </div>
+      </div>
+    );
+  }
   const Canvas = active.Canvas;
   const Rail = active.Rail;
   const sideRail = Rail && !isPhone;
@@ -209,8 +257,15 @@ export const Shell: FC = () => {
   return (
     <div id="app">
       <div className="shell-root">
-        <header className="brand">
-          <span className="brand-text">ibeetkidz</span>
+        <header className="brand" style={{ display: "flex", alignItems: "center", gap: 16 }}>
+          <button 
+            className="t-btn" 
+            style={{ fontSize: "0.8rem", padding: "4px 8px" }}
+            onClick={() => dispatch({ type: "setActiveView", view: "map" })}
+          >
+            ◀ Map
+          </button>
+          <span className="brand-text">ibeetkidz Workshop</span>
         </header>
         <TrainModeProvider>
           <LoopSelectionProvider>

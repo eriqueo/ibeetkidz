@@ -139,6 +139,7 @@ export function emptyProject(id: string, name = "My Beat"): Project {
     keyId: "C",
     swing: 0,
     activeMachineId: "looper-stage", // boot into Home, the stacked mix
+    activeView: "map",
   };
 }
 
@@ -698,6 +699,10 @@ export function reduce(state: Project, cmd: Command): Project {
 
     case "setActiveMachine":
       return { ...state, activeMachineId: cmd.machineId };
+    case "setActiveView":
+      return { ...state, activeView: cmd.view };
+    case "setActivePart":
+      return { ...state, activePartId: cmd.partId };
 
     // Set the Ride loop region (bars), clamped to the song. A whole-song region
     // clears back to "auto" (absent) so it keeps covering the song as cars grow.
@@ -864,6 +869,8 @@ export function reduce(state: Project, cmd: Command): Project {
         return withPatterns(l, active, rest, cmd.index);
       });
 
+
+
     // Drop a numbered slot (never below one). Removing the live slot promotes a
     // neighbor; removing an inactive one keeps the live slot live.
     case "removePattern":
@@ -884,6 +891,7 @@ export function reduce(state: Project, cmd: Command): Project {
         return withPatterns(l, active, rest, nextIdx);
       });
   }
+  return state;
 }
 
 // ── Undo/redo wrapper ──────────────────────────────────────────────────────
@@ -1005,6 +1013,7 @@ export function normalizeProject(
     arrangement,
     activePartId,
     activeMachineId: raw.activeMachineId ?? base.activeMachineId,
+    activeView: raw.activeView ?? base.activeView,
     // Loop region: carry raw values through; `loopRegion` clamps them on read,
     // so a save with a stale region against a changed arrangement still loads.
     ...(typeof raw.loopStart === "number" ? { loopStart: raw.loopStart } : {}),

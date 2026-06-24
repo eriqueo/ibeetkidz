@@ -1826,3 +1826,87 @@ body {
 .car-banner-step:active {
   transform: scale(0.94);
 }
+
+/* ── Multi-Space Views (Workshop, Yard, Track, Map) ────────────────────────── */
+
+.view-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+  padding: 10px;
+}
+
+.view-playfield {
+  flex: 1;
+  position: relative;
+  background: var(--well);
+  border: 3px solid var(--chrome-edge);
+  box-shadow: var(--shadow-inset);
+  overflow: hidden;
+}
+
+.view-playfield.scrollable {
+  overflow-y: auto;
+}
+
+.view-playfield.pattern-grid {
+  background-image: repeating-linear-gradient(0deg, transparent 0 22px, rgba(255,255,255,0.02) 22px 24px);
+}
+
+.view-playfield.pattern-diag {
+  background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.02) 0 8px, transparent 8px 16px);
+}
+
+.yard-siding-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.yard-siding-rail {
+  position: relative;
+  flex: none;
+  width: 170px;
+  height: 56px;
+}
+
+.yard-siding-track {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  height: 14px;
+  background: repeating-linear-gradient(90deg, #4a3a26 0 6px, #2e2417 6px 12px);
+  border-top: 2px solid #6b6151;
+  border-bottom: 2px solid #6b6151;
+}
+
+.map-card {
+  background: var(--chrome);
+  border: 2px solid var(--chrome-edge);
+  box-shadow: var(--shadow-raised);
+  padding: 14px;
+  width: 200px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.map-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-raised), 0 4px 12px rgba(0,0,0,0.4);
+}
+
+.map-card:active {
+  transform: translateY(2px);
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.3), inset -2px -2px 0 rgba(0,0,0,0.3);
+}

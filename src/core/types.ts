@@ -155,6 +155,8 @@ export interface ArrangeCar {
 }
 
 /** The serializable source of truth. Save/load round-trips this exactly. */
+export type AppView = "map" | "workshop" | "yard" | "track";
+
 export interface Project {
   readonly id: string;
   readonly name: string;
@@ -179,6 +181,8 @@ export interface Project {
   readonly swing: number;
   /** Id of the machine currently in focus. */
   readonly activeMachineId: string;
+  /** Top-level navigation state. */
+  readonly activeView: AppView;
 }
 
 /** Commands are the only way to mutate a Project. Pure reducers consume them,
@@ -224,6 +228,8 @@ export type Command =
   | { readonly type: "setKey"; readonly keyId: KeyId }
   | { readonly type: "setSwing"; readonly swing: number }
   | { readonly type: "setActiveMachine"; readonly machineId: string }
+  | { readonly type: "setActiveView"; readonly view: AppView }
+  | { readonly type: "setActivePart"; readonly partId: string }
   // Song Train (Capability 4). Cars are full independent loops; the arrangement
   // plays them in order. `addCar` duplicates the active car (the kid tweaks the
   // copy) and selects it; the rest target a car by id.
