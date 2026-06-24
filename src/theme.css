@@ -1249,6 +1249,281 @@ input[type="range"]::-moz-range-thumb {
   background: url("./assets/theme/icons/snare.png") center / contain no-repeat;
 }
 
-/* Lane icons: the TSX already prefixes the layer name with 🎵 / 🎤 emoji.
-   No data-kind attribute is exposed on .loop-track, so we rely on the emoji
-   prefix. The sprites are available for future use if data-kind is added. */
+/* Lane icons: keyed on data-lane-kind={laneGroup} now exposed on .loop-track */
+.loop-track[data-lane-kind="melody"] .layer-name::before {
+  content: "";
+  display: inline-block;
+  width: 20px; height: 20px;
+  background: url("./assets/theme/icons/keyboard.png") center / contain no-repeat;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  image-rendering: pixelated;
+}
+.loop-track[data-lane-kind="voice"] .layer-name::before {
+  content: "";
+  display: inline-block;
+  width: 20px; height: 20px;
+  background: url("./assets/theme/icons/mic.png") center / contain no-repeat;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  image-rendering: pixelated;
+}
+.loop-track[data-lane-kind="drum"] .layer-name::before {
+  content: "";
+  display: inline-block;
+  width: 20px; height: 20px;
+  background: url("./assets/theme/icons/bass-drum.png") center / contain no-repeat;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  image-rendering: pixelated;
+}
+.loop-track[data-lane-kind="tone"] .layer-name::before {
+  content: "";
+  display: inline-block;
+  width: 20px; height: 20px;
+  background: url("./assets/theme/icons/cowbell.png") center / contain no-repeat;
+  vertical-align: middle;
+  margin-right: 0.4rem;
+  image-rendering: pixelated;
+}
+
+/* ============================================================================
+   KNOBS, STUDIO RAIL, LANE CONTROLS, PATTERN CHIPS — Hard pixel chrome
+   ========================================================================== */
+
+/* ── Knobs (Vol, Echo, Tone, Groove) ── */
+.knob {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.3) !important;
+  padding: 0.4rem !important;
+}
+.knob-label {
+  font-family: var(--font-display) !important;
+  font-size: 0.6rem !important;
+  margin-bottom: 0.3rem !important;
+  text-shadow: 1px 1px 0 var(--edge);
+}
+.knob-step {
+  background: var(--paper) !important;
+  border: 2px solid var(--edge) !important;
+  border-radius: 2px !important;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.2), 0 2px 0 rgba(0,0,0,0.4) !important;
+  color: var(--ink) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+}
+.knob-step:active {
+  transform: translateY(2px) !important;
+  box-shadow: inset 1px 1px 0 rgba(255,255,255,0.2), 0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.knob-dial {
+  background: #1a1712 !important; /* deep well */
+  border: 2px solid var(--edge) !important;
+  border-radius: 50% !important;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.8) !important;
+}
+.knob-ind {
+  background: var(--knob-color, var(--accent)) !important;
+  border: 1px solid var(--edge) !important;
+  box-shadow: 0 0 4px var(--knob-color, var(--accent)) !important; /* phosphor bleed */
+}
+.knob-val {
+  font-family: var(--font-display) !important;
+  font-size: 0.55rem !important;
+  color: var(--knob-color, var(--accent)) !important;
+  text-shadow: 1px 1px 0 var(--edge);
+  margin-top: 0.3rem !important;
+}
+
+/* ── Studio Rail ── */
+.rail {
+  background: var(--paper-2) !important;
+  border-left: 3px solid var(--edge) !important;
+}
+.rail-heading {
+  font-family: var(--font-display) !important;
+  font-size: 0.8rem !important;
+  text-shadow: 2px 2px 0 var(--edge);
+}
+.rail-control {
+  background: var(--paper) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.3) !important;
+}
+.rail-pill {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 3px 0 rgba(0,0,0,0.4) !important;
+  transition: transform 0.1s steps(2);
+}
+.rail-pill:active {
+  transform: translateY(3px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.rail-pill.active {
+  background: var(--active-fill) !important;
+  color: var(--edge) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 3px 0 var(--active-shadow) !important;
+}
+
+/* ── Lane Controls ── */
+.lane-controls {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.3) !important;
+}
+.lane-ctl-label {
+  font-family: var(--font-display) !important;
+  font-size: 0.6rem !important;
+  text-shadow: 1px 1px 0 var(--edge);
+}
+
+/* ── Pattern Chips ── */
+.pat-chip {
+  background: var(--paper) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 3px 0 rgba(0,0,0,0.4) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+  transition: transform 0.1s steps(2);
+}
+.pat-chip:active {
+  transform: translateY(3px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 0px 0 rgba(0,0,0,0.4) !important;
+}
+.pat-chip.active {
+  background: var(--row-color, var(--active-fill)) !important;
+  color: var(--edge) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 3px 0 var(--edge) !important;
+}
+.pat-add {
+  background: transparent !important;
+  border: 3px dashed rgba(255,255,255,0.3) !important;
+  box-shadow: none !important;
+  color: rgba(255,255,255,0.6) !important;
+}
+.pat-add:active {
+  background: rgba(255,255,255,0.05) !important;
+  box-shadow: none !important;
+}
+
+/* ============================================================================
+   BEAT ROWS, MELODY GRID, MAGIC BAR, VOICE KEYS — Hard pixel chrome
+   ========================================================================== */
+
+/* ── Beat Rows (Drum Editor) ── */
+.beat-label {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.3) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+  color: var(--ink) !important;
+}
+
+/* ── Melody Grid (Piano Roll) ── */
+.melody-grid {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 4px 4px 0 rgba(0,0,0,0.4) !important;
+  padding: 0.5rem !important;
+}
+.melody-row {
+  border-bottom: 2px solid #3c3836 !important;
+}
+
+/* ── Magic Bar (Theremin Output) ── */
+.magic-bar {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: inset 2px 2px 0 rgba(255,255,255,0.1), inset -2px -2px 0 rgba(0,0,0,0.3) !important;
+}
+
+/* ── Voice Clip Card & Send Home ── */
+.voice-clip-card {
+  background: var(--paper-2) !important;
+  border: 3px solid var(--edge) !important;
+  border-left: 8px solid var(--tile-color, var(--active-fill)) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.1),
+    inset -2px -2px 0 rgba(0,0,0,0.3),
+    0 4px 0 rgba(0,0,0,0.4) !important;
+}
+.voice-clip-name {
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+  text-shadow: 1px 1px 0 var(--edge);
+}
+
+.send-home {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 4px 0 var(--leaf-dark) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+  transition: transform 0.1s steps(2);
+}
+.send-home:active {
+  transform: translateY(4px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 0px 0 var(--leaf-dark) !important;
+}
+.send-home:disabled {
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.2),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 4px 0 rgba(0,0,0,0.4) !important;
+}
+
+/* ── Audition Keyboard (Voice Keys) ── */
+.audition-key {
+  border: 3px solid var(--edge) !important;
+  border-radius: 4px !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 4px 0 var(--edge) !important;
+  font-family: var(--font-body) !important;
+  font-weight: 800 !important;
+  transition: transform 0.1s steps(2);
+}
+.audition-key:active {
+  transform: translateY(4px) !important;
+  box-shadow: 
+    inset 2px 2px 0 rgba(255,255,255,0.4),
+    inset -2px -2px 0 rgba(0,0,0,0.2),
+    0 0px 0 var(--edge) !important;
+}

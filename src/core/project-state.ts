@@ -93,6 +93,28 @@ function coerceNote(raw: unknown, index: number): StepNote | null {
 /** Friendly colors cycled onto new cars (Song Train). */
 const CAR_COLORS = ["#fb5607", "#3a86ff", "#06d6a0", "#8338ec", "#ffd166"];
 
+/**
+ * Derive a car color from its dominant lane kind so the car's color tells you
+ * what it IS at a glance — matching the design system's car-family mapping:
+ *   pure drum  → tomato red   (hopper)
+ *   pure melody→ teal green   (tanker)
+ *   mixed      → grape purple (gondola)
+ *   empty/other→ cycle from CAR_COLORS
+ */
+function carColorFromLayers(
+  layers: readonly Layer[],
+  fallbackIndex: number,
+): string {
+  if (layers.length === 0)
+    return CAR_COLORS[fallbackIndex % CAR_COLORS.length] as string;
+  const drumCount = layers.filter((l) => l.kind === "drum").length;
+  const melodyCount = layers.filter((l) => l.kind === "melody").length;
+  if (drumCount > 0 && melodyCount === 0) return "#fb4934"; // tomato — pure drum car
+  if (melodyCount > 0 && drumCount === 0) return "#8ec07c"; // teal — pure melody car
+  if (melodyCount > 0 && drumCount > 0) return "#bd93f9"; // grape — mixed car
+  return CAR_COLORS[fallbackIndex % CAR_COLORS.length] as string;
+}
+
 /** Build a car (Part). The default project has exactly one. */
 export function makePart(
   id: string,
@@ -703,7 +725,9 @@ export function reduce(state: Project, cmd: Command): Project {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
       if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
       const src = activePart(state);
-      const color = CAR_COLORS[state.parts.length % CAR_COLORS.length] as string;
+      // Color is derived from the dominant lane kind so the car block's color
+      // tells the kid what kind of sounds are inside (drum=red, melody=teal, mixed=grape).
+      const color = carColorFromLayers(src.layers, state.parts.length);
       const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
         ...src.layers,
       ]);
@@ -768,7 +792,9 @@ export function reduce(state: Project, cmd: Command): Project {
       const idx = state.parts.findIndex((p) => p.id === cmd.partId);
       if (idx < 0) return state;
       const src = state.parts[idx]!;
-      const color = CAR_COLORS[state.parts.length % CAR_COLORS.length] as string;
+      // Derive color from the source car's lanes so the duplicate immediately
+      // reads as the same instrument family.
+      const color = carColorFromLayers(src.layers, state.parts.length);
       const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
         ...src.layers,
       ]);

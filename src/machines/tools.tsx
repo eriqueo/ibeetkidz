@@ -1556,6 +1556,7 @@ const LoopTrack: FC<{ layerId: string }> = ({ layerId }) => {
   return (
     <div
       className={"loop-track" + (selected === layer.id ? " selected" : "")}
+      data-lane-kind={laneGroup(layer.kind, clip)}
       style={cssVar("--row-color", laneColor(layer.kind, clip))}
       onPointerDown={() => select(layer.id)}
     >
