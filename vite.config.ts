@@ -14,14 +14,18 @@ export default defineConfig(({ mode }) => {
       outDir: isGh ? "dist-gh" : "dist",
       emptyOutDir: true,
       target: "es2022",
-      // Split the two large vendors (Tone.js ~400KB, React ~150KB) into their
-      // own chunks so the app chunk stays under the 500KB warning threshold
-      // and browsers can cache vendor code independently of app changes.
+      // Phaser is a ~1.7MB engine in its own cacheable vendor chunk; raise the
+      // warning ceiling above it so the intentional split doesn't trip CI.
+      chunkSizeWarningLimit: 1800,
+      // Split the large vendors (Phaser ~1.7MB, Tone.js ~400KB, React ~150KB)
+      // into their own chunks so the app chunk stays small and browsers can
+      // cache vendor code independently of app changes.
       rollupOptions: {
         output: {
           manualChunks: {
             "vendor-tone": ["tone"],
             "vendor-react": ["react", "react-dom"],
+            "vendor-phaser": ["phaser"],
           },
         },
       },
