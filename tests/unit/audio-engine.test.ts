@@ -116,33 +116,29 @@ describe("AudioEngine play modes", () => {
     ]);
   });
 
-  it("ride mode lays each car across consecutive bars of the song", async () => {
+  it("ride mode lays each train slot across consecutive bars of the song", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    // Two cars (the duplicate carries the same lane) → a 2-bar song.
-    const project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    // Add a second library car and place it on the train → a 2-bar song.
+    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
     expect(engine.playMode).toBe("ride");
-    // Each car's lane scheduled at cycleBars = 2 (song length), at bars 0 and 1.
+    // Each slot's lane scheduled at cycleBars = 2 (song length), at bars 0 and 1.
     expect(sound.scheduled).toEqual([
       { clipId: "d1", cycleBars: 2, barOffset: 0 },
       { clipId: "d1", cycleBars: 2, barOffset: 1 },
     ]);
   });
 
-  it("ride honors repeats: a car repeated fills consecutive bars", async () => {
+  it("ride honors repeats: the same car placed twice fills consecutive bars", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
+    // Place the default car a SECOND time, then car-2 → a 3-bar song.
     let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
-    // Hand-build an arrangement where car 1 repeats x2 then car 2 once (3 bars).
     const car1 = project.parts[0]!.id;
-    project = {
-      ...project,
-      arrangement: [
-        { partId: car1, repeats: 2 },
-        { partId: "car-2", repeats: 1 },
-      ],
-    };
+    project = reduce(project, { type: "addToTrain", instanceId: "r2", partId: car1 });
+    project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
     expect(sound.scheduled).toEqual([
       { clipId: "d1", cycleBars: 3, barOffset: 0 },
@@ -151,18 +147,32 @@ describe("AudioEngine play modes", () => {
     ]);
   });
 
-  it("ride honors the loop bar: only the looped cars are scheduled, windowed", async () => {
+  it("ride skips muted (tarped) cars — that bar is silent but still occupies its slot", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    // 3-car song; loop just the middle+last cars (bars 1..2).
+    // 3-bar song; tarp the middle slot.
     let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
-    project = reduce(project, { type: "addCar", id: "car-3" });
-    project = reduce(project, { type: "setLoop", start: 1, length: 2 });
+    const car1 = project.parts[0]!.id;
+    project = reduce(project, { type: "addToTrain", instanceId: "mid", partId: "car-2" });
+    project = reduce(project, { type: "addToTrain", instanceId: "last", partId: car1 });
+    project = reduce(project, { type: "muteCar", instanceId: "mid", muted: true });
     engine.playRide(project);
-    // cycleBars = loopLength (2); the window's two bars at offsets 0 and 1.
+    // Bars 0 and 2 sound at cycleBars = 3; bar 1 (muted) is skipped.
     expect(sound.scheduled).toEqual([
-      { clipId: "d1", cycleBars: 2, barOffset: 0 },
-      { clipId: "d1", cycleBars: 2, barOffset: 1 },
+      { clipId: "d1", cycleBars: 3, barOffset: 0 },
+      { clipId: "d1", cycleBars: 3, barOffset: 2 },
+    ]);
+  });
+
+  it("playCarLoop loops a single car at one bar regardless of the train", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    engine.playCarLoop(project.parts[0]!.id, project);
+    expect(engine.playMode).toBe("loop");
+    expect(sound.scheduled).toEqual([
+      { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
   });
 
@@ -178,7 +188,8 @@ describe("AudioEngine play modes", () => {
   it("reconcile re-clears and follows the active mode on edits", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    const project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
     const clearsAfterPlay = sound.clears;
     engine.reconcile(project); // an edit while riding

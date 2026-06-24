@@ -13,18 +13,16 @@ export const Track: FC = () => {
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
 
-  // Flatten arrangement -> one car per repeat (colour + name from its part).
+  // One scene car per live train slot (colour + name from its part).
   const cars = useMemo<TrackCar[]>(() => {
-    const out: TrackCar[] = [];
-    project.arrangement.forEach((a) => {
-      const part = project.parts.find((p) => p.id === a.partId);
-      if (!part) return;
-      for (let i = 0; i < a.repeats; i++) {
-        out.push({ id: `${part.id}-${i}`, color: part.color, name: part.name });
-      }
-    });
-    return out;
-  }, [project.arrangement, project.parts]);
+    const ids = new Set(project.parts.map((p) => p.id));
+    return project.train
+      .filter((c) => ids.has(c.partId))
+      .map((c) => {
+        const part = project.parts.find((p) => p.id === c.partId)!;
+        return { id: c.instanceId, color: part.color, name: part.name };
+      });
+  }, [project.train, project.parts]);
 
   // Keep the latest cars reachable from the (stable) onSceneReady callback.
   const carsRef = useRef(cars);
@@ -48,7 +46,7 @@ export const Track: FC = () => {
       if (scene && engine.isPlaying && engine.playMode === "ride") {
         const step = sound.getTransportStep(STEP_COUNT);
         const frac = step >= 0 ? step / STEP_COUNT : 0;
-        const totalBars = project.arrangement.reduce((s, a) => s + a.repeats, 0);
+        const totalBars = cars.length;
         if (totalBars > 0) {
           const bar = (engine as { getTransportBar?: () => number }).getTransportBar?.() ?? 0;
           const songBar = ((bar % totalBars) + totalBars) % totalBars;
@@ -59,7 +57,7 @@ export const Track: FC = () => {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [engine, sound, project.arrangement]);
+  }, [engine, sound, cars]);
 
   return (
     <div style={{
