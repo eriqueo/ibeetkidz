@@ -1,8 +1,8 @@
-import { FC, useRef } from "react";
+import { FC, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { activeLayers, activePart, makeLayer } from "../core/project-state.ts";
 import { CAR_TYPES, type CarType } from "../core/types.ts";
-import { LoopTrack } from "../machines/tools.tsx";
+import { LoopTrack, TOOLS, LoopSelectionProvider } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { WorkshopScene } from "../game/scenes/WorkshopScene.ts";
@@ -43,6 +43,10 @@ const CAR_TYPE_LABELS: Record<CarType, string> = {
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 
+// The creative "stations" that fill a car: every machine tool EXCEPT the Home
+// board (that IS the Workshop's mixing board). Opened as a panel over the scene.
+const STATIONS = TOOLS.filter((t) => t.id !== "looper-stage");
+
 export const Workshop: FC = () => {
   const { dispatch, engine, sound } = useApp();
   const project = useProject();
@@ -51,6 +55,8 @@ export const Workshop: FC = () => {
 
   const wrapRef = useRef<HTMLDivElement>(null);
   const rect = useContainedRect(wrapRef, SCENE_ASPECT);
+  const [openTool, setOpenTool] = useState<string | null>(null);
+  const station = STATIONS.find((t) => t.id === openTool);
 
   function addInstrument(assetId: string) {
     const catalog = BUILTIN_SOUNDS.find(s => s.assetId === assetId);
@@ -272,6 +278,92 @@ export const Workshop: FC = () => {
           <span className="pb-label">Stop</span>
         </button>
       </div>
+
+      {/* Creative-tool stations: a left-edge dock that opens each tool over the
+          car. Each tool dispatches its sound straight into the active car, so
+          the new lane shows up in the mixing board when the panel closes. */}
+      <div style={{
+        position: "absolute",
+        left: 6,
+        top: "50%",
+        transform: "translateY(-50%)",
+        zIndex: 14,
+        display: "flex",
+        flexDirection: "column",
+        gap: 6,
+      }}>
+        {STATIONS.map((t) => (
+          <button
+            key={t.id}
+            title={t.label}
+            aria-label={t.label}
+            onClick={() => setOpenTool(t.id)}
+            style={{
+              width: 40,
+              height: 40,
+              fontSize: 20,
+              lineHeight: 1,
+              background: openTool === t.id ? "rgba(255,209,102,0.3)" : "rgba(0,0,0,0.55)",
+              border: "2px solid rgba(255,255,255,0.25)",
+              borderRadius: 8,
+              cursor: "pointer",
+            }}
+          >
+            {t.icon}
+          </button>
+        ))}
+      </div>
+
+      {/* Open station panel (the tool's own machine UI, mounted over the scene) */}
+      {station && (
+        <div
+          role="dialog"
+          aria-label={station.label}
+          style={{
+            position: "absolute",
+            inset: "6% 4%",
+            zIndex: 30,
+            display: "flex",
+            flexDirection: "column",
+            background: "rgba(18,14,22,0.97)",
+            border: "3px solid #ffd166",
+            borderRadius: 12,
+            boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
+            overflow: "hidden",
+          }}
+        >
+          <header style={{
+            flexShrink: 0,
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            padding: "8px 12px",
+            borderBottom: "2px solid rgba(255,255,255,0.15)",
+          }}>
+            <span style={{ fontSize: 20 }}>{station.icon}</span>
+            <span style={{
+              font: "400 12px/1 var(--font-label, 'Press Start 2P')",
+              color: "#e8dcc8",
+              letterSpacing: "1px",
+            }}>
+              {station.label}
+            </span>
+            <button
+              className="t-btn"
+              style={{ marginLeft: "auto", fontSize: "0.7rem", padding: "4px 10px", height: "auto", width: "auto" }}
+              onClick={() => setOpenTool(null)}
+            >
+              ✓ Done
+            </button>
+          </header>
+          <div className="workshop-station-body" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+            <LoopSelectionProvider>
+              {station.Options ? <station.Options /> : null}
+              <station.Canvas />
+            </LoopSelectionProvider>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

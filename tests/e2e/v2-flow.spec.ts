@@ -58,6 +58,21 @@ test("Yard → Track: assemble the train and ride it", async ({ page }) => {
   await page.getByRole("button", { name: /Stop/ }).click();
 });
 
+test("Workshop stations open the creative tools over the scene", async ({ page }) => {
+  await boot(page);
+  await page.getByRole("button", { name: "Workshop" }).click();
+
+  // Open the Beat Maker station → its machine UI mounts over the car.
+  await page.getByRole("button", { name: "Beat Maker" }).click();
+  await expect(page.locator('section[data-machine="beat-grid"]')).toBeVisible();
+  await page.getByRole("button", { name: /Done/ }).click();
+  await expect(page.locator('section[data-machine="beat-grid"]')).toHaveCount(0);
+
+  // The My Voice station opens too (mic faked).
+  await page.getByRole("button", { name: "My Voice" }).click();
+  await expect(page.locator('section[data-machine="record-voicefx"]')).toBeVisible();
+});
+
 test("Map guards Track until a train exists", async ({ page }) => {
   await boot(page);
   // Remove the default car's only train slot via the Yard, then Map → Track toasts.
