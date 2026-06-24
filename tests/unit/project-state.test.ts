@@ -17,6 +17,7 @@ import {
 } from "../../src/core/project-state.ts";
 import {
   MAX_BPM,
+  MAX_CARS,
   MAX_LAYERS,
   MIN_BPM,
   STEP_COUNT,
@@ -636,6 +637,14 @@ describe("Song Train cars", () => {
   it("addCar with a clashing id is a no-op", () => {
     const s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
     expect(reduce(s, { type: "addCar", id: "car-2" })).toBe(s);
+  });
+
+  it("caps the train at MAX_CARS (addCar + duplicateCar no-op at the cap)", () => {
+    let s = oneCarWithLane();
+    for (let i = 2; i <= MAX_CARS; i++) s = reduce(s, { type: "addCar", id: `car-${i}` });
+    expect(s.parts).toHaveLength(MAX_CARS);
+    expect(reduce(s, { type: "addCar", id: "car-over" })).toBe(s);
+    expect(reduce(s, { type: "duplicateCar", partId: s.parts[0]!.id, id: "dup-over" })).toBe(s);
   });
 
   it("selectCar switches the editing focus; no-ops on active/unknown", () => {

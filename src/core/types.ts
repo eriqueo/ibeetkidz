@@ -263,3 +263,5 @@ export const STEP_COUNT = 16;
 export const MAX_LAYERS = 8;
 /** Numbered pattern slots a single lane can hold (BeepBox-style 1-9). */
 export const MAX_PATTERNS = 9;
+/** Cap on Song-Train cars (loops). Keeps the strip + loop track a sane width. */
+export const MAX_CARS = 12;

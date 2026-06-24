@@ -16,7 +16,7 @@ import {
 } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import type { Clip, EffectId, LaneKind, Layer, Project, StepNote } from "../core/types.ts";
-import { MAX_PATTERNS, STEP_COUNT } from "../core/types.ts";
+import { MAX_CARS, MAX_PATTERNS, STEP_COUNT } from "../core/types.ts";
 import {
   activeLayers,
   activePart,
@@ -2118,6 +2118,9 @@ export const TracksStrip: FC = () => {
   return (
     <section className="tracks-strip" data-region="tracks">
       <div className="tracks-head">🚂 Song Train</div>
+      {/* Cars + loop track share one scroll box so the track is exactly as wide
+          as the cars and the two stay aligned + scroll together. */}
+      <div className="song-train-body">
       <div className="tracks-cars">
         {project.arrangement.map((car, i) => (
           <CarBlock
@@ -2127,19 +2130,22 @@ export const TracksStrip: FC = () => {
             riding={riding === i}
           />
         ))}
-        <button
-          type="button"
-          className="car-add"
-          data-act="new-car"
-          onClick={addCar}
-          title="Add a new car (a copy of this one to change)"
-        >
-          ＋<span>New Car</span>
-        </button>
+        {project.parts.length < MAX_CARS && (
+          <button
+            type="button"
+            className="car-add"
+            data-act="new-car"
+            onClick={addCar}
+            title="Add a new car (a copy of this one to change)"
+          >
+            ＋<span>New Car</span>
+          </button>
+        )}
       </div>
       {/* The loop on its OWN track: drag the tunnels to set the looping range;
           the engine rides between them and dips through each lap. */}
       <LoopRail />
+      </div>
       <button
         type="button"
         className="tracks-ride"

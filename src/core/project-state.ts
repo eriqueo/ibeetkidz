@@ -16,6 +16,7 @@ import {
   type Roll,
   type StepNote,
   MAX_BPM,
+  MAX_CARS,
   MAX_LAYERS,
   MAX_PATTERNS,
   MIN_BPM,
@@ -700,6 +701,7 @@ export function reduce(state: Project, cmd: Command): Project {
     // safe and the cars diverge copy-on-write.
     case "addCar": {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
+      if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
       const src = activePart(state);
       const color = CAR_COLORS[state.parts.length % CAR_COLORS.length] as string;
       const part = makePart(cmd.id, `Loop ${state.parts.length + 1}`, color, [
@@ -762,6 +764,7 @@ export function reduce(state: Project, cmd: Command): Project {
     // (every lane edit is scoped to the active car via editActivePart).
     case "duplicateCar": {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
+      if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
       const idx = state.parts.findIndex((p) => p.id === cmd.partId);
       if (idx < 0) return state;
       const src = state.parts[idx]!;

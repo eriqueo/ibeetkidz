@@ -30,8 +30,9 @@ test("loop track: drag the end tunnel to shrink the loop region", async ({ page 
   const track = (await page.locator("[data-loop-track]").boundingBox())!;
   await page.mouse.move(eb.x + eb.width / 2, eb.y + eb.height / 2);
   await page.mouse.down();
-  await page.mouse.move(track.x + track.width * 0.5, eb.y + eb.height / 2, { steps: 8 });
+  await page.mouse.move(track.x + track.width * 0.45, eb.y + eb.height / 2, { steps: 10 });
   await page.mouse.up();
+  await page.waitForTimeout(150);
 
   const after = (await band.boundingBox())!.width;
   expect(after).toBeLessThan(before - 20);

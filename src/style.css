@@ -1346,15 +1346,25 @@ body {
   white-space: nowrap;
   letter-spacing: 0.02em;
 }
+/* Cars + loop track in one centered scroll box → the loop track is exactly as
+   wide as the cars, and both scroll together when the train outgrows the view. */
+.song-train-body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  max-width: 100%;
+  /* Side padding so the end tunnels (which overhang the loop track ends) aren't
+     clipped by the scroll box. */
+  padding: 0 1.9rem;
+  overflow-x: auto;
+}
 .tracks-cars {
   position: relative;
   display: flex;
   align-items: flex-end;
-  justify-content: safe center; /* centered, but scroll-reachable when it overflows */
-  gap: 0.6rem;
-  max-width: 100%;
-  padding: 0.5rem 0.6rem 1.4rem; /* bottom room for the cars' own rail + wheels */
-  overflow-x: auto;
+  gap: 0.45rem;
+  padding: 0.5rem 0.5rem 1.2rem; /* bottom room for the cars' own rail + wheels */
+  width: max-content; /* size to the cars so the loop track can match it */
 }
 /* Railroad ties (sleepers) running behind the whole train. */
 .tracks-cars::before {
@@ -1391,9 +1401,9 @@ body {
    of the song length (set inline), so no car-DOM measuring is needed. */
 .song-loop-track {
   position: relative;
-  width: min(100%, 42rem);
-  height: 3.4rem;
-  margin: 0.2rem auto 0.1rem;
+  width: 100%; /* matches the cars row above it (same scroll box) */
+  height: 3rem;
+  margin: 0.15rem 0 0.1rem;
 }
 /* ties under the rail */
 .song-loop-track::before {
@@ -1518,14 +1528,14 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.12rem;
-  min-width: 6.8rem;
-  min-height: 4rem;
-  padding: 0.7rem 0.9rem 0.8rem;
-  border: 3px solid rgba(0, 0, 0, 0.28);
-  border-radius: 0.4rem 0.4rem 0.35rem 0.35rem;
+  gap: 0.05rem;
+  min-width: 4.6rem;
+  min-height: 2.9rem;
+  padding: 0.4rem 0.5rem 0.5rem;
+  border: 2px solid rgba(0, 0, 0, 0.28);
+  border-radius: 0.35rem 0.35rem 0.3rem 0.3rem;
   background:
-    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 0.55rem, transparent 0.55rem),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.34) 0 0.38rem, transparent 0.38rem),
     linear-gradient(180deg, transparent 66%, rgba(0, 0, 0, 0.22)),
     var(--car-color, var(--panel));
   color: white;
@@ -1603,9 +1613,9 @@ body {
 /* Two wheels resting on the rail; they spin while the car is riding. */
 .car-wheels {
   position: absolute;
-  left: 0.7rem;
-  right: 0.7rem;
-  bottom: -0.6rem;
+  left: 0.45rem;
+  right: 0.45rem;
+  bottom: -0.42rem;
   display: flex;
   justify-content: space-between;
   z-index: 2;
@@ -1613,17 +1623,17 @@ body {
 }
 .car-wheel {
   position: relative;
-  width: 1.15rem;
-  height: 1.15rem;
+  width: 0.8rem;
+  height: 0.8rem;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 50%, #4a4550 0 0.22rem, #15121b 0.22rem);
+  background: radial-gradient(circle at 50% 50%, #4a4550 0 0.15rem, #15121b 0.15rem);
   border: 2px solid #d9d2c4;
   box-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
 }
 .car-wheel::after {
   content: "";
   position: absolute;
-  inset: 0.22rem;
+  inset: 0.15rem;
   border-radius: 50%;
   background:
     linear-gradient(0deg, transparent 44%, #d9d2c4 44% 56%, transparent 56%),
@@ -1647,13 +1657,13 @@ body {
   z-index: 1;
 }
 .car-act {
-  width: 1.35rem;
-  height: 1.35rem;
+  width: 1.1rem;
+  height: 1.1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
-  font-size: 0.8rem;
+  font-size: 0.66rem;
   line-height: 1;
   border: none;
   border-radius: 0.35rem;
@@ -1674,17 +1684,17 @@ body {
   margin-top: 0.05rem;
 }
 .car-num {
-  font-size: 0.85rem;
+  font-size: 0.62rem;
   font-weight: 700;
-  opacity: 0.85;
+  opacity: 0.8;
   line-height: 1;
 }
 .car-block.loco .car-num {
-  font-size: 1.4rem;
+  font-size: 0.95rem;
   opacity: 1;
 }
 .car-name {
-  font-size: 1.05rem;
+  font-size: 0.8rem;
   font-weight: 800;
   white-space: nowrap;
 }
@@ -1703,22 +1713,22 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
-  min-width: 5rem;
-  min-height: 4rem;
-  margin-bottom: 0.6rem; /* lift off the rail so it reads as an empty slot */
-  padding: 0.5rem 0.7rem;
-  border: 3px dashed rgba(255, 255, 255, 0.35);
-  border-radius: 0.4rem;
+  gap: 0.1rem;
+  min-width: 3.6rem;
+  min-height: 2.9rem;
+  margin-bottom: 0.45rem; /* lift off the rail so it reads as an empty slot */
+  padding: 0.4rem 0.5rem;
+  border: 2px dashed rgba(255, 255, 255, 0.35);
+  border-radius: 0.35rem;
   background: rgba(255, 255, 255, 0.04);
   color: white;
-  font-size: 1.4rem;
+  font-size: 1.1rem;
   font-weight: 700;
   cursor: pointer;
   z-index: 1;
 }
 .car-add span {
-  font-size: 0.7rem;
+  font-size: 0.6rem;
 }
 .tracks-ride {
   flex: 0 0 auto;

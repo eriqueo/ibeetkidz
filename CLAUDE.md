@@ -145,7 +145,15 @@ dragging snaps to bar boundaries. Engine `scheduleArrangement` lays out ONLY
 transport bar into the region. NOTE class collision: the per-lane Home component
 is also `.loop-track` — the song loop rail MUST stay `.song-loop-track`.
 
-Gates: `typecheck` clean, 121 unit tests, 28 Playwright E2E (incl. full hero
+Scaling (2026-06-23): cars are smaller; the Song Train caps at **`MAX_CARS`=12**
+(addCar/duplicateCar no-op at the cap; "New Car" hidden). Cars + loop track share
+one centered scroll box (`.song-train-body`, padded sides so the end tunnels
+aren't clipped) so the **loop track is exactly as wide as the cars** and the two
+scroll together. (Still TODO per Eric — brainstorm: the train/tunnel metaphor
+"train under cars" doesn't read; a one-tap "play all loops" / free-the-loop mode;
+tighter car↔segment alignment.)
+
+Gates: `typecheck` clean, 122 unit tests, 28 Playwright E2E (incl. full hero
 journey, save→reload, voice→Home, and note place→stretch→remove + drum roll).
 Note: Playwright reuses any Vite already on its port; a stray kidpix dev server
 on 5173 will make the whole suite hit the wrong app — run with `PW_PORT=<free>`
