@@ -5,52 +5,40 @@ import { CAR_TYPES, type CarType } from "../core/types.ts";
 import { LoopTrack, TOOLS, LoopSelectionProvider } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
+import { PixelButton } from "./PixelButton.tsx";
 import { WorkshopScene } from "../game/scenes/WorkshopScene.ts";
-import {
-  WORKSHOP_LAYOUT_V2,
-  WORKSHOP_TOOLBAR,
-  SCENE_ASPECT,
-  rowCell,
-} from "../game/scene-layout.ts";
+import { WORKSHOP_LAYOUT_V2, SCENE_ASPECT, rowCell } from "../game/scene-layout.ts";
 import { carSpriteUrl } from "../game/assets.ts";
-import { useContainedRect, regionStyle, type NormRegion } from "../app/use-overlay-rect.ts";
+import { useContainedRect, regionStyle } from "../app/use-overlay-rect.ts";
 
 const WORKSHOP_SCENES = [WorkshopScene];
 
-// Painted ground instruments, left→right (kick … voice), matched to catalog ids.
 const INSTRUMENTS = [
-  "kick", "snare", "hihat", "tom", "cowbell", "shaker", "note-do", "note-mi",
+  { id: "kick", label: "Kick" }, { id: "snare", label: "Snare" },
+  { id: "hihat", label: "Cymbal" }, { id: "tom", label: "Tom" },
+  { id: "cowbell", label: "Cowbell" }, { id: "shaker", label: "Shaker" },
+  { id: "note-do", label: "Synth" }, { id: "note-mi", label: "Voice" },
 ];
 
-// Toolbar icon action → station tool id (the rest are nav/commands).
-const STATION_FOR: Record<string, string> = {
-  magicpad: "theremin-xy",
-  soundpads: "sound-pads",
-  myvoice: "record-voicefx",
-  beatgrid: "beat-grid",
-  voicekeys: "voice-keys",
-};
+// Creative-tool stations (the satellite machines), with short labels.
+const STATION_LIST = [
+  { id: "record-voicefx", label: "Voice", emoji: "🎤" },
+  { id: "voice-keys", label: "Keys", emoji: "🎙️" },
+  { id: "sound-pads", label: "Pads", emoji: "🥁" },
+  { id: "beat-grid", label: "Beat", emoji: "🎛️" },
+  { id: "theremin-xy", label: "Magic", emoji: "✨" },
+];
 const STATIONS = TOOLS.filter((t) => t.id !== "looper-stage");
 
 const CAR_TYPE_LABELS: Record<CarType, string> = {
-  boxcar: "Boxcar", tanker: "Tanker", hopper: "Hopper", flatcar: "Flatcar",
+  boxcar: "Box", tanker: "Tank", hopper: "Hop", flatcar: "Flat",
 };
 
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 
-// Transparent hit-area over a painted control.
-const hit = (rect: { x: number; y: number; width: number; height: number }, region: NormRegion) => ({
-  ...regionStyle(rect, region),
-  zIndex: 11,
-  background: "transparent",
-  border: "none",
-  padding: 0,
-  cursor: "pointer",
-});
-
 export const Workshop: FC = () => {
-  const { dispatch, engine, sound, surprise } = useApp();
+  const { dispatch, engine, sound } = useApp();
   const project = useProject();
   const part = activePart(project);
   const layers = activeLayers(project);
@@ -67,55 +55,39 @@ export const Workshop: FC = () => {
     const layerId = `layer-${assetId}-${Date.now()}`;
     const kind = catalog.recipe.kind === "drum" ? "drum" : "melody";
     if (!project.clips[clipId]) {
-      dispatch({
-        type: "addClip",
-        clip: { id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label },
-      });
+      dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label } });
     }
-    dispatch({
-      type: "addLayer",
-      layer: makeLayer({ id: layerId, clipId, kind, ...(kind === "melody" ? { wave: "triangle" } : {}) }),
-    });
+    dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind, ...(kind === "melody" ? { wave: "triangle" } : {}) }) });
     sound.play({ id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label });
   }
 
-  function onToolbar(action: string) {
-    switch (action) {
-      case "newcar": dispatch({ type: "addCar", id: newCarId() }); break;
-      case "yard": dispatch({ type: "setActiveView", view: "yard" }); break;
-      case "map": dispatch({ type: "setActiveView", view: "map" }); break;
-      case "surprise": surprise(); break;
-      default: { const t = STATION_FOR[action]; if (t) setOpenTool(t); }
-    }
-  }
-
-  const tb = WORKSHOP_LAYOUT_V2.toolbar;
+  const setTempo = (b: number) => { const bpm = Math.max(40, Math.min(220, b)); dispatch({ type: "setTempo", bpm }); engine.setTempo(bpm); };
   const ins = WORKSHOP_LAYOUT_V2.instruments;
-  const tr = WORKSHOP_LAYOUT_V2.transport;
-  const trBtn = (cx: number): NormRegion => ({ x: cx - tr.w / 2, y: tr.y, w: tr.w, h: tr.h });
 
   return (
     <div ref={wrapRef} style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
       <PhaserGame scenes={WORKSHOP_SCENES} />
 
-      {/* Painted top toolbar → transparent hit-areas (nav + stations) */}
-      {WORKSHOP_TOOLBAR.map((action, i) => (
-        <button
-          key={i}
-          title={action}
-          style={hit(rect, rowCell(i, tb.count, tb.c0, tb.c1, tb.y, tb.w, tb.h))}
-          onClick={() => onToolbar(action)}
-        />
-      ))}
+      {/* Top nav */}
+      <div style={{ position: "absolute", top: 8, left: 8, zIndex: 20 }}>
+        <PixelButton variant="nav" emoji="◀" label="Map" onClick={() => dispatch({ type: "setActiveView", view: "map" })} />
+      </div>
+      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20, display: "flex", gap: 6 }}>
+        <PixelButton emoji="➕" label="New Car" onClick={() => dispatch({ type: "addCar", id: newCarId() })} />
+        <PixelButton variant="primary" emoji="📦" label="To Yard" onClick={() => dispatch({ type: "setActiveView", view: "yard" })} />
+      </div>
+
+      {/* Creative-tool stations (left dock) */}
+      <div style={{ position: "absolute", left: 8, top: "26%", zIndex: 18, display: "flex", flexDirection: "column", gap: 6 }}>
+        {STATION_LIST.map((s) => (
+          <PixelButton key={s.id} emoji={s.emoji} label={s.label} onClick={() => setOpenTool(s.id)} style={{ width: 96, justifyContent: "flex-start" }} />
+        ))}
+      </div>
 
       {/* Mixing board over the boxcar interior */}
       <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carInterior), zIndex: 10, overflow: "hidden" }}>
         {layers.length === 0 ? (
-          <div style={{
-            display: "flex", alignItems: "center", justifyContent: "center", height: "100%",
-            textAlign: "center", color: "#e8dcc8",
-            font: "400 9px/1.8 var(--font-label, 'Press Start 2P')", letterSpacing: "1px", textShadow: "1px 1px 0 #000",
-          }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", color: "#e8dcc8", font: "400 9px/1.8 var(--font-label, 'Press Start 2P')", letterSpacing: "1px", textShadow: "1px 1px 0 #000" }}>
             Empty car.<br />Tap an instrument below.
           </div>
         ) : (
@@ -127,60 +99,57 @@ export const Workshop: FC = () => {
 
       {/* Car-type picker on the flatcar bed */}
       <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carTypePicker), zIndex: 12, display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}>
-        {CAR_TYPES.map((ct) => {
-          const active = part.carType === ct;
-          return (
-            <button
-              key={ct}
-              title={CAR_TYPE_LABELS[ct]}
-              aria-pressed={active}
-              onClick={() => dispatch({ type: "setCarType", partId: part.id, carType: ct })}
-              style={{
-                flex: "0 1 auto", height: "100%",
-                background: active ? "rgba(255,209,102,0.3)" : "rgba(0,0,0,0.2)",
-                border: active ? "2px solid #ffd166" : "2px solid transparent",
-                borderRadius: 4, cursor: "pointer", padding: 1,
-                display: "flex", alignItems: "center", justifyContent: "center",
-              }}
-            >
-              <img src={carSpriteUrl[ct]} alt={CAR_TYPE_LABELS[ct]} style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }} />
-            </button>
-          );
-        })}
+        {CAR_TYPES.map((ct) => (
+          <button
+            key={ct}
+            className="pixel-tap"
+            title={CAR_TYPE_LABELS[ct]}
+            aria-pressed={part.carType === ct}
+            onClick={() => dispatch({ type: "setCarType", partId: part.id, carType: ct })}
+            style={{
+              height: "100%", background: part.carType === ct ? "rgba(255,209,102,0.3)" : "rgba(0,0,0,0.2)",
+              border: part.carType === ct ? "2px solid #ffd166" : "2px solid transparent", borderRadius: 4,
+              cursor: "pointer", padding: 1, display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <img src={carSpriteUrl[ct]} alt={CAR_TYPE_LABELS[ct]} style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }} />
+          </button>
+        ))}
       </div>
 
-      {/* Painted ground instruments → add lane */}
-      {INSTRUMENTS.map((assetId, i) => (
-        <button
-          key={assetId}
-          title={`Add ${assetId}`}
-          style={hit(rect, rowCell(i, ins.count, ins.c0, ins.c1, ins.y, ins.w, ins.h))}
-          onClick={() => addInstrument(assetId)}
-        />
-      ))}
+      {/* Painted ground instruments → add lane (press pop via .pixel-tap) */}
+      {INSTRUMENTS.map((inst, i) => {
+        const c = rowCell(i, ins.count, ins.c0, ins.c1, ins.y, ins.w, ins.h);
+        return (
+          <button
+            key={inst.id}
+            className="pixel-tap"
+            title={`Add ${inst.label}`}
+            onClick={() => addInstrument(inst.id)}
+            style={{ ...regionStyle(rect, c), zIndex: 11, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
+          />
+        );
+      })}
 
-      {/* Painted transport panel → STOP / PLAY / LOOP / SPEED */}
-      <button title="Stop" style={hit(rect, trBtn(tr.stop))} onClick={() => engine.stop()} />
-      <button title="Play" style={hit(rect, trBtn(tr.play))} onClick={() => engine.playLoop(project)} />
-      <button title="Loop" style={hit(rect, trBtn(tr.loop))} onClick={() => engine.playLoop(project)} />
-      <button title="Slower" style={hit(rect, trBtn(tr.speedDown))} onClick={() => { const b = Math.max(40, project.tempoBpm - 10); dispatch({ type: "setTempo", bpm: b }); engine.setTempo(b); }} />
-      <button title="Faster" style={hit(rect, trBtn(tr.speedUp))} onClick={() => { const b = Math.min(220, project.tempoBpm + 10); dispatch({ type: "setTempo", bpm: b }); engine.setTempo(b); }} />
+      {/* Bottom transport bar */}
+      <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", gap: 6, alignItems: "center" }}>
+        <PixelButton variant="primary" emoji="▶" label="Play" onClick={() => engine.playLoop(project)} />
+        <PixelButton emoji="■" label="Stop" onClick={() => engine.stop()} />
+        <PixelButton emoji="🔁" label="Loop" onClick={() => engine.playLoop(project)} />
+        <PixelButton emoji="🐢" label="Slow" onClick={() => setTempo(project.tempoBpm - 10)} />
+        <span style={{ font: "400 9px/1 var(--font-label, 'Press Start 2P')", color: "#e8dcc8", textShadow: "1px 1px 0 #000", minWidth: 34, textAlign: "center" }}>{project.tempoBpm}</span>
+        <PixelButton emoji="🐇" label="Fast" onClick={() => setTempo(project.tempoBpm + 10)} />
+      </div>
 
       {/* Station panel (a tool's machine UI over the scene) */}
       {station && (
-        <div role="dialog" aria-label={station.label} style={{
-          position: "absolute", inset: "8% 5%", zIndex: 30, display: "flex", flexDirection: "column",
-          background: "rgba(18,14,22,0.97)", border: "3px solid #ffd166", borderRadius: 12,
-          boxShadow: "0 8px 40px rgba(0,0,0,0.6)", overflow: "hidden",
-        }}>
+        <div role="dialog" aria-label={station.label} style={{ position: "absolute", inset: "8% 5%", zIndex: 30, display: "flex", flexDirection: "column", background: "rgba(18,14,22,0.97)", border: "3px solid #ffd166", borderRadius: 12, boxShadow: "0 8px 40px rgba(0,0,0,0.6)", overflow: "hidden" }}>
           <header style={{ flexShrink: 0, display: "flex", alignItems: "center", gap: 10, padding: "8px 12px", borderBottom: "2px solid rgba(255,255,255,0.15)" }}>
             <span style={{ fontSize: 20 }}>{station.icon}</span>
             <span style={{ font: "400 12px/1 var(--font-label, 'Press Start 2P')", color: "#e8dcc8", letterSpacing: "1px" }}>{station.label}</span>
-            <button onClick={() => setOpenTool(null)} style={{
-              marginLeft: "auto", background: "#2a2118", border: "2px solid #6b5836",
-              boxShadow: "inset -2px -2px 0 #1a140d, inset 2px 2px 0 #8a7048", color: "#e8dcc8",
-              font: "400 9px/1 var(--font-label, 'Press Start 2P')", padding: "6px 10px", cursor: "pointer",
-            }}>✓ Done</button>
+            <div style={{ marginLeft: "auto" }}>
+              <PixelButton variant="primary" emoji="✓" label="Done" onClick={() => setOpenTool(null)} />
+            </div>
           </header>
           <div className="workshop-station-body" style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
             <LoopSelectionProvider>

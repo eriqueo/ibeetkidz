@@ -1,33 +1,18 @@
-import { FC, useCallback, useEffect, useMemo, useRef } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { STEP_COUNT, MIN_BPM, MAX_BPM } from "../core/types.ts";
+import { STEP_COUNT } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
+import { PixelButton } from "./PixelButton.tsx";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
-import { SCENE_ASPECT, TRACK_LAYOUT_V2 } from "../game/scene-layout.ts";
-import { useContainedRect, regionStyle, type NormRegion } from "../app/use-overlay-rect.ts";
 
 const TRACK_SCENES = [TrackScene];
-
-// A transparent hit-area placed over a painted control.
-const hit = (rect: { x: number; y: number; width: number; height: number }, region: NormRegion) => ({
-  ...regionStyle(rect, region),
-  zIndex: 12,
-  background: "transparent",
-  border: "none",
-  padding: 0,
-  cursor: "pointer",
-});
-
-const C = TRACK_LAYOUT_V2.controls;
-const btn = (cx: number): NormRegion => ({ x: cx - C.w / 2, y: C.y, w: C.w, h: C.h });
 
 export const Track: FC = () => {
   const { dispatch, engine, sound } = useApp();
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const rect = useContainedRect(wrapRef, SCENE_ASPECT);
+  const [dir, setDir] = useState<1 | -1>(1);
 
   const cars = useMemo<TrackCar[]>(() => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
@@ -45,9 +30,8 @@ export const Track: FC = () => {
     sceneRef.current.setCars(carsRef.current);
   }, []);
 
-  useEffect(() => {
-    sceneRef.current?.setCars(cars);
-  }, [cars]);
+  useEffect(() => { sceneRef.current?.setCars(cars); }, [cars]);
+  useEffect(() => { sceneRef.current?.setDirection(dir); }, [dir]);
 
   useEffect(() => {
     let raf = 0;
@@ -73,53 +57,51 @@ export const Track: FC = () => {
     return () => cancelAnimationFrame(raf);
   }, [engine, sound]);
 
-  const nudgeTempo = (delta: number): void => {
-    const bpm = Math.max(MIN_BPM, Math.min(MAX_BPM, project.tempoBpm + delta));
-    dispatch({ type: "setTempo", bpm });
-    engine.setTempo(bpm);
-  };
+  const setTempo = (b: number) => { const bpm = Math.max(40, Math.min(220, b)); dispatch({ type: "setTempo", bpm }); engine.setTempo(bpm); };
 
   return (
-    <div
-      ref={wrapRef}
-      style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}
-    >
-      <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} />
+    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
+      <div style={{ position: "absolute", inset: 0 }}>
+        <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} />
+      </div>
 
-      {/* Painted transport panel → transparent hit-areas */}
-      <button title="Slower" style={hit(rect, btn(C.rewind))} onClick={() => nudgeTempo(-15)} />
-      <button title="Pause" style={hit(rect, btn(C.pause))} onClick={() => engine.stop()} />
-      <button title="Stop" style={hit(rect, btn(C.stop))} onClick={() => engine.stop()} />
-      <button title="Ride" style={hit(rect, btn(C.play))} onClick={() => engine.playRide(project)} />
-      <button title="Faster" style={hit(rect, btn(C.ff))} onClick={() => nudgeTempo(15)} />
+      {/* Top nav */}
+      <div style={{ position: "absolute", top: 8, left: 8, zIndex: 20 }}>
+        <PixelButton variant="nav" emoji="◀" label="Yard" onClick={() => dispatch({ type: "setActiveView", view: "yard" })} />
+      </div>
+      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20 }}>
+        <PixelButton variant="nav" emoji="🗺️" label="Map" onClick={() => dispatch({ type: "setActiveView", view: "map" })} />
+      </div>
 
-      {/* In-canvas pixel nav (the track art has no painted exit) */}
-      <PixelNav onClick={() => dispatch({ type: "setActiveView", view: "yard" })} label="◀ Yard" left />
-      <PixelNav onClick={() => dispatch({ type: "setActiveView", view: "map" })} label="Map" />
+      {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live */}
+      {cars.length > 0 && (
+        <div style={{ position: "absolute", top: 40, left: "50%", transform: "translateX(-50%)", zIndex: 19, display: "flex", gap: 4, maxWidth: "90%", flexWrap: "wrap", justifyContent: "center" }}>
+          {liveTrain(project).map((c, i) => {
+            const part = project.parts.find((p) => p.id === c.partId)!;
+            return (
+              <button
+                key={c.instanceId}
+                className="pixel-tap"
+                title={c.muted ? "Uncover (unmute)" : "Cover with a tarp (mute)"}
+                onClick={() => dispatch({ type: "muteCar", instanceId: c.instanceId, muted: !c.muted })}
+                style={{ minWidth: 30, height: 28, background: c.muted ? "rgba(40,40,40,0.9)" : part.color, border: "2px solid rgba(0,0,0,0.55)", borderRadius: 3, color: "#fff", font: "400 8px/1 var(--font-label, 'Press Start 2P')", cursor: "pointer", opacity: c.muted ? 0.6 : 1, textShadow: "1px 1px 0 #000" }}
+              >
+                {c.muted ? "🛡️" : i + 1}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Bottom transport bar */}
+      <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", gap: 6, alignItems: "center" }}>
+        <PixelButton variant="primary" emoji="▶" label="Ride" onClick={() => engine.playRide(project)} />
+        <PixelButton emoji="■" label="Stop" onClick={() => engine.stop()} />
+        <PixelButton emoji="🐢" label="Slow" onClick={() => setTempo(project.tempoBpm - 10)} />
+        <span style={{ font: "400 9px/1 var(--font-label, 'Press Start 2P')", color: "#e8dcc8", textShadow: "1px 1px 0 #000", minWidth: 34, textAlign: "center" }}>{project.tempoBpm}</span>
+        <PixelButton emoji="🐇" label="Fast" onClick={() => setTempo(project.tempoBpm + 10)} />
+        <PixelButton emoji={dir === 1 ? "⟳" : "⟲"} label={dir === 1 ? "Fwd" : "Rev"} onClick={() => setDir((d) => (d === 1 ? -1 : 1))} />
+      </div>
     </div>
   );
 };
-
-// A tiny retro-styled nav chip for scenes whose art lacks a painted exit. Sits
-// INSIDE the canvas, dark inset + pixel font — not a modern HTML button.
-const PixelNav: FC<{ onClick: () => void; label: string; left?: boolean }> = ({ onClick, label, left }) => (
-  <button
-    onClick={onClick}
-    style={{
-      position: "absolute",
-      top: 8,
-      ...(left ? { left: 8 } : { right: 8 }),
-      zIndex: 20,
-      background: "#2a2118",
-      border: "2px solid #6b5836",
-      boxShadow: "inset -2px -2px 0 #1a140d, inset 2px 2px 0 #8a7048",
-      color: "#e8dcc8",
-      font: "400 8px/1 var(--font-label, 'Press Start 2P')",
-      letterSpacing: "1px",
-      padding: "6px 8px",
-      cursor: "pointer",
-    }}
-  >
-    {label}
-  </button>
-);

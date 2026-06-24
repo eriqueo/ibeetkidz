@@ -1528,3 +1528,73 @@ input[type="range"]::-moz-range-thumb {
     inset -2px -2px 0 rgba(0,0,0,0.2),
     0 0px 0 var(--edge) !important;
 }
+
+/* ── Pixel-art overlay buttons (in-canvas controls) ──────────────────────────
+   Visible, labelled, with a real press-down animation. Used by all v2 scenes. */
+.pixel-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  background: rgba(30, 24, 18, 0.86);
+  border-top: 3px solid #8b7355;
+  border-left: 3px solid #8b7355;
+  border-bottom: 3px solid #4a3728;
+  border-right: 3px solid #4a3728;
+  border-radius: 2px;
+  color: #e8dcc8;
+  font: 400 9px/1 var(--font-label, "Press Start 2P");
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  text-shadow: 1px 1px 0 #000;
+  padding: 7px 9px;
+  cursor: pointer;
+  image-rendering: pixelated;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  transition: filter 0.05s;
+}
+.pixel-btn .pb-emoji { font-size: 13px; line-height: 1; }
+.pixel-btn:hover { filter: brightness(1.12); }
+/* Press-down: invert the bevel and nudge so it physically "clicks". */
+.pixel-btn:active {
+  border-top: 3px solid #4a3728;
+  border-left: 3px solid #4a3728;
+  border-bottom: 3px solid #8b7355;
+  border-right: 3px solid #8b7355;
+  transform: translate(1px, 1px);
+  filter: brightness(0.9);
+}
+.pixel-btn:disabled { opacity: 0.4; cursor: default; filter: grayscale(0.5); }
+
+.pixel-btn--primary {
+  background: rgba(22, 64, 22, 0.9);
+  border-top-color: #5aa85a;
+  border-left-color: #5aa85a;
+  border-bottom-color: #2a5c2a;
+  border-right-color: #2a5c2a;
+  color: #b9f0b9;
+}
+.pixel-btn--primary:active {
+  border-top-color: #2a5c2a;
+  border-left-color: #2a5c2a;
+  border-bottom-color: #5aa85a;
+  border-right-color: #5aa85a;
+}
+.pixel-btn--active {
+  background: rgba(207, 153, 95, 0.92);
+  color: #1a140d;
+  text-shadow: none;
+}
+.pixel-btn--nav {
+  background: rgba(0, 0, 0, 0.6);
+  border-width: 2px;
+  border-color: rgba(255,255,255,0.28);
+  font-size: 8px;
+  padding: 5px 8px;
+}
+.pixel-btn--nav:active { transform: translate(1px, 1px); filter: brightness(0.85); }
+
+/* A clickable scene object (painted instrument) — no chrome, just a press pop. */
+.pixel-tap { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.05s; }
+.pixel-tap:active { transform: scale(0.92); }

@@ -83,7 +83,6 @@ export class YardScene extends BackgroundScene {
   private selectedId: string | null = null;
   private paletteTokens = new Map<string, Phaser.GameObjects.Container>();
   private trainTokens: Phaser.GameObjects.Container[] = [];
-  private hook?: Phaser.GameObjects.Container;
 
   constructor() {
     super(YardScene.KEY);
@@ -99,7 +98,6 @@ export class YardScene extends BackgroundScene {
 
   create(): void {
     this.addBackground("contain");
-    this.hook = this.makeHook();
     this.rebuild();
     this.announceReady();
   }
@@ -118,33 +116,46 @@ export class YardScene extends BackgroundScene {
     });
   }
 
-  /** Animate the crane hook: rest → palette slot → assembly-line slot → done.
-   *  The crane body is painted into the bg; only the hook/cable moves. */
+  /** Animate the crane lifting the chosen car from its siding up to the assembly
+   *  line: a ghost car sprite (+ hook/cable above it) rises, travels across, and
+   *  drops onto the line, THEN onComplete commits the real slot. Clearly visible
+   *  (the hook alone was too subtle). */
   animatePickup(
     fromSlotIndex: number,
     toTrainIndex: number,
     onComplete: () => void,
   ): void {
-    const hook = this.hook;
-    if (!hook) {
+    const r = this.backgroundRect;
+    const car = this.cars[fromSlotIndex];
+    if (!car || r.width === 0) {
       onComplete();
       return;
     }
-    const r = this.backgroundRect;
     const from = paletteSlot(r, fromSlotIndex);
     const to = trainSlot(r, toTrainIndex, Math.max(1, this.train.length + 1));
-    const rest = this.hookRest(r);
-    hook.setPosition(rest.x, rest.y).setVisible(true);
+    const liftY = r.y + r.height * (YARD_LAYOUT_V2.assemblyLine.y + 0.16); // crane beam height
+
+    // Ghost = the car being carried + a cable/hook above it, grouped so they move
+    // together. Hide the static palette token while it's "in the air".
+    const body = this.add.image(0, 0, carSpriteKey[car.carType]).setOrigin(0.5);
+    body.setTint(Phaser.Display.Color.HexStringToColor(car.color).color);
+    const cable = this.add.graphics();
+    cable.lineStyle(3, 0x2a2a2a, 1).lineBetween(0, -body.height / 2 - 60, 0, -body.height / 2);
+    cable.fillStyle(0xf2b134, 1).fillRect(-8, -body.height / 2 - 8, 16, 12); // hook block
+    const ghost = this.add.container(from.cx, from.cy, [cable, body]);
+    ghost.setScale(from.w / body.width).setDepth(20);
+    this.paletteTokens.get(car.id)?.setVisible(false);
+
     this.tweens.chain({
-      targets: hook,
+      targets: ghost,
       tweens: [
-        { x: from.cx, y: from.cy, duration: 280, ease: "Quad.easeInOut" },
-        { y: from.cy, duration: 120 }, // brief grab pause
-        { x: to.cx, y: to.cy, duration: 320, ease: "Quad.easeInOut" },
-        { y: rest.y, duration: 160, ease: "Quad.easeIn" },
+        { y: liftY, duration: 320, ease: "Back.easeOut" },          // hoist up
+        { x: to.cx, duration: 420, ease: "Sine.easeInOut" },        // travel across
+        { y: to.cy, duration: 320, ease: "Bounce.easeOut" },        // lower onto line
       ],
       onComplete: () => {
-        hook.setVisible(false);
+        ghost.destroy();
+        this.paletteTokens.get(car.id)?.setVisible(true);
         onComplete();
       },
     });
@@ -191,24 +202,12 @@ export class YardScene extends BackgroundScene {
         this.fitToken(token, pos.w);
       }
     });
-    if (this.hook && !this.tweens.isTweening(this.hook)) {
-      const rest = this.hookRest(r);
-      this.hook.setPosition(rest.x, rest.y);
-    }
   }
 
   /** Scale a car container so its sprite body is ~`targetW` px wide. */
   private fitToken(token: Phaser.GameObjects.Container, targetW: number): void {
     const baseW = (token.getData("baseW") as number) || targetW;
     token.setScale(targetW / baseW);
-  }
-
-  private hookRest(r: Phaser.Geom.Rectangle): { x: number; y: number } {
-    const c = YARD_LAYOUT_V2.crane;
-    return {
-      x: r.x + r.width * (c.x + c.w * 0.5),
-      y: r.y + r.height * (c.y + c.h * 0.15),
-    };
   }
 
   /** Build a car token: tinted sprite body + selection ring + name label. */
@@ -255,17 +254,6 @@ export class YardScene extends BackgroundScene {
       tarp.setDisplaySize(body.width * 1.05, body.height * 1.05);
       c.add(tarp);
     }
-    return c;
-  }
-
-  /** A simple cable + hook the crane animation drives. */
-  private makeHook(): Phaser.GameObjects.Container {
-    const g = this.add.graphics();
-    g.lineStyle(2, 0x2a2a2a, 1).lineBetween(0, -40, 0, 0); // cable
-    g.fillStyle(0xf2b134, 1).fillRect(-6, -2, 12, 8); // hook block
-    g.fillStyle(0x000000, 1).fillRect(-2, 6, 4, 6); // hook tip
-    const c = this.add.container(0, 0, [g]);
-    c.setDepth(8).setVisible(false);
     return c;
   }
 }
