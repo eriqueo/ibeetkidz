@@ -8,7 +8,7 @@ import { PhaserGame } from "./PhaserGame.tsx";
 import { PixelButton } from "./PixelButton.tsx";
 import { WorkshopScene } from "../game/scenes/WorkshopScene.ts";
 import { WORKSHOP_LAYOUT_V2, SCENE_ASPECT, rowCell } from "../game/scene-layout.ts";
-import { carSpriteUrl } from "../game/assets.ts";
+import { carSpriteUrlV2 } from "../game/assets.ts";
 import { useContainedRect, regionStyle } from "../app/use-overlay-rect.ts";
 
 const WORKSHOP_SCENES = [WorkshopScene];
@@ -112,7 +112,7 @@ export const Workshop: FC = () => {
               cursor: "pointer", padding: 1, display: "flex", alignItems: "center", justifyContent: "center",
             }}
           >
-            <img src={carSpriteUrl[ct]} alt={CAR_TYPE_LABELS[ct]} style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }} />
+            <img src={carSpriteUrlV2[ct]} alt={CAR_TYPE_LABELS[ct]} style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }} />
           </button>
         ))}
       </div>

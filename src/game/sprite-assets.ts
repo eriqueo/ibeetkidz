@@ -45,7 +45,7 @@ export function velocityToDirection(dx: number, dy: number): Direction {
   const index = Math.round(normalized / 45) % 8;
   // atan2 clockwise mapping: 0=E, 1=SE, 2=S, 3=SW, 4=W, 5=NW, 6=N, 7=NE
   const CW_MAP: Direction[] = ["E", "SE", "S", "SW", "W", "NW", "N", "NE"];
-  return CW_MAP[index];
+  return CW_MAP[index]!; // index is 0–7 (mod 8), never out of range
 }
 
 /**

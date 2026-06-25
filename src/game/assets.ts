@@ -79,3 +79,23 @@ export const carSpriteUrl: Record<
   hopper: SPRITES.hopper.url,
   flatcar: SPRITES.flatcar.url,
 };
+
+/**
+ * Cleaned, transparent per-direction car PNGs (the `sprites-v2/` set the
+ * spritesheet atlas is packed from) — the East-facing profile of each car type,
+ * for React <img> car-type pickers. Unlike `carSpriteUrl` (old grey-bg sprites)
+ * these have transparent backgrounds, so no grey box behind the picker buttons.
+ *
+ * NB: each URL is a STATIC literal `new URL(...)`. A dynamic `${file}` template
+ * would make Vite glob-bundle the entire `sprites-v2/` directory (~100 files,
+ * incl. the giant `_original` PNGs → ~290MB build). Literals ship only these 4.
+ */
+export const carSpriteUrlV2: Record<
+  "boxcar" | "tanker" | "hopper" | "flatcar",
+  string
+> = {
+  boxcar: new URL("../assets/sprites-v2/boxcar-E.png", import.meta.url).href,
+  tanker: new URL("../assets/sprites-v2/tanker-E.png", import.meta.url).href,
+  hopper: new URL("../assets/sprites-v2/hopper-E.png", import.meta.url).href,
+  flatcar: new URL("../assets/sprites-v2/flatcar-E.png", import.meta.url).href,
+};

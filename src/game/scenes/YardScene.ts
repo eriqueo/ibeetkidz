@@ -8,7 +8,8 @@
 // canvas takes no pointer events.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
-import { SCENE_BG_V2, SPRITES, CAR_SPRITES, carSpriteKey } from "../assets.ts";
+import { SCENE_BG_V2 } from "../assets.ts";
+import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
 import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
 import type { CarType } from "../../core/types.ts";
 
@@ -90,10 +91,8 @@ export class YardScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.yard);
-    // Car bodies + loco + tarp for the assembly line.
-    for (const a of [...CAR_SPRITES, SPRITES.loco, SPRITES.tarp]) {
-      if (!this.textures.exists(a.key)) this.load.image(a.key, a.url);
-    }
+    // train (car bodies, top-down) + tarp atlases.
+    loadSpriteAssets(this);
   }
 
   create(): void {
@@ -136,9 +135,9 @@ export class YardScene extends BackgroundScene {
     const liftY = r.y + r.height * (YARD_LAYOUT_V2.assemblyLine.y + 0.16); // crane beam height
 
     // Ghost = the car being carried + a cable/hook above it, grouped so they move
-    // together. Hide the static palette token while it's "in the air".
-    const body = this.add.image(0, 0, carSpriteKey[car.carType]).setOrigin(0.5);
-    body.setTint(Phaser.Display.Color.HexStringToColor(car.color).color);
+    // together. Hide the static palette token while it's "in the air". The car is
+    // shown side-on ('E') as it lands on the assembly track.
+    const body = this.add.image(0, 0, "train", frameKey(car.carType, "E")).setOrigin(0.5);
     const cable = this.add.graphics();
     cable.lineStyle(3, 0x2a2a2a, 1).lineBetween(0, -body.height / 2 - 60, 0, -body.height / 2);
     cable.fillStyle(0xf2b134, 1).fillRect(-8, -body.height / 2 - 8, 16, 12); // hook block
@@ -174,7 +173,7 @@ export class YardScene extends BackgroundScene {
     this.trainTokens = [];
 
     this.cars.forEach((car) =>
-      this.paletteTokens.set(car.id, this.makeCar(car.carType, car.color, car.name, false)),
+      this.paletteTokens.set(car.id, this.makeCar(car.carType, car.name, false, "S")),
     );
     this.train.forEach((slot) =>
       this.trainTokens.push(this.makeTrainCar(slot)),
@@ -210,16 +209,14 @@ export class YardScene extends BackgroundScene {
     token.setScale(targetW / baseW);
   }
 
-  /** Build a car token: tinted sprite body + selection ring + name label. */
+  /** Build a car token: directional atlas body + selection ring + name label. */
   private makeCar(
     carType: CarType,
-    color: string,
     name: string,
     isTrain: boolean,
+    dir: Direction,
   ): Phaser.GameObjects.Container {
-    const key = carSpriteKey[carType];
-    const body = this.add.image(0, 0, key).setOrigin(0.5);
-    body.setTint(Phaser.Display.Color.HexStringToColor(color).color);
+    const body = this.add.image(0, 0, "train", frameKey(carType, dir)).setOrigin(0.5);
 
     const ring = this.add.graphics();
     const bw = body.width;
@@ -245,12 +242,12 @@ export class YardScene extends BackgroundScene {
     return c;
   }
 
-  /** An assembly-line car: tinted body + a tarp overlay when muted. */
+  /** An assembly-line car: side-on body + a tarp overlay when muted. */
   private makeTrainCar(slot: YardTrainCar): Phaser.GameObjects.Container {
-    const c = this.makeCar(slot.carType, slot.color, "", true);
+    const c = this.makeCar(slot.carType, "", true, "E");
     const body = c.list[1] as Phaser.GameObjects.Image;
-    if (slot.muted && this.textures.exists(SPRITES.tarp.key)) {
-      const tarp = this.add.image(0, 0, SPRITES.tarp.key).setOrigin(0.5);
+    if (slot.muted) {
+      const tarp = this.add.image(0, 0, "tarp", "tarp").setOrigin(0.5);
       tarp.setDisplaySize(body.width * 1.05, body.height * 1.05);
       c.add(tarp);
     }
