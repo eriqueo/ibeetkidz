@@ -13,6 +13,7 @@
 // tempo controls owned by React.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
+import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import {
   loadSpriteAssets,
@@ -35,6 +36,28 @@ export interface TrackCar {
 const OVAL = TRACK_LAYOUT_V2.oval;
 const SMOKE_INTERVAL_MS = 800;
 
+// The bottom transport panel: each button's painted-centre (fraction of the
+// scene width, from TRACK_LAYOUT_V2.controls) + its label + what it does. These
+// are rendered as pixel-styled rectangles over the painted panel and fire
+// EventBus messages that React turns into engine calls.
+type ControlAction =
+  | { kind: "play" }
+  | { kind: "stop" }
+  | { kind: "tempo"; delta: number };
+
+interface ControlSpec {
+  readonly cx: number;
+  readonly label: string;
+  readonly action: ControlAction;
+}
+
+const CONTROL_SPECS: readonly ControlSpec[] = [
+  { cx: TRACK_LAYOUT_V2.controls.rewind, label: "🐢", action: { kind: "tempo", delta: -10 } },
+  { cx: TRACK_LAYOUT_V2.controls.stop, label: "■", action: { kind: "stop" } },
+  { cx: TRACK_LAYOUT_V2.controls.play, label: "▶", action: { kind: "play" } },
+  { cx: TRACK_LAYOUT_V2.controls.ff, label: "🐇", action: { kind: "tempo", delta: 10 } },
+];
+
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
@@ -47,6 +70,7 @@ export class TrackScene extends BackgroundScene {
   private direction: 1 | -1 = 1;
   private moving = false;
   private lastSignalBar = -1;
+  private controlBtns: { spec: ControlSpec; btn: Phaser.GameObjects.Container }[] = [];
 
   constructor() {
     super(TrackScene.KEY);
@@ -75,6 +99,7 @@ export class TrackScene extends BackgroundScene {
       callback: this.puffSmoke,
       callbackScope: this,
     });
+    this.buildControls();
     this.layoutFixtures();
     this.rebuildCars();
     this.announceReady();
@@ -146,7 +171,71 @@ export class TrackScene extends BackgroundScene {
     this.path.yRadius = r.height * OVAL.ry;
   }
 
+  /** Build the pixel-styled transport buttons over the painted control panel.
+   *  Each fires an EventBus message; React owns the engine. */
+  private buildControls(): void {
+    this.controlBtns = CONTROL_SPECS.map((spec) => {
+      const bg = this.add.rectangle(0, 0, 10, 10, 0x2a2118).setStrokeStyle(3, 0x000000);
+      const label = this.add
+        .text(0, 0, spec.label, {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "18px",
+          color: "#f4e8d0",
+        })
+        .setOrigin(0.5);
+      const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
+      btn.setData("bg", bg);
+      btn.setData("label", label);
+      // Centred hit area (container-local origin is its centre); resized in
+      // layoutControls once the background rect is known.
+      const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
+      btn.setData("hit", hit);
+      btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+      if (btn.input) btn.input.cursor = "pointer";
+      btn
+        .on("pointerdown", () => {
+          btn.setAlpha(0.7); // visual down state
+          this.fireControl(spec.action);
+        })
+        .on("pointerup", () => btn.setAlpha(1))
+        .on("pointerout", () => btn.setAlpha(1));
+      return { spec, btn };
+    });
+  }
+
+  private fireControl(action: ControlAction): void {
+    switch (action.kind) {
+      case "play":
+        EventBus.emit("transport-play", "ride");
+        break;
+      case "stop":
+        EventBus.emit("transport-stop");
+        break;
+      case "tempo":
+        EventBus.emit("tempo-changed", action.delta);
+        break;
+    }
+  }
+
+  /** Position + size the transport buttons against the painted panel band. */
+  private layoutControls(): void {
+    const r = this.backgroundRect;
+    const w = r.width * TRACK_LAYOUT_V2.controls.w;
+    const h = r.height * TRACK_LAYOUT_V2.controls.h;
+    const y = r.y + r.height * TRACK_LAYOUT_V2.controls.y;
+    for (const { spec, btn } of this.controlBtns) {
+      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
+      const label = btn.getData("label") as Phaser.GameObjects.Text;
+      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
+      bg.setSize(w, h);
+      hit.setTo(-w / 2, -h / 2, w, h);
+      label.setFontSize(Math.round(h * 0.42));
+      btn.setPosition(r.x + r.width * spec.cx, y);
+    }
+  }
+
   private layoutFixtures(): void {
+    this.layoutControls();
     const r = this.backgroundRect;
     if (this.signal) {
       const targetW = r.width * TRACK_LAYOUT_V2.signal.w;

@@ -1,9 +1,10 @@
-import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { STEP_COUNT } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { PixelButton } from "./PixelButton.tsx";
+import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 
 const TRACK_SCENES = [TrackScene];
@@ -12,7 +13,6 @@ export const Track: FC = () => {
   const { dispatch, engine, sound } = useApp();
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
-  const [dir, setDir] = useState<1 | -1>(1);
 
   const cars = useMemo<TrackCar[]>(() => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
@@ -25,13 +25,36 @@ export const Track: FC = () => {
   const carsRef = useRef(cars);
   carsRef.current = cars;
 
+  // Latest project for the EventBus listeners (registered once, no stale closure).
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     sceneRef.current = scene as TrackScene;
     sceneRef.current.setCars(carsRef.current);
   }, []);
 
   useEffect(() => { sceneRef.current?.setCars(cars); }, [cars]);
-  useEffect(() => { sceneRef.current?.setDirection(dir); }, [dir]);
+
+  // Phaser transport buttons → audio engine / state, across the EventBus.
+  useEffect(() => {
+    const setTempo = (b: number) => {
+      const bpm = Math.max(40, Math.min(220, b));
+      dispatch({ type: "setTempo", bpm });
+      engine.setTempo(bpm);
+    };
+    const onPlay = () => engine.playRide(projectRef.current);
+    const onStop = () => engine.stop();
+    const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
+    EventBus.on("transport-play", onPlay);
+    EventBus.on("transport-stop", onStop);
+    EventBus.on("tempo-changed", onTempo);
+    return () => {
+      EventBus.off("transport-play", onPlay);
+      EventBus.off("transport-stop", onStop);
+      EventBus.off("tempo-changed", onTempo);
+    };
+  }, [dispatch, engine]);
 
   useEffect(() => {
     let raf = 0;
@@ -57,12 +80,12 @@ export const Track: FC = () => {
     return () => cancelAnimationFrame(raf);
   }, [engine, sound]);
 
-  const setTempo = (b: number) => { const bpm = Math.max(40, Math.min(220, b)); dispatch({ type: "setTempo", bpm }); engine.setTempo(bpm); };
-
   return (
     <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
       <div style={{ position: "absolute", inset: 0 }}>
-        <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} />
+        {/* Transport buttons live in TrackScene now, so the canvas must take
+            pointer events (the global default is none for React-overlay views). */}
+        <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
       </div>
 
       {/* Top nav */}
@@ -93,15 +116,8 @@ export const Track: FC = () => {
         </div>
       )}
 
-      {/* Bottom transport bar */}
-      <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", gap: 6, alignItems: "center" }}>
-        <PixelButton variant="primary" emoji="▶" label="Ride" onClick={() => engine.playRide(project)} />
-        <PixelButton emoji="■" label="Stop" onClick={() => engine.stop()} />
-        <PixelButton emoji="🐢" label="Slow" onClick={() => setTempo(project.tempoBpm - 10)} />
-        <span style={{ font: "400 9px/1 var(--font-label, 'Press Start 2P')", color: "#e8dcc8", textShadow: "1px 1px 0 #000", minWidth: 34, textAlign: "center" }}>{project.tempoBpm}</span>
-        <PixelButton emoji="🐇" label="Fast" onClick={() => setTempo(project.tempoBpm + 10)} />
-        <PixelButton emoji={dir === 1 ? "⟳" : "⟲"} label={dir === 1 ? "Fwd" : "Rev"} onClick={() => setDir((d) => (d === 1 ? -1 : 1))} />
-      </div>
+      {/* Transport controls (Ride / Stop / Speed) now live inside TrackScene,
+          driven through the EventBus — no HTML overlays here. */}
     </div>
   );
 };

@@ -8,6 +8,7 @@
 // canvas takes no pointer events.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
+import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
 import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
@@ -84,6 +85,13 @@ export class YardScene extends BackgroundScene {
   private selectedId: string | null = null;
   private paletteTokens = new Map<string, Phaser.GameObjects.Container>();
   private trainTokens: Phaser.GameObjects.Container[] = [];
+  private busy = false; // a crane/departure tween is in flight — ignore presses
+  // The two Phaser control buttons + how to place/gate each against the bg rect.
+  private buttons: {
+    btn: Phaser.GameObjects.Container;
+    region: (r: SlotRect) => { cx: number; cy: number; w: number; h: number };
+    enabled?: () => boolean;
+  }[] = [];
 
   constructor() {
     super(YardScene.KEY);
@@ -97,11 +105,14 @@ export class YardScene extends BackgroundScene {
 
   create(): void {
     this.addBackground("contain");
+    this.buildButtons();
     this.rebuild();
     this.announceReady();
   }
 
-  /** React → scene: the palette (built cars) + the assembled train. */
+  /** React → scene: the palette (built cars) + the assembled train. This is the
+   *  scene's only train state — it renders from it and reads `train.length` to
+   *  gate Send to Track; it never mutates or keeps a separate copy. */
   setCars(palette: YardCar[], train: YardTrainCar[]): void {
     this.cars = palette;
     this.train = train;
@@ -160,6 +171,53 @@ export class YardScene extends BackgroundScene {
     });
   }
 
+  /** Add to Train: run the crane lift for `partId`; the dispatch happens only in
+   *  the tween's onComplete (state follows the animation — never on press). */
+  private animateCranePickup(partId: string): void {
+    if (this.busy) return;
+    const fromSlotIndex = this.cars.findIndex((c) => c.id === partId);
+    if (fromSlotIndex < 0) return;
+    this.busy = true;
+    this.animatePickup(fromSlotIndex, this.train.length, () => {
+      this.busy = false;
+      EventBus.emit("yard-add-to-train", partId);
+    });
+  }
+
+  /** Send to Track: slide the assembled train off-screen, then navigate. */
+  private sendToTrack(): void {
+    if (this.busy || this.train.length === 0) return;
+    this.busy = true;
+    this.animateDeparture(() => {
+      this.busy = false;
+      EventBus.emit("yard-send-to-track");
+    });
+  }
+
+  private animateDeparture(onComplete: () => void): void {
+    if (this.trainTokens.length === 0) {
+      onComplete();
+      return;
+    }
+    const r = this.backgroundRect;
+    // A quick bob (the "toot-toot") then the whole train rolls off to the right.
+    this.tweens.chain({
+      targets: this.trainTokens,
+      tweens: [
+        { y: "-=8", duration: 110, yoyo: true, ease: "Sine.easeOut" },
+        { x: `+=${r.width * 1.2}`, duration: 650, ease: "Sine.easeIn" },
+      ],
+      onComplete,
+    });
+  }
+
+  /** Visual no-op when Add is pressed with nothing selected: blink the palette. */
+  private flashPalette(): void {
+    this.paletteTokens.forEach((t) =>
+      this.tweens.add({ targets: t, alpha: { from: 1, to: 0.3 }, yoyo: true, duration: 120, repeat: 1 }),
+    );
+  }
+
   protected onResize(): void {
     if (this.scene.isActive()) this.layout();
   }
@@ -172,14 +230,35 @@ export class YardScene extends BackgroundScene {
     this.trainTokens.forEach((t) => t.destroy());
     this.trainTokens = [];
 
-    this.cars.forEach((car) =>
-      this.paletteTokens.set(car.id, this.makeCar(car.carType, car.name, false, "S")),
-    );
+    this.cars.forEach((car) => {
+      const token = this.makeCar(car.carType, car.name, false, "S");
+      this.makePaletteInteractive(token, car.id);
+      this.paletteTokens.set(car.id, token);
+    });
     this.train.forEach((slot) =>
       this.trainTokens.push(this.makeTrainCar(slot)),
     );
+    // A selected car may have been removed; drop a stale highlight.
+    if (this.selectedId && !this.paletteTokens.has(this.selectedId)) this.selectedId = null;
     this.layout();
     this.setSelectedPalette(this.selectedId);
+    this.refreshButtons();
+  }
+
+  /** Make a palette car token tap-to-select. The hit area is the (unscaled) body
+   *  centred on the container; the container's world scale applies on hit-test. */
+  private makePaletteInteractive(token: Phaser.GameObjects.Container, partId: string): void {
+    const body = token.getData("body") as Phaser.GameObjects.Image;
+    const hit = new Phaser.Geom.Rectangle(-body.width / 2, -body.height / 2, body.width, body.height);
+    token.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+    if (token.input) token.input.cursor = "pointer";
+    token.on("pointerdown", () => this.selectPaletteCar(partId));
+  }
+
+  /** Deselect the previous car, highlight + store the new one, tell React. */
+  private selectPaletteCar(partId: string): void {
+    this.setSelectedPalette(partId);
+    EventBus.emit("yard-car-selected", partId);
   }
 
   private layout(): void {
@@ -201,6 +280,81 @@ export class YardScene extends BackgroundScene {
         this.fitToken(token, pos.w);
       }
     });
+    this.layoutButtons();
+  }
+
+  // ── transport / action buttons (same pattern as TrackScene) ─────────────────
+
+  private buildButtons(): void {
+    const P = YARD_LAYOUT_V2.panel;
+    const S = YARD_LAYOUT_V2.sendToTrack;
+    this.buttons = [
+      {
+        // Add to Train: crane-lift the selected car onto the line.
+        btn: this.makeButton("🏗️", () => {
+          if (this.selectedId) this.animateCranePickup(this.selectedId);
+          else this.flashPalette();
+        }),
+        region: (r) => ({ cx: r.x + r.width * P.couple, cy: r.y + r.height * P.y, w: r.width * P.w, h: r.height * P.h }),
+      },
+      {
+        // Send to Track: depart the assembled train, then navigate.
+        btn: this.makeButton("🚂", () => this.sendToTrack()),
+        region: (r) => ({
+          cx: r.x + r.width * (S.x + S.w / 2),
+          cy: r.y + r.height * (S.y + S.h / 2),
+          w: r.width * S.w,
+          h: r.height * S.h,
+        }),
+        enabled: () => this.train.length > 0,
+      },
+    ];
+  }
+
+  private makeButton(text: string, onPress: () => void): Phaser.GameObjects.Container {
+    const bg = this.add.rectangle(0, 0, 10, 10, 0x2a2118).setStrokeStyle(3, 0x000000);
+    const label = this.add
+      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "18px", color: "#f4e8d0" })
+      .setOrigin(0.5);
+    const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
+    const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
+    btn.setData("bg", bg);
+    btn.setData("label", label);
+    btn.setData("hit", hit);
+    btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+    if (btn.input) btn.input.cursor = "pointer";
+    btn
+      .on("pointerdown", () => {
+        if (this.busy) return;
+        btn.setAlpha(0.7); // visual down state
+        onPress();
+      })
+      .on("pointerup", () => this.refreshButtons())
+      .on("pointerout", () => this.refreshButtons());
+    return btn;
+  }
+
+  /** Position + size the buttons against the painted panel; dim disabled ones. */
+  private layoutButtons(): void {
+    const r = this.backgroundRect;
+    for (const { btn, region } of this.buttons) {
+      const { cx, cy, w, h } = region(r);
+      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
+      const label = btn.getData("label") as Phaser.GameObjects.Text;
+      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
+      bg.setSize(w, h);
+      hit.setTo(-w / 2, -h / 2, w, h);
+      label.setFontSize(Math.round(h * 0.42));
+      btn.setPosition(cx, cy);
+    }
+    this.refreshButtons();
+  }
+
+  /** Reflect each button's enabled state (and reset any press alpha). */
+  private refreshButtons(): void {
+    for (const { btn, enabled } of this.buttons) {
+      btn.setAlpha(!enabled || enabled() ? 1 : 0.45);
+    }
   }
 
   /** Scale a car container so its sprite body is ~`targetW` px wide. */
@@ -237,6 +391,7 @@ export class YardScene extends BackgroundScene {
     }
     const c = this.add.container(0, 0, children);
     c.setData("ring", ring);
+    c.setData("body", body);
     c.setData("baseW", bw);
     c.setDepth(isTrain ? 5 : 4);
     return c;

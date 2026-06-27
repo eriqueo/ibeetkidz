@@ -11,6 +11,17 @@ export interface EventMap {
   "current-scene-ready": [scene: Phaser.Scene];
   // Phaser -> React: the kid tapped a car sprite in the Yard.
   "car-selected": [partId: string];
+  // Phaser -> React: a transport button was pressed in the scene.
+  "transport-play": [mode: "loop" | "ride"];
+  "transport-stop": [];
+  "tempo-changed": [delta: number]; // e.g., +10 or -10
+  // Phaser -> React (Yard): the kid picked a palette car (selection reflected).
+  "yard-car-selected": [partId: string];
+  // Phaser -> React (Yard): the crane finished dropping a car on the line.
+  // Fires from inside the tween's onComplete so state follows the animation.
+  "yard-add-to-train": [partId: string];
+  // Phaser -> React (Yard): the assembled train has departed; navigate to Track.
+  "yard-send-to-track": [];
 }
 
 // Phaser's EventEmitter is untyped; we wrap it so call sites get autocomplete
