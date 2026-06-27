@@ -57,6 +57,23 @@ export const WORKSHOP_LAYOUT_V2 = {
   },
 } as const;
 
+// Workshop v2 sequencer grid (Phaser-native). The grid fills the painted boxcar
+// interior (WORKSHOP_LAYOUT_V2.carInterior); a left column holds the lane labels
+// and the remaining width is split into STEP_COUNT cells. No scrolling: at most
+// `maxLanes` rows show at once.
+export const WORKSHOP_GRID_V2 = {
+  maxLanes: 6,
+  labelFrac: 0.16, // lane-label column, as a fraction of the grid width
+  cellPad: 0.12, // gap between cells, as a fraction of the cell size
+} as const;
+
+// Which built-in sounds front the painted instrument shelf (8 painted slots).
+// MEMBERSHIP is config (here); each id's emoji/colour/kind is resolved from the
+// sound catalog at render time, so this stays data-driven (no hardcoded icons).
+export const WORKSHOP_SHELF_IDS = [
+  "kick", "snare", "hihat", "tom", "cowbell", "shaker", "note-do", "note-mi",
+] as const;
+
 /** Which toolbar icon index does what (left→right in the painted bar). */
 export const WORKSHOP_TOOLBAR = [
   "newcar",   // 0 notepad

@@ -1,12 +1,75 @@
-// The Workshop view background: the painted train-car UI, contain-fit so its
-// regions map to predictable coordinates. All interactivity (sequencer grid,
-// instrument shelf, transport) is React, pinned over the painted regions via
-// WORKSHOP_LAYOUT — see Workshop.tsx.
+// The Workshop view (v2): the sequencer lives INSIDE Phaser now. The painted
+// boxcar interior holds a step grid (one row per lane, STEP_COUNT cells each);
+// the painted shelf adds lanes; a 4-way picker sets the (cosmetic) car type; a
+// Play/Stop pair drives the loop. All interaction flows out over the typed
+// EventBus — React owns state + audio and pushes a derived model back in.
+//
+// The grid is built once per lane-set and only its cell tints/alpha change on a
+// store update (diffed); `update()` only sweeps the playhead. Every coordinate
+// comes from scene-layout.ts — nothing is hardcoded here.
+import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
+import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
+import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
+import {
+  WORKSHOP_LAYOUT_V2,
+  WORKSHOP_GRID_V2,
+  WORKSHOP_SHELF_IDS,
+  rowCell,
+} from "../scene-layout.ts";
+import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../../core/sound-catalog.ts";
+import { STEP_COUNT, CAR_TYPES, type CarType } from "../../core/types.ts";
+
+/** One sequencer lane, derived by React from the active car's layers. */
+export interface WorkshopLane {
+  readonly id: string;
+  readonly label: string; // emoji / short tag for the row
+  readonly color: string; // laneColor() — the lane-group colour
+  readonly cells: readonly boolean[]; // length STEP_COUNT
+}
+
+/** What the scene needs to render, pushed from the store on every change. */
+export interface WorkshopModel {
+  readonly lanes: readonly WorkshopLane[];
+  readonly carType: CarType;
+  readonly selectedLayerId: string | null;
+}
+
+const OFF_FILL = 0x2a2118;
+const OFF_ALPHA = 0.32;
+const LABEL_COLOR = "#e8dcc8";
+const LABEL_SELECTED = "#ffd166";
+
+const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
+
+interface LaneRow {
+  layerId: string;
+  label: Phaser.GameObjects.Text;
+  colorInt: number;
+  cells: Phaser.GameObjects.Rectangle[];
+  on: boolean[];
+}
 
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
+
+  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null };
+  private rows: LaneRow[] = [];
+  private structKey = "";
+  private emptyText: Phaser.GameObjects.Text | undefined;
+  private playhead: Phaser.GameObjects.Rectangle | undefined;
+  private playStep = -1;
+  private cellW = 0;
+  private cellH = 0;
+  private gridLeft = 0;
+  private gridTop = 0;
+  private carBtns: { type: CarType; img: Phaser.GameObjects.Image }[] = [];
+  private shelfIcons: Phaser.GameObjects.Text[] = [];
+  private transportBtns: {
+    btn: Phaser.GameObjects.Container;
+    cx: number;
+  }[] = [];
 
   constructor() {
     super(WorkshopScene.KEY);
@@ -14,10 +77,299 @@ export class WorkshopScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.workshop);
+    loadSpriteAssets(this); // train atlas → car-type picker sprites
   }
 
   create(): void {
     this.addBackground("contain");
+    this.buildShelf();
+    this.buildCarPicker();
+    this.buildTransport();
+    this.buildGrid();
+    this.layoutFixtures();
     this.announceReady();
+  }
+
+  /** React → scene: the derived sequencer model. Rebuilds the grid only when the
+   *  lane SET changes; otherwise just diffs cell states + selection highlight. */
+  setModel(model: WorkshopModel): void {
+    this.model = model;
+    if (!this.scene.isActive()) return;
+    const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
+    if (key !== this.structKey) {
+      this.buildGrid();
+      this.layoutFixtures();
+    } else {
+      this.diffCells();
+    }
+    this.refreshSelection();
+    this.refreshCarPicker();
+  }
+
+  /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
+   *  once per frame from React's rAF (the single getTransportStep read). */
+  setPlayhead(step: number): void {
+    this.playStep = step;
+  }
+
+  update(): void {
+    if (!this.playhead) return;
+    if (this.playStep < 0 || this.rows.length === 0) {
+      this.playhead.setVisible(false);
+      return;
+    }
+    const step = this.playStep % STEP_COUNT;
+    this.playhead.setVisible(true).setPosition(this.gridLeft + step * this.cellW, this.gridTop);
+  }
+
+  protected onResize(): void {
+    if (!this.scene.isActive()) return;
+    this.layoutGrid();
+    this.layoutFixtures();
+  }
+
+  // ── grid ────────────────────────────────────────────────────────────────────
+
+  private buildGrid(): void {
+    this.rows.forEach((r) => {
+      r.label.destroy();
+      r.cells.forEach((c) => c.destroy());
+    });
+    this.rows = [];
+    this.playhead?.destroy();
+    this.playhead = undefined;
+    this.emptyText?.destroy();
+    this.emptyText = undefined;
+
+    const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
+    this.structKey = lanes.map((l) => l.id).join("|");
+
+    if (lanes.length === 0) {
+      this.emptyText = this.add
+        .text(0, 0, "Empty car —\ntap an instrument below", {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "12px",
+          color: LABEL_COLOR,
+          align: "center",
+          lineSpacing: 8,
+        })
+        .setOrigin(0.5)
+        .setDepth(6);
+      this.layoutGrid();
+      return;
+    }
+
+    lanes.forEach((lane) => {
+      const colorInt = toInt(lane.color);
+      const label = this.add
+        .text(0, 0, lane.label, { fontFamily: "'Press Start 2P', monospace", fontSize: "12px", color: LABEL_COLOR })
+        .setOrigin(0.5)
+        .setDepth(6)
+        .setInteractive({ useHandCursor: true })
+        .on("pointerdown", () => EventBus.emit("workshop-layer-selected", lane.id));
+      const cells: Phaser.GameObjects.Rectangle[] = [];
+      const on: boolean[] = [];
+      for (let i = 0; i < STEP_COUNT; i++) {
+        const isOn = lane.cells[i] ?? false;
+        const cell = this.add
+          .rectangle(0, 0, 10, 10, isOn ? colorInt : OFF_FILL, isOn ? 1 : OFF_ALPHA)
+          .setOrigin(0.5)
+          .setStrokeStyle(1, 0x000000, 0.5)
+          .setDepth(5)
+          .setInteractive({ useHandCursor: true });
+        const stepIndex = i;
+        cell.on("pointerdown", () => {
+          const next = !this.rowOn(lane.id, stepIndex);
+          EventBus.emit("workshop-cell-toggled", { layerId: lane.id, stepIndex, on: next });
+        });
+        cells.push(cell);
+        on.push(isOn);
+      }
+      this.rows.push({ layerId: lane.id, label, colorInt, cells, on });
+    });
+
+    this.playhead = this.add.rectangle(0, 0, 3, 10, 0xffffff, 0.5).setOrigin(0, 0).setDepth(8).setVisible(false);
+    this.layoutGrid();
+    this.refreshSelection();
+  }
+
+  private rowOn(layerId: string, step: number): boolean {
+    const row = this.rows.find((r) => r.layerId === layerId);
+    return row ? (row.on[step] ?? false) : false;
+  }
+
+  /** Diff the model's cell states against what's drawn; recolour only changes. */
+  private diffCells(): void {
+    const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
+    this.rows.forEach((row, li) => {
+      const lane = lanes[li];
+      if (!lane) return;
+      for (let i = 0; i < STEP_COUNT; i++) {
+        const isOn = lane.cells[i] ?? false;
+        if (isOn !== row.on[i]) {
+          row.on[i] = isOn;
+          row.cells[i]?.setFillStyle(isOn ? row.colorInt : OFF_FILL, isOn ? 1 : OFF_ALPHA);
+        }
+      }
+    });
+  }
+
+  private refreshSelection(): void {
+    const sel = this.model.selectedLayerId;
+    this.rows.forEach((row) => row.label.setColor(row.layerId === sel ? LABEL_SELECTED : LABEL_COLOR));
+  }
+
+  private layoutGrid(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0) return;
+    const g = WORKSHOP_LAYOUT_V2.carInterior;
+    const gx = r.x + r.width * g.x;
+    const gy = r.y + r.height * g.y;
+    const gw = r.width * g.w;
+    const gh = r.height * g.h;
+
+    if (this.emptyText) this.emptyText.setPosition(gx + gw / 2, gy + gh / 2);
+
+    const laneCount = Math.max(1, this.rows.length);
+    const labelW = gw * WORKSHOP_GRID_V2.labelFrac;
+    this.gridLeft = gx + labelW;
+    this.gridTop = gy;
+    this.cellW = (gw - labelW) / STEP_COUNT;
+    this.cellH = gh / laneCount;
+    const pad = Math.min(this.cellW, this.cellH) * WORKSHOP_GRID_V2.cellPad;
+
+    this.rows.forEach((row, li) => {
+      const cy = gy + (li + 0.5) * this.cellH;
+      row.label.setPosition(gx + labelW / 2, cy);
+      row.cells.forEach((cell, i) => {
+        cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
+        cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));
+      });
+    });
+
+    this.playhead?.setSize(3, this.cellH * laneCount);
+  }
+
+  // ── instrument shelf ─────────────────────────────────────────────────────────
+
+  private buildShelf(): void {
+    this.shelfIcons = WORKSHOP_SHELF_IDS.map((id) => {
+      const snd = BUILTIN_SOUNDS.find((s) => s.assetId === id);
+      const kind = DRUM_SOUNDS.some((d) => d.assetId === id) ? "drum" : "melody";
+      const icon = this.add
+        .text(0, 0, snd?.emoji ?? "🎵", { fontSize: "28px" })
+        .setOrigin(0.5)
+        .setDepth(9)
+        .setInteractive({ useHandCursor: true });
+      icon
+        .on("pointerdown", () => {
+          icon.setScale(0.85);
+          EventBus.emit("workshop-instrument-added", kind, id);
+        })
+        .on("pointerup", () => icon.setScale(1))
+        .on("pointerout", () => icon.setScale(1));
+      return icon;
+    });
+  }
+
+  private layoutShelf(): void {
+    const r = this.backgroundRect;
+    const s = WORKSHOP_LAYOUT_V2.instruments;
+    this.shelfIcons.forEach((icon, i) => {
+      const c = rowCell(i, s.count, s.c0, s.c1, s.y, s.w, s.h);
+      icon.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
+      icon.setFontSize(Math.round(r.height * s.h * 0.55));
+    });
+  }
+
+  // ── car-type picker ──────────────────────────────────────────────────────────
+
+  private buildCarPicker(): void {
+    this.carBtns = CAR_TYPES.map((type) => {
+      const img = this.add
+        .image(0, 0, "train", frameKey(type, "E"))
+        .setOrigin(0.5)
+        .setDepth(9)
+        .setInteractive({ useHandCursor: true });
+      img.on("pointerdown", () => EventBus.emit("workshop-car-type-changed", type));
+      return { type, img };
+    });
+  }
+
+  private layoutCarPicker(): void {
+    const r = this.backgroundRect;
+    const p = WORKSHOP_LAYOUT_V2.carTypePicker;
+    const slotW = (r.width * p.w) / CAR_TYPES.length;
+    const cy = r.y + r.height * (p.y + p.h / 2);
+    this.carBtns.forEach(({ img }, i) => {
+      const cx = r.x + r.width * p.x + (i + 0.5) * slotW;
+      img.setPosition(cx, cy);
+      if (img.width > 0) img.setScale((slotW * 0.8) / img.width);
+    });
+    this.refreshCarPicker();
+  }
+
+  private refreshCarPicker(): void {
+    this.carBtns.forEach(({ type, img }) => {
+      const active = type === this.model.carType;
+      img.setAlpha(active ? 1 : 0.5);
+      img.setTint(active ? 0xffffff : 0x888888);
+    });
+  }
+
+  // ── transport (Phase-1 button pattern) ───────────────────────────────────────
+
+  private buildTransport(): void {
+    const t = WORKSHOP_LAYOUT_V2.transport;
+    this.transportBtns = [
+      { btn: this.makeButton("▶", () => EventBus.emit("transport-play", "loop")), cx: t.play },
+      { btn: this.makeButton("■", () => EventBus.emit("transport-stop")), cx: t.stop },
+    ];
+  }
+
+  private makeButton(text: string, onPress: () => void): Phaser.GameObjects.Container {
+    const bg = this.add.rectangle(0, 0, 10, 10, OFF_FILL).setStrokeStyle(3, 0x000000);
+    const label = this.add
+      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "18px", color: "#f4e8d0" })
+      .setOrigin(0.5);
+    const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
+    const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
+    btn.setData("bg", bg);
+    btn.setData("label", label);
+    btn.setData("hit", hit);
+    btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+    if (btn.input) btn.input.cursor = "pointer";
+    btn
+      .on("pointerdown", () => {
+        btn.setAlpha(0.7);
+        onPress();
+      })
+      .on("pointerup", () => btn.setAlpha(1))
+      .on("pointerout", () => btn.setAlpha(1));
+    return btn;
+  }
+
+  private layoutTransport(): void {
+    const r = this.backgroundRect;
+    const t = WORKSHOP_LAYOUT_V2.transport;
+    const w = r.width * t.w;
+    const h = r.height * t.h;
+    const y = r.y + r.height * t.y;
+    for (const { btn, cx } of this.transportBtns) {
+      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
+      const label = btn.getData("label") as Phaser.GameObjects.Text;
+      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
+      bg.setSize(w, h);
+      hit.setTo(-w / 2, -h / 2, w, h);
+      label.setFontSize(Math.round(h * 0.42));
+      btn.setPosition(r.x + r.width * cx, y);
+    }
+  }
+
+  private layoutFixtures(): void {
+    this.layoutShelf();
+    this.layoutCarPicker();
+    this.layoutTransport();
+    this.layoutGrid();
   }
 }

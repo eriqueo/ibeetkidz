@@ -129,7 +129,7 @@ const laneGroup = (kind: LaneKind, clip?: Clip): LaneGroup => {
   }
   return "drum";
 };
-const laneColor = (kind: LaneKind, clip?: Clip): string =>
+export const laneColor = (kind: LaneKind, clip?: Clip): string =>
   GROUP_COLORS[laneGroup(kind, clip)];
 
 const cssVar = (name: string, value: string): CSSProperties =>

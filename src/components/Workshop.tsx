@@ -1,26 +1,21 @@
-import { FC, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { activeLayers, activePart, makeLayer } from "../core/project-state.ts";
-import { CAR_TYPES, type CarType } from "../core/types.ts";
-import { LoopTrack, TOOLS, LoopSelectionProvider } from "../machines/tools.tsx";
+import { STEP_COUNT, type CarType, type LaneKind } from "../core/types.ts";
+import { TOOLS, LoopSelectionProvider, laneColor } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { PixelButton } from "./PixelButton.tsx";
-import { WorkshopScene } from "../game/scenes/WorkshopScene.ts";
-import { WORKSHOP_LAYOUT_V2, SCENE_ASPECT, rowCell } from "../game/scene-layout.ts";
-import { carSpriteUrlV2 } from "../game/assets.ts";
-import { useContainedRect, regionStyle } from "../app/use-overlay-rect.ts";
+import { EventBus } from "../game/EventBus.ts";
+import {
+  WorkshopScene,
+  type WorkshopModel,
+} from "../game/scenes/WorkshopScene.ts";
 
 const WORKSHOP_SCENES = [WorkshopScene];
 
-const INSTRUMENTS = [
-  { id: "kick", label: "Kick" }, { id: "snare", label: "Snare" },
-  { id: "hihat", label: "Cymbal" }, { id: "tom", label: "Tom" },
-  { id: "cowbell", label: "Cowbell" }, { id: "shaker", label: "Shaker" },
-  { id: "note-do", label: "Synth" }, { id: "note-mi", label: "Voice" },
-];
-
-// Creative-tool stations (the satellite machines), with short labels.
+// Creative-tool stations (the satellite machines) — still React for now; they
+// open as panels over the Phaser scene.
 const STATION_LIST = [
   { id: "record-voicefx", label: "Voice", emoji: "🎤" },
   { id: "voice-keys", label: "Keys", emoji: "🎙️" },
@@ -29,10 +24,6 @@ const STATION_LIST = [
   { id: "theremin-xy", label: "Magic", emoji: "✨" },
 ];
 const STATIONS = TOOLS.filter((t) => t.id !== "looper-stage");
-
-const CAR_TYPE_LABELS: Record<CarType, string> = {
-  boxcar: "Box", tanker: "Tank", hopper: "Hop", flatcar: "Flat",
-};
 
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
@@ -43,30 +34,105 @@ export const Workshop: FC = () => {
   const part = activePart(project);
   const layers = activeLayers(project);
 
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const rect = useContainedRect(wrapRef, SCENE_ASPECT);
+  const sceneRef = useRef<WorkshopScene | null>(null);
   const [openTool, setOpenTool] = useState<string | null>(null);
+  const [selectedLayer, setSelectedLayer] = useState<string | null>(null);
   const station = STATIONS.find((t) => t.id === openTool);
 
-  function addInstrument(assetId: string) {
-    const catalog = BUILTIN_SOUNDS.find((s) => s.assetId === assetId);
-    if (!catalog) return;
-    const clipId = `workshop-${assetId}-${Date.now()}`;
-    const layerId = `layer-${assetId}-${Date.now()}`;
-    const kind = catalog.recipe.kind === "drum" ? "drum" : "melody";
-    if (!project.clips[clipId]) {
-      dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label } });
-    }
-    dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind, ...(kind === "melody" ? { wave: "triangle" } : {}) }) });
-    sound.play({ id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label });
-  }
+  const projectRef = useRef(project);
+  projectRef.current = project;
 
-  const setTempo = (b: number) => { const bpm = Math.max(40, Math.min(220, b)); dispatch({ type: "setTempo", bpm }); engine.setTempo(bpm); };
-  const ins = WORKSHOP_LAYOUT_V2.instruments;
+  // The derived sequencer model the scene renders — one lane per active layer,
+  // its cells from the step/note model, its colour from the shared laneColor().
+  const model = useMemo<WorkshopModel>(() => ({
+    lanes: layers.map((layer) => {
+      const clip = project.clips[layer.clipId];
+      const cells = Array.from({ length: STEP_COUNT }, (_, i) =>
+        layer.kind === "drum" ? layer.steps[i] != null : (layer.notes[i]?.length ?? 0) > 0,
+      );
+      let label = "🎵";
+      if (clip?.source.kind === "builtin") {
+        const assetId = clip.source.assetId;
+        label = BUILTIN_SOUNDS.find((s) => s.assetId === assetId)?.emoji ?? "🎵";
+      } else if (clip?.source.kind === "recording") {
+        label = "🎤";
+      } else if (layer.kind === "drum") {
+        label = "🥁";
+      }
+      return { id: layer.id, label, color: laneColor(layer.kind, clip), cells };
+    }),
+    carType: part.carType,
+    selectedLayerId: selectedLayer,
+  }), [layers, project.clips, part.carType, selectedLayer]);
+
+  const modelRef = useRef(model);
+  modelRef.current = model;
+
+  const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
+    sceneRef.current = scene as WorkshopScene;
+    sceneRef.current.setModel(modelRef.current);
+  }, []);
+
+  useEffect(() => { sceneRef.current?.setModel(model); }, [model]);
+
+  // Sweep the playhead from the live transport — one getTransportStep read/frame.
+  useEffect(() => {
+    let raf = 0;
+    const tick = (): void => {
+      sceneRef.current?.setPlayhead(sound.getTransportStep(STEP_COUNT));
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [sound]);
+
+  // Phaser (WorkshopScene) → state/audio, across the EventBus.
+  useEffect(() => {
+    const onCell = ({ layerId, stepIndex }: { layerId: string; stepIndex: number; on: boolean }): void => {
+      const layer = activeLayers(projectRef.current).find((l) => l.id === layerId);
+      if (!layer) return;
+      // toggleStep flips a drum hit; toggleNote flips a melody cell (row 0 here).
+      if (layer.kind === "drum") dispatch({ type: "toggleStep", layerId, index: stepIndex });
+      else dispatch({ type: "toggleNote", layerId, index: stepIndex, row: 0 });
+    };
+    const onInstrument = (kind: LaneKind, assetId: string): void => {
+      const catalog = BUILTIN_SOUNDS.find((s) => s.assetId === assetId);
+      if (!catalog) return;
+      const clipId = `workshop-${assetId}-${Date.now()}`;
+      const layerId = `layer-${assetId}-${Date.now()}`;
+      if (!projectRef.current.clips[clipId]) {
+        dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label } });
+      }
+      dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind, ...(kind === "melody" ? { wave: "triangle" } : {}) }) });
+      sound.play({ id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label });
+    };
+    const onCarType = (carType: CarType): void =>
+      dispatch({ type: "setCarType", partId: activePart(projectRef.current).id, carType });
+    const onSelect = (layerId: string): void => setSelectedLayer(layerId);
+    const onPlay = (): void => engine.playLoop(projectRef.current);
+    const onStop = (): void => engine.stop();
+
+    EventBus.on("workshop-cell-toggled", onCell);
+    EventBus.on("workshop-instrument-added", onInstrument);
+    EventBus.on("workshop-car-type-changed", onCarType);
+    EventBus.on("workshop-layer-selected", onSelect);
+    EventBus.on("transport-play", onPlay);
+    EventBus.on("transport-stop", onStop);
+    return () => {
+      EventBus.off("workshop-cell-toggled", onCell);
+      EventBus.off("workshop-instrument-added", onInstrument);
+      EventBus.off("workshop-car-type-changed", onCarType);
+      EventBus.off("workshop-layer-selected", onSelect);
+      EventBus.off("transport-play", onPlay);
+      EventBus.off("transport-stop", onStop);
+    };
+  }, [dispatch, engine, sound]);
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
-      <PhaserGame scenes={WORKSHOP_SCENES} />
+    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
+      {/* The sequencer (grid, shelf, car-type picker, transport) lives in Phaser,
+          so the canvas takes pointer events; nav + stations dock sit on top. */}
+      <PhaserGame scenes={WORKSHOP_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
 
       {/* Top nav */}
       <div style={{ position: "absolute", top: 8, left: 8, zIndex: 20 }}>
@@ -82,63 +148,6 @@ export const Workshop: FC = () => {
         {STATION_LIST.map((s) => (
           <PixelButton key={s.id} emoji={s.emoji} label={s.label} onClick={() => setOpenTool(s.id)} style={{ width: 96, justifyContent: "flex-start" }} />
         ))}
-      </div>
-
-      {/* Mixing board over the boxcar interior */}
-      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carInterior), zIndex: 10, overflow: "hidden" }}>
-        {layers.length === 0 ? (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100%", textAlign: "center", color: "#e8dcc8", font: "400 9px/1.8 var(--font-label, 'Press Start 2P')", letterSpacing: "1px", textShadow: "1px 1px 0 #000" }}>
-            Empty car.<br />Tap an instrument below.
-          </div>
-        ) : (
-          <div className="loop-board workshop-board" data-playing={engine.isPlaying} style={{ height: "100%", overflow: "hidden" }}>
-            {layers.map((layer) => <LoopTrack key={layer.id} layerId={layer.id} />)}
-          </div>
-        )}
-      </div>
-
-      {/* Car-type picker on the flatcar bed */}
-      <div style={{ ...regionStyle(rect, WORKSHOP_LAYOUT_V2.carTypePicker), zIndex: 12, display: "flex", gap: 4, alignItems: "center", justifyContent: "center" }}>
-        {CAR_TYPES.map((ct) => (
-          <button
-            key={ct}
-            className="pixel-tap"
-            title={CAR_TYPE_LABELS[ct]}
-            aria-pressed={part.carType === ct}
-            onClick={() => dispatch({ type: "setCarType", partId: part.id, carType: ct })}
-            style={{
-              height: "100%", background: part.carType === ct ? "rgba(255,209,102,0.3)" : "rgba(0,0,0,0.2)",
-              border: part.carType === ct ? "2px solid #ffd166" : "2px solid transparent", borderRadius: 4,
-              cursor: "pointer", padding: 1, display: "flex", alignItems: "center", justifyContent: "center",
-            }}
-          >
-            <img src={carSpriteUrlV2[ct]} alt={CAR_TYPE_LABELS[ct]} style={{ maxHeight: "100%", maxWidth: "100%", imageRendering: "pixelated" }} />
-          </button>
-        ))}
-      </div>
-
-      {/* Painted ground instruments → add lane (press pop via .pixel-tap) */}
-      {INSTRUMENTS.map((inst, i) => {
-        const c = rowCell(i, ins.count, ins.c0, ins.c1, ins.y, ins.w, ins.h);
-        return (
-          <button
-            key={inst.id}
-            className="pixel-tap"
-            title={`Add ${inst.label}`}
-            onClick={() => addInstrument(inst.id)}
-            style={{ ...regionStyle(rect, c), zIndex: 11, background: "transparent", border: "none", padding: 0, cursor: "pointer" }}
-          />
-        );
-      })}
-
-      {/* Bottom transport bar */}
-      <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", zIndex: 20, display: "flex", gap: 6, alignItems: "center" }}>
-        <PixelButton variant="primary" emoji="▶" label="Play" onClick={() => engine.playLoop(project)} />
-        <PixelButton emoji="■" label="Stop" onClick={() => engine.stop()} />
-        <PixelButton emoji="🔁" label="Loop" onClick={() => engine.playLoop(project)} />
-        <PixelButton emoji="🐢" label="Slow" onClick={() => setTempo(project.tempoBpm - 10)} />
-        <span style={{ font: "400 9px/1 var(--font-label, 'Press Start 2P')", color: "#e8dcc8", textShadow: "1px 1px 0 #000", minWidth: 34, textAlign: "center" }}>{project.tempoBpm}</span>
-        <PixelButton emoji="🐇" label="Fast" onClick={() => setTempo(project.tempoBpm + 10)} />
       </div>
 
       {/* Station panel (a tool's machine UI over the scene) */}

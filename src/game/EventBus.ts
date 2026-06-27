@@ -5,6 +5,7 @@
 // means adding one entry to `EventMap` — the payloads stay type-checked on both
 // sides.
 import Phaser from "phaser";
+import type { LaneKind, CarType } from "../core/types.ts";
 
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
@@ -22,6 +23,15 @@ export interface EventMap {
   "yard-add-to-train": [partId: string];
   // Phaser -> React (Yard): the assembled train has departed; navigate to Track.
   "yard-send-to-track": [];
+  // Phaser -> React (Workshop): a sequencer cell was tapped; `on` is the desired
+  // next state (the scene shows it optimistically; the store flip is the truth).
+  "workshop-cell-toggled": [cell: { layerId: string; stepIndex: number; on: boolean }];
+  // Phaser -> React (Workshop): an instrument icon was tapped to add a lane.
+  "workshop-instrument-added": [kind: LaneKind, instrumentId: string];
+  // Phaser -> React (Workshop): the kid picked a (cosmetic) car type.
+  "workshop-car-type-changed": [carType: CarType];
+  // Phaser -> React (Workshop): a lane row was tapped (selection highlight).
+  "workshop-layer-selected": [layerId: string];
 }
 
 // Phaser's EventEmitter is untyped; we wrap it so call sites get autocomplete
