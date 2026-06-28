@@ -15,12 +15,12 @@ import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
 import {
   WORKSHOP_LAYOUT_V2,
   WORKSHOP_GRID_V2,
-  WORKSHOP_SHELF_IDS,
+  WORKSHOP_INSTRUMENTS,
   rowCell,
 } from "../scene-layout.ts";
-import { DRUM_SOUNDS } from "../../core/sound-catalog.ts";
 import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
 import { WORKSHOP_TOOLBAR } from "../scene-layout.ts";
+import { pressPop } from "../press.ts";
 import {
   BaseToolPanel,
   VoiceToolPanel,
@@ -99,9 +99,8 @@ export class WorkshopScene extends BackgroundScene {
   }[] = [];
   private toolbarBtns: Phaser.GameObjects.Container[] = [];
   private shelfBtns: Phaser.GameObjects.Container[] = [];
-  private speedText: Phaser.GameObjects.Text | undefined;
-  private speedLabel: Phaser.GameObjects.Text | undefined;
-  private speedBg: Phaser.GameObjects.Rectangle | undefined;
+  private tempoText: Phaser.GameObjects.Text | undefined;
+  private tempoBg: Phaser.GameObjects.Rectangle | undefined;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -196,7 +195,7 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   private refreshSpeed(): void {
-    this.speedText?.setText(String(this.model.tempoBpm));
+    this.tempoText?.setText(String(this.model.tempoBpm));
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
@@ -234,9 +233,8 @@ export class WorkshopScene extends BackgroundScene {
       .setOrigin(0.5)
       .setDepth(6)
       .setInteractive({ useHandCursor: true });
-    t.on("pointerdown", () => { t.setScale(0.8); onPress(); })
-      .on("pointerup", () => t.setScale(1))
-      .on("pointerout", () => t.setScale(1));
+    t.on("pointerdown", onPress);
+    pressPop(t);
     return t;
   }
 
@@ -375,26 +373,26 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── instrument shelf ─────────────────────────────────────────────────────────
 
-  // Invisible tap-zones over the painted ground instruments (no emoji chrome —
-  // the painted art is the button); a press flash gives feedback.
+  // One transparent tap-zone over each of the 4 painted ground instruments (no
+  // emoji chrome — the painted art is the button). Tapping OPENS that instrument's
+  // satellite tool panel (drum→Beat Maker, mic→My Voice, guitar→Sound Pads,
+  // keyboard→Voice Keys); a press flash gives feedback.
   private buildShelf(): void {
-    this.shelfBtns = WORKSHOP_SHELF_IDS.map((id) => {
-      const kind: LaneKind = DRUM_SOUNDS.some((d) => d.assetId === id) ? "drum" : "melody";
-      return this.makeButton(() => EventBus.emit("workshop-instrument-added", kind, id));
-    });
+    this.shelfBtns = WORKSHOP_INSTRUMENTS.map((inst) =>
+      this.makeButton(() => EventBus.emit("workshop-open-tool", inst.tool)));
   }
 
   private layoutShelf(): void {
     const r = this.backgroundRect;
-    const s = WORKSHOP_LAYOUT_V2.instruments;
     this.shelfBtns.forEach((btn, i) => {
-      const c = rowCell(i, s.count, s.c0, s.c1, s.y, s.w, s.h);
-      const w = r.width * c.w, h = r.height * c.h;
+      const inst = WORKSHOP_INSTRUMENTS[i];
+      if (!inst) return;
+      const w = r.width * inst.w, h = r.height * inst.h;
       const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
       const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
       bg.setSize(w, h);
       hit.setTo(-w / 2, -h / 2, w, h);
-      btn.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
+      btn.setPosition(r.x + r.width * inst.cx, r.y + r.height * inst.cy);
     });
   }
 
@@ -408,10 +406,8 @@ export class WorkshopScene extends BackgroundScene {
         .setDepth(9)
         .setInteractive({ useHandCursor: true });
       const entry = { type, img, base: 1 };
-      img
-        .on("pointerdown", () => { img.setScale(entry.base * 0.85); EventBus.emit("workshop-car-type-changed", type); })
-        .on("pointerup", () => img.setScale(entry.base))
-        .on("pointerout", () => img.setScale(entry.base));
+      img.on("pointerdown", () => EventBus.emit("workshop-car-type-changed", type));
+      pressPop(img);
       return entry;
     });
   }
@@ -452,15 +448,13 @@ export class WorkshopScene extends BackgroundScene {
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", -10)), cx: t.speedDown },
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", 10)), cx: t.speedUp },
     ];
-    // Mask the painted LCD inner screen and redraw "SPEED" + the live tempo, so
-    // the panel display reflects the real BPM (no painted "04" bleeding through).
-    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x0b1c0b).setDepth(9);
-    this.speedLabel = this.add
-      .text(0, 0, "SPEED", { fontFamily: "'Press Start 2P', monospace", fontSize: "8px", color: "#5fae5a" })
-      .setOrigin(0.5)
-      .setDepth(10);
-    this.speedText = this.add
-      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#7CFC6B" })
+    // Mask the painted TEMPO LCD's screen (it is BLACK, #000000) and redraw the
+    // live BPM in the LCD's lime green, so the panel reflects the real tempo (no
+    // painted "120" bleeding through). The painted "TEMPO" label above the screen
+    // stays — only the digits are masked.
+    this.tempoBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+    this.tempoText = this.add
+      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
       .setOrigin(0.5)
       .setDepth(10);
   }
@@ -498,15 +492,14 @@ export class WorkshopScene extends BackgroundScene {
       hit.setTo(-w / 2, -h / 2, w, h);
       btn.setPosition(r.x + r.width * cx, y);
     }
-    if (this.speedText && this.speedBg && this.speedLabel) {
+    if (this.tempoText && this.tempoBg) {
       const d = t.display;
       const dx = r.x + r.width * d.x;
       const dy = r.y + r.height * d.y;
       const dw = r.width * d.w;
       const dh = r.height * d.h;
-      this.speedBg.setSize(dw, dh).setPosition(dx, dy);
-      this.speedLabel.setPosition(dx, dy - dh * 0.26).setFontSize(Math.max(7, dh * 0.26));
-      this.speedText.setPosition(dx, dy + dh * 0.18).setFontSize(Math.max(11, dh * 0.42));
+      this.tempoBg.setSize(dw, dh).setPosition(dx, dy);
+      this.tempoText.setPosition(dx, dy).setFontSize(Math.max(11, dh * 0.66));
       this.refreshSpeed();
     }
   }

@@ -43,27 +43,37 @@ export const WORKSHOP_LAYOUT_V2 = {
   // frame — interior left ~0.185, right ~0.815, top ~0.285, floor ~0.475.
   carInterior: { x: 0.185, y: 0.285, w: 0.63, h: 0.19 } satisfies NormRegion,
   carTypePicker: { x: 0.40, y: 0.485, w: 0.20, h: 0.07 } satisfies NormRegion,
-  // Top toolbar: 9 icons (notepad … EXIT), centres ~0.321→0.814.
-  toolbar: { count: 9, c0: 0.321, c1: 0.814, y: 0.035, w: 0.052, h: 0.10 },
-  // Ground instruments: 8 invisible hit-zones over the painted instruments on
-  // the dirt (NO emoji — the painted art is the button). Lowered onto the ground.
-  instruments: { count: 8, c0: 0.238, c1: 0.756, y: 0.58, w: 0.08, h: 0.16 },
-  // Bottom transport panel buttons — centres measured over the painted STOP /
+  // Top toolbar: 9 icons (notepad … EXIT). Centres MEASURED off
+  // workshop-scene-clean.png — the icons evenly fill the panel right of the
+  // "MUSIC WORKSHOP" title, from ~0.295 (notepad) to ~0.858 (EXIT).
+  toolbar: { count: 9, c0: 0.295, c1: 0.858, y: 0.025, w: 0.060, h: 0.10 },
+  // Bottom transport panel buttons — centres MEASURED over the painted STOP /
   // PLAY / LOOP / SPEED-down / SPEED-up faces; `y` is the button-row centre.
   transport: {
-    stop: 0.294,
-    play: 0.4275,
-    loop: 0.561,
-    speedDown: 0.691,
-    speedUp: 0.834,
-    // The painted green LCD between the arrows — we mask its inner screen and
-    // redraw "SPEED" + the live tempo so the panel display actually updates.
-    display: { x: 0.762, y: 0.845, w: 0.062, h: 0.078 },
-    y: 0.845,
+    stop: 0.300,
+    play: 0.435,
+    loop: 0.574,
+    speedDown: 0.696,
+    speedUp: 0.846,
+    // The painted TEMPO LCD (lower-left, paints "120" on a BLACK screen). We mask
+    // its screen with black and redraw the live BPM in lime so it actually
+    // updates. Screen rect measured off the art. (SONG + SPEED LCDs stay painted.)
+    display: { x: 0.158, y: 0.915, w: 0.082, h: 0.034 },
+    y: 0.862,
     w: 0.08,
     h: 0.10,
   },
 } as const;
+
+// The 4 painted ground instruments. Each is a TRANSPARENT hit-area over the
+// painted art (no emoji — the art is the button) that OPENS its satellite tool
+// panel. Centres (cx,cy) + size are MEASURED off workshop-scene-clean.png.
+export const WORKSHOP_INSTRUMENTS = [
+  { id: "drumKit",  tool: "beat-grid",      cx: 0.262, cy: 0.690, w: 0.12, h: 0.20 },
+  { id: "mic",      tool: "record-voicefx", cx: 0.448, cy: 0.665, w: 0.08, h: 0.22 },
+  { id: "guitar",   tool: "sound-pads",     cx: 0.560, cy: 0.690, w: 0.10, h: 0.20 },
+  { id: "keyboard", tool: "voice-keys",     cx: 0.722, cy: 0.695, w: 0.13, h: 0.17 },
+] as const;
 
 // Workshop v2 sequencer grid (Phaser-native). The grid fills the painted boxcar
 // interior (WORKSHOP_LAYOUT_V2.carInterior); a left column holds the lane labels
@@ -83,13 +93,6 @@ export const WORKSHOP_GRID_V2 = {
 export const WORKSHOP_TOOL_MODAL = {
   x: 0.07, y: 0.11, w: 0.86, h: 0.70,
 } as const;
-
-// Which built-in sounds front the painted instrument shelf (8 painted slots).
-// MEMBERSHIP is config (here); each id's emoji/colour/kind is resolved from the
-// sound catalog at render time, so this stays data-driven (no hardcoded icons).
-export const WORKSHOP_SHELF_IDS = [
-  "kick", "snare", "hihat", "tom", "cowbell", "shaker", "note-do", "note-mi",
-] as const;
 
 /** Which toolbar icon index does what (left→right in the painted bar). */
 export const WORKSHOP_TOOLBAR = [
