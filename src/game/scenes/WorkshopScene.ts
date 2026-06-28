@@ -18,7 +18,7 @@ import {
   WORKSHOP_SHELF_IDS,
   rowCell,
 } from "../scene-layout.ts";
-import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../../core/sound-catalog.ts";
+import { DRUM_SOUNDS } from "../../core/sound-catalog.ts";
 import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
 import { WORKSHOP_TOOLBAR } from "../scene-layout.ts";
 import {
@@ -93,13 +93,14 @@ export class WorkshopScene extends BackgroundScene {
   private gridLeft = 0;
   private gridTop = 0;
   private carBtns: { type: CarType; img: Phaser.GameObjects.Image; base: number }[] = [];
-  private shelfIcons: Phaser.GameObjects.Text[] = [];
   private transportBtns: {
     btn: Phaser.GameObjects.Container;
     cx: number;
   }[] = [];
   private toolbarBtns: Phaser.GameObjects.Container[] = [];
+  private shelfBtns: Phaser.GameObjects.Container[] = [];
   private speedText: Phaser.GameObjects.Text | undefined;
+  private speedLabel: Phaser.GameObjects.Text | undefined;
   private speedBg: Phaser.GameObjects.Rectangle | undefined;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
@@ -374,33 +375,26 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── instrument shelf ─────────────────────────────────────────────────────────
 
+  // Invisible tap-zones over the painted ground instruments (no emoji chrome —
+  // the painted art is the button); a press flash gives feedback.
   private buildShelf(): void {
-    this.shelfIcons = WORKSHOP_SHELF_IDS.map((id) => {
-      const snd = BUILTIN_SOUNDS.find((s) => s.assetId === id);
-      const kind = DRUM_SOUNDS.some((d) => d.assetId === id) ? "drum" : "melody";
-      const icon = this.add
-        .text(0, 0, snd?.emoji ?? "🎵", { fontSize: "28px" })
-        .setOrigin(0.5)
-        .setDepth(9)
-        .setInteractive({ useHandCursor: true });
-      icon
-        .on("pointerdown", () => {
-          icon.setScale(0.85);
-          EventBus.emit("workshop-instrument-added", kind, id);
-        })
-        .on("pointerup", () => icon.setScale(1))
-        .on("pointerout", () => icon.setScale(1));
-      return icon;
+    this.shelfBtns = WORKSHOP_SHELF_IDS.map((id) => {
+      const kind: LaneKind = DRUM_SOUNDS.some((d) => d.assetId === id) ? "drum" : "melody";
+      return this.makeButton(() => EventBus.emit("workshop-instrument-added", kind, id));
     });
   }
 
   private layoutShelf(): void {
     const r = this.backgroundRect;
     const s = WORKSHOP_LAYOUT_V2.instruments;
-    this.shelfIcons.forEach((icon, i) => {
+    this.shelfBtns.forEach((btn, i) => {
       const c = rowCell(i, s.count, s.c0, s.c1, s.y, s.w, s.h);
-      icon.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
-      icon.setFontSize(Math.round(r.height * s.h * 0.55));
+      const w = r.width * c.w, h = r.height * c.h;
+      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
+      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
+      bg.setSize(w, h);
+      hit.setTo(-w / 2, -h / 2, w, h);
+      btn.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
     });
   }
 
@@ -458,8 +452,13 @@ export class WorkshopScene extends BackgroundScene {
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", -10)), cx: t.speedDown },
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", 10)), cx: t.speedUp },
     ];
-    // Live tempo readout over the painted SPEED number (masking the static "04").
-    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x10180e).setDepth(9);
+    // Mask the painted LCD inner screen and redraw "SPEED" + the live tempo, so
+    // the panel display reflects the real BPM (no painted "04" bleeding through).
+    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x0b1c0b).setDepth(9);
+    this.speedLabel = this.add
+      .text(0, 0, "SPEED", { fontFamily: "'Press Start 2P', monospace", fontSize: "8px", color: "#5fae5a" })
+      .setOrigin(0.5)
+      .setDepth(10);
     this.speedText = this.add
       .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#7CFC6B" })
       .setOrigin(0.5)
@@ -499,10 +498,15 @@ export class WorkshopScene extends BackgroundScene {
       hit.setTo(-w / 2, -h / 2, w, h);
       btn.setPosition(r.x + r.width * cx, y);
     }
-    if (this.speedText && this.speedBg) {
-      const sx = r.x + r.width * t.display;
-      this.speedBg.setSize(w * 0.7, h * 0.5).setPosition(sx, y);
-      this.speedText.setPosition(sx, y).setFontSize(Math.max(10, h * 0.34));
+    if (this.speedText && this.speedBg && this.speedLabel) {
+      const d = t.display;
+      const dx = r.x + r.width * d.x;
+      const dy = r.y + r.height * d.y;
+      const dw = r.width * d.w;
+      const dh = r.height * d.h;
+      this.speedBg.setSize(dw, dh).setPosition(dx, dy);
+      this.speedLabel.setPosition(dx, dy - dh * 0.26).setFontSize(Math.max(7, dh * 0.26));
+      this.speedText.setPosition(dx, dy + dh * 0.18).setFontSize(Math.max(11, dh * 0.42));
       this.refreshSpeed();
     }
   }

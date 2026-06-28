@@ -45,8 +45,9 @@ export const WORKSHOP_LAYOUT_V2 = {
   carTypePicker: { x: 0.40, y: 0.485, w: 0.20, h: 0.07 } satisfies NormRegion,
   // Top toolbar: 9 icons (notepad … EXIT), centres ~0.321→0.814.
   toolbar: { count: 9, c0: 0.321, c1: 0.814, y: 0.035, w: 0.052, h: 0.10 },
-  // Ground instruments: 8 (kick … voice), centres ~0.238→0.756.
-  instruments: { count: 8, c0: 0.238, c1: 0.756, y: 0.52, w: 0.06, h: 0.14 },
+  // Ground instruments: 8 invisible hit-zones over the painted instruments on
+  // the dirt (NO emoji — the painted art is the button). Lowered onto the ground.
+  instruments: { count: 8, c0: 0.238, c1: 0.756, y: 0.58, w: 0.08, h: 0.16 },
   // Bottom transport panel buttons — centres measured over the painted STOP /
   // PLAY / LOOP / SPEED-down / SPEED-up faces; `y` is the button-row centre.
   transport: {
@@ -55,7 +56,9 @@ export const WORKSHOP_LAYOUT_V2 = {
     loop: 0.561,
     speedDown: 0.691,
     speedUp: 0.834,
-    display: 0.762, // the green SPEED number between the arrows (live tempo)
+    // The painted green LCD between the arrows — we mask its inner screen and
+    // redraw "SPEED" + the live tempo so the panel display actually updates.
+    display: { x: 0.762, y: 0.845, w: 0.062, h: 0.078 },
     y: 0.845,
     w: 0.08,
     h: 0.10,
