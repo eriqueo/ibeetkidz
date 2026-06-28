@@ -20,6 +20,15 @@ import {
 } from "../scene-layout.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../../core/sound-catalog.ts";
 import { STEP_COUNT, CAR_TYPES, type CarType } from "../../core/types.ts";
+import {
+  BaseToolPanel,
+  VoiceToolPanel,
+  VoiceKeysToolPanel,
+  PadsToolPanel,
+  BeatToolPanel,
+  MagicToolPanel,
+  type ToolModel,
+} from "../tool-panels.ts";
 
 /** One sequencer lane, derived by React from the active car's layers. */
 export interface WorkshopLane {
@@ -70,6 +79,9 @@ export class WorkshopScene extends BackgroundScene {
     btn: Phaser.GameObjects.Container;
     cx: number;
   }[] = [];
+  private toolPanels: Record<string, BaseToolPanel> = {};
+  private activeTool: string | null = null;
+  private toolModel: ToolModel | null = null;
 
   constructor() {
     super(WorkshopScene.KEY);
@@ -86,8 +98,39 @@ export class WorkshopScene extends BackgroundScene {
     this.buildCarPicker();
     this.buildTransport();
     this.buildGrid();
+    this.buildToolPanels();
     this.layoutFixtures();
     this.announceReady();
+  }
+
+  private buildToolPanels(): void {
+    this.toolPanels = {
+      "record-voicefx": new VoiceToolPanel(this),
+      "voice-keys": new VoiceKeysToolPanel(this),
+      "sound-pads": new PadsToolPanel(this),
+      "beat-grid": new BeatToolPanel(this),
+      "theremin-xy": new MagicToolPanel(this),
+    };
+  }
+
+  /** React → scene: which satellite tool panel is open (null = none). */
+  setActiveTool(toolId: string | null): void {
+    this.activeTool = toolId;
+    for (const [id, panel] of Object.entries(this.toolPanels)) {
+      const show = id === toolId;
+      panel.setVisible(show);
+      if (show) {
+        const { width, height } = this.scale.gameSize;
+        panel.layout(width, height);
+        if (this.toolModel) panel.apply(this.toolModel);
+      }
+    }
+  }
+
+  /** React → scene: the tool panels' render state. */
+  setToolModel(model: ToolModel): void {
+    this.toolModel = model;
+    if (this.activeTool) this.toolPanels[this.activeTool]?.apply(model);
   }
 
   /** React → scene: the derived sequencer model. Rebuilds the grid only when the
@@ -126,6 +169,10 @@ export class WorkshopScene extends BackgroundScene {
     if (!this.scene.isActive()) return;
     this.layoutGrid();
     this.layoutFixtures();
+    if (this.activeTool) {
+      const { width, height } = this.scale.gameSize;
+      this.toolPanels[this.activeTool]?.layout(width, height);
+    }
   }
 
   // ── grid ────────────────────────────────────────────────────────────────────

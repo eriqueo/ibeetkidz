@@ -71,6 +71,13 @@ export const WORKSHOP_GRID_V2 = {
   cellPad: 0.12, // gap between cells, as a fraction of the cell size
 } as const;
 
+// Satellite tool modal (My Voice / Voice Keys / Pads / Beat / Magic). Centred
+// over the VIEWPORT (not the image) so it's fully visible regardless of the
+// cover-crop, covering most of the screen but clear of the corner nav.
+export const WORKSHOP_TOOL_MODAL = {
+  x: 0.07, y: 0.11, w: 0.86, h: 0.70,
+} as const;
+
 // Which built-in sounds front the painted instrument shelf (8 painted slots).
 // MEMBERSHIP is config (here); each id's emoji/colour/kind is resolved from the
 // sound catalog at render time, so this stays data-driven (no hardcoded icons).

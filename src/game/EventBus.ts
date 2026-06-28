@@ -5,7 +5,7 @@
 // means adding one entry to `EventMap` — the payloads stay type-checked on both
 // sides.
 import Phaser from "phaser";
-import type { LaneKind, CarType } from "../core/types.ts";
+import type { LaneKind, CarType, EffectId, ThereminWave } from "../core/types.ts";
 
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
@@ -32,6 +32,34 @@ export interface EventMap {
   "workshop-car-type-changed": [carType: CarType];
   // Phaser -> React (Workshop): a lane row was tapped (selection highlight).
   "workshop-layer-selected": [layerId: string];
+
+  // ── Satellite tool panels (Phaser) -> React (audio/state) ──────────────────
+  // The kid closed the open tool panel.
+  "tool-closed": [];
+  // My Voice: hold-to-record (down = true, release = false).
+  "tool-voice-record": [start: boolean];
+  // My Voice: a funny-effect tile was tapped.
+  "tool-voice-fx": [effectId: EffectId];
+  // My Voice: send the take to the car as a beat lane or a melody (notes) lane.
+  "tool-voice-send": [as: "beat" | "notes"];
+  // Voice Keys: hold-to-sing (down = true, release = false).
+  "tool-keys-record": [start: boolean];
+  // Voice Keys: an in-scale key was tapped (scale degree / row).
+  "tool-keys-audition": [row: number];
+  // Voice Keys: send the take to the car as a melody lane.
+  "tool-keys-send": [];
+  // Sound Pads: a pad was hit (builtin assetId or recorded clip id).
+  "tool-pads-play": [padId: string];
+  // Beat Maker: a step cell was toggled for a drum row.
+  "tool-beat-toggle": [drumId: string, stepIndex: number];
+  // Magic Pad: pointer activity over the XY zone (x,y normalized 0..1, y from top).
+  "tool-magic-pointer": [phase: "down" | "move" | "up", x: number, y: number];
+  // Magic Pad: oscillator shape chosen.
+  "tool-magic-wave": [wave: ThereminWave];
+  // Magic Pad: toggle performance recording.
+  "tool-magic-record": [];
+  // Magic Pad: send the captured performance to the car.
+  "tool-magic-send": [];
 }
 
 // Phaser's EventEmitter is untyped; we wrap it so call sites get autocomplete
