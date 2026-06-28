@@ -153,6 +153,9 @@ Current `scene-layout.ts` has `toolbar: { count: 9, c0: 0.321, c1: 0.814 }`. Mea
 **Bug 7 — Track tarp strip is HTML.**
 `Track.tsx` renders a row of `<button>` elements above the scene for muting/unmuting cars. These should be Phaser-native hit-areas over the painted car slots on the track oval, or at minimum rendered as a Phaser overlay panel.
 
+**Bug 8 — Yard and Track logic is incomplete.**
+The core loop requires the Yard to assemble a train via a crane animation, and the Track to sync audio playback to the train's physical position. Neither of these are fully implemented yet. They are scoped for Phase E in the `IMPLEMENTATION_ROADMAP.md`.
+
 ---
 
 ## 5. The Intended Workshop Flow (Full Detail)

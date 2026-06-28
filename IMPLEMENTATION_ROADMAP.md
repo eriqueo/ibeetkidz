@@ -1,7 +1,7 @@
 ---
 title: implementation-roadmap
 type: Reference
-timestamp: 2026-06-28T15:35:00-06:00
+timestamp: 2026-06-28T16:15:00-06:00
 tags: [roadmap, phases, implementation, architecture]
 status: stable
 ---
@@ -56,6 +56,17 @@ With the UI fully migrated to Phaser, the final phase addresses the visual conne
 2.  **Car Type Picker:** Wire the new pixel-art arrow sprites to the `setCarType` reducer action, allowing the user to cycle through the boxcar, flatcar, hopper, and tanker visuals in the Workshop.
 3.  **Grid Cell Sprites:** Replace the programmatic Phaser rectangles in the Workshop grid with the new `grid-cell-empty` and `grid-cell-filled` sprites.
 4.  **Press Animations:** Ensure every interactive sprite in the game implements a consistent `:active` state (e.g., `setScale(0.94)`) on pointer down.
+
+---
+
+## Phase E: Yard and Track Feature Completion
+
+With the Workshop and tools complete, the Yard and Track must be fully implemented to realize the core loop: Workshop → Yard → Track.
+
+1.  **Yard Assembly Line:** Implement the visual holding area for `CarDefs` and the assembly line track for the `Train`.
+2.  **Crane Animation:** Implement the gantry crane animation that picks up cars from the holding area and drops them onto the assembly line.
+3.  **Track Playback Sync:** Rewrite the audio engine integration so the physical position of the train passing the crossing signal dictates which car's loop plays, rather than the audio engine driving the train.
+4.  **Live Track Controls:** Implement the visual tarping (muting) of cars on the moving train, and wire the speed and direction controls to the audio engine and train animation.
 
 ---
 
