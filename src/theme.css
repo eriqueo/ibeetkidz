@@ -1586,14 +1586,32 @@ input[type="range"]::-moz-range-thumb {
   color: #1a140d;
   text-shadow: none;
 }
+/* Nav = the chunky world-travel buttons (◀ Map / Yard / Workshop). Bigger and
+   beveled like a 16-bit panel button so it reads as part of the game, not a web
+   badge. */
 .pixel-btn--nav {
-  background: rgba(0, 0, 0, 0.6);
-  border-width: 2px;
-  border-color: rgba(255,255,255,0.28);
-  font-size: 8px;
-  padding: 5px 8px;
+  background: rgba(20, 16, 12, 0.86);
+  border-width: 4px;
+  border-top-color: #8b7355;
+  border-left-color: #8b7355;
+  border-bottom-color: #2a1f16;
+  border-right-color: #2a1f16;
+  border-radius: 3px;
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  padding: 11px 16px;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, 0.45);
 }
-.pixel-btn--nav:active { transform: translate(1px, 1px); filter: brightness(0.85); }
+.pixel-btn--nav .pb-emoji { font-size: 17px; }
+.pixel-btn--nav:active {
+  border-top-color: #2a1f16;
+  border-left-color: #2a1f16;
+  border-bottom-color: #8b7355;
+  border-right-color: #8b7355;
+  transform: translate(1px, 2px);
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+  filter: brightness(0.85);
+}
 
 /* A clickable scene object (painted instrument) — no chrome, just a press pop. */
 .pixel-tap { cursor: pointer; -webkit-tap-highlight-color: transparent; transition: transform 0.05s; }

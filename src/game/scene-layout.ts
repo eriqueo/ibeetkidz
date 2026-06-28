@@ -38,22 +38,26 @@ export function rowCell(
 // TRANSPARENT hit-areas over them (no HTML chrome). The mixing board overlays
 // the boxcar interior; the car-type picker sits on the flatcar bed.
 export const WORKSHOP_LAYOUT_V2 = {
-  carInterior: { x: 0.135, y: 0.17, w: 0.73, h: 0.30 } satisfies NormRegion,
+  // The dark boxcar interior back-wall (the sequencer "screen"). Measured off the
+  // painted art (workshop-scene-clean.png): the cells must stay inside the wooden
+  // frame — interior left ~0.185, right ~0.815, top ~0.285, floor ~0.475.
+  carInterior: { x: 0.185, y: 0.285, w: 0.63, h: 0.19 } satisfies NormRegion,
   carTypePicker: { x: 0.40, y: 0.485, w: 0.20, h: 0.07 } satisfies NormRegion,
   // Top toolbar: 9 icons (notepad … EXIT), centres ~0.321→0.814.
   toolbar: { count: 9, c0: 0.321, c1: 0.814, y: 0.035, w: 0.052, h: 0.10 },
   // Ground instruments: 8 (kick … voice), centres ~0.238→0.756.
   instruments: { count: 8, c0: 0.238, c1: 0.756, y: 0.52, w: 0.06, h: 0.14 },
-  // Bottom transport panel buttons (centres).
+  // Bottom transport panel buttons — centres measured over the painted STOP /
+  // PLAY / LOOP / SPEED-down / SPEED-up faces; `y` is the button-row centre.
   transport: {
-    stop: 0.321,
-    play: 0.441,
-    loop: 0.549,
-    speedDown: 0.655,
-    speedUp: 0.792,
-    y: 0.70,
-    w: 0.085,
-    h: 0.18,
+    stop: 0.294,
+    play: 0.4275,
+    loop: 0.561,
+    speedDown: 0.691,
+    speedUp: 0.834,
+    y: 0.845,
+    w: 0.08,
+    h: 0.10,
   },
 } as const;
 

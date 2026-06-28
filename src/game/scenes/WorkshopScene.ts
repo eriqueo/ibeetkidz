@@ -81,7 +81,7 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   create(): void {
-    this.addBackground("contain");
+    this.addBackground("cover");
     this.buildShelf();
     this.buildCarPicker();
     this.buildTransport();
@@ -317,35 +317,40 @@ export class WorkshopScene extends BackgroundScene {
     });
   }
 
-  // ── transport (Phase-1 button pattern) ───────────────────────────────────────
+  // ── transport ────────────────────────────────────────────────────────────────
+  // The painted bottom panel already draws the STOP / PLAY / LOOP / SPEED faces,
+  // so each control is a TRANSPARENT hit-area over its painted button (the Phase-1
+  // container/centred-hit/press-state mechanics, just with no opaque fill) plus a
+  // brief highlight flash on press. Play and Loop both loop the active car.
 
   private buildTransport(): void {
     const t = WORKSHOP_LAYOUT_V2.transport;
     this.transportBtns = [
-      { btn: this.makeButton("▶", () => EventBus.emit("transport-play", "loop")), cx: t.play },
-      { btn: this.makeButton("■", () => EventBus.emit("transport-stop")), cx: t.stop },
+      { btn: this.makeButton(() => EventBus.emit("transport-stop")), cx: t.stop },
+      { btn: this.makeButton(() => EventBus.emit("transport-play", "loop")), cx: t.play },
+      { btn: this.makeButton(() => EventBus.emit("transport-play", "loop")), cx: t.loop },
+      { btn: this.makeButton(() => EventBus.emit("tempo-changed", -10)), cx: t.speedDown },
+      { btn: this.makeButton(() => EventBus.emit("tempo-changed", 10)), cx: t.speedUp },
     ];
   }
 
-  private makeButton(text: string, onPress: () => void): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, 10, 10, OFF_FILL).setStrokeStyle(3, 0x000000);
-    const label = this.add
-      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "18px", color: "#f4e8d0" })
-      .setOrigin(0.5);
-    const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
+  private makeButton(onPress: () => void): Phaser.GameObjects.Container {
+    // Transparent face so the painted button shows through; flashes on press.
+    const bg = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setOrigin(0.5);
+    const btn = this.add.container(0, 0, [bg]).setDepth(10);
     const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
     btn.setData("bg", bg);
-    btn.setData("label", label);
     btn.setData("hit", hit);
     btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
     if (btn.input) btn.input.cursor = "pointer";
+    const rest = (): void => { bg.setFillStyle(0xffffff, 0); };
     btn
       .on("pointerdown", () => {
-        btn.setAlpha(0.7);
+        bg.setFillStyle(0xffffff, 0.22); // press flash over the painted face
         onPress();
       })
-      .on("pointerup", () => btn.setAlpha(1))
-      .on("pointerout", () => btn.setAlpha(1));
+      .on("pointerup", rest)
+      .on("pointerout", rest);
     return btn;
   }
 
@@ -357,11 +362,9 @@ export class WorkshopScene extends BackgroundScene {
     const y = r.y + r.height * t.y;
     for (const { btn, cx } of this.transportBtns) {
       const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const label = btn.getData("label") as Phaser.GameObjects.Text;
       const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
       bg.setSize(w, h);
       hit.setTo(-w / 2, -h / 2, w, h);
-      label.setFontSize(Math.round(h * 0.42));
       btn.setPosition(r.x + r.width * cx, y);
     }
   }

@@ -111,6 +111,11 @@ export const Workshop: FC = () => {
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
     const onPlay = (): void => engine.playLoop(projectRef.current);
     const onStop = (): void => engine.stop();
+    const onTempo = (delta: number): void => {
+      const bpm = Math.max(40, Math.min(220, projectRef.current.tempoBpm + delta));
+      dispatch({ type: "setTempo", bpm });
+      engine.setTempo(bpm);
+    };
 
     EventBus.on("workshop-cell-toggled", onCell);
     EventBus.on("workshop-instrument-added", onInstrument);
@@ -118,6 +123,7 @@ export const Workshop: FC = () => {
     EventBus.on("workshop-layer-selected", onSelect);
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
+    EventBus.on("tempo-changed", onTempo);
     return () => {
       EventBus.off("workshop-cell-toggled", onCell);
       EventBus.off("workshop-instrument-added", onInstrument);
@@ -125,6 +131,7 @@ export const Workshop: FC = () => {
       EventBus.off("workshop-layer-selected", onSelect);
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
+      EventBus.off("tempo-changed", onTempo);
     };
   }, [dispatch, engine, sound]);
 
