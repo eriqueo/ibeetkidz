@@ -1,40 +1,52 @@
-# Refactor Phase 6: Dead Code Removal & UI Verification
+# Refactor Phase 6: Full Phaser Immersion & UI/UX Fixes
 
 ## Context
-Phase 5 successfully rebuilt the five satellite tools (My Voice, Voice Keys, Sound Pads, Beat Maker, Magic Pad) as Phaser-native panels in `src/game/tool-panels.ts`. They render inside `WorkshopScene` and emit events over the `EventBus` to React (`Workshop.tsx`), completely replacing the old HTML `<div role="dialog">` modals.
+Phase 5 migrated the satellite tools (Voice, Keys, Pads, Beat, Magic) from HTML modals to Phaser-native panels. However, the user has flagged several major UI/UX issues in the current state of the Workshop scene that break immersion and usability.
 
-However, two gaps remain from Phase 5 that must be addressed in this phase:
-1. **Dead Code:** The old React Canvas components for the satellite tools were left in `src/machines/tools.tsx` because they were entangled with shared helpers and `Shell.tsx`'s legacy routing.
-2. **Audio/UX Verification:** The agent executing Phase 5 could not verify the audio logic (mic recording, theremin, playback) in their headless environment, nor could they interact with the panels to verify hit areas and UX flow.
+**Goal:** Completely remove all CSS/HTML overlay UI from the Workshop scene. Every button, text display, and interaction must happen inside the Phaser canvas, styled consistently with the pixel art, with proper press animations and full functionality.
 
-**Goal:** Cleanly excise the dead HTML tool code, relocate shared helpers, and perform a live, interactive pass on the Phaser tool panels to fix any UX or audio bugs introduced during the migration.
+## The Issues & Required Fixes
 
-## Tasks
+### 1. The HTML Overlay Must Die
+**Issue:** The top nav (Map, New Car, To Yard) and left dock (Voice, Keys, Pads, Beat, Magic) are still HTML `<button>` elements floating over the canvas. This breaks immersion and creates two different interaction layers.
+**Fix:**
+- Move ALL of these buttons into `WorkshopScene.ts` as Phaser `Text` or `Image` sprites.
+- They must use the pixel font (`Press Start 2P`) and match the game's aesthetic.
+- The `WORKSHOP_TOOLBAR` in `scene-layout.ts` defines the coordinate layout for the top painted toolbar. Wire up these painted toolbar regions as hit areas to replace the top nav buttons.
+- The left dock buttons should either be integrated into the scene visually or rendered as Phaser panels.
 
-### 1. Dead Code Excising (`src/machines/tools.tsx`)
-The `tools.tsx` file is currently a dumping ground for the old tool modals, shared helpers, and the `LoopStage` (Home) mixing components.
-- **Remove:** Delete `MyVoiceCanvas`, `VoiceKeysCanvas`, `SoundPadsCanvas`, `BeatMakerCanvas`, `MagicPadCanvas`, and their associated `Options` components.
-- **Keep:** Do NOT delete `LoopStageCanvas`, `LoopStageRail`, `LoopTrack`, `LaneControls`, or `LoopSelectionProvider`. These are still used by the Home view.
-- **Relocate:** The `laneColor` helper (and its dependencies `GROUP_COLORS`, `laneGroup`, etc.) is still imported by `Workshop.tsx`. Move this logic to a more appropriate core file (e.g., `src/core/instruments.ts` or `src/core/project-state.ts`) and update the imports.
-- **Clean up `TOOLS` registry:** The `TOOLS` array at the bottom of `tools.tsx` still references the deleted components. Refactor this registry so `Shell.tsx` and `Workshop.tsx` don't depend on dead Canvas references.
+### 2. Press Animations Everywhere
+**Issue:** The transport buttons (Play, Stop, Loop, Speed Up/Down) and other interactive elements in the scene lack a "pressed" state animation.
+**Fix:**
+- Every interactive element in the Phaser scene MUST have a visible pointer-down state.
+- For text/sprite buttons, use a scale pop (e.g., `setScale(0.92)` on down, `setScale(1)` on up/out) or a tint change.
+- Ensure the transparent hit areas over the painted transport buttons have a clear, visible flash or press state that feels responsive.
 
-### 2. `Shell.tsx` Cleanup
-`Shell.tsx` still contains a legacy `switch` block that attempts to render the `Canvas` and `Rail` from the `TOOLS` registry if `activeView` isn't one of the four main views.
-- Since all views are now explicitly routed (Map, Yard, Track, Workshop), this fallthrough is unreachable.
-- Remove the legacy `Canvas` / `Rail` rendering logic and the `RailSheet` / `OptionsBar` components that are no longer used by the main shell.
+### 3. Speed Display is Broken
+**Issue:** The Speed Up/Down buttons work (they emit `tempo-changed` and update the engine), but the visual number between the arrows on the painted panel never changes.
+**Fix:**
+- Add a Phaser `Text` object in `WorkshopScene.ts` positioned exactly over the painted speed display area.
+- Pass the current `tempoBpm` from React to the scene (via `WorkshopModel`) and update this text object so it reflects the actual tempo.
 
-### 3. Interactive UX & Audio Verification
-Run `npm run dev` and manually interact with every tool panel in the browser. You must verify and fix:
-- **My Voice:** Does holding the record button actually capture mic input? Do the FX tiles apply the effect and update the audio buffer? Do the "Send as Beat" and "Send as Notes" buttons successfully add a lane to the car?
-- **Voice Keys:** Does the piano keyboard accurately repitch the recorded voice?
-- **Sound Pads:** Do the pads play their assigned sounds? Are the hit areas sized correctly?
-- **Beat Maker:** Does tapping a cell toggle the step? Does the drum sound preview play when toggled?
-- **Magic Pad:** Does dragging on the XY zone play the theremin? Does the tracking dot follow the pointer? Does the performance recorder capture the drawing and send it to the car?
+### 4. No Way to Delete Instruments
+**Issue:** Once an instrument lane is added to the boxcar grid, there is no UI to remove it.
+**Fix:**
+- Add a delete mechanism to the grid rows in `WorkshopScene.ts`.
+- This could be a small "X" or trash can icon next to the lane label, or a long-press/double-tap interaction.
+- When triggered, it must emit a new EventBus event (e.g., `workshop-layer-delete`) which React handles by dispatching `removeLayer`.
 
-Fix any bugs you find directly in `Workshop.tsx` (the EventBus listeners) or `tool-panels.ts` (the UI layer).
+### 5. Missing Piano-Roll Melody Editor
+**Issue:** The old `tools.tsx` had a BeepBox-style piano roll (a 7-row `MELODY_ROWS` grid) for editing melodies, but it was lost in the Phaser migration. The current Workshop grid only supports binary on/off steps (drum style).
+**Fix:**
+- Reintroduce the piano-roll editing interface.
+- When a melody lane is selected, the user needs a way to edit pitches, not just toggle steps.
+- This could be a new Phaser tool panel (e.g., `MelodyEditorPanel`) or an expansion of the main grid when a melody lane is active.
+- It must allow placing notes across `STEP_COUNT` columns and `MELODY_ROWS` rows, emitting an event to update the `notes` array in the layer state.
 
 ## Definition of Done
-- `npm run typecheck` passes.
-- `src/machines/tools.tsx` no longer contains the old HTML Canvas components for the five satellite tools.
-- `Shell.tsx` is simplified and no longer imports or attempts to render the legacy `Canvas`/`Rail` properties from the `TOOLS` registry.
-- All five Phaser tool panels are fully functional in the browser, with audio recording, playback, and lane-sending working exactly as they did in Phase 4.
+- `src/components/Workshop.tsx` contains NO HTML `<button>` elements for navigation or tools.
+- Every interactive Phaser object provides visual feedback on pointer down.
+- The tempo display in the transport panel accurately shows the current BPM.
+- Users can delete instrument lanes from the car.
+- Users can edit melody pitches using a piano-roll interface.
+- `npm run typecheck` passes cleanly.
