@@ -55,6 +55,7 @@ export const WORKSHOP_LAYOUT_V2 = {
     loop: 0.561,
     speedDown: 0.691,
     speedUp: 0.834,
+    display: 0.762, // the green SPEED number between the arrows (live tempo)
     y: 0.845,
     w: 0.08,
     h: 0.10,
@@ -67,7 +68,9 @@ export const WORKSHOP_LAYOUT_V2 = {
 // `maxLanes` rows show at once.
 export const WORKSHOP_GRID_V2 = {
   maxLanes: 6,
-  labelFrac: 0.16, // lane-label column, as a fraction of the grid width
+  // lane-label column (holds delete ✕, the instrument emoji, and a 🎹 edit
+  // button on melody lanes), as a fraction of the grid width.
+  labelFrac: 0.22,
   cellPad: 0.12, // gap between cells, as a fraction of the cell size
 } as const;
 

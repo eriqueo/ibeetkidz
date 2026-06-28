@@ -8,27 +8,18 @@ import {
   type EffectId,
   type ThereminWave,
   type Clip,
+  type AppView,
 } from "../core/types.ts";
 import { MELODY_ROWS, degreeToNote } from "../core/scale.ts";
-import { voiceInstrumentId } from "../core/instruments.ts";
+import { voiceInstrumentId, resolveInstrument } from "../core/instruments.ts";
 import { laneColor } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
-import { PixelButton } from "./PixelButton.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { WorkshopScene, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
 import { type ToolModel } from "../game/tool-panels.ts";
 
 const WORKSHOP_SCENES = [WorkshopScene];
-
-// Left dock: the satellite tools, opened as Phaser panels inside the scene.
-const STATION_LIST = [
-  { id: "record-voicefx", label: "Voice", emoji: "🎤" },
-  { id: "voice-keys", label: "Keys", emoji: "🎙️" },
-  { id: "sound-pads", label: "Pads", emoji: "🥁" },
-  { id: "beat-grid", label: "Beat", emoji: "🎛️" },
-  { id: "theremin-xy", label: "Magic", emoji: "✨" },
-];
 
 type RecPhase = "idle" | "opening" | "recording" | "stopping";
 
@@ -39,7 +30,7 @@ let keysCount = 0;
 let magicCount = 0;
 
 export const Workshop: FC = () => {
-  const { dispatch, engine, sound, rng, getProject } = useApp();
+  const { dispatch, engine, sound, rng, getProject, surprise } = useApp();
   const project = useProject();
   const part = activePart(project);
   const layers = activeLayers(project);
@@ -56,6 +47,7 @@ export const Workshop: FC = () => {
   const [magicClipId, setMagicClipId] = useState<string | null>(null);
   const [magicRecording, setMagicRecording] = useState(false);
   const [magicStatus, setMagicStatus] = useState("Drag your finger to play! ✨");
+  const [editMelodyId, setEditMelodyId] = useState<string | null>(null);
 
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -63,6 +55,7 @@ export const Workshop: FC = () => {
   const keysClipRef = useRef(keysClipId); keysClipRef.current = keysClipId;
   const magicClipRef = useRef(magicClipId); magicClipRef.current = magicClipId;
   const magicRecRef = useRef(magicRecording); magicRecRef.current = magicRecording;
+  const editMelodyRef = useRef(editMelodyId); editMelodyRef.current = editMelodyId;
   const voicePhase = useRef<RecPhase>("idle");
   const keysPhase = useRef<RecPhase>("idle");
 
@@ -82,11 +75,12 @@ export const Workshop: FC = () => {
       } else if (layer.kind === "drum") {
         label = "🥁";
       }
-      return { id: layer.id, label, color: laneColor(layer.kind, clip), cells };
+      return { id: layer.id, label, color: laneColor(layer.kind, clip), kind: layer.kind, cells };
     }),
     carType: part.carType,
     selectedLayerId: selectedLayer,
-  }), [layers, project.clips, part.carType, selectedLayer]);
+    tempoBpm: project.tempoBpm,
+  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm]);
 
   // Tool-panel model — derived from the store + the transient take state above.
   const toolModel = useMemo<ToolModel>(() => {
@@ -104,14 +98,23 @@ export const Workshop: FC = () => {
     });
     const keyLabels = Array.from({ length: MELODY_ROWS }, (_, row) =>
       degreeToNote(project.scaleId, project.keyId, row).replace(/\d/, ""));
+    const editLayer = editMelodyId ? layers.find((l) => l.id === editMelodyId) : undefined;
+    const melodyCells = Array.from({ length: MELODY_ROWS }, (_, degree) =>
+      Array.from({ length: STEP_COUNT }, (_, step) => editLayer?.notes[step]?.some((n) => n.row === degree) ?? false));
     return {
       voice: { hasClip: has(voiceClipId), status: voiceStatus, appliedFx: voiceClipId ? (project.clips[voiceClipId]?.effects.length ?? 0) : 0, onHome: onHome(voiceClipId) },
       keys: { hasClip: has(keysClipId), status: keysStatus, keyLabels, onHome: onHome(keysClipId) },
       pads,
       beat,
       magic: { recording: magicRecording, hasClip: has(magicClipId), onHome: onHome(magicClipId), status: magicStatus },
+      melody: {
+        active: !!editLayer,
+        title: editLayer ? (project.clips[editLayer.clipId]?.label ?? "Melody") : "Melody",
+        keyLabels,
+        cells: melodyCells,
+      },
     };
-  }, [project, layers, voiceClipId, voiceStatus, keysClipId, keysStatus, magicClipId, magicRecording, magicStatus]);
+  }, [project, layers, voiceClipId, voiceStatus, keysClipId, keysStatus, magicClipId, magicRecording, magicStatus, editMelodyId]);
 
   const modelRef = useRef(model); modelRef.current = model;
   const toolModelRef = useRef(toolModel); toolModelRef.current = toolModel;
@@ -171,7 +174,33 @@ export const Workshop: FC = () => {
       dispatch({ type: "setTempo", bpm });
       engine.setTempo(bpm);
     };
-    const onToolClosed = (): void => setOpenTool(null);
+    const onToolClosed = (): void => { setOpenTool(null); setEditMelodyId(null); };
+
+    // Painted toolbar: nav + new car + surprise + open a tool panel.
+    const onOpenTool = (toolId: string | null): void => setOpenTool((cur) => (cur === toolId ? null : toolId));
+    const onNav = (view: AppView): void => dispatch({ type: "setActiveView", view });
+    const onNewCar = (): void => dispatch({ type: "addCar", id: newCarId() });
+    const onSurprise = (): void => surprise();
+
+    // Grid row buttons: delete a lane, or open the piano-roll for a melody lane.
+    const onLayerDelete = (layerId: string): void => {
+      dispatch({ type: "removeLayer", layerId });
+      setSelectedLayer((s) => (s === layerId ? null : s));
+      if (editMelodyRef.current === layerId) { setEditMelodyId(null); setOpenTool((o) => (o === "melody-editor" ? null : o)); }
+    };
+    const onEditMelody = (layerId: string): void => { setEditMelodyId(layerId); setOpenTool("melody-editor"); };
+    const onMelodyToggle = (step: number, row: number): void => {
+      const id = editMelodyRef.current;
+      if (!id) return;
+      const layer = activeLayers(getProject()).find((l) => l.id === id);
+      if (!layer) return;
+      const wasOn = layer.notes[step]?.some((n) => n.row === row) ?? false;
+      dispatch({ type: "toggleNote", layerId: id, index: step, row });
+      if (!wasOn) {
+        const p = getProject();
+        sound.previewNote(degreeToNote(p.scaleId, p.keyId, row), resolveInstrument(layer.instrument, layer.wave));
+      }
+    };
 
     // Generic hold-to-record state machine (mic), reused by Voice + Keys. The
     // phase ref survives the mic-open await so a quick release never sticks open.
@@ -340,6 +369,10 @@ export const Workshop: FC = () => {
       ["workshop-car-type-changed", onCarType], ["workshop-layer-selected", onSelect],
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
       ["tool-closed", onToolClosed],
+      ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
+      ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
+      ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
+      ["tool-melody-toggle", onMelodyToggle],
       ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],
       ["tool-pads-play", onPadsPlay], ["tool-beat-toggle", onBeatToggle],
@@ -352,29 +385,13 @@ export const Workshop: FC = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       subs.forEach(([ev, fn]) => EventBus.off(ev as never, fn as any));
     };
-  }, [dispatch, engine, sound, rng, getProject]);
+  }, [dispatch, engine, sound, rng, getProject, surprise]);
 
+  // Everything — nav, tools, transport, grid — is painted in Phaser now. The
+  // whole Workshop view is a single canvas with no HTML chrome.
   return (
     <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
-      {/* The sequencer AND the satellite tool panels live in Phaser now, so the
-          canvas takes pointer events; only nav + the dock stay as React. */}
       <PhaserGame scenes={WORKSHOP_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
-
-      {/* Top nav */}
-      <div style={{ position: "absolute", top: 8, left: 8, zIndex: 20 }}>
-        <PixelButton variant="nav" emoji="◀" label="Map" onClick={() => dispatch({ type: "setActiveView", view: "map" })} />
-      </div>
-      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20, display: "flex", gap: 6 }}>
-        <PixelButton variant="nav" emoji="➕" label="New Car" onClick={() => dispatch({ type: "addCar", id: newCarId() })} />
-        <PixelButton variant="nav" emoji="📦" label="To Yard" onClick={() => dispatch({ type: "setActiveView", view: "yard" })} />
-      </div>
-
-      {/* Creative-tool stations (left dock) — open the Phaser panels */}
-      <div style={{ position: "absolute", left: 8, top: "26%", zIndex: 18, display: "flex", flexDirection: "column", gap: 6 }}>
-        {STATION_LIST.map((s) => (
-          <PixelButton key={s.id} variant={openTool === s.id ? "primary" : "default"} emoji={s.emoji} label={s.label} onClick={() => setOpenTool((cur) => (cur === s.id ? null : s.id))} style={{ width: 96, justifyContent: "flex-start" }} />
-        ))}
-      </div>
     </div>
   );
 };

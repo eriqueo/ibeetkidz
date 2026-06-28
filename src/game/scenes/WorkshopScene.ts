@@ -19,7 +19,8 @@ import {
   rowCell,
 } from "../scene-layout.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS } from "../../core/sound-catalog.ts";
-import { STEP_COUNT, CAR_TYPES, type CarType } from "../../core/types.ts";
+import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
+import { WORKSHOP_TOOLBAR } from "../scene-layout.ts";
 import {
   BaseToolPanel,
   VoiceToolPanel,
@@ -27,6 +28,7 @@ import {
   PadsToolPanel,
   BeatToolPanel,
   MagicToolPanel,
+  MelodyEditorPanel,
   type ToolModel,
 } from "../tool-panels.ts";
 
@@ -35,6 +37,7 @@ export interface WorkshopLane {
   readonly id: string;
   readonly label: string; // emoji / short tag for the row
   readonly color: string; // laneColor() — the lane-group colour
+  readonly kind: LaneKind; // melody lanes get a piano-roll edit button
   readonly cells: readonly boolean[]; // length STEP_COUNT
 }
 
@@ -43,6 +46,7 @@ export interface WorkshopModel {
   readonly lanes: readonly WorkshopLane[];
   readonly carType: CarType;
   readonly selectedLayerId: string | null;
+  readonly tempoBpm: number;
 }
 
 const OFF_FILL = 0x2a2118;
@@ -55,15 +59,30 @@ const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex
 interface LaneRow {
   layerId: string;
   label: Phaser.GameObjects.Text;
+  del: Phaser.GameObjects.Text; // ✕ remove this lane
+  edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
   colorInt: number;
   cells: Phaser.GameObjects.Rectangle[];
   on: boolean[];
 }
 
+// Painted top-toolbar icon → intent, keyed by WORKSHOP_TOOLBAR's labels.
+const TOOLBAR_ACTIONS: Record<string, () => void> = {
+  newcar: () => EventBus.emit("workshop-new-car"),
+  magicpad: () => EventBus.emit("workshop-open-tool", "theremin-xy"),
+  soundpads: () => EventBus.emit("workshop-open-tool", "sound-pads"),
+  myvoice: () => EventBus.emit("workshop-open-tool", "record-voicefx"),
+  beatgrid: () => EventBus.emit("workshop-open-tool", "beat-grid"),
+  voicekeys: () => EventBus.emit("workshop-open-tool", "voice-keys"),
+  yard: () => EventBus.emit("workshop-nav", "yard"),
+  map: () => EventBus.emit("workshop-nav", "map"),
+  surprise: () => EventBus.emit("workshop-surprise"),
+};
+
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null };
+  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null, tempoBpm: 120 };
   private rows: LaneRow[] = [];
   private structKey = "";
   private emptyText: Phaser.GameObjects.Text | undefined;
@@ -73,12 +92,15 @@ export class WorkshopScene extends BackgroundScene {
   private cellH = 0;
   private gridLeft = 0;
   private gridTop = 0;
-  private carBtns: { type: CarType; img: Phaser.GameObjects.Image }[] = [];
+  private carBtns: { type: CarType; img: Phaser.GameObjects.Image; base: number }[] = [];
   private shelfIcons: Phaser.GameObjects.Text[] = [];
   private transportBtns: {
     btn: Phaser.GameObjects.Container;
     cx: number;
   }[] = [];
+  private toolbarBtns: Phaser.GameObjects.Container[] = [];
+  private speedText: Phaser.GameObjects.Text | undefined;
+  private speedBg: Phaser.GameObjects.Rectangle | undefined;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -94,6 +116,7 @@ export class WorkshopScene extends BackgroundScene {
 
   create(): void {
     this.addBackground("cover");
+    this.buildToolbar();
     this.buildShelf();
     this.buildCarPicker();
     this.buildTransport();
@@ -110,7 +133,28 @@ export class WorkshopScene extends BackgroundScene {
       "sound-pads": new PadsToolPanel(this),
       "beat-grid": new BeatToolPanel(this),
       "theremin-xy": new MagicToolPanel(this),
+      "melody-editor": new MelodyEditorPanel(this),
     };
+  }
+
+  // ── painted top toolbar (replaces the old HTML nav + dock) ───────────────────
+  private buildToolbar(): void {
+    this.toolbarBtns = WORKSHOP_TOOLBAR.map((key) =>
+      this.makeButton(TOOLBAR_ACTIONS[key] ?? (() => {})));
+  }
+
+  private layoutToolbar(): void {
+    const r = this.backgroundRect;
+    const t = WORKSHOP_LAYOUT_V2.toolbar;
+    this.toolbarBtns.forEach((btn, i) => {
+      const c = rowCell(i, t.count, t.c0, t.c1, t.y, t.w, t.h);
+      const w = r.width * c.w, h = r.height * c.h;
+      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
+      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
+      bg.setSize(w, h);
+      hit.setTo(-w / 2, -h / 2, w, h);
+      btn.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
+    });
   }
 
   /** React → scene: which satellite tool panel is open (null = none). */
@@ -147,6 +191,11 @@ export class WorkshopScene extends BackgroundScene {
     }
     this.refreshSelection();
     this.refreshCarPicker();
+    this.refreshSpeed();
+  }
+
+  private refreshSpeed(): void {
+    this.speedText?.setText(String(this.model.tempoBpm));
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
@@ -177,9 +226,24 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── grid ────────────────────────────────────────────────────────────────────
 
+  /** A tappable emoji/text with a press-pop, used for lane labels + row buttons. */
+  private makeIconText(text: string, onPress: () => void): Phaser.GameObjects.Text {
+    const t = this.add
+      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: LABEL_COLOR })
+      .setOrigin(0.5)
+      .setDepth(6)
+      .setInteractive({ useHandCursor: true });
+    t.on("pointerdown", () => { t.setScale(0.8); onPress(); })
+      .on("pointerup", () => t.setScale(1))
+      .on("pointerout", () => t.setScale(1));
+    return t;
+  }
+
   private buildGrid(): void {
     this.rows.forEach((r) => {
       r.label.destroy();
+      r.del.destroy();
+      r.edit?.destroy();
       r.cells.forEach((c) => c.destroy());
     });
     this.rows = [];
@@ -208,12 +272,12 @@ export class WorkshopScene extends BackgroundScene {
 
     lanes.forEach((lane) => {
       const colorInt = toInt(lane.color);
-      const label = this.add
-        .text(0, 0, lane.label, { fontFamily: "'Press Start 2P', monospace", fontSize: "12px", color: LABEL_COLOR })
-        .setOrigin(0.5)
-        .setDepth(6)
-        .setInteractive({ useHandCursor: true })
-        .on("pointerdown", () => EventBus.emit("workshop-layer-selected", lane.id));
+      const label = this.makeIconText(lane.label, () => EventBus.emit("workshop-layer-selected", lane.id));
+      const del = this.makeIconText("✕", () => EventBus.emit("workshop-layer-delete", lane.id));
+      del.setColor("#ff6b6b");
+      const edit = lane.kind === "melody"
+        ? this.makeIconText("🎹", () => EventBus.emit("workshop-edit-melody", lane.id))
+        : null;
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
       for (let i = 0; i < STEP_COUNT; i++) {
@@ -225,14 +289,18 @@ export class WorkshopScene extends BackgroundScene {
           .setDepth(5)
           .setInteractive({ useHandCursor: true });
         const stepIndex = i;
-        cell.on("pointerdown", () => {
-          const next = !this.rowOn(lane.id, stepIndex);
-          EventBus.emit("workshop-cell-toggled", { layerId: lane.id, stepIndex, on: next });
-        });
+        cell
+          .on("pointerdown", () => {
+            cell.setScale(0.82); // press pop
+            const next = !this.rowOn(lane.id, stepIndex);
+            EventBus.emit("workshop-cell-toggled", { layerId: lane.id, stepIndex, on: next });
+          })
+          .on("pointerup", () => cell.setScale(1))
+          .on("pointerout", () => cell.setScale(1));
         cells.push(cell);
         on.push(isOn);
       }
-      this.rows.push({ layerId: lane.id, label, colorInt, cells, on });
+      this.rows.push({ layerId: lane.id, label, del, edit, colorInt, cells, on });
     });
 
     this.playhead = this.add.rectangle(0, 0, 3, 10, 0xffffff, 0.5).setOrigin(0, 0).setDepth(8).setVisible(false);
@@ -263,7 +331,10 @@ export class WorkshopScene extends BackgroundScene {
 
   private refreshSelection(): void {
     const sel = this.model.selectedLayerId;
-    this.rows.forEach((row) => row.label.setColor(row.layerId === sel ? LABEL_SELECTED : LABEL_COLOR));
+    this.rows.forEach((row) => {
+      const on = row.layerId === sel;
+      row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR).setScale(on ? 1.25 : 1);
+    });
   }
 
   private layoutGrid(): void {
@@ -285,9 +356,13 @@ export class WorkshopScene extends BackgroundScene {
     this.cellH = gh / laneCount;
     const pad = Math.min(this.cellW, this.cellH) * WORKSHOP_GRID_V2.cellPad;
 
+    const iconPx = Math.max(9, Math.min(this.cellH * 0.5, labelW * 0.22));
     this.rows.forEach((row, li) => {
       const cy = gy + (li + 0.5) * this.cellH;
-      row.label.setPosition(gx + labelW / 2, cy);
+      // Label column: [✕ delete] [instrument emoji] [🎹 edit (melody only)].
+      row.del.setPosition(gx + labelW * 0.16, cy).setFontSize(iconPx);
+      row.label.setPosition(gx + labelW * 0.5, cy).setFontSize(iconPx);
+      row.edit?.setPosition(gx + labelW * 0.84, cy).setFontSize(iconPx);
       row.cells.forEach((cell, i) => {
         cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
         cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));
@@ -338,8 +413,12 @@ export class WorkshopScene extends BackgroundScene {
         .setOrigin(0.5)
         .setDepth(9)
         .setInteractive({ useHandCursor: true });
-      img.on("pointerdown", () => EventBus.emit("workshop-car-type-changed", type));
-      return { type, img };
+      const entry = { type, img, base: 1 };
+      img
+        .on("pointerdown", () => { img.setScale(entry.base * 0.85); EventBus.emit("workshop-car-type-changed", type); })
+        .on("pointerup", () => img.setScale(entry.base))
+        .on("pointerout", () => img.setScale(entry.base));
+      return entry;
     });
   }
 
@@ -348,10 +427,10 @@ export class WorkshopScene extends BackgroundScene {
     const p = WORKSHOP_LAYOUT_V2.carTypePicker;
     const slotW = (r.width * p.w) / CAR_TYPES.length;
     const cy = r.y + r.height * (p.y + p.h / 2);
-    this.carBtns.forEach(({ img }, i) => {
+    this.carBtns.forEach((entry, i) => {
       const cx = r.x + r.width * p.x + (i + 0.5) * slotW;
-      img.setPosition(cx, cy);
-      if (img.width > 0) img.setScale((slotW * 0.8) / img.width);
+      entry.img.setPosition(cx, cy);
+      if (entry.img.width > 0) { entry.base = (slotW * 0.8) / entry.img.width; entry.img.setScale(entry.base); }
     });
     this.refreshCarPicker();
   }
@@ -379,6 +458,12 @@ export class WorkshopScene extends BackgroundScene {
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", -10)), cx: t.speedDown },
       { btn: this.makeButton(() => EventBus.emit("tempo-changed", 10)), cx: t.speedUp },
     ];
+    // Live tempo readout over the painted SPEED number (masking the static "04").
+    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x10180e).setDepth(9);
+    this.speedText = this.add
+      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#7CFC6B" })
+      .setOrigin(0.5)
+      .setDepth(10);
   }
 
   private makeButton(onPress: () => void): Phaser.GameObjects.Container {
@@ -414,9 +499,16 @@ export class WorkshopScene extends BackgroundScene {
       hit.setTo(-w / 2, -h / 2, w, h);
       btn.setPosition(r.x + r.width * cx, y);
     }
+    if (this.speedText && this.speedBg) {
+      const sx = r.x + r.width * t.display;
+      this.speedBg.setSize(w * 0.7, h * 0.5).setPosition(sx, y);
+      this.speedText.setPosition(sx, y).setFontSize(Math.max(10, h * 0.34));
+      this.refreshSpeed();
+    }
   }
 
   private layoutFixtures(): void {
+    this.layoutToolbar();
     this.layoutShelf();
     this.layoutCarPicker();
     this.layoutTransport();

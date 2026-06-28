@@ -45,6 +45,13 @@ export interface ToolModel {
   readonly pads: readonly { id: string; label: string; emoji: string; color: string }[];
   readonly beat: readonly { id: string; emoji: string; cells: readonly boolean[] }[];
   readonly magic: { recording: boolean; hasClip: boolean; onHome: boolean; status: string };
+  // Piano-roll editor for the selected melody lane (MELODY_ROWS × STEP_COUNT).
+  readonly melody: {
+    active: boolean;
+    title: string;
+    keyLabels: readonly string[]; // index = scale degree (0 = lowest), length MELODY_ROWS
+    cells: readonly (readonly boolean[])[]; // [degree][step] → note present
+  };
 }
 
 interface Box { x: number; y: number; w: number; h: number }
@@ -396,5 +403,74 @@ export class MagicToolPanel extends BaseToolPanel {
     this.hint.setText(m.status);
     this.sendBtn.setVisible(m.hasClip);
     this.sendBtn.setEnabled(!m.onHome);
+  }
+}
+
+// ── Melody piano-roll editor ──────────────────────────────────────────────────
+// A BeepBox-style grid: MELODY_ROWS pitch rows (high at top) × STEP_COUNT steps.
+// Tapping a cell toggles a note at that (degree, step); React updates the lane.
+export class MelodyEditorPanel extends BaseToolPanel {
+  private rowLabels: Phaser.GameObjects.Text[] = [];
+  // cells[r] is the visual row from the TOP (r=0 = highest degree).
+  private cells: Phaser.GameObjects.Rectangle[][] = [];
+  private cellOn: boolean[][] = [];
+
+  constructor(scene: Phaser.Scene) { super(scene, "🎹 Melody"); }
+
+  protected buildContent(): void {
+    for (let r = 0; r < MELODY_ROWS; r++) {
+      const degree = MELODY_ROWS - 1 - r; // top row = highest degree
+      const label = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "9px", color: TEXT }).setOrigin(0.5);
+      this.add(label);
+      this.rowLabels.push(label);
+      const rowCells: Phaser.GameObjects.Rectangle[] = [];
+      const rowOn: boolean[] = [];
+      for (let s = 0; s < STEP_COUNT; s++) {
+        const cell = this.scene.add.rectangle(0, 0, 10, 10, BTN_BG, 0.35).setStrokeStyle(1, 0x000000, 0.4).setInteractive({ useHandCursor: true });
+        const step = s;
+        cell.on("pointerdown", () => {
+          cell.setScale(0.85);
+          EventBus.emit("tool-melody-toggle", step, degree);
+        });
+        cell.on("pointerup", () => cell.setScale(1));
+        cell.on("pointerout", () => cell.setScale(1));
+        this.add(cell);
+        rowCells.push(cell);
+        rowOn.push(false);
+      }
+      this.cells.push(rowCells);
+      this.cellOn.push(rowOn);
+    }
+  }
+
+  protected layoutContent(): void {
+    const i = this.inner;
+    const labelW = i.w * 0.1;
+    const rowH = i.h / MELODY_ROWS;
+    const cellW = (i.w - labelW) / STEP_COUNT;
+    const pad = Math.min(cellW, rowH) * 0.12;
+    for (let r = 0; r < MELODY_ROWS; r++) {
+      const cy = i.y + (r + 0.5) * rowH;
+      this.rowLabels[r]?.setPosition(i.x + labelW / 2, cy).setFontSize(Math.max(8, rowH * 0.32));
+      for (let s = 0; s < STEP_COUNT; s++) {
+        this.cells[r]?.[s]?.setPosition(i.x + labelW + (s + 0.5) * cellW, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+      }
+    }
+  }
+
+  apply(model: ToolModel): void {
+    const m = model.melody;
+    this.titleText.setText(`🎹 ${m.title}`);
+    for (let r = 0; r < MELODY_ROWS; r++) {
+      const degree = MELODY_ROWS - 1 - r;
+      this.rowLabels[r]?.setText(m.keyLabels[degree] ?? "");
+      for (let s = 0; s < STEP_COUNT; s++) {
+        const isOn = m.cells[degree]?.[s] ?? false;
+        if (isOn !== this.cellOn[r]?.[s]) {
+          this.cellOn[r]![s] = isOn;
+          this.cells[r]?.[s]?.setFillStyle(isOn ? 0x06d6a0 : BTN_BG, isOn ? 1 : 0.35);
+        }
+      }
+    }
   }
 }

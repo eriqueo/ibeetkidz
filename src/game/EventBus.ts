@@ -5,7 +5,7 @@
 // means adding one entry to `EventMap` — the payloads stay type-checked on both
 // sides.
 import Phaser from "phaser";
-import type { LaneKind, CarType, EffectId, ThereminWave } from "../core/types.ts";
+import type { LaneKind, CarType, EffectId, ThereminWave, AppView } from "../core/types.ts";
 
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
@@ -32,6 +32,16 @@ export interface EventMap {
   "workshop-car-type-changed": [carType: CarType];
   // Phaser -> React (Workshop): a lane row was tapped (selection highlight).
   "workshop-layer-selected": [layerId: string];
+  // Phaser -> React (Workshop): painted toolbar actions (all in-canvas now).
+  "workshop-open-tool": [toolId: string | null]; // open/close a satellite panel
+  "workshop-nav": [view: AppView];               // travel to another view
+  "workshop-new-car": [];                         // add a fresh car to the library
+  "workshop-surprise": [];                        // seeded "surprise me" generation
+  // Phaser -> React (Workshop): delete a lane / open the piano-roll for a lane.
+  "workshop-layer-delete": [layerId: string];
+  "workshop-edit-melody": [layerId: string];
+  // Phaser -> React (Workshop): toggle a note in the piano-roll editor.
+  "tool-melody-toggle": [stepIndex: number, row: number];
 
   // ── Satellite tool panels (Phaser) -> React (audio/state) ──────────────────
   // The kid closed the open tool panel.
