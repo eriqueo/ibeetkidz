@@ -1,0 +1,454 @@
+{
+  "compressionlevel": -1,
+  "infinite": false,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.10.2",
+  "version": "1.10",
+  "type": "map",
+  "tilewidth": 32,
+  "tileheight": 32,
+  "width": 80,
+  "height": 45,
+  "nextlayerid": 3,
+  "nextobjectid": 20,
+  "layers": [
+    {
+      "id": 2,
+      "name": "base-plate",
+      "type": "imagelayer",
+      "image": "workshop-base.png",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": 1,
+      "name": "ui-layer",
+      "type": "objectgroup",
+      "draworder": "topdown",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 1,
+          "name": "icon-notepad",
+          "type": "toolbar",
+          "x": 678,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-new-car"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "icon-musicnote",
+          "type": "toolbar",
+          "x": 859,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "theremin-xy"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "icon-speaker",
+          "type": "toolbar",
+          "x": 1039,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "sound-pads"
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "icon-waveform",
+          "type": "toolbar",
+          "x": 1219,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "record-voicefx"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "icon-grid",
+          "type": "toolbar",
+          "x": 1399,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "beat-grid"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "icon-arrows",
+          "type": "toolbar",
+          "x": 1579,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "yard"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "icon-star",
+          "type": "toolbar",
+          "x": 1759,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-surprise"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "icon-magnifier",
+          "type": "toolbar",
+          "x": 1940,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "voice-keys"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "name": "icon-exit",
+          "type": "toolbar",
+          "x": 2120,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "map"
+            },
+            {
+              "name": "anchor",
+              "type": "string",
+              "value": "top-right"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "name": "inst-drum",
+          "type": "instrument",
+          "x": 517,
+          "y": 850,
+          "width": 307,
+          "height": 288,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "beat-grid"
+            }
+          ]
+        },
+        {
+          "id": 11,
+          "name": "inst-mic",
+          "type": "instrument",
+          "x": 1044,
+          "y": 799,
+          "width": 205,
+          "height": 317,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "record-voicefx"
+            }
+          ]
+        },
+        {
+          "id": 12,
+          "name": "inst-guitar",
+          "type": "instrument",
+          "x": 1306,
+          "y": 850,
+          "width": 256,
+          "height": 288,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "sound-pads"
+            }
+          ]
+        },
+        {
+          "id": 13,
+          "name": "inst-keys",
+          "type": "instrument",
+          "x": 1682,
+          "y": 878,
+          "width": 333,
+          "height": 245,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "voice-keys"
+            }
+          ]
+        },
+        {
+          "id": 14,
+          "name": "btn-stop",
+          "type": "transport",
+          "x": 666,
+          "y": 1169,
+          "width": 205,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-stop"
+            }
+          ]
+        },
+        {
+          "id": 15,
+          "name": "btn-play",
+          "type": "transport",
+          "x": 1011,
+          "y": 1169,
+          "width": 205,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "loop"
+            }
+          ]
+        },
+        {
+          "id": 16,
+          "name": "btn-loop",
+          "type": "transport",
+          "x": 1367,
+          "y": 1169,
+          "width": 205,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "loop"
+            }
+          ]
+        },
+        {
+          "id": 17,
+          "name": "btn-speed-down",
+          "type": "transport",
+          "x": 1705,
+          "y": 1169,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": -10
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "name": "btn-speed-up",
+          "type": "transport",
+          "x": 2089,
+          "y": 1169,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": 10
+            }
+          ]
+        },
+        {
+          "id": 19,
+          "name": "lcd-tempo-screen",
+          "type": "display",
+          "x": 300,
+          "y": 1293,
+          "width": 210,
+          "height": 49,
+          "rotation": 0,
+          "visible": true
+        }
+      ]
+    }
+  ]
+}
