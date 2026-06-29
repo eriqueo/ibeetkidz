@@ -73,7 +73,7 @@ export const WORKSHOP_LAYOUT_V2 = {
 export const WORKSHOP_INSTRUMENTS = [
   { id: "drumKit",  cx: 0.262, cy: 0.690, w: 0.12, h: 0.20, opens: { tool: "beat-grid" } },
   { id: "mic",      cx: 0.448, cy: 0.665, w: 0.08, h: 0.22, opens: { tool: "record-voicefx" } },
-  { id: "guitar",   cx: 0.560, cy: 0.690, w: 0.10, h: 0.20, opens: { melody: "pluck" } },
+  { id: "guitar",   cx: 0.560, cy: 0.690, w: 0.10, h: 0.20, opens: { melody: "guitar" } },
   { id: "keyboard", cx: 0.722, cy: 0.695, w: 0.13, h: 0.17, opens: { melody: "piano" } },
 ] as const;
 

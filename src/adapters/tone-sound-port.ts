@@ -33,11 +33,12 @@ import {
 
 /** A melody voice. The Mono-family synths share `.frequency`, so bend/roll/
  *  stretch all work on them. `Tone.Sampler` (Voice Keys — the kid's recording
- *  repitched chromatically) has NO `.frequency` signal, so it cannot bend; the
- *  scheduler degrades a bend to a flat note for samplers (roll + stretch still
- *  work via `triggerAttackRelease`). All four share `.volume`/`.connect`/
- *  `.triggerAttackRelease`/`.dispose`, so the scheduler is otherwise uniform. */
-type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth | Tone.Sampler;
+ *  repitched chromatically) and `Tone.PluckSynth` (the guitar — a Karplus-Strong
+ *  string model) have NO `.frequency` signal, so they cannot bend; the scheduler
+ *  degrades a bend to a flat note for them (roll + stretch still work via
+ *  `triggerAttackRelease`). All share `.volume`/`.connect`/`.triggerAttackRelease`/
+ *  `.dispose`, so the scheduler is otherwise uniform. */
+type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth | Tone.Sampler | Tone.PluckSynth;
 
 /** Build a fresh voice for an instrument id. The recipe (oscillator + envelope
  *  + modulation/filter) lives HERE — it's the vendor detail the core delegates.
@@ -104,6 +105,16 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
           attack: 0.08, decay: 0.3, sustain: 0.6, release: 0.3,
           baseFrequency: 200, octaves: 3.5,
         },
+      });
+    case "guitar":
+      // Karplus-Strong plucked string — a real guitar pluck: bright pick attack,
+      // string-like decay + ring. No `.frequency` signal (so bend degrades to a
+      // flat note, like the Voice Keys sampler).
+      return new Tone.PluckSynth({
+        attackNoise: 1.2,
+        dampening: 4500,
+        resonance: 0.93,
+        release: 1.2,
       });
     case "soft":
     default:
@@ -634,12 +645,12 @@ export class ToneSoundPort implements SoundPort {
       (time) => {
         const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
         const dur = voiceDur !== null ? Math.max(noteDur, Math.min(4, voiceDur)) : noteDur;
-        if (hasBend && !(synth instanceof Tone.Sampler)) {
+        if (hasBend && "frequency" in synth) {
           // Swoop: hold one voice and ramp its pitch through the bend points.
           // triggerAttack anchors the start frequency; each point is an
           // exponential ramp (equal pitch steps sound even). Clear last loop's
-          // ramps first so they don't bleed into this one. (Samplers have no
-          // `.frequency` signal, so they fall through to a flat note below.)
+          // ramps first so they don't bleed into this one. (Sampler + PluckSynth
+          // have no `.frequency` signal, so they fall through to a flat note.)
           synth.frequency.cancelScheduledValues(time);
           synth.triggerAttack(noteName, time);
           for (const pt of bend) {
