@@ -35,6 +35,9 @@ export interface TrackCar {
 
 const OVAL = TRACK_LAYOUT_V2.oval;
 const SMOKE_INTERVAL_MS = 800;
+// Arc occupied by one coupled car = its display width (makeCar uses 0.075 of the
+// scene) + a small coupler gap, as a fraction of the scene width.
+const CAR_COUPLE_W = 0.082;
 
 // The bottom transport panel: each button's painted-centre (fraction of the
 // scene width, from TRACK_LAYOUT_V2.controls) + its label + what it does. These
@@ -47,15 +50,17 @@ type ControlAction =
 
 interface ControlSpec {
   readonly cx: number;
-  readonly label: string;
   readonly action: ControlAction;
 }
 
+// One transparent hit-area over each of the 5 painted blue buttons (the painted
+// ◀◀ ⏸ ⏹ ▶ ⏩ faces ARE the buttons — no emoji chrome on top). ⏸ and ⏹ both stop.
 const CONTROL_SPECS: readonly ControlSpec[] = [
-  { cx: TRACK_LAYOUT_V2.controls.rewind, label: "🐢", action: { kind: "tempo", delta: -10 } },
-  { cx: TRACK_LAYOUT_V2.controls.stop, label: "■", action: { kind: "stop" } },
-  { cx: TRACK_LAYOUT_V2.controls.play, label: "▶", action: { kind: "play" } },
-  { cx: TRACK_LAYOUT_V2.controls.ff, label: "🐇", action: { kind: "tempo", delta: 10 } },
+  { cx: TRACK_LAYOUT_V2.controls.rewind, action: { kind: "tempo", delta: -10 } },
+  { cx: TRACK_LAYOUT_V2.controls.pause, action: { kind: "stop" } },
+  { cx: TRACK_LAYOUT_V2.controls.stop, action: { kind: "stop" } },
+  { cx: TRACK_LAYOUT_V2.controls.play, action: { kind: "play" } },
+  { cx: TRACK_LAYOUT_V2.controls.ff, action: { kind: "tempo", delta: 10 } },
 ];
 
 export class TrackScene extends BackgroundScene {
@@ -130,23 +135,26 @@ export class TrackScene extends BackgroundScene {
 
   update(): void {
     if (!this.path || !this.loco) return;
-    const n = Math.max(1, this.carTokens.length);
     const dir = this.direction;
-    // Each car occupies 1/n of the oval; car i is at the signal when
-    // progress = i/n. The loco rides just ahead of car 0.
+    // Coupled train: the loco leads at `parkAngle + progress`; each car trails
+    // bumper-to-bumper by one car-arc (a car's display width as a fraction of the
+    // oval's perimeter). The whole consist drives round the loop as progress runs.
+    const len = this.path.getLength() || 1;
+    const carArc = (this.backgroundRect.width * CAR_COUPLE_W) / len;
+    const headU = TRACK_LAYOUT_V2.parkAngle + dir * this.progress;
+    this.placeOnPath(this.loco, headU, -1);
+    this.faceAlongPath(this.loco, headU, dir, "loco");
     this.cars.forEach((car, i) => {
       const token = this.carTokens[i];
       if (!token) return;
-      const u = TRACK_LAYOUT_V2.signalAngle + dir * (this.progress - i / n);
+      const u = headU - dir * carArc * (i + 1);
       this.placeOnPath(token, u, i);
       this.faceAlongPath(token, u, dir, car.carType);
     });
-    const locoU = TRACK_LAYOUT_V2.signalAngle + dir * (this.progress + 0.5 / n);
-    this.placeOnPath(this.loco, locoU, -1);
-    this.faceAlongPath(this.loco, locoU, dir, "loco");
 
-    // Fire the crossing signal when the car at the signal changes (a new bar).
+    // Flash the crossing signal as the train passes the bottom-centre each bar.
     if (this.moving) {
+      const n = Math.max(1, this.carTokens.length);
       const bar = Math.floor(this.progress * n) % n;
       if (bar !== this.lastSignalBar) {
         this.lastSignalBar = bar;
@@ -171,34 +179,28 @@ export class TrackScene extends BackgroundScene {
     this.path.yRadius = r.height * OVAL.ry;
   }
 
-  /** Build the pixel-styled transport buttons over the painted control panel.
-   *  Each fires an EventBus message; React owns the engine. */
+  /** Build a TRANSPARENT hit-area over each painted control button (the painted
+   *  face shows through; a brief white flash marks the press). Each fires an
+   *  EventBus message; React owns the engine. */
   private buildControls(): void {
     this.controlBtns = CONTROL_SPECS.map((spec) => {
-      const bg = this.add.rectangle(0, 0, 10, 10, 0x2a2118).setStrokeStyle(3, 0x000000);
-      const label = this.add
-        .text(0, 0, spec.label, {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "18px",
-          color: "#f4e8d0",
-        })
-        .setOrigin(0.5);
-      const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
+      const bg = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setOrigin(0.5);
+      const btn = this.add.container(0, 0, [bg]).setDepth(10);
       btn.setData("bg", bg);
-      btn.setData("label", label);
       // Centred hit area (container-local origin is its centre); resized in
       // layoutControls once the background rect is known.
       const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
       btn.setData("hit", hit);
       btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
       if (btn.input) btn.input.cursor = "pointer";
+      const rest = (): void => { bg.setFillStyle(0xffffff, 0); };
       btn
         .on("pointerdown", () => {
-          btn.setAlpha(0.7); // visual down state
+          bg.setFillStyle(0xffffff, 0.25); // press flash over the painted face
           this.fireControl(spec.action);
         })
-        .on("pointerup", () => btn.setAlpha(1))
-        .on("pointerout", () => btn.setAlpha(1));
+        .on("pointerup", rest)
+        .on("pointerout", rest);
       return { spec, btn };
     });
   }
@@ -225,11 +227,9 @@ export class TrackScene extends BackgroundScene {
     const y = r.y + r.height * TRACK_LAYOUT_V2.controls.y;
     for (const { spec, btn } of this.controlBtns) {
       const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const label = btn.getData("label") as Phaser.GameObjects.Text;
       const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
       bg.setSize(w, h);
       hit.setTo(-w / 2, -h / 2, w, h);
-      label.setFontSize(Math.round(h * 0.42));
       btn.setPosition(r.x + r.width * spec.cx, y);
     }
   }

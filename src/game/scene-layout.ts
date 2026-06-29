@@ -96,19 +96,24 @@ export const TRACK_LAYOUT_V2 = {
   // the bottom-centre straight. Phaser.Curves.Ellipse starts at 3 o'clock and
   // goes counter-clockwise, so the bottom is at 0.75.
   signalAngle: 0.75,
+  // Where the loco head sits at progress 0 (train parked): 0.25 = top-centre
+  // straight, so the coupled train rests along the top and drives off CCW.
+  parkAngle: 0.25,
   // The crossing signal sprite anchor (bottom-centre of the oval) + display width
   // as a fraction of the scene (it was rendering at full 2560px — a monolith).
   signal: { x: 0.5, y: 0.585, w: 0.05 } as const,
-  // Painted transport panel buttons (centres) — transparent hit-areas.
+  // Transparent hit-areas over the painted bottom panel's 5 blue buttons
+  // (◀◀ ⏸ ⏹ ▶ ⏩). Centres + size measured from track-scene-clean.png (2560×1440):
+  // the button row sits low in the panel, NOT up over the SPEED/LAP-TIME readouts.
   controls: {
-    rewind: 0.405,  // ⏪ → slower
-    pause: 0.475,   // ⏸ → stop
-    stop: 0.545,    // ⏹ → stop
-    play: 0.615,    // ▶ → ride
-    ff: 0.685,      // ⏩ → faster
-    y: 0.815,
-    w: 0.055,
-    h: 0.13,
+    rewind: 0.367, // ◀◀ → slower
+    pause: 0.431,  // ⏸  → stop
+    stop: 0.495,   // ⏹  → stop
+    play: 0.559,   // ▶  → ride
+    ff: 0.623,     // ⏩  → faster
+    y: 0.878,
+    w: 0.058,
+    h: 0.085,
   },
 } as const;
 
