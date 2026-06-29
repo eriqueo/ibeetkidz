@@ -40,7 +40,7 @@ export const WORKSHOP_GRID_V2 = {
   maxLanes: 6,
   // lane-label column (holds delete ✕, the instrument emoji, and a 🎹 edit
   // button on melody lanes), as a fraction of the grid width.
-  labelFrac: 0.22,
+  labelFrac: 0.26,
   cellPad: 0.12, // gap between cells, as a fraction of the cell size
 } as const;
 

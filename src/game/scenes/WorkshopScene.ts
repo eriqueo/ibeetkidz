@@ -65,6 +65,7 @@ const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex
 
 interface LaneRow {
   layerId: string;
+  band: Phaser.GameObjects.Rectangle; // full-width lane-colour band (separates lanes)
   label: Phaser.GameObjects.Text;
   del: Phaser.GameObjects.Text; // ✕ remove this lane
   edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
@@ -107,7 +108,7 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   create(): void {
-    this.addBackground("cover");
+    this.addBackground("contain"); // never crop the toolbar/transport off-screen
     this.buildChrome();
     this.buildCarPicker();
     this.buildGrid();
@@ -192,7 +193,7 @@ export class WorkshopScene extends BackgroundScene {
    *  lane SET changes; otherwise just diffs cell states + selection highlight. */
   setModel(model: WorkshopModel): void {
     this.model = model;
-    if (!this.scene.isActive()) return;
+    if (!this.ready) return;
     const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
     if (key !== this.structKey) {
       this.buildGrid();
@@ -237,20 +238,24 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── grid ────────────────────────────────────────────────────────────────────
 
-  /** A tappable emoji/text with a press-pop, used for lane labels + row buttons. */
+  /** A tappable emoji/text used for lane labels + row buttons. Press feedback is
+   *  a brief SCALE-only flash (no y-shift — these icons are tiny and a positional
+   *  nudge made them flicker/vanish under the cursor). */
   private makeIconText(text: string, onPress: () => void): Phaser.GameObjects.Text {
     const t = this.add
-      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: LABEL_COLOR })
+      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "16px", color: LABEL_COLOR })
       .setOrigin(0.5)
-      .setDepth(6)
+      .setDepth(7)
       .setInteractive({ useHandCursor: true });
-    t.on("pointerdown", onPress);
-    pressPop(t);
+    t.on("pointerdown", () => { t.setScale(0.85); onPress(); })
+      .on("pointerup", () => t.setScale(1))
+      .on("pointerout", () => t.setScale(1));
     return t;
   }
 
   private buildGrid(): void {
     this.rows.forEach((r) => {
+      r.band.destroy();
       r.label.destroy();
       r.del.destroy();
       r.edit?.destroy();
@@ -282,6 +287,14 @@ export class WorkshopScene extends BackgroundScene {
 
     lanes.forEach((lane) => {
       const colorInt = toInt(lane.color);
+      // A faint full-width band tinted with the lane colour, so each lane reads as
+      // its own separated row (not one merged jumble of notes). Tap selects it.
+      const band = this.add
+        .rectangle(0, 0, 10, 10, colorInt, 0.1)
+        .setOrigin(0, 0.5)
+        .setDepth(3)
+        .setInteractive({ useHandCursor: true });
+      band.on("pointerdown", () => EventBus.emit("workshop-layer-selected", lane.id));
       const label = this.makeIconText(lane.label, () => EventBus.emit("workshop-layer-selected", lane.id));
       const del = this.makeIconText("✕", () => EventBus.emit("workshop-layer-delete", lane.id));
       del.setColor("#ff6b6b");
@@ -310,10 +323,13 @@ export class WorkshopScene extends BackgroundScene {
         cells.push(cell);
         on.push(isOn);
       }
-      this.rows.push({ layerId: lane.id, label, del, edit, colorInt, cells, on });
+      this.rows.push({ layerId: lane.id, band, label, del, edit, colorInt, cells, on });
     });
 
-    this.playhead = this.add.rectangle(0, 0, 3, 10, 0xffffff, 0.5).setOrigin(0, 0).setDepth(8).setVisible(false);
+    // The playhead is a full-height COLUMN highlight (one cell wide) so the
+    // currently-playing step is obvious across every lane. Sits below the cells
+    // (depth 4) so lit notes still read on top of the tint.
+    this.playhead = this.add.rectangle(0, 0, 10, 10, 0xffd166, 0.28).setOrigin(0, 0).setDepth(4).setVisible(false);
     this.layoutGrid();
     this.refreshSelection();
   }
@@ -343,7 +359,10 @@ export class WorkshopScene extends BackgroundScene {
     const sel = this.model.selectedLayerId;
     this.rows.forEach((row) => {
       const on = row.layerId === sel;
-      row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR).setScale(on ? 1.25 : 1);
+      // Selected lane: brighter band + highlighted label. No scale (it fought the
+      // press flash and made tiny icons jump).
+      row.band.setFillStyle(row.colorInt, on ? 0.28 : 0.1);
+      row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR);
     });
   }
 
@@ -366,20 +385,24 @@ export class WorkshopScene extends BackgroundScene {
     this.cellH = gh / laneCount;
     const pad = Math.min(this.cellW, this.cellH) * WORKSHOP_GRID_V2.cellPad;
 
-    const iconPx = Math.max(9, Math.min(this.cellH * 0.5, labelW * 0.22));
+    const iconPx = Math.max(11, Math.min(this.cellH * 0.62, labelW * 0.26));
     this.rows.forEach((row, li) => {
       const cy = gy + (li + 0.5) * this.cellH;
-      // Label column: [✕ delete] [instrument emoji] [🎹 edit (melody only)].
-      row.del.setPosition(gx + labelW * 0.16, cy).setFontSize(iconPx);
-      row.label.setPosition(gx + labelW * 0.5, cy).setFontSize(iconPx);
-      row.edit?.setPosition(gx + labelW * 0.84, cy).setFontSize(iconPx);
+      // Lane band: full grid width, a hair shorter than the row so a thin gap
+      // separates adjacent lanes.
+      row.band.setPosition(gx, cy).setSize(gw, this.cellH * 0.86);
+      // Label column: [✕ delete] [instrument emoji] [🎹 edit (melody only)] — well
+      // spaced so a tap doesn't land on the destructive ✕ by accident.
+      row.del.setPosition(gx + labelW * 0.18, cy).setFontSize(iconPx);
+      row.label.setPosition(gx + labelW * 0.52, cy).setFontSize(iconPx);
+      row.edit?.setPosition(gx + labelW * 0.85, cy).setFontSize(iconPx);
       row.cells.forEach((cell, i) => {
         cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
         cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));
       });
     });
 
-    this.playhead?.setSize(3, this.cellH * laneCount);
+    this.playhead?.setSize(this.cellW, this.cellH * laneCount);
   }
 
   // ── car-type picker ──────────────────────────────────────────────────────────

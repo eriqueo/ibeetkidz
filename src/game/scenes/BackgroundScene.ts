@@ -25,6 +25,12 @@ export abstract class BackgroundScene extends Phaser.Scene {
   private bg?: Phaser.GameObjects.Image;
   private bgKey?: string;
   private fit: BackgroundFit = "cover";
+  /** True once the subclass `create()` has finished and called `announceReady`.
+   *  Subclasses gate React→scene updates on this — NOT `scene.isActive()`, which
+   *  is still false during the synchronous `announceReady` handshake (the scene
+   *  status only flips to RUNNING after `create()` returns), so the first state
+   *  push would otherwise be dropped. */
+  protected ready = false;
 
   /** Queue the scene's background texture. Call from a subclass `preload`. */
   protected loadBackground(asset: ImageAsset): void {
@@ -73,8 +79,11 @@ export abstract class BackgroundScene extends Phaser.Scene {
   /** Hook for subclasses to re-anchor sprites after the bg refits. */
   protected onResize(): void {}
 
-  /** Subclasses call this at the end of their own `create`. */
+  /** Subclasses call this at the end of their own `create`. Flips `ready` BEFORE
+   *  emitting so the synchronous React state push triggered by the handshake is
+   *  applied (not dropped by an `isActive()`-style guard). */
   protected announceReady(): void {
+    this.ready = true;
     EventBus.emit("current-scene-ready", this);
   }
 }
