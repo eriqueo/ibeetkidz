@@ -21,6 +21,9 @@ import {
 import type { Command, Project } from "../core/types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
+import { EventBus } from "../game/EventBus.ts";
+import type { EventMap } from "../game/EventBus.ts";
+import type Phaser from "phaser";
 
 // ── Singletons (one per page load) ──────────────────────────────────────────
 const sound: SoundPort = new ToneSoundPort();
@@ -30,6 +33,36 @@ const rng: RngPort = createRng(Date.now() & 0xffffffff);
 const store: Store = createStore(initHistory(emptyProject(`proj-${Date.now()}`)));
 
 const getProject = (): Project => store.getSnapshot().present;
+
+// ── Test bridge (dev-server only) ───────────────────────────────────────────
+// The v2 Workshop view is a pure Phaser canvas, so e2e can't click its controls
+// through the DOM. We expose the shared EventBus + a live Project getter + the
+// last-ready scene so Playwright can drive the app the same way React does — but
+// ONLY under the Vite dev server (`import.meta.env.DEV`), never in a build.
+interface TestBridge {
+  emit: <K extends keyof EventMap>(event: K, ...args: EventMap[K]) => boolean;
+  getProject: () => Project;
+  getScene: () => Phaser.Scene | null;
+  // Test-only command dispatch — used to stage preconditions the v2 UI has no
+  // EventBus path for (e.g. emptying the default-seeded train so the Map→Track
+  // guard can fire). Goes through the same `dispatch` React uses; no new behavior.
+  dispatch: (cmd: Command) => void;
+}
+declare global {
+  interface Window {
+    __ibeetkidz_test__?: TestBridge;
+  }
+}
+if (import.meta.env.DEV && typeof window !== "undefined") {
+  let lastScene: Phaser.Scene | null = null;
+  EventBus.on("current-scene-ready", (scene) => { lastScene = scene; });
+  window.__ibeetkidz_test__ = {
+    emit: (event, ...args) => EventBus.emit(event, ...args),
+    getProject,
+    getScene: () => lastScene,
+    dispatch: (cmd) => dispatch(cmd),
+  };
+}
 
 // Dispatch wrapper: mutate state, then reconcile the transport if a beat is
 // playing so edits are heard immediately (mirrors the old main.ts behavior).

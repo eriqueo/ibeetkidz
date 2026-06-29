@@ -170,6 +170,11 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   /** React → scene: which satellite tool panel is open (null = none). */
+  /** Test-only read of the currently open satellite tool panel (null = none). */
+  get activeToolId(): string | null {
+    return this.activeTool;
+  }
+
   setActiveTool(toolId: string | null): void {
     this.activeTool = toolId;
     for (const [id, panel] of Object.entries(this.toolPanels)) {
