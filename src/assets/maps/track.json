@@ -1,0 +1,188 @@
+{
+  "compressionlevel": -1,
+  "infinite": false,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.10.2",
+  "version": "1.10",
+  "type": "map",
+  "tilewidth": 32,
+  "tileheight": 32,
+  "width": 80,
+  "height": 45,
+  "nextlayerid": 3,
+  "nextobjectid": 8,
+  "layers": [
+    {
+      "id": 2,
+      "name": "base-plate",
+      "type": "imagelayer",
+      "image": "track-base.png",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": 1,
+      "name": "ui-layer",
+      "type": "objectgroup",
+      "draworder": "topdown",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 1,
+          "name": "btn-track-yard",
+          "type": "nav",
+          "x": 36,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "track-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "yard"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "btn-track-exit",
+          "type": "nav",
+          "x": 2120,
+          "y": 36,
+          "width": 154,
+          "height": 144,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "track-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "map"
+            },
+            {
+              "name": "anchor",
+              "type": "string",
+              "value": "ui-top-right"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "btn-speed-down",
+          "type": "transport",
+          "x": 966,
+          "y": 1080,
+          "width": 141,
+          "height": 187,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": -10
+            }
+          ]
+        },
+        {
+          "id": 4,
+          "name": "btn-stop",
+          "type": "transport",
+          "x": 1325,
+          "y": 1080,
+          "width": 141,
+          "height": 187,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-stop"
+            }
+          ]
+        },
+        {
+          "id": 5,
+          "name": "btn-ride",
+          "type": "transport",
+          "x": 1504,
+          "y": 1080,
+          "width": 141,
+          "height": 187,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "ride"
+            }
+          ]
+        },
+        {
+          "id": 6,
+          "name": "btn-speed-up",
+          "type": "transport",
+          "x": 1683,
+          "y": 1080,
+          "width": 141,
+          "height": 187,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": 10
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "lcd-tempo-screen",
+          "type": "display",
+          "x": 663,
+          "y": 1149,
+          "width": 210,
+          "height": 49,
+          "rotation": 0,
+          "visible": true
+        }
+      ]
+    }
+  ]
+}

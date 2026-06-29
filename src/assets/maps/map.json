@@ -1,0 +1,108 @@
+{
+  "compressionlevel": -1,
+  "infinite": false,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.10.2",
+  "version": "1.10",
+  "type": "map",
+  "tilewidth": 32,
+  "tileheight": 32,
+  "width": 80,
+  "height": 45,
+  "nextlayerid": 3,
+  "nextobjectid": 4,
+  "layers": [
+    {
+      "id": 2,
+      "name": "base-plate",
+      "type": "imagelayer",
+      "image": "map-base.png",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "id": 1,
+      "name": "ui-layer",
+      "type": "objectgroup",
+      "draworder": "topdown",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 1,
+          "name": "hit-workshop",
+          "type": "nav",
+          "x": 307,
+          "y": 403,
+          "width": 486,
+          "height": 605,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "map-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "workshop"
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "hit-yard",
+          "type": "nav",
+          "x": 1126,
+          "y": 403,
+          "width": 486,
+          "height": 605,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "map-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "yard"
+            }
+          ]
+        },
+        {
+          "id": 3,
+          "name": "hit-track",
+          "type": "nav",
+          "x": 1792,
+          "y": 432,
+          "width": 486,
+          "height": 605,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "map-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "track"
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
