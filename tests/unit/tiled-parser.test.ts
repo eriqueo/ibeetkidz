@@ -104,10 +104,12 @@ describe("instrument objects", () => {
     expect(s.cy).toBeCloseTo(0.69, 2);
   });
 
-  it("maps all four instruments to their tools", () => {
+  it("maps each instrument to its action: drum/mic open tools, guitar/piano add melody lanes", () => {
     expect(need("inst-mic").arg).toBe("record-voicefx");
-    expect(need("inst-guitar").arg).toBe("sound-pads");
-    expect(need("inst-keys").arg).toBe("voice-keys");
+    expect(need("inst-guitar").action).toBe("workshop-add-melody");
+    expect(need("inst-guitar").arg).toBe("pluck");
+    expect(need("inst-keys").action).toBe("workshop-add-melody");
+    expect(need("inst-keys").arg).toBe("piano");
   });
 });
 

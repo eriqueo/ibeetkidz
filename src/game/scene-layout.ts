@@ -66,13 +66,15 @@ export const WORKSHOP_LAYOUT_V2 = {
 } as const;
 
 // The 4 painted ground instruments. Each is a TRANSPARENT hit-area over the
-// painted art (no emoji — the art is the button) that OPENS its satellite tool
-// panel. Centres (cx,cy) + size are MEASURED off workshop-scene-clean.png.
+// painted art (no emoji — the art is the button). Tapping either OPENS a tool
+// panel (`opens.tool`) or ADDS a melody lane voiced by a synth and opens the note
+// editor (`opens.melody`): drum→Beat Maker, mic→My Voice, guitar→pluck melody,
+// keyboard→piano melody. Centres (cx,cy) + size MEASURED off workshop-scene-clean.png.
 export const WORKSHOP_INSTRUMENTS = [
-  { id: "drumKit",  tool: "beat-grid",      cx: 0.262, cy: 0.690, w: 0.12, h: 0.20 },
-  { id: "mic",      tool: "record-voicefx", cx: 0.448, cy: 0.665, w: 0.08, h: 0.22 },
-  { id: "guitar",   tool: "sound-pads",     cx: 0.560, cy: 0.690, w: 0.10, h: 0.20 },
-  { id: "keyboard", tool: "voice-keys",     cx: 0.722, cy: 0.695, w: 0.13, h: 0.17 },
+  { id: "drumKit",  cx: 0.262, cy: 0.690, w: 0.12, h: 0.20, opens: { tool: "beat-grid" } },
+  { id: "mic",      cx: 0.448, cy: 0.665, w: 0.08, h: 0.22, opens: { tool: "record-voicefx" } },
+  { id: "guitar",   cx: 0.560, cy: 0.690, w: 0.10, h: 0.20, opens: { melody: "pluck" } },
+  { id: "keyboard", cx: 0.722, cy: 0.695, w: 0.13, h: 0.17, opens: { melody: "piano" } },
 ] as const;
 
 // Workshop v2 sequencer grid (Phaser-native). The grid fills the painted boxcar

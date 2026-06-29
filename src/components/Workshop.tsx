@@ -11,7 +11,13 @@ import {
   type AppView,
 } from "../core/types.ts";
 import { MELODY_ROWS, degreeToNote } from "../core/scale.ts";
-import { voiceInstrumentId, resolveInstrument } from "../core/instruments.ts";
+import {
+  voiceInstrumentId,
+  resolveInstrument,
+  isVoiceInstrument,
+  INSTRUMENTS,
+  type SynthInstrumentId,
+} from "../core/instruments.ts";
 import { laneColor } from "../machines/tools.tsx";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
@@ -67,7 +73,12 @@ export const Workshop: FC = () => {
         layer.kind === "drum" ? layer.steps[i] != null : (layer.notes[i]?.length ?? 0) > 0,
       );
       let label = "🎵";
-      if (clip?.source.kind === "builtin") {
+      const melodyInst = layer.kind === "melody" ? layer.instrument : undefined;
+      if (melodyInst && isVoiceInstrument(melodyInst)) {
+        label = "🎤"; // a recording played chromatically (Voice Keys / Send as Notes)
+      } else if (melodyInst) {
+        label = INSTRUMENTS.find((i) => i.id === melodyInst)?.emoji ?? "🎵";
+      } else if (clip?.source.kind === "builtin") {
         const assetId = clip.source.assetId;
         label = BUILTIN_SOUNDS.find((s) => s.assetId === assetId)?.emoji ?? "🎵";
       } else if (clip?.source.kind === "recording") {
@@ -189,6 +200,22 @@ export const Workshop: FC = () => {
       if (editMelodyRef.current === layerId) { setEditMelodyId(null); setOpenTool((o) => (o === "melody-editor" ? null : o)); }
     };
     const onEditMelody = (layerId: string): void => { setEditMelodyId(layerId); setOpenTool("melody-editor"); };
+    // Guitar/Piano (and any synth melody instrument): make a fresh melody lane
+    // voiced by that synth, seed a gentle starter melody so it's immediately
+    // playable, then open the note editor on it.
+    const onAddMelody = (instrument: SynthInstrumentId): void => {
+      const ts = Date.now();
+      const clipId = `clip-melody-${instrument}-${ts}`;
+      const layerId = `layer-melody-${instrument}-${ts}`;
+      const label = INSTRUMENTS.find((i) => i.id === instrument)?.label ?? "Melody";
+      const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
+      ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
+      dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId: "note-do" }, effects: [], color: "#06d6a0", label } });
+      dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind: "melody", instrument, notes }) });
+      setSelectedLayer(layerId);
+      setEditMelodyId(layerId);
+      setOpenTool("melody-editor");
+    };
     const onMelodyToggle = (step: number, row: number): void => {
       const id = editMelodyRef.current;
       if (!id) return;
@@ -372,6 +399,7 @@ export const Workshop: FC = () => {
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
+      ["workshop-add-melody", onAddMelody],
       ["tool-melody-toggle", onMelodyToggle],
       ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],

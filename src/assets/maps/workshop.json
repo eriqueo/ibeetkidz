@@ -295,12 +295,12 @@
             {
               "name": "action",
               "type": "string",
-              "value": "workshop-open-tool"
+              "value": "workshop-add-melody"
             },
             {
               "name": "arg",
               "type": "string",
-              "value": "sound-pads"
+              "value": "pluck"
             }
           ]
         },
@@ -318,12 +318,12 @@
             {
               "name": "action",
               "type": "string",
-              "value": "workshop-open-tool"
+              "value": "workshop-add-melody"
             },
             {
               "name": "arg",
               "type": "string",
-              "value": "voice-keys"
+              "value": "piano"
             }
           ]
         },

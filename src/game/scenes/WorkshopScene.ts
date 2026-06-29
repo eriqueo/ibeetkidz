@@ -374,12 +374,16 @@ export class WorkshopScene extends BackgroundScene {
   // ── instrument shelf ─────────────────────────────────────────────────────────
 
   // One transparent tap-zone over each of the 4 painted ground instruments (no
-  // emoji chrome — the painted art is the button). Tapping OPENS that instrument's
-  // satellite tool panel (drum→Beat Maker, mic→My Voice, guitar→Sound Pads,
-  // keyboard→Voice Keys); a press flash gives feedback.
+  // emoji chrome — the painted art is the button). Tapping either OPENS that
+  // instrument's tool panel (drum→Beat Maker, mic→My Voice) or ADDS a melody lane
+  // voiced by its synth + opens the note editor (guitar→pluck, keyboard→piano).
   private buildShelf(): void {
     this.shelfBtns = WORKSHOP_INSTRUMENTS.map((inst) =>
-      this.makeButton(() => EventBus.emit("workshop-open-tool", inst.tool)));
+      this.makeButton(() => {
+        const o = inst.opens;
+        if ("tool" in o) EventBus.emit("workshop-open-tool", o.tool);
+        else EventBus.emit("workshop-add-melody", o.melody);
+      }));
   }
 
   private layoutShelf(): void {
