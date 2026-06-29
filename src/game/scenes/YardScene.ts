@@ -116,7 +116,7 @@ export class YardScene extends BackgroundScene {
   setCars(palette: YardCar[], train: YardTrainCar[]): void {
     this.cars = palette;
     this.train = train;
-    if (this.scene.isActive()) this.rebuild();
+    if (this.ready) this.rebuild();
   }
 
   setSelectedPalette(id: string | null): void {

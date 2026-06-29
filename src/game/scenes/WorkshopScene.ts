@@ -182,7 +182,7 @@ export class WorkshopScene extends BackgroundScene {
    *  lane SET changes; otherwise just diffs cell states + selection highlight. */
   setModel(model: WorkshopModel): void {
     this.model = model;
-    if (!this.scene.isActive()) return;
+    if (!this.ready) return;
     const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
     if (key !== this.structKey) {
       this.buildGrid();

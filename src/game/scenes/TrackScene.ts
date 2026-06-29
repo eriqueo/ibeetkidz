@@ -108,7 +108,7 @@ export class TrackScene extends BackgroundScene {
   /** React → scene: the cars to draw (one per train slot, in order). */
   setCars(cars: TrackCar[]): void {
     this.cars = cars;
-    if (this.scene.isActive()) this.rebuildCars();
+    if (this.ready) this.rebuildCars();
   }
 
   /** React → scene: playback head position around the loop, 0..1 (transport). */
