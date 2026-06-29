@@ -46,8 +46,8 @@ describe("workshop.json fixture", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 19 descriptors", () => {
-    expect(spawns).toHaveLength(19);
+  it("projects the ui-layer into 20 descriptors", () => {
+    expect(spawns).toHaveLength(20);
     expect(spawns.map((s) => s.id)).toContain("icon-notepad");
     expect(spawns.map((s) => s.id)).toContain("lcd-tempo-screen");
   });
@@ -129,9 +129,9 @@ describe("transport objects", () => {
     const down = need("btn-speed-down");
     const up = need("btn-speed-up");
     expect(down.action).toBe("tempo-changed");
-    expect(down.arg).toBe(-10);
+    expect(down.arg).toBe(-20); // one SPEED level = ±SPEED_STEP_BPM
     expect(typeof down.arg).toBe("number");
-    expect(up.arg).toBe(10);
+    expect(up.arg).toBe(20);
   });
 });
 

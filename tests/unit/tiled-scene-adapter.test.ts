@@ -234,7 +234,7 @@ describe("spawnTiledScene", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
     fire(rectFor(rec, "btn-speed-down"), "pointerup");
-    expect(emitSpy).toHaveBeenCalledWith("tempo-changed", -10);
+    expect(emitSpy).toHaveBeenCalledWith("tempo-changed", -20);
   });
 
   it("emits no-arg actions with a single argument only", () => {

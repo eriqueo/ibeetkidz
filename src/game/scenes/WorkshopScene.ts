@@ -63,6 +63,16 @@ const LABEL_SELECTED = "#ffd166";
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
+// SPEED control: discrete levels 1..N mapped onto BPM (level 4 = 120, matching
+// the painted defaults). The ↓/↑ buttons step one level (±SPEED_STEP_BPM via the
+// Tiled map); the SPEED LCD shows the level — replacing the confusing live-TEMPO
+// readout the "speed" arrows used to drive.
+const SPEED_BASE_BPM = 60;
+const SPEED_STEP_BPM = 20;
+const SPEED_MAX_LEVEL = 8;
+const speedLevel = (bpm: number): number =>
+  Math.max(1, Math.min(SPEED_MAX_LEVEL, Math.round((bpm - SPEED_BASE_BPM) / SPEED_STEP_BPM) + 1));
+
 interface LaneRow {
   layerId: string;
   band: Phaser.GameObjects.Rectangle; // full-width lane-colour band (separates lanes)
@@ -92,8 +102,9 @@ export class WorkshopScene extends BackgroundScene {
   // (index-aligned), re-anchored to the painted art on resize.
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chromeHits: Phaser.GameObjects.Rectangle[] = [];
-  private tempoText: Phaser.GameObjects.Text | undefined;
-  private tempoBg: Phaser.GameObjects.Rectangle | undefined;
+  private speedText: Phaser.GameObjects.Text | undefined; // live SPEED level over the painted SPEED LCD
+  private speedBg: Phaser.GameObjects.Rectangle | undefined; // mask under the level digits
+  private tempoHideBg: Phaser.GameObjects.Rectangle | undefined; // covers the now-unused painted TEMPO digits
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -131,14 +142,17 @@ export class WorkshopScene extends BackgroundScene {
     });
     this.chromeHits = hits;
 
-    // Mask the painted TEMPO LCD's BLACK screen and redraw the live BPM in the
-    // LCD's lime green, so the panel reflects the real tempo (no painted "120"
-    // bleeding through). Positioned from the `lcd-tempo-screen` spawn rect.
-    this.tempoBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
-    this.tempoText = this.add
-      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
+    // Live SPEED level over the painted SPEED LCD (mask its digits, redraw the
+    // level in the LCD's lime green) — positioned from `lcd-speed-screen`. The
+    // painted TEMPO digits are masked out (`lcd-tempo-screen`): speed, not tempo,
+    // is the kid-facing control now. (Fully retiring the painted TEMPO label needs
+    // an art regen of the base plate.)
+    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+    this.speedText = this.add
+      .text(0, 0, "", { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
       .setOrigin(0.5)
       .setDepth(10);
+    this.tempoHideBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
   }
 
   // Re-anchor the chrome hit-areas + the TEMPO LCD mask/text to the painted art
@@ -149,12 +163,17 @@ export class WorkshopScene extends BackgroundScene {
     const { width, height } = this.scale.gameSize;
     relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
 
-    const lcd = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
-    if (lcd && this.tempoBg && this.tempoText) {
-      const p = placeSpawn(lcd, r, { width, height });
-      this.tempoBg.setSize(p.width, p.height).setPosition(p.x, p.y);
-      this.tempoText.setPosition(p.x, p.y).setFontSize(Math.max(11, p.height * 0.66));
+    const speed = this.chromeSpawns.find((s) => s.id === "lcd-speed-screen");
+    if (speed && this.speedBg && this.speedText) {
+      const p = placeSpawn(speed, r, { width, height });
+      this.speedBg.setSize(p.width, p.height).setPosition(p.x, p.y);
+      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(11, p.height * 0.62));
       this.refreshSpeed();
+    }
+    const tempo = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
+    if (tempo && this.tempoHideBg) {
+      const p = placeSpawn(tempo, r, { width, height });
+      this.tempoHideBg.setSize(p.width, p.height).setPosition(p.x, p.y);
     }
   }
 
@@ -212,7 +231,7 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   private refreshSpeed(): void {
-    this.tempoText?.setText(String(this.model.tempoBpm));
+    this.speedText?.setText(String(speedLevel(this.model.tempoBpm)).padStart(2, "0"));
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
