@@ -1,25 +1,32 @@
 // The Workshop view (v2): the sequencer lives INSIDE Phaser now. The painted
-// boxcar interior holds a step grid (one row per lane, STEP_COUNT cells each);
-// the painted shelf adds lanes; a 4-way picker sets the (cosmetic) car type; a
-// Play/Stop pair drives the loop. All interaction flows out over the typed
-// EventBus — React owns state + audio and pushes a derived model back in.
+// boxcar interior holds a step grid (one row per lane, STEP_COUNT cells each); a
+// 4-way picker sets the (cosmetic) car type; a Play/Stop pair drives the loop.
+// All interaction flows out over the typed EventBus — React owns state + audio
+// and pushes a derived model back in.
+//
+// The STATIC chrome (top toolbar, instrument shelf, transport buttons + the
+// TEMPO LCD anchor) is DATA-DRIVEN from the Tiled map `assets/maps/workshop.json`
+// via TiledParser + TiledSceneAdapter: each object becomes a transparent hit-area
+// over the painted base plate that emits its authored EventBus action on tap. The
+// scene owns the clean background (BackgroundScene.addBackground) and hands the
+// adapter its `bgRect`, so there is exactly one background; `relayoutSpawns`
+// re-anchors the hit-areas to the painted art on every resize.
 //
 // The grid is built once per lane-set and only its cell tints/alpha change on a
-// store update (diffed); `update()` only sweeps the playhead. Every coordinate
-// comes from scene-layout.ts — nothing is hardcoded here.
+// store update (diffed); `update()` only sweeps the playhead.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
+import { WORKSHOP_LAYOUT_V2, WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import {
-  WORKSHOP_LAYOUT_V2,
-  WORKSHOP_GRID_V2,
-  WORKSHOP_INSTRUMENTS,
-  rowCell,
-} from "../scene-layout.ts";
+  parseTiledLayer,
+  type TiledSpawn,
+} from "../TiledParser.ts";
+import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import workshopMap from "../../assets/maps/workshop.json";
 import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
-import { WORKSHOP_TOOLBAR } from "../scene-layout.ts";
 import { pressPop } from "../press.ts";
 import {
   BaseToolPanel,
@@ -66,19 +73,6 @@ interface LaneRow {
   on: boolean[];
 }
 
-// Painted top-toolbar icon → intent, keyed by WORKSHOP_TOOLBAR's labels.
-const TOOLBAR_ACTIONS: Record<string, () => void> = {
-  newcar: () => EventBus.emit("workshop-new-car"),
-  magicpad: () => EventBus.emit("workshop-open-tool", "theremin-xy"),
-  soundpads: () => EventBus.emit("workshop-open-tool", "sound-pads"),
-  myvoice: () => EventBus.emit("workshop-open-tool", "record-voicefx"),
-  beatgrid: () => EventBus.emit("workshop-open-tool", "beat-grid"),
-  voicekeys: () => EventBus.emit("workshop-open-tool", "voice-keys"),
-  yard: () => EventBus.emit("workshop-nav", "yard"),
-  map: () => EventBus.emit("workshop-nav", "map"),
-  surprise: () => EventBus.emit("workshop-surprise"),
-};
-
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
@@ -93,12 +87,10 @@ export class WorkshopScene extends BackgroundScene {
   private gridLeft = 0;
   private gridTop = 0;
   private carBtns: { type: CarType; img: Phaser.GameObjects.Image; base: number }[] = [];
-  private transportBtns: {
-    btn: Phaser.GameObjects.Container;
-    cx: number;
-  }[] = [];
-  private toolbarBtns: Phaser.GameObjects.Container[] = [];
-  private shelfBtns: Phaser.GameObjects.Container[] = [];
+  // Data-driven static chrome: parsed Tiled spawns + their adapter hit-areas
+  // (index-aligned), re-anchored to the painted art on resize.
+  private chromeSpawns: readonly TiledSpawn[] = [];
+  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
   private tempoText: Phaser.GameObjects.Text | undefined;
   private tempoBg: Phaser.GameObjects.Rectangle | undefined;
   private toolPanels: Record<string, BaseToolPanel> = {};
@@ -116,14 +108,53 @@ export class WorkshopScene extends BackgroundScene {
 
   create(): void {
     this.addBackground("cover");
-    this.buildToolbar();
-    this.buildShelf();
+    this.buildChrome();
     this.buildCarPicker();
-    this.buildTransport();
     this.buildGrid();
     this.buildToolPanels();
     this.layoutFixtures();
     this.announceReady();
+  }
+
+  // ── data-driven static chrome (toolbar / shelf / transport / TEMPO LCD) ──────
+  // Parse the Tiled UI layer once and let the adapter spawn a transparent hit-area
+  // per object (each emits its authored EventBus action on tap). The scene owns
+  // the clean background, so the adapter gets `bgRect` and creates NO second
+  // background image. The TEMPO LCD object (`lcd-tempo-screen`, no action) is the
+  // positioned anchor for the live BPM mask+text below.
+  private buildChrome(): void {
+    this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
+    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
+      bgRect: this.backgroundRect,
+      hitDepth: 10,
+    });
+    this.chromeHits = hits;
+
+    // Mask the painted TEMPO LCD's BLACK screen and redraw the live BPM in the
+    // LCD's lime green, so the panel reflects the real tempo (no painted "120"
+    // bleeding through). Positioned from the `lcd-tempo-screen` spawn rect.
+    this.tempoBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+    this.tempoText = this.add
+      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
+      .setOrigin(0.5)
+      .setDepth(10);
+  }
+
+  // Re-anchor the chrome hit-areas + the TEMPO LCD mask/text to the painted art
+  // after the background refits (the adapter only places them once at create).
+  private layoutChrome(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0) return;
+    const { width, height } = this.scale.gameSize;
+    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
+
+    const lcd = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
+    if (lcd && this.tempoBg && this.tempoText) {
+      const p = placeSpawn(lcd, r, { width, height });
+      this.tempoBg.setSize(p.width, p.height).setPosition(p.x, p.y);
+      this.tempoText.setPosition(p.x, p.y).setFontSize(Math.max(11, p.height * 0.66));
+      this.refreshSpeed();
+    }
   }
 
   private buildToolPanels(): void {
@@ -135,26 +166,6 @@ export class WorkshopScene extends BackgroundScene {
       "theremin-xy": new MagicToolPanel(this),
       "melody-editor": new MelodyEditorPanel(this),
     };
-  }
-
-  // ── painted top toolbar (replaces the old HTML nav + dock) ───────────────────
-  private buildToolbar(): void {
-    this.toolbarBtns = WORKSHOP_TOOLBAR.map((key) =>
-      this.makeButton(TOOLBAR_ACTIONS[key] ?? (() => {})));
-  }
-
-  private layoutToolbar(): void {
-    const r = this.backgroundRect;
-    const t = WORKSHOP_LAYOUT_V2.toolbar;
-    this.toolbarBtns.forEach((btn, i) => {
-      const c = rowCell(i, t.count, t.c0, t.c1, t.y, t.w, t.h);
-      const w = r.width * c.w, h = r.height * c.h;
-      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
-      bg.setSize(w, h);
-      hit.setTo(-w / 2, -h / 2, w, h);
-      btn.setPosition(r.x + r.width * (c.x + c.w / 2), r.y + r.height * (c.y + c.h / 2));
-    });
   }
 
   /** React → scene: which satellite tool panel is open (null = none). */
@@ -371,35 +382,6 @@ export class WorkshopScene extends BackgroundScene {
     this.playhead?.setSize(3, this.cellH * laneCount);
   }
 
-  // ── instrument shelf ─────────────────────────────────────────────────────────
-
-  // One transparent tap-zone over each of the 4 painted ground instruments (no
-  // emoji chrome — the painted art is the button). Tapping either OPENS that
-  // instrument's tool panel (drum→Beat Maker, mic→My Voice) or ADDS a melody lane
-  // voiced by its synth + opens the note editor (guitar→pluck, keyboard→piano).
-  private buildShelf(): void {
-    this.shelfBtns = WORKSHOP_INSTRUMENTS.map((inst) =>
-      this.makeButton(() => {
-        const o = inst.opens;
-        if ("tool" in o) EventBus.emit("workshop-open-tool", o.tool);
-        else EventBus.emit("workshop-add-melody", o.melody);
-      }));
-  }
-
-  private layoutShelf(): void {
-    const r = this.backgroundRect;
-    this.shelfBtns.forEach((btn, i) => {
-      const inst = WORKSHOP_INSTRUMENTS[i];
-      if (!inst) return;
-      const w = r.width * inst.w, h = r.height * inst.h;
-      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
-      bg.setSize(w, h);
-      hit.setTo(-w / 2, -h / 2, w, h);
-      btn.setPosition(r.x + r.width * inst.cx, r.y + r.height * inst.cy);
-    });
-  }
-
   // ── car-type picker ──────────────────────────────────────────────────────────
 
   private buildCarPicker(): void {
@@ -437,82 +419,9 @@ export class WorkshopScene extends BackgroundScene {
     });
   }
 
-  // ── transport ────────────────────────────────────────────────────────────────
-  // The painted bottom panel already draws the STOP / PLAY / LOOP / SPEED faces,
-  // so each control is a TRANSPARENT hit-area over its painted button (the Phase-1
-  // container/centred-hit/press-state mechanics, just with no opaque fill) plus a
-  // brief highlight flash on press. Play and Loop both loop the active car.
-
-  private buildTransport(): void {
-    const t = WORKSHOP_LAYOUT_V2.transport;
-    this.transportBtns = [
-      { btn: this.makeButton(() => EventBus.emit("transport-stop")), cx: t.stop },
-      { btn: this.makeButton(() => EventBus.emit("transport-play", "loop")), cx: t.play },
-      { btn: this.makeButton(() => EventBus.emit("transport-play", "loop")), cx: t.loop },
-      { btn: this.makeButton(() => EventBus.emit("tempo-changed", -10)), cx: t.speedDown },
-      { btn: this.makeButton(() => EventBus.emit("tempo-changed", 10)), cx: t.speedUp },
-    ];
-    // Mask the painted TEMPO LCD's screen (it is BLACK, #000000) and redraw the
-    // live BPM in the LCD's lime green, so the panel reflects the real tempo (no
-    // painted "120" bleeding through). The painted "TEMPO" label above the screen
-    // stays — only the digits are masked.
-    this.tempoBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
-    this.tempoText = this.add
-      .text(0, 0, String(this.model.tempoBpm), { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
-      .setOrigin(0.5)
-      .setDepth(10);
-  }
-
-  private makeButton(onPress: () => void): Phaser.GameObjects.Container {
-    // Transparent face so the painted button shows through; flashes on press.
-    const bg = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setOrigin(0.5);
-    const btn = this.add.container(0, 0, [bg]).setDepth(10);
-    const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
-    btn.setData("bg", bg);
-    btn.setData("hit", hit);
-    btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
-    if (btn.input) btn.input.cursor = "pointer";
-    const rest = (): void => { bg.setFillStyle(0xffffff, 0); };
-    btn
-      .on("pointerdown", () => {
-        bg.setFillStyle(0xffffff, 0.22); // press flash over the painted face
-        onPress();
-      })
-      .on("pointerup", rest)
-      .on("pointerout", rest);
-    return btn;
-  }
-
-  private layoutTransport(): void {
-    const r = this.backgroundRect;
-    const t = WORKSHOP_LAYOUT_V2.transport;
-    const w = r.width * t.w;
-    const h = r.height * t.h;
-    const y = r.y + r.height * t.y;
-    for (const { btn, cx } of this.transportBtns) {
-      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
-      bg.setSize(w, h);
-      hit.setTo(-w / 2, -h / 2, w, h);
-      btn.setPosition(r.x + r.width * cx, y);
-    }
-    if (this.tempoText && this.tempoBg) {
-      const d = t.display;
-      const dx = r.x + r.width * d.x;
-      const dy = r.y + r.height * d.y;
-      const dw = r.width * d.w;
-      const dh = r.height * d.h;
-      this.tempoBg.setSize(dw, dh).setPosition(dx, dy);
-      this.tempoText.setPosition(dx, dy).setFontSize(Math.max(11, dh * 0.66));
-      this.refreshSpeed();
-    }
-  }
-
   private layoutFixtures(): void {
-    this.layoutToolbar();
-    this.layoutShelf();
+    this.layoutChrome();
     this.layoutCarPicker();
-    this.layoutTransport();
     this.layoutGrid();
   }
 }

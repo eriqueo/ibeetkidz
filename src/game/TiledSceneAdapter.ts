@@ -8,8 +8,9 @@
 // is unit-testable without Phaser; the only runtime dependency is EventBus (the
 // hexagonal boundary). Phaser itself is imported type-only — every Phaser object
 // is created through the passed `scene`, so this module never loads the Phaser
-// engine on its own. NOT wired into any scene yet — that is Phase B proper and
-// waits on real base plates + transparent sprites.
+// engine on its own. Wired into WorkshopScene (Phase B): the scene owns its clean
+// background and passes its `bgRect`, so the adapter spawns hit-areas only and
+// `relayoutSpawns` re-anchors them on every viewport resize.
 import type Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import type { TiledSpawn } from "./TiledParser.ts";
@@ -74,15 +75,22 @@ export function placeSpawn(s: TiledSpawn, bg: Rect, cam: CameraSize): Rect {
 }
 
 export interface SpawnSceneOptions {
-  /** Texture key of the base-plate image. */
-  baseKey: string;
+  /** Texture key of the base-plate image. The adapter cover-fits it and anchors
+   *  the spawns to it. Omit it to let the SCENE own the background (e.g. a
+   *  `BackgroundScene.addBackground` clean bg) and pass `bgRect` instead — the
+   *  adapter then spawns hit-areas only, with no second background image. */
+  baseKey?: string;
+  /** Pre-computed background rect to anchor spawns against. Required when
+   *  `baseKey` is omitted; ignored when `baseKey` is given. */
+  bgRect?: Rect;
   /** Depth of the background (default 0) and of the hit-areas (default 10). */
   bgDepth?: number;
   hitDepth?: number;
 }
 
 export interface AdapterResult {
-  background: Phaser.GameObjects.Image;
+  /** The created base-plate image, or `undefined` when the scene owns the bg. */
+  background?: Phaser.GameObjects.Image;
   /** One hit-area per spawn, in spawn order. */
   hits: Phaser.GameObjects.Rectangle[];
 }
@@ -108,12 +116,24 @@ export function spawnTiledScene(
   const cam = scene.cameras.main;
   const camSize: CameraSize = { width: cam.width, height: cam.height };
 
-  const background = scene.add.image(0, 0, opts.baseKey).setOrigin(0.5);
-  const rect = coverRect(background.width, background.height, camSize);
-  background
-    .setPosition(camSize.width / 2, camSize.height / 2)
-    .setDisplaySize(rect.width, rect.height)
-    .setDepth(opts.bgDepth ?? 0);
+  // Two modes:
+  //  - `baseKey`: the adapter cover-fits its own base-plate image and anchors to it.
+  //  - `bgRect` : the SCENE owns the background; the adapter draws hit-areas only,
+  //               anchored to the supplied rect (no second background image).
+  let background: Phaser.GameObjects.Image | undefined;
+  let rect: Rect;
+  if (opts.baseKey !== undefined) {
+    background = scene.add.image(0, 0, opts.baseKey).setOrigin(0.5);
+    rect = coverRect(background.width, background.height, camSize);
+    background
+      .setPosition(camSize.width / 2, camSize.height / 2)
+      .setDisplaySize(rect.width, rect.height)
+      .setDepth(opts.bgDepth ?? 0);
+  } else if (opts.bgRect !== undefined) {
+    rect = opts.bgRect;
+  } else {
+    throw new Error("spawnTiledScene requires either `baseKey` or `bgRect`");
+  }
 
   const hitDepth = opts.hitDepth ?? 10;
   const hits = spawns.map((s) => {
@@ -143,5 +163,29 @@ export function spawnTiledScene(
     return hit;
   });
 
-  return { background, hits };
+  // exactOptionalPropertyTypes: only attach `background` when one was created.
+  return background !== undefined ? { background, hits } : { hits };
+}
+
+/**
+ * Reposition + resize already-spawned hit-areas against a fresh background rect.
+ *
+ * `spawnTiledScene` places hit-areas ONCE (using the camera at create time); a
+ * scene whose background refits on resize must call this to keep the hit-areas
+ * registered to the painted art. It re-runs the same pure `placeSpawn` math per
+ * spawn — so the resized positions are identical to a fresh spawn. `hits` and
+ * `spawns` are index-aligned (the order `spawnTiledScene` returned them in).
+ */
+export function relayoutSpawns(
+  hits: readonly Phaser.GameObjects.Rectangle[],
+  spawns: readonly TiledSpawn[],
+  bg: Rect,
+  cam: CameraSize,
+): void {
+  hits.forEach((hit, i) => {
+    const s = spawns[i];
+    if (!s) return;
+    const p = placeSpawn(s, bg, cam);
+    hit.setPosition(p.x, p.y).setSize(p.width, p.height);
+  });
 }

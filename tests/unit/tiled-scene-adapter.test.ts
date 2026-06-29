@@ -11,6 +11,7 @@ import {
   coverRect,
   placeSpawn,
   spawnTiledScene,
+  relayoutSpawns,
   type Rect,
 } from "../../src/game/TiledSceneAdapter.ts";
 
@@ -67,6 +68,8 @@ function makeScene(camW: number, camH: number): { scene: unknown; rec: Recorder 
       setInteractive: () => ((r.interactive = true), r),
       on: (e: string, fn: () => void) => ((handlers[e] = fn), r),
       setScale: (s: number) => ((r.scale = s), r),
+      setPosition: (px: number, py: number) => ((r.x = px), (r.y = py), r),
+      setSize: (sw: number, sh: number) => ((r.width = sw), (r.height = sh), r),
     };
     return r;
   };
@@ -252,6 +255,63 @@ describe("spawnTiledScene", () => {
   it("anchors the EXIT hit-area via the camera so it stays on a narrow viewport", () => {
     const { scene, rec } = makeScene(800, 600);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
+    const exit = rectFor(rec, "icon-exit");
+    expect(exit.x as number).toBeLessThan(800);
+    expect(exit.x as number).toBeGreaterThan(0);
+  });
+});
+
+describe("scene-owned background (bgRect, no baseKey)", () => {
+  const bg: Rect = { x: 0, y: 0, width: 2560, height: 1440 };
+
+  it("creates hit-areas only — no second background image", () => {
+    const { scene, rec } = makeScene(2560, 1440);
+    const res = spawnTiledScene(scene as never, spawns, { bgRect: bg });
+    expect(rec.images).toHaveLength(0);
+    expect(res.background).toBeUndefined();
+    expect(res.hits).toHaveLength(spawns.length);
+  });
+
+  it("anchors hit-areas to the supplied bgRect (same math as placeSpawn)", () => {
+    const { scene, rec } = makeScene(2560, 1440);
+    spawnTiledScene(scene as never, spawns, { bgRect: bg });
+    const play = rectFor(rec, "btn-play");
+    const expected = placeSpawn(spawns[spawns.findIndex((s) => s.id === "btn-play")]!, bg, {
+      width: 2560,
+      height: 1440,
+    });
+    expect(play.x).toBeCloseTo(expected.x, 6);
+    expect(play.y).toBeCloseTo(expected.y, 6);
+  });
+
+  it("throws when neither baseKey nor bgRect is given", () => {
+    const { scene } = makeScene(2560, 1440);
+    expect(() => spawnTiledScene(scene as never, spawns, {})).toThrow(/baseKey.*bgRect/);
+  });
+});
+
+describe("relayoutSpawns", () => {
+  it("re-places every hit-area against a fresh background rect", () => {
+    const { scene, rec } = makeScene(2560, 1440);
+    const startBg: Rect = { x: 0, y: 0, width: 2560, height: 1440 };
+    const res = spawnTiledScene(scene as never, spawns, { bgRect: startBg });
+
+    // A new viewport: smaller, cover-fit shifts the bg origin (cropped axis).
+    const newCam = { width: 800, height: 600 };
+    const newBg = coverRect(2560, 1440, newCam);
+    relayoutSpawns(res.hits as never, spawns, newBg, newCam);
+
+    // Each hit now matches a fresh placeSpawn against the new rect/cam — incl. the
+    // camera-anchored EXIT (ui-top-right) which must differ from a bg placement.
+    spawns.forEach((s, i) => {
+      const expected = placeSpawn(s, newBg, newCam);
+      const r = rec.rects[i] as Record<string, number>;
+      expect(r.x).toBeCloseTo(expected.x, 6);
+      expect(r.y).toBeCloseTo(expected.y, 6);
+      expect(r.width).toBeCloseTo(expected.width, 6);
+      expect(r.height).toBeCloseTo(expected.height, 6);
+    });
+
     const exit = rectFor(rec, "icon-exit");
     expect(exit.x as number).toBeLessThan(800);
     expect(exit.x as number).toBeGreaterThan(0);
