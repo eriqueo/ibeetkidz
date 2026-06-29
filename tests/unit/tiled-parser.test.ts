@@ -89,7 +89,7 @@ describe("toolbar objects", () => {
     const s = need("icon-exit");
     expect(s.action).toBe("workshop-nav");
     expect(s.arg).toBe("map");
-    expect(s.anchor).toBe("top-right");
+    expect(s.anchor).toBe("ui-top-right");
     expect(s.cx).toBeCloseTo(0.858, 2);
   });
 });
@@ -183,7 +183,7 @@ describe("property coercion", () => {
   });
 
   it("exposes exactly the three supported anchors", () => {
-    expect([...ANCHORS]).toEqual(["bg", "top-right", "bottom-center"]);
+    expect([...ANCHORS]).toEqual(["bg", "ui-top-right", "ui-bottom-center"]);
   });
 });
 

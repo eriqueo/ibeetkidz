@@ -12,9 +12,24 @@ status: stable
 
 ## Context
 
-Phase A is complete. The repository now contains clean base plate backgrounds (no buttons painted in), sprite atlases for all interactive elements, and Tiled JSON map files (`workshop.json`, `yard.json`, `track.json`, `map.json`) in `src/assets/maps/`. These JSON files are the new source of truth for all layout coordinates.
+Phase A delivers clean base plate backgrounds (no buttons painted in), sprite atlases for all interactive elements, and Tiled JSON map files (`workshop.json`, `yard.json`, `track.json`, `map.json`) in `src/assets/maps/`. These JSON files are the new source of truth for all layout coordinates.
 
-Your goal in Phase B is to rewrite the four Phaser scenes to consume these JSON maps, completely eliminating `scene-layout.ts` for static UI elements.
+> **Already landed (groundwork):** `src/game/TiledParser.ts` (pure, Zod-validated parse of a Tiled object layer → normalized `TiledSpawn[]`) and `src/game/TiledSceneAdapter.ts` (the Phaser adapter: cover-fit base plate + a transparent hit-area per spawn + press tween + EventBus emit, with camera-anchoring for safe-zone elements). Both are unit-tested against `src/assets/maps/workshop.json`. Phase B is the **scene wiring**: load the real assets/maps and call the adapter from each scene.
+
+Your goal in Phase B is to rewrite the four Phaser scenes to consume these JSON maps via the parser + adapter, completely eliminating `scene-layout.ts` for static UI elements.
+
+### The Tiled object property contract (IMPORTANT — read before authoring maps)
+
+Each interactive element is one Tiled object. Its meaning comes from:
+
+- **`name`** → the sprite/texture key (e.g. `icon-notepad`, `btn-play`).
+- **`type`** (the object's Tiled *Class*) → the **semantic class** only: `toolbar`, `instrument`, `transport`, `display`. It does **not** control anchoring.
+- **Custom properties:**
+  - `action` (string) → the EventBus event to emit on tap. Omit/empty ⇒ non-interactive (e.g. the TEMPO LCD, which is just a positioned anchor for the live BPM text).
+  - `arg` (string | int) → the single payload for that event (toolId, nav view, tempo delta, play mode).
+  - `anchor` (string) → the **safe-zone behaviour**: `bg` (default — track the painted background, may crop) | `ui-top-right` | `ui-bottom-center` (pinned to the camera so it never crops).
+
+> Note: an earlier draft of this prompt overloaded `type` for both semantic class **and** anchoring. That was split: `type` is the class, `anchor` is the safe-zone property. The parser/adapter implement the split; author your Tiled maps accordingly.
 
 ## Implementation Specification
 
@@ -28,25 +43,29 @@ this.load.tilemapTiledJSON('workshop-map', 'assets/maps/workshop.json');
 
 Ensure all new sprite atlases generated in Phase A are also loaded.
 
-### 2. The Universal Tiled Parser (`src/game/TiledParser.ts`)
+### 2. The Universal Tiled Parser + Adapter (already built)
 
-Create a new utility class that parses an object layer from a Tiled map and spawns interactive sprites. This prevents duplicating the parsing logic across all four scenes [1].
+`src/game/TiledParser.ts` and `src/game/TiledSceneAdapter.ts` already provide the shared logic, so no scene duplicates it [1]. For reference, the split is:
 
-The parser must:
-1.  Iterate through all objects in a specified object layer (e.g., `ui-layer`).
-2.  Read the custom properties defined in Tiled (`action`, `type`, `frame`).
-3.  Spawn a Phaser Sprite at the object's `x`, `y` coordinates.
-4.  Apply the correct texture and frame.
-5.  If the object has an `action` property, make the sprite interactive and wire it to emit that action via the `EventBus` on `pointerdown`.
-6.  Apply a consistent press animation (scale to 0.92 on down, restore on up/out) to all interactive sprites.
+`TiledParser.parseTiledLayer(mapJson, layerName)` (pure, Zod-validated):
+1.  Validates the Tiled map shape at the trust boundary, then iterates the named object layer (`ui-layer`).
+2.  Reads the custom properties (`action`, `arg`, `anchor`) and the object's `name`/`type`/rect.
+3.  Returns normalized `TiledSpawn[]` — `{ id, klass, cx, cy, w, h, action?, arg?, anchor }`, coordinates as 0..1 fractions of the source image (resolution-independent), handling both rectangle (top-left) and tile-object (gid → bottom-left) conventions.
+
+`TiledSceneAdapter.spawnTiledScene(scene, spawns, { baseKey })` (Phaser):
+4.  Adds a cover-fit base-plate background Image.
+5.  Spawns one transparent (alpha 0) Rectangle hit-area per spawn.
+6.  If the spawn has an `action`, makes it interactive, plays a press tween (scale 0.94 → 1.0, 80ms) on `pointerdown`, and emits `action(arg?)` via `EventBus` on `pointerup`.
+
+In Phase B you mostly LOAD the assets/maps and call `spawnTiledScene` from each scene; extend the adapter only if a scene needs a behaviour it does not yet cover.
 
 ### 3. Viewport Anchoring (The Safe-Zone Fix)
 
-The Tiled parser must handle the `type` custom property to solve the edge-cropping problem on non-16:9 viewports.
+Anchoring is driven by each object's **`anchor` custom property** (NOT its `type`, which is the semantic class). The adapter's `placeSpawn` already implements:
 
-*   If `type === 'ui-top-right'`, the sprite's position must be calculated relative to the top-right corner of the camera viewport, not the background image.
-*   If `type === 'ui-bottom-center'`, anchor it to the bottom-center of the camera.
-*   If `type` is undefined, anchor it to the background image as usual.
+*   `anchor === 'ui-top-right'` → positioned relative to the top-right corner of the camera viewport, not the background image.
+*   `anchor === 'ui-bottom-center'` → anchored to the bottom-center of the camera.
+*   `anchor === 'bg'` (or absent) → anchored to the cover-fit background image as usual.
 
 This ensures the EXIT button and transport controls remain visible on all screen sizes.
 

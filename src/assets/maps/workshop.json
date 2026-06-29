@@ -231,7 +231,7 @@
             {
               "name": "anchor",
               "type": "string",
-              "value": "top-right"
+              "value": "ui-top-right"
             }
           ]
         },

@@ -64,7 +64,7 @@ export const TiledMapSchema = z
 export type TiledMap = z.infer<typeof TiledMapSchema>;
 
 // ── Normalized spawn descriptor (what a scene consumes) ──────────────────────
-export const ANCHORS = ["bg", "top-right", "bottom-center"] as const;
+export const ANCHORS = ["bg", "ui-top-right", "ui-bottom-center"] as const;
 export type Anchor = (typeof ANCHORS)[number];
 
 export interface TiledSpawn {
