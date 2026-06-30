@@ -32,8 +32,10 @@ export type SceneBgKey = keyof typeof SCENE_BG;
 // overlays + Phaser sprites are drawn on top of. See REDESIGN_SPEC.md.
 export const SCENE_BG_V2 = {
   workshop: { key: "bg-workshop-v2", url: v2("workshop-scene-clean.png") },
-  yard: { key: "bg-yard-v2", url: v2("yard-scene-clean.png") },
-  track: { key: "bg-track-v2", url: v2("track-scene-clean.png") },
+  workshopBoxcarOpen: { key: "bg-workshop-boxcar-open", url: v2("workshop-boxcar-open.png") },
+  yard: { key: "bg-yard-v2", url: v2("yard-scene-clean-v2.png") },
+  track: { key: "bg-track-v2", url: v2("track-scene-clean-v2.png") },
+  map: { key: "bg-map-v2", url: v2("map-scene-clean.png") },
 } as const satisfies Record<string, ImageAsset>;
 
 // Isolated train sprites (cars, loco, crossing signal, smoke, tarp). Keyed by a
@@ -48,6 +50,15 @@ export const SPRITES = {
   signalDown: { key: "spr-signal-down", url: sprite("crossing-signal-down.png") },
   smokePuff: { key: "spr-smoke", url: sprite("smoke-puff.png") },
   tarp: { key: "spr-tarp", url: sprite("tarp.png") },
+  handcar: { key: "spr-handcar", url: sprite("handcar.png") },
+  // Nav & action buttons (Yard, Track, Map scenes)
+  btnNavExit: { key: "spr-btn-nav-exit", url: sprite("btn-nav-exit.png") },
+  btnNavYard: { key: "spr-btn-nav-yard", url: sprite("btn-nav-yard.png") },
+  btnNavWorkshop: { key: "spr-btn-nav-workshop", url: sprite("btn-nav-workshop.png") },
+  btnSendToTrack: { key: "spr-btn-send-to-track", url: sprite("btn-send-to-track.png") },
+  yardPanelButtons: { key: "spr-yard-panel-buttons", url: sprite("yard-panel-buttons.png") },
+  trackPanelButtons: { key: "spr-track-panel-buttons", url: sprite("track-panel-buttons.png") },
+  lcdTempoScreen: { key: "spr-lcd-tempo", url: sprite("lcd-tempo-screen.png") },
 } as const satisfies Record<string, ImageAsset>;
 
 /** All car-type sprites — used by scenes that load every car body up front. */
