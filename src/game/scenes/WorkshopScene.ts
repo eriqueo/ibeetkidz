@@ -199,22 +199,23 @@ export class WorkshopScene extends BackgroundScene {
       const p = placeSpawn(speed, r, { width, height });
       const pad = 4;
       this.speedBg.setSize(p.width + pad * 2, p.height + pad * 2).setPosition(p.x, p.y);
-      // Font size at 75% of LCD height so digits fill the box without overflow.
-      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(11, Math.round(p.height * 0.75)));
+      // Font at 80% of LCD height, centred inside the box.
+      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(12, Math.round(p.height * 0.80)));
       this.refreshSpeed();
     }
 
-    // TEMPO hide: cover the full SONG/TEMPO left panel (TEMPO label + digit area).
-    // The lcd-tempo-screen object covers only the digit row; we extend upward to
-    // cover the "TEMPO" label text as well (approx 60% of the panel height above).
+    // TEMPO hide: cover the full TEMPO section (label + digit row).
+    // lcd-tempo-screen covers only the digit row (~24px tall at 0.5 scale).
+    // The painted "TEMPO" label sits ~85px above in screen space, so we extend
+    // the mask upward by 90px and downward by 10px to fully bury both.
     const tempo = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
     if (tempo && this.tempoHideBg) {
       const p = placeSpawn(tempo, r, { width, height });
-      // Extend the mask upward by ~60% of its own height to cover the TEMPO label.
-      const extraH = p.height * 0.6;
+      const upward = 90;
+      const downward = 10;
       this.tempoHideBg
-        .setSize(p.width, p.height + extraH)
-        .setPosition(p.x, p.y + extraH / 2);
+        .setSize(p.width + 8, p.height + upward + downward)
+        .setPosition(p.x, p.y - upward / 2 + downward / 2);
     }
 
     // Toolbar labels: position each label centred below its icon.
@@ -228,7 +229,8 @@ export class WorkshopScene extends BackgroundScene {
       const p = placeSpawn(spawn, r, { width, height });
       // Place label just below the bottom edge of the icon hit-area.
       lbl.setPosition(p.x, p.y + p.height / 2 + 2);
-      lbl.setFontSize(Math.max(7, Math.round(p.height * 0.18)));
+      // Match the painted bottom-bar label size (STOP/PLAY/LOOP are ~18px at 0.5 scale).
+      lbl.setFontSize(Math.max(10, Math.round(p.height * 0.28)));
     });
   }
 
