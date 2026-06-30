@@ -71,6 +71,10 @@ export class TrackScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.track);
     // train / smoke / signal / tarp atlases (the single source of truth).
     loadSpriteAssets(this);
+    // Chrome sprites: transport panel strip + corner nav buttons.
+    this.load.image(SPRITES.trackPanelButtons.key, SPRITES.trackPanelButtons.url);
+    this.load.image(SPRITES.btnNavYard.key, SPRITES.btnNavYard.url);
+    this.load.image(SPRITES.btnNavExit.key, SPRITES.btnNavExit.url);
   }
 
   create(): void {

@@ -107,6 +107,10 @@ export class YardScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.yard);
     // train (car bodies, top-down) + tarp atlases.
     loadSpriteAssets(this);
+    // Chrome sprites: panel strip + corner nav buttons.
+    this.load.image(SPRITES.yardPanelButtons.key, SPRITES.yardPanelButtons.url);
+    this.load.image(SPRITES.btnNavWorkshop.key, SPRITES.btnNavWorkshop.url);
+    this.load.image(SPRITES.btnNavExit.key, SPRITES.btnNavExit.url);
   }
 
   create(): void {
