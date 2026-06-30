@@ -46,6 +46,7 @@ export interface WorkshopLane {
   readonly color: string; // laneColor() — the lane-group colour
   readonly kind: LaneKind; // melody lanes get a piano-roll edit button
   readonly cells: readonly boolean[]; // length STEP_COUNT
+  readonly muted: boolean; // whether this lane is currently muted
 }
 
 /** What the scene needs to render, pushed from the store on every change. */
@@ -60,6 +61,7 @@ const OFF_FILL = 0x2a2118;
 const OFF_ALPHA = 0.32;
 const LABEL_COLOR = "#e8dcc8";
 const LABEL_SELECTED = "#ffd166";
+const MUTED_COLOR = "#ff6b6b";
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
@@ -73,12 +75,23 @@ const SPEED_MAX_LEVEL = 8;
 const speedLevel = (bpm: number): number =>
   Math.max(1, Math.min(SPEED_MAX_LEVEL, Math.round((bpm - SPEED_BASE_BPM) / SPEED_STEP_BPM) + 1));
 
+// Human-readable labels for each toolbar icon, in Tiled map order.
+const TOOLBAR_LABELS = ["SONG", "THEREMIN", "PADS", "VOICE", "BEATS", "YARD", "BONUS", "KEYS"] as const;
+// Human-readable labels for each car type, in CAR_TYPES order.
+const CAR_TYPE_LABELS: Record<CarType, string> = {
+  boxcar: "BOXCAR",
+  tanker: "TANKER",
+  hopper: "HOPPER",
+  flatcar: "FLATCAR",
+};
+
 interface LaneRow {
   layerId: string;
   band: Phaser.GameObjects.Rectangle; // full-width lane-colour band (separates lanes)
   label: Phaser.GameObjects.Text;
   del: Phaser.GameObjects.Text; // ✕ remove this lane
   edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
+  mute: Phaser.GameObjects.Text; // 🔇 mute toggle
   colorInt: number;
   cells: Phaser.GameObjects.Rectangle[];
   on: boolean[];
@@ -97,14 +110,15 @@ export class WorkshopScene extends BackgroundScene {
   private cellH = 0;
   private gridLeft = 0;
   private gridTop = 0;
-  private carBtns: { type: CarType; img: Phaser.GameObjects.Image; base: number }[] = [];
+  private carBtns: { type: CarType; img: Phaser.GameObjects.Image; lbl: Phaser.GameObjects.Text; base: number }[] = [];
   // Data-driven static chrome: parsed Tiled spawns + their adapter hit-areas
   // (index-aligned), re-anchored to the painted art on resize.
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chromeHits: Phaser.GameObjects.Rectangle[] = [];
   private speedText: Phaser.GameObjects.Text | undefined; // live SPEED level over the painted SPEED LCD
   private speedBg: Phaser.GameObjects.Rectangle | undefined; // mask under the level digits
-  private tempoHideBg: Phaser.GameObjects.Rectangle | undefined; // covers the now-unused painted TEMPO digits
+  private tempoHideBg: Phaser.GameObjects.Rectangle | undefined; // covers the now-unused painted TEMPO section
+  private toolbarLabels: Phaser.GameObjects.Text[] = []; // labels below each toolbar icon
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -129,11 +143,6 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   // ── data-driven static chrome (toolbar / shelf / transport / TEMPO LCD) ──────
-  // Parse the Tiled UI layer once and let the adapter spawn a transparent hit-area
-  // per object (each emits its authored EventBus action on tap). The scene owns
-  // the clean background, so the adapter gets `bgRect` and creates NO second
-  // background image. The TEMPO LCD object (`lcd-tempo-screen`, no action) is the
-  // positioned anchor for the live BPM mask+text below.
   private buildChrome(): void {
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     const { hits } = spawnTiledScene(this, this.chromeSpawns, {
@@ -142,39 +151,85 @@ export class WorkshopScene extends BackgroundScene {
     });
     this.chromeHits = hits;
 
-    // Live SPEED level over the painted SPEED LCD (mask its digits, redraw the
-    // level in the LCD's lime green) — positioned from `lcd-speed-screen`. The
-    // painted TEMPO digits are masked out (`lcd-tempo-screen`): speed, not tempo,
-    // is the kid-facing control now. (Fully retiring the painted TEMPO label needs
-    // an art regen of the base plate.)
+    // Live SPEED level over the painted SPEED LCD — mask its digits, redraw the
+    // level in lime green. Font size is set in layoutChrome() from the LCD rect.
     this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
     this.speedText = this.add
-      .text(0, 0, "", { fontFamily: "'Press Start 2P', monospace", fontSize: "14px", color: "#90BA4F" })
+      .text(0, 0, "", {
+        fontFamily: "'Press Start 2P', monospace",
+        fontSize: "14px",
+        color: "#90BA4F",
+        letterSpacing: 2,
+      })
       .setOrigin(0.5)
       .setDepth(10);
+
+    // Black mask covering the entire SONG/TEMPO left panel (TEMPO label + digits).
+    // The painted TEMPO text is retired — SPEED is the kid-facing control now.
     this.tempoHideBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+
+    // Pixel-art labels below each toolbar icon (all 8 icons, skipping EXIT which
+    // already has a painted label). Built once; positioned in layoutChrome().
+    const iconSpawns = this.chromeSpawns.filter(
+      (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
+    );
+    this.toolbarLabels = iconSpawns.map((_spawn, i) => {
+      const lbl = this.add
+        .text(0, 0, TOOLBAR_LABELS[i] ?? "", {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "9px",
+          color: "#D4B483",
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(10);
+      return lbl;
+    });
   }
 
-  // Re-anchor the chrome hit-areas + the TEMPO LCD mask/text to the painted art
-  // after the background refits (the adapter only places them once at create).
+  // Re-anchor the chrome hit-areas + LCD mask/text + toolbar labels after resize.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
     relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
 
+    // SPEED LCD: expand mask by 4px on each side so it fully covers painted digits.
     const speed = this.chromeSpawns.find((s) => s.id === "lcd-speed-screen");
     if (speed && this.speedBg && this.speedText) {
       const p = placeSpawn(speed, r, { width, height });
-      this.speedBg.setSize(p.width, p.height).setPosition(p.x, p.y);
-      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(11, p.height * 0.62));
+      const pad = 4;
+      this.speedBg.setSize(p.width + pad * 2, p.height + pad * 2).setPosition(p.x, p.y);
+      // Font size at 75% of LCD height so digits fill the box without overflow.
+      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(11, Math.round(p.height * 0.75)));
       this.refreshSpeed();
     }
+
+    // TEMPO hide: cover the full SONG/TEMPO left panel (TEMPO label + digit area).
+    // The lcd-tempo-screen object covers only the digit row; we extend upward to
+    // cover the "TEMPO" label text as well (approx 60% of the panel height above).
     const tempo = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
     if (tempo && this.tempoHideBg) {
       const p = placeSpawn(tempo, r, { width, height });
-      this.tempoHideBg.setSize(p.width, p.height).setPosition(p.x, p.y);
+      // Extend the mask upward by ~60% of its own height to cover the TEMPO label.
+      const extraH = p.height * 0.6;
+      this.tempoHideBg
+        .setSize(p.width, p.height + extraH)
+        .setPosition(p.x, p.y + extraH / 2);
     }
+
+    // Toolbar labels: position each label centred below its icon.
+    const iconSpawns = this.chromeSpawns.filter(
+      (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
+    );
+    iconSpawns.forEach((_spawn, i) => {
+      const lbl = this.toolbarLabels[i];
+      if (!lbl) return;
+      const spawn = iconSpawns[i]!;
+      const p = placeSpawn(spawn, r, { width, height });
+      // Place label just below the bottom edge of the icon hit-area.
+      lbl.setPosition(p.x, p.y + p.height / 2 + 2);
+      lbl.setFontSize(Math.max(7, Math.round(p.height * 0.18)));
+    });
   }
 
   private buildToolPanels(): void {
@@ -228,6 +283,7 @@ export class WorkshopScene extends BackgroundScene {
     this.refreshSelection();
     this.refreshCarPicker();
     this.refreshSpeed();
+    this.refreshMutes();
   }
 
   private refreshSpeed(): void {
@@ -283,6 +339,7 @@ export class WorkshopScene extends BackgroundScene {
       r.label.destroy();
       r.del.destroy();
       r.edit?.destroy();
+      r.mute.destroy();
       r.cells.forEach((c) => c.destroy());
     });
     this.rows = [];
@@ -325,6 +382,9 @@ export class WorkshopScene extends BackgroundScene {
       const edit = lane.kind === "melody"
         ? this.makeIconText("🎹", () => EventBus.emit("workshop-edit-melody", lane.id))
         : null;
+      // Mute toggle: 🔇 when muted, 🔊 when active. Tapping toggles.
+      const muteIcon = lane.muted ? "🔇" : "🔊";
+      const mute = this.makeIconText(muteIcon, () => EventBus.emit("workshop-layer-muted", lane.id));
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
       for (let i = 0; i < STEP_COUNT; i++) {
@@ -347,7 +407,7 @@ export class WorkshopScene extends BackgroundScene {
         cells.push(cell);
         on.push(isOn);
       }
-      this.rows.push({ layerId: lane.id, band, label, del, edit, colorInt, cells, on });
+      this.rows.push({ layerId: lane.id, band, label, del, edit, mute, colorInt, cells, on });
     });
 
     // The playhead is a full-height COLUMN highlight (one cell wide) so the
@@ -383,10 +443,19 @@ export class WorkshopScene extends BackgroundScene {
     const sel = this.model.selectedLayerId;
     this.rows.forEach((row) => {
       const on = row.layerId === sel;
-      // Selected lane: brighter band + highlighted label. No scale (it fought the
-      // press flash and made tiny icons jump).
       row.band.setFillStyle(row.colorInt, on ? 0.28 : 0.1);
       row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR);
+    });
+  }
+
+  /** Refresh mute icons to reflect current model state. */
+  private refreshMutes(): void {
+    const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
+    this.rows.forEach((row, li) => {
+      const lane = lanes[li];
+      if (!lane) return;
+      row.mute.setText(lane.muted ? "🔇" : "🔊");
+      row.mute.setColor(lane.muted ? MUTED_COLOR : LABEL_COLOR);
     });
   }
 
@@ -415,11 +484,12 @@ export class WorkshopScene extends BackgroundScene {
       // Lane band: full grid width, a hair shorter than the row so a thin gap
       // separates adjacent lanes.
       row.band.setPosition(gx, cy).setSize(gw, this.cellH * 0.86);
-      // Label column: [✕ delete] [instrument emoji] [🎹 edit (melody only)] — well
-      // spaced so a tap doesn't land on the destructive ✕ by accident.
-      row.del.setPosition(gx + labelW * 0.18, cy).setFontSize(iconPx);
-      row.label.setPosition(gx + labelW * 0.52, cy).setFontSize(iconPx);
-      row.edit?.setPosition(gx + labelW * 0.85, cy).setFontSize(iconPx);
+      // Label column layout (left to right):
+      //   [✕ delete] [instrument emoji] [🎹 edit (melody only)] [🔇/🔊 mute]
+      row.del.setPosition(gx + labelW * 0.12, cy).setFontSize(iconPx);
+      row.label.setPosition(gx + labelW * 0.38, cy).setFontSize(iconPx);
+      row.edit?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
+      row.mute.setPosition(gx + labelW * 0.86, cy).setFontSize(iconPx);
       row.cells.forEach((cell, i) => {
         cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
         cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));
@@ -435,34 +505,55 @@ export class WorkshopScene extends BackgroundScene {
     this.carBtns = CAR_TYPES.map((type) => {
       const img = this.add
         .image(0, 0, "train", frameKey(type, "E"))
-        .setOrigin(0.5)
+        .setOrigin(0.5, 1) // anchor to bottom so label sits below
         .setDepth(9)
         .setInteractive({ useHandCursor: true });
-      const entry = { type, img, base: 1 };
       img.on("pointerdown", () => EventBus.emit("workshop-car-type-changed", type));
       pressPop(img);
-      return entry;
+
+      const lbl = this.add
+        .text(0, 0, CAR_TYPE_LABELS[type], {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "8px",
+          color: "#D4B483",
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(9);
+
+      return { type, img, lbl, base: 1 };
     });
   }
 
   private layoutCarPicker(): void {
     const r = this.backgroundRect;
+    if (r.width === 0) return;
     const p = WORKSHOP_LAYOUT_V2.carTypePicker;
     const slotW = (r.width * p.w) / CAR_TYPES.length;
-    const cy = r.y + r.height * (p.y + p.h / 2);
+    // cy is the vertical centre of the picker region; images anchor bottom so
+    // they sit in the upper half of the slot and the label sits below.
+    const cy = r.y + r.height * (p.y + p.h * 0.4);
+    const lblY = r.y + r.height * (p.y + p.h * 0.75);
+    // Scale to fill ~80% of slot width. Use FRAME_SIZE (128) as fallback if the
+    // atlas frame hasn't reported its size yet — avoids the (0,0) stuck bug.
+    const frameW = 128;
+    const targetScale = (slotW * 0.8) / frameW;
     this.carBtns.forEach((entry, i) => {
       const cx = r.x + r.width * p.x + (i + 0.5) * slotW;
       entry.img.setPosition(cx, cy);
-      if (entry.img.width > 0) { entry.base = (slotW * 0.8) / entry.img.width; entry.img.setScale(entry.base); }
+      entry.base = targetScale;
+      entry.img.setScale(targetScale);
+      entry.lbl.setPosition(cx, lblY);
     });
     this.refreshCarPicker();
   }
 
   private refreshCarPicker(): void {
-    this.carBtns.forEach(({ type, img }) => {
+    this.carBtns.forEach(({ type, img, lbl }) => {
       const active = type === this.model.carType;
-      img.setAlpha(active ? 1 : 0.5);
+      img.setAlpha(active ? 1 : 0.45);
       img.setTint(active ? 0xffffff : 0x888888);
+      lbl.setAlpha(active ? 1 : 0.45);
+      lbl.setColor(active ? "#ffd166" : "#D4B483");
     });
   }
 

@@ -64,6 +64,8 @@ export interface EventMap {
   // Phaser -> React (Workshop): delete a lane / open the piano-roll for a lane.
   "workshop-layer-delete": [layerId: string];
   "workshop-edit-melody": [layerId: string];
+  // Phaser -> React (Workshop): toggle the mute state of a lane.
+  "workshop-layer-muted": [layerId: string];
   // Phaser -> React (Workshop): toggle a note in the piano-roll editor.
   "tool-melody-toggle": [stepIndex: number, row: number];
 

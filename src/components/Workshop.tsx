@@ -86,7 +86,7 @@ export const Workshop: FC = () => {
       } else if (layer.kind === "drum") {
         label = "🥁";
       }
-      return { id: layer.id, label, color: laneColor(layer.kind, clip), kind: layer.kind, cells };
+      return { id: layer.id, label, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
     carType: part.carType,
     selectedLayerId: selectedLayer,
@@ -194,6 +194,7 @@ export const Workshop: FC = () => {
     const onSurprise = (): void => surprise();
 
     // Grid row buttons: delete a lane, or open the piano-roll for a melody lane.
+    const onLayerMuted = (layerId: string): void => dispatch({ type: "toggleLayerMuted", layerId });
     const onLayerDelete = (layerId: string): void => {
       dispatch({ type: "removeLayer", layerId });
       setSelectedLayer((s) => (s === layerId ? null : s));
@@ -398,6 +399,7 @@ export const Workshop: FC = () => {
       ["tool-closed", onToolClosed],
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
+      ["workshop-layer-muted", onLayerMuted],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
       ["workshop-add-melody", onAddMelody],
       ["tool-melody-toggle", onMelodyToggle],
