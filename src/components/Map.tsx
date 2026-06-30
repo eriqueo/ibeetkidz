@@ -1,71 +1,56 @@
-import { FC, useRef, useState } from "react";
+import { FC, useCallback, useEffect, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { liveTrain } from "../core/project-state.ts";
 import { AppView } from "../core/types.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { MapScene } from "../game/scenes/MapScene.ts";
-import { MAP_LAYOUT, SCENE_ASPECT } from "../game/scene-layout.ts";
-import { useContainedRect, regionStyle, type NormRegion } from "../app/use-overlay-rect.ts";
+import { EventBus } from "../game/EventBus.ts";
 
 const MAP_SCENES = [MapScene];
 
-const DESTINATIONS: { key: Extract<AppView, "workshop" | "yard" | "track">; label: string; region: NormRegion }[] = [
-  { key: "workshop", label: "Workshop", region: MAP_LAYOUT.workshop },
-  { key: "yard", label: "Yard", region: MAP_LAYOUT.yard },
-  { key: "track", label: "Track", region: MAP_LAYOUT.track },
-];
+// The handcar marks where the kid currently "is". The Map itself has no landmark,
+// so remember the last destination they travelled to (default: the Workshop, the
+// natural starting point) and show the marker there.
+let lastDestination: AppView = "workshop";
 
 export const Map: FC = () => {
   const { dispatch } = useApp();
   const project = useProject();
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const rect = useContainedRect(wrapRef, SCENE_ASPECT, "cover");
+  const sceneRef = useRef<MapScene | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
-  // Track needs an assembled train; nudge the kid to the Yard if it's empty.
-  const go = (key: AppView): void => {
-    if (key === "track" && liveTrain(project).length === 0) {
-      setToast("Build a train first! Add cars in the Yard.");
-      window.setTimeout(() => setToast(null), 2200);
-      return;
-    }
-    dispatch({ type: "setActiveView", view: key });
-  };
+  const projectRef = useRef(project);
+  projectRef.current = project;
+
+  const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
+    sceneRef.current = scene as MapScene;
+    sceneRef.current.setLocation(lastDestination);
+  }, []);
+
+  // Data-driven Tiled hits → navigation, across the EventBus. Track needs an
+  // assembled train; nudge the kid to the Yard (toast) if it's empty.
+  useEffect(() => {
+    const onNav = (view: AppView): void => {
+      if (view === "track" && liveTrain(projectRef.current).length === 0) {
+        setToast("Build a train first! Add cars in the Yard.");
+        window.setTimeout(() => setToast(null), 2200);
+        return;
+      }
+      lastDestination = view;
+      sceneRef.current?.setLocation(view);
+      dispatch({ type: "setActiveView", view });
+    };
+    EventBus.on("map-nav", onNav);
+    return () => {
+      EventBus.off("map-nav", onNav);
+    };
+  }, [dispatch]);
 
   return (
-    <div
-      ref={wrapRef}
-      style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}
-    >
-      {/* Painted world map (the WORKSHOP/YARD/TRACK labels are painted in) */}
-      <PhaserGame scenes={MAP_SCENES} />
-
-      {/* Destination buttons pinned over the painted spots */}
-      {DESTINATIONS.map((d) => (
-        <button
-          key={d.key}
-          aria-label={d.label}
-          title={d.label}
-          onClick={() => go(d.key)}
-          style={{
-            ...regionStyle(rect, d.region),
-            zIndex: 10,
-            background: "transparent",
-            border: "3px solid transparent",
-            borderRadius: 6,
-            cursor: "pointer",
-            transition: "border-color 0.1s, background 0.1s",
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.borderColor = "rgba(212,160,23,0.9)";
-            e.currentTarget.style.background = "rgba(212,160,23,0.12)";
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.borderColor = "transparent";
-            e.currentTarget.style.background = "transparent";
-          }}
-        />
-      ))}
+    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
+      {/* Painted world map + the destination hit-areas + the handcar marker all
+          live in MapScene now, so the canvas takes pointer events. */}
+      <PhaserGame scenes={MAP_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
 
       {/* "Build a train first" toast */}
       {toast && (

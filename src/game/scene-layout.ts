@@ -57,22 +57,25 @@ export const YARD_LAYOUT_V2 = {
   palette: { x: 0.03, y: 0.30, w: 0.55, h: 0.40 } satisfies NormRegion,
   assemblyLine: { x: 0.06, y: 0.05, w: 0.86, h: 0.10 } satisfies NormRegion,
   crane: { x: 0.50, y: 0.12, w: 0.40, h: 0.55 } satisfies NormRegion,
-  // Painted bottom-panel action buttons (centres) — transparent hit-areas.
-  panel: {
-    info: 0.345,
-    move: 0.40,
-    couple: 0.455,    // → Add to Train
-    uncouple: 0.515,  // → Remove from train
-    build: 0.57,      // → Edit car
-    del: 0.625,       // → Delete car
-    exit: 0.85,       // → Map
-    y: 0.87,
-    w: 0.055,
-    h: 0.13,
-  },
-  // The main line / truck heading off to the right = Send to Track. Kept ABOVE
-  // the bottom panel so it doesn't cover the painted EXIT button.
-  sendToTrack: { x: 0.60, y: 0.58, w: 0.20, h: 0.16 } satisfies NormRegion,
+} as const;
+
+// ── Phase C composited chrome (Yard / Track) ────────────────────────────────
+// The button-panel sprites (`yard-panel-buttons.png`, `track-panel-buttons.png`)
+// are NOT painted into the clean base plates — they are placed as Phaser images
+// over the bottom band of the scene, with the Tiled transparent hit-areas laid
+// on top. `panel` is the placed sprite's rect on the backgroundRect (centre +
+// size, non-uniform — the flat panel graphic stretches to fill the band). The
+// hit coordinates in `yard.json` / `track.json` were derived from this same
+// placement so each hit lands on its painted button — i.e. for button at the
+// sprite's canvas-normalized centre `u`, hit.cx = panel.cx + (u - 0.5)*panel.w.
+// MEASURED FROM ART — both the panel rect AND the matching Tiled coords need a
+// live visual tuning pass; nudge them together.
+export const YARD_CHROME = {
+  panel: { cx: 0.366, cy: 0.882, w: 0.727, h: 0.60 },
+} as const;
+
+export const TRACK_CHROME = {
+  panel: { cx: 0.51, cy: 0.88, w: 0.91, h: 0.62 },
 } as const;
 
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each
@@ -102,26 +105,13 @@ export const TRACK_LAYOUT_V2 = {
   // The crossing signal sprite anchor (bottom-centre of the oval) + display width
   // as a fraction of the scene (it was rendering at full 2560px — a monolith).
   signal: { x: 0.5, y: 0.585, w: 0.05 } as const,
-  // Transparent hit-areas over the painted bottom panel's 5 blue buttons
-  // (◀◀ ⏸ ⏹ ▶ ⏩). Centres + size measured from track-scene-clean.png (2560×1440):
-  // the button row sits low in the panel, NOT up over the SPEED/LAP-TIME readouts.
-  controls: {
-    rewind: 0.367, // ◀◀ → slower
-    pause: 0.431,  // ⏸  → stop
-    stop: 0.495,   // ⏹  → stop
-    play: 0.559,   // ▶  → ride
-    ff: 0.623,     // ⏩  → faster
-    y: 0.878,
-    w: 0.058,
-    h: 0.085,
-  },
 } as const;
 
-// Map: three destination buttons over the painted Workshop / Yard / Track spots.
-// Aligned to the painted island buildings: WORKSHOP cabin (left), YARD building
-// (centre), TRACK oval (right) — each region covers the building + its label.
-export const MAP_LAYOUT = {
-  workshop: { x: 0.12, y: 0.28, w: 0.19, h: 0.42 } satisfies NormRegion,
-  yard: { x: 0.44, y: 0.28, w: 0.19, h: 0.42 } satisfies NormRegion,
-  track: { x: 0.70, y: 0.30, w: 0.19, h: 0.42 } satisfies NormRegion,
+// Map: where the handcar location-marker sits over each painted landmark
+// (Workshop cabin / Yard shed / Track oval), as a fraction of the cover-fit
+// backgroundRect. MEASURED FROM ART — needs a live visual tuning pass.
+export const MAP_HANDCAR = {
+  workshop: { cx: 0.185, cy: 0.30, w: 0.07 },
+  yard: { cx: 0.525, cy: 0.30, w: 0.07 },
+  track: { cx: 0.78, cy: 0.34, w: 0.07 },
 } as const;

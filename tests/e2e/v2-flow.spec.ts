@@ -1,11 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The v2 sprite flow. The Map landing + the per-view nav chrome are HTML, but the
-// Workshop/Yard/Track interiors are pure Phaser canvas — so we drive them through
-// the same shared EventBus React uses, via a dev-only test bridge
-// (`window.__ibeetkidz_test__`, mounted in `src/app/context.tsx`). We assert on
-// real state (the live Project) and the surviving HTML chrome, never on canvas.
-// Mic is faked via Playwright launch flags.
+// The v2 sprite flow. Every view — Map landing, Workshop, Yard, Track — is now a
+// pure Phaser canvas (nav + transport migrated off HTML into Tiled hit-areas), so
+// we drive them through the same shared EventBus React uses, via a dev-only test
+// bridge (`window.__ibeetkidz_test__`, mounted in `src/app/context.tsx`). We
+// assert on real state (the live Project) + the surviving HTML chrome (the Track
+// tarp strip), never on canvas. Mic is faked via Playwright launch flags.
 
 async function boot(page: Page): Promise<void> {
   await page.goto("/");
@@ -40,21 +40,39 @@ function getProject(page: Page): Promise<any> {
   return page.evaluate(() => (window as any).__ibeetkidz_test__.getProject());
 }
 
+function setView(page: Page, view: string): Promise<void> {
+  return page.evaluate(
+    (v) => void (window as any).__ibeetkidz_test__.dispatch({ type: "setActiveView", view: v }),
+    view,
+  );
+}
+
+// Map → a destination via the canvas nav (the data-driven `map-nav` Tiled hit).
+async function gotoFromMap(page: Page, view: string): Promise<void> {
+  await waitForScene(page, "MapScene");
+  await emit(page, "map-nav", view);
+  await expect.poll(async () => (await getProject(page)).activeView).toBe(view);
+}
+
 function activeMelodyCount(project: any): number {
   const part = project.parts.find((p: any) => p.id === project.activePartId) ?? project.parts[0];
   return part.layers.filter((l: any) => l.kind === "melody").length;
 }
 
-test("boots into the Map and shows the three destinations", async ({ page }) => {
+test("boots into the Map and the three destinations are reachable", async ({ page }) => {
   await boot(page);
-  await expect(page.getByRole("button", { name: "Workshop" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Yard" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Track" })).toBeVisible();
+  // boot seeds one train car, so Track is allowed; each `map-nav` Tiled hit
+  // navigates to its destination, then we return to the Map for the next one.
+  for (const view of ["workshop", "yard", "track"] as const) {
+    await gotoFromMap(page, view);
+    await setView(page, "map");
+    await expect.poll(async () => (await getProject(page)).activeView).toBe("map");
+  }
 });
 
 test("Workshop: tap a painted instrument → a sequencer lane appears", async ({ page }) => {
   await boot(page);
-  await page.getByRole("button", { name: "Workshop" }).click();
+  await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
 
   const before = activeMelodyCount(await getProject(page));
@@ -66,7 +84,7 @@ test("Workshop: tap a painted instrument → a sequencer lane appears", async ({
 
 test("Workshop stations open the creative tools", async ({ page }) => {
   await boot(page);
-  await page.getByRole("button", { name: "Workshop" }).click();
+  await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
 
   const activeTool = () =>
@@ -85,7 +103,7 @@ test("Workshop stations open the creative tools", async ({ page }) => {
 
 test("Yard → Track: couple a car and ride it", async ({ page }) => {
   await boot(page);
-  await page.getByRole("button", { name: "Workshop" }).click();
+  await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
   await emit(page, "workshop-add-melody", "guitar"); // give the active car content
 
@@ -125,6 +143,9 @@ test("Map guards Track until a train exists", async ({ page }) => {
   });
   await expect.poll(async () => (await getProject(page)).train.length).toBe(0);
 
-  await page.getByRole("button", { name: "Track" }).click();
+  // The Map's `map-nav` Tiled hit guards Track when the train is empty → toast.
+  await waitForScene(page, "MapScene");
+  await emit(page, "map-nav", "track");
   await expect(page.getByText(/build a train first/i)).toBeVisible();
+  await expect.poll(async () => (await getProject(page)).activeView).toBe("map");
 });

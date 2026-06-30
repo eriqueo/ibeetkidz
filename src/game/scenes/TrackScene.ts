@@ -13,8 +13,7 @@
 // tempo controls owned by React.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
-import { EventBus } from "../EventBus.ts";
-import { SCENE_BG_V2 } from "../assets.ts";
+import { SCENE_BG_V2, SPRITES } from "../assets.ts";
 import {
   loadSpriteAssets,
   registerAnimations,
@@ -23,7 +22,13 @@ import {
   spawnSmoke,
   type TrainType,
 } from "../sprite-assets.ts";
-import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
+import { TRACK_LAYOUT_V2, TRACK_CHROME } from "../scene-layout.ts";
+import {
+  parseTiledLayer,
+  type TiledSpawn,
+} from "../TiledParser.ts";
+import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import trackMap from "../../assets/maps/track.json";
 import type { CarType } from "../../core/types.ts";
 
 export interface TrackCar {
@@ -39,30 +44,6 @@ const SMOKE_INTERVAL_MS = 800;
 // scene) + a small coupler gap, as a fraction of the scene width.
 const CAR_COUPLE_W = 0.082;
 
-// The bottom transport panel: each button's painted-centre (fraction of the
-// scene width, from TRACK_LAYOUT_V2.controls) + its label + what it does. These
-// are rendered as pixel-styled rectangles over the painted panel and fire
-// EventBus messages that React turns into engine calls.
-type ControlAction =
-  | { kind: "play" }
-  | { kind: "stop" }
-  | { kind: "tempo"; delta: number };
-
-interface ControlSpec {
-  readonly cx: number;
-  readonly action: ControlAction;
-}
-
-// One transparent hit-area over each of the 5 painted blue buttons (the painted
-// ◀◀ ⏸ ⏹ ▶ ⏩ faces ARE the buttons — no emoji chrome on top). ⏸ and ⏹ both stop.
-const CONTROL_SPECS: readonly ControlSpec[] = [
-  { cx: TRACK_LAYOUT_V2.controls.rewind, action: { kind: "tempo", delta: -10 } },
-  { cx: TRACK_LAYOUT_V2.controls.pause, action: { kind: "stop" } },
-  { cx: TRACK_LAYOUT_V2.controls.stop, action: { kind: "stop" } },
-  { cx: TRACK_LAYOUT_V2.controls.play, action: { kind: "play" } },
-  { cx: TRACK_LAYOUT_V2.controls.ff, action: { kind: "tempo", delta: 10 } },
-];
-
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
@@ -75,7 +56,12 @@ export class TrackScene extends BackgroundScene {
   private direction: 1 | -1 = 1;
   private moving = false;
   private lastSignalBar = -1;
-  private controlBtns: { spec: ControlSpec; btn: Phaser.GameObjects.Container }[] = [];
+  // Composited static chrome: placed transport-panel sprite + corner nav sprites,
+  // plus the parsed Tiled spawns and their (index-aligned) hit-areas.
+  private panelImg?: Phaser.GameObjects.Image;
+  private navImgs = new Map<string, Phaser.GameObjects.Image>();
+  private chromeSpawns: readonly TiledSpawn[] = [];
+  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
 
   constructor() {
     super(TrackScene.KEY);
@@ -104,10 +90,52 @@ export class TrackScene extends BackgroundScene {
       callback: this.puffSmoke,
       callbackScope: this,
     });
-    this.buildControls();
+    this.buildChrome();
     this.layoutFixtures();
     this.rebuildCars();
     this.announceReady();
+  }
+
+  // ── composited chrome (transport panel + nav sprites + Tiled hit-areas) ──────
+  // The clean base plate paints an EMPTY panel frame at the bottom, so place the
+  // transport-panel sprite over it and the nav sprites in the top corners, then
+  // lay the data-driven transparent hit-areas (parsed from track.json) on top.
+  // The adapter auto-wires each hit's authored EventBus action (transport +
+  // track-nav); `layoutChrome` re-anchors everything to the painted art on resize.
+  private buildChrome(): void {
+    this.panelImg = this.add.image(0, 0, SPRITES.trackPanelButtons.key).setOrigin(0.5).setDepth(1);
+    for (const id of ["btn-track-yard", "btn-track-exit"] as const) {
+      const key = id === "btn-track-yard" ? SPRITES.btnNavYard.key : SPRITES.btnNavExit.key;
+      this.navImgs.set(id, this.add.image(0, 0, key).setOrigin(0.5).setDepth(2));
+    }
+    this.chromeSpawns = parseTiledLayer(trackMap, "ui-layer");
+    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
+      bgRect: this.backgroundRect,
+      hitDepth: 10,
+    });
+    this.chromeHits = hits;
+  }
+
+  // Re-anchor the placed panel/nav sprites + their Tiled hit-areas to the painted
+  // art after the background refits (the adapter places hits once at create).
+  private layoutChrome(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0) return;
+    const { width, height } = this.scale.gameSize;
+
+    const P = TRACK_CHROME.panel;
+    this.panelImg
+      ?.setDisplaySize(r.width * P.w, r.height * P.h)
+      .setPosition(r.x + r.width * P.cx, r.y + r.height * P.cy);
+
+    this.navImgs.forEach((img, id) => {
+      const s = this.chromeSpawns.find((sp) => sp.id === id);
+      if (!s) return;
+      const p = placeSpawn(s, r, { width, height });
+      img.setDisplaySize(p.width, p.height).setPosition(p.x, p.y);
+    });
+
+    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
   }
 
   /** React → scene: the cars to draw (one per train slot, in order). */
@@ -179,63 +207,8 @@ export class TrackScene extends BackgroundScene {
     this.path.yRadius = r.height * OVAL.ry;
   }
 
-  /** Build a TRANSPARENT hit-area over each painted control button (the painted
-   *  face shows through; a brief white flash marks the press). Each fires an
-   *  EventBus message; React owns the engine. */
-  private buildControls(): void {
-    this.controlBtns = CONTROL_SPECS.map((spec) => {
-      const bg = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setOrigin(0.5);
-      const btn = this.add.container(0, 0, [bg]).setDepth(10);
-      btn.setData("bg", bg);
-      // Centred hit area (container-local origin is its centre); resized in
-      // layoutControls once the background rect is known.
-      const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
-      btn.setData("hit", hit);
-      btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
-      if (btn.input) btn.input.cursor = "pointer";
-      const rest = (): void => { bg.setFillStyle(0xffffff, 0); };
-      btn
-        .on("pointerdown", () => {
-          bg.setFillStyle(0xffffff, 0.25); // press flash over the painted face
-          this.fireControl(spec.action);
-        })
-        .on("pointerup", rest)
-        .on("pointerout", rest);
-      return { spec, btn };
-    });
-  }
-
-  private fireControl(action: ControlAction): void {
-    switch (action.kind) {
-      case "play":
-        EventBus.emit("transport-play", "ride");
-        break;
-      case "stop":
-        EventBus.emit("transport-stop");
-        break;
-      case "tempo":
-        EventBus.emit("tempo-changed", action.delta);
-        break;
-    }
-  }
-
-  /** Position + size the transport buttons against the painted panel band. */
-  private layoutControls(): void {
-    const r = this.backgroundRect;
-    const w = r.width * TRACK_LAYOUT_V2.controls.w;
-    const h = r.height * TRACK_LAYOUT_V2.controls.h;
-    const y = r.y + r.height * TRACK_LAYOUT_V2.controls.y;
-    for (const { spec, btn } of this.controlBtns) {
-      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
-      bg.setSize(w, h);
-      hit.setTo(-w / 2, -h / 2, w, h);
-      btn.setPosition(r.x + r.width * spec.cx, y);
-    }
-  }
-
   private layoutFixtures(): void {
-    this.layoutControls();
+    this.layoutChrome();
     const r = this.backgroundRect;
     if (this.signal) {
       const targetW = r.width * TRACK_LAYOUT_V2.signal.w;

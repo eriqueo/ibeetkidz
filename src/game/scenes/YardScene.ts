@@ -9,9 +9,15 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
-import { SCENE_BG_V2 } from "../assets.ts";
+import { SCENE_BG_V2, SPRITES } from "../assets.ts";
 import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
-import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
+import { YARD_SIDINGS_V2, YARD_LAYOUT_V2, YARD_CHROME } from "../scene-layout.ts";
+import {
+  parseTiledLayer,
+  type TiledSpawn,
+} from "../TiledParser.ts";
+import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import yardMap from "../../assets/maps/yard.json";
 import type { CarType } from "../../core/types.ts";
 
 /** A built car in the palette (left sidings). */
@@ -86,12 +92,12 @@ export class YardScene extends BackgroundScene {
   private paletteTokens = new Map<string, Phaser.GameObjects.Container>();
   private trainTokens: Phaser.GameObjects.Container[] = [];
   private busy = false; // a crane/departure tween is in flight — ignore presses
-  // The two Phaser control buttons + how to place/gate each against the bg rect.
-  private buttons: {
-    btn: Phaser.GameObjects.Container;
-    region: (r: SlotRect) => { cx: number; cy: number; w: number; h: number };
-    enabled?: () => boolean;
-  }[] = [];
+  // Composited static chrome: the placed button-panel sprite + corner nav sprites,
+  // plus the parsed Tiled spawns and their (index-aligned) hit-areas.
+  private panelImg?: Phaser.GameObjects.Image;
+  private navImgs = new Map<string, Phaser.GameObjects.Image>();
+  private chromeSpawns: readonly TiledSpawn[] = [];
+  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
 
   constructor() {
     super(YardScene.KEY);
@@ -105,9 +111,48 @@ export class YardScene extends BackgroundScene {
 
   create(): void {
     this.addBackground("contain");
-    this.buildButtons();
+    this.buildChrome();
     this.rebuild();
+    this.bindIntents();
     this.announceReady();
+  }
+
+  // ── composited chrome (panel + nav sprites + Tiled hit-areas) ───────────────
+  // The clean base plate paints NO buttons, so place the panel sprite over the
+  // bottom band and the nav sprites in the top corners, then lay the data-driven
+  // transparent hit-areas (parsed from yard.json) on top. The adapter auto-wires
+  // each hit's authored EventBus action; `layoutChrome` re-anchors everything to
+  // the painted art on resize.
+  private buildChrome(): void {
+    this.panelImg = this.add.image(0, 0, SPRITES.yardPanelButtons.key).setOrigin(0.5).setDepth(1);
+    for (const id of ["btn-yard-workshop", "btn-yard-exit"] as const) {
+      const key = id === "btn-yard-workshop" ? SPRITES.btnNavWorkshop.key : SPRITES.btnNavExit.key;
+      this.navImgs.set(id, this.add.image(0, 0, key).setOrigin(0.5).setDepth(2));
+    }
+    this.chromeSpawns = parseTiledLayer(yardMap, "ui-layer");
+    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
+      bgRect: this.backgroundRect,
+      hitDepth: 10,
+    });
+    this.chromeHits = hits;
+    this.layoutChrome();
+  }
+
+  // YardScene owns the palette selection, so the animated/selection-aware action
+  // intents are translated here: a Tiled "yard-add"/"yard-depart" tap runs the
+  // crane / departure tween, whose onComplete emits the real React-facing event.
+  private bindIntents(): void {
+    const onAdd = (): void => {
+      if (this.selectedId) this.animateCranePickup(this.selectedId);
+      else this.flashPalette();
+    };
+    const onDepart = (): void => this.sendToTrack();
+    EventBus.on("yard-add", onAdd);
+    EventBus.on("yard-depart", onDepart);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      EventBus.off("yard-add", onAdd);
+      EventBus.off("yard-depart", onDepart);
+    });
   }
 
   /** React → scene: the palette (built cars) + the assembled train. This is the
@@ -242,7 +287,6 @@ export class YardScene extends BackgroundScene {
     if (this.selectedId && !this.paletteTokens.has(this.selectedId)) this.selectedId = null;
     this.layout();
     this.setSelectedPalette(this.selectedId);
-    this.refreshButtons();
   }
 
   /** Make a palette car token tap-to-select. The hit area is the (unscaled) body
@@ -280,81 +324,31 @@ export class YardScene extends BackgroundScene {
         this.fitToken(token, pos.w);
       }
     });
-    this.layoutButtons();
+    this.layoutChrome();
   }
 
-  // ── transport / action buttons (same pattern as TrackScene) ─────────────────
-
-  private buildButtons(): void {
-    const P = YARD_LAYOUT_V2.panel;
-    const S = YARD_LAYOUT_V2.sendToTrack;
-    this.buttons = [
-      {
-        // Add to Train: crane-lift the selected car onto the line.
-        btn: this.makeButton("🏗️", () => {
-          if (this.selectedId) this.animateCranePickup(this.selectedId);
-          else this.flashPalette();
-        }),
-        region: (r) => ({ cx: r.x + r.width * P.couple, cy: r.y + r.height * P.y, w: r.width * P.w, h: r.height * P.h }),
-      },
-      {
-        // Send to Track: depart the assembled train, then navigate.
-        btn: this.makeButton("🚂", () => this.sendToTrack()),
-        region: (r) => ({
-          cx: r.x + r.width * (S.x + S.w / 2),
-          cy: r.y + r.height * (S.y + S.h / 2),
-          w: r.width * S.w,
-          h: r.height * S.h,
-        }),
-        enabled: () => this.train.length > 0,
-      },
-    ];
-  }
-
-  private makeButton(text: string, onPress: () => void): Phaser.GameObjects.Container {
-    const bg = this.add.rectangle(0, 0, 10, 10, 0x2a2118).setStrokeStyle(3, 0x000000);
-    const label = this.add
-      .text(0, 0, text, { fontFamily: "'Press Start 2P', monospace", fontSize: "18px", color: "#f4e8d0" })
-      .setOrigin(0.5);
-    const btn = this.add.container(0, 0, [bg, label]).setDepth(10);
-    const hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
-    btn.setData("bg", bg);
-    btn.setData("label", label);
-    btn.setData("hit", hit);
-    btn.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
-    if (btn.input) btn.input.cursor = "pointer";
-    btn
-      .on("pointerdown", () => {
-        if (this.busy) return;
-        btn.setAlpha(0.7); // visual down state
-        onPress();
-      })
-      .on("pointerup", () => this.refreshButtons())
-      .on("pointerout", () => this.refreshButtons());
-    return btn;
-  }
-
-  /** Position + size the buttons against the painted panel; dim disabled ones. */
-  private layoutButtons(): void {
+  // Re-anchor the placed panel/nav sprites + their Tiled hit-areas to the painted
+  // art after the background refits (the adapter places hits once at create).
+  private layoutChrome(): void {
     const r = this.backgroundRect;
-    for (const { btn, region } of this.buttons) {
-      const { cx, cy, w, h } = region(r);
-      const bg = btn.getData("bg") as Phaser.GameObjects.Rectangle;
-      const label = btn.getData("label") as Phaser.GameObjects.Text;
-      const hit = btn.getData("hit") as Phaser.Geom.Rectangle;
-      bg.setSize(w, h);
-      hit.setTo(-w / 2, -h / 2, w, h);
-      label.setFontSize(Math.round(h * 0.42));
-      btn.setPosition(cx, cy);
-    }
-    this.refreshButtons();
-  }
+    if (r.width === 0) return;
+    const { width, height } = this.scale.gameSize;
 
-  /** Reflect each button's enabled state (and reset any press alpha). */
-  private refreshButtons(): void {
-    for (const { btn, enabled } of this.buttons) {
-      btn.setAlpha(!enabled || enabled() ? 1 : 0.45);
-    }
+    const P = YARD_CHROME.panel;
+    this.panelImg
+      ?.setDisplaySize(r.width * P.w, r.height * P.h)
+      .setPosition(r.x + r.width * P.cx, r.y + r.height * P.cy);
+
+    // Nav sprites track their own Tiled spawn (same anchor math the hits use), so
+    // sprite + transparent hit always coincide, including ui-top-right pinning.
+    this.navImgs.forEach((img, id) => {
+      const s = this.chromeSpawns.find((sp) => sp.id === id);
+      if (!s) return;
+      const p = placeSpawn(s, r, { width, height });
+      img.setDisplaySize(p.width, p.height).setPosition(p.x, p.y);
+    });
+
+    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
   }
 
   /** Scale a car container so its sprite body is ~`targetW` px wide. */

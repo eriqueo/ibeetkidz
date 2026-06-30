@@ -1,9 +1,8 @@
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { STEP_COUNT } from "../core/types.ts";
+import { STEP_COUNT, AppView } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
-import { PixelButton } from "./PixelButton.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 
@@ -46,13 +45,16 @@ export const Track: FC = () => {
     const onPlay = () => engine.playRide(projectRef.current);
     const onStop = () => engine.stop();
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
+    const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
     EventBus.on("tempo-changed", onTempo);
+    EventBus.on("track-nav", onNav);
     return () => {
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);
+      EventBus.off("track-nav", onNav);
     };
   }, [dispatch, engine]);
 
@@ -88,13 +90,8 @@ export const Track: FC = () => {
         <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
       </div>
 
-      {/* Top nav */}
-      <div style={{ position: "absolute", top: 8, left: 8, zIndex: 20 }}>
-        <PixelButton variant="nav" emoji="◀" label="Yard" onClick={() => dispatch({ type: "setActiveView", view: "yard" })} />
-      </div>
-      <div style={{ position: "absolute", top: 8, right: 8, zIndex: 20 }}>
-        <PixelButton variant="nav" emoji="🗺️" label="Map" onClick={() => dispatch({ type: "setActiveView", view: "map" })} />
-      </div>
+      {/* Nav + transport now live inside TrackScene (Tiled hits over composited
+          panel/nav sprites), driven through the EventBus — no HTML nav here. */}
 
       {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live */}
       {cars.length > 0 && (

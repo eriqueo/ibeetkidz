@@ -17,13 +17,33 @@ export interface EventMap {
   "transport-play": [mode: "loop" | "ride"];
   "transport-stop": [];
   "tempo-changed": [delta: number]; // e.g., +10 or -10
-  // Phaser -> React (Yard): the kid picked a palette car (selection reflected).
+  // Phaser -> React (Yard): the kid picked a palette car (selection reflected;
+  // React makes it the active car so edit/delete target it).
   "yard-car-selected": [partId: string];
+  // Tiled hit -> YardScene: the kid tapped the "couple" (Add to Train) button.
+  // YardScene runs the crane animation, then emits `yard-add-to-train` on its
+  // onComplete (intent in, animated dispatch out). Handled in the scene.
+  "yard-add": [];
+  // Tiled hit -> YardScene: the kid tapped "Send to Track". YardScene runs the
+  // departure animation, then emits `yard-send-to-track`. Handled in the scene.
+  "yard-depart": [];
   // Phaser -> React (Yard): the crane finished dropping a car on the line.
   // Fires from inside the tween's onComplete so state follows the animation.
   "yard-add-to-train": [partId: string];
   // Phaser -> React (Yard): the assembled train has departed; navigate to Track.
   "yard-send-to-track": [];
+  // Tiled hit -> React (Yard): pop the last car off the assembled train.
+  "yard-remove-from-train": [];
+  // Tiled hit -> React (Yard): open the Workshop on the active (selected) car.
+  "yard-edit-car": [];
+  // Tiled hit -> React (Yard): delete the active (selected) car from the library.
+  "yard-remove-car": [];
+  // Tiled hit -> React (Yard): travel to another view.
+  "yard-nav": [view: AppView];
+  // Tiled hit -> React (Track): travel to another view.
+  "track-nav": [view: AppView];
+  // Tiled hit -> React (Map): travel to a destination (guarded for Track).
+  "map-nav": [view: AppView];
   // Phaser -> React (Workshop): a sequencer cell was tapped; `on` is the desired
   // next state (the scene shows it optimistically; the store flip is the truth).
   "workshop-cell-toggled": [cell: { layerId: string; stepIndex: number; on: boolean }];
