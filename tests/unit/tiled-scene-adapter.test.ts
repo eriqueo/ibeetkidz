@@ -166,6 +166,28 @@ describe("placeSpawn", () => {
     );
   });
 
+  it("offsets ui-top-right and ui-bottom-center by bg.y when the bg is letterboxed (contain fit)", () => {
+    // Simulate contain fit: 1280x1100 canvas, 2560x1440 art → scale=0.5, offY=190
+    const letterboxBg = { x: 0, y: 190, width: 1280, height: 720 };
+    const letterboxCam = { width: 1280, height: 1100 };
+    // ui-top-right: Y must be bg.y + topGap + height/2, NOT just topGap + height/2
+    const topRight = placeSpawn(
+      spawn({ cx: 0.9, cy: 0.1, anchor: "ui-top-right" }),
+      letterboxBg,
+      letterboxCam,
+    );
+    // topGap = (0.1 - 0.05) * 720 = 36; height/2 = 36; bg.y = 190 → y = 190 + 36 + 36 = 262
+    expect(topRight.y).toBeCloseTo(262, 0);
+    // ui-bottom-center: Y must be bg.y + bg.height - bottomGap - height/2
+    const bottomCenter = placeSpawn(
+      spawn({ cx: 0.5, cy: 0.9, w: 0.2, h: 0.1, anchor: "ui-bottom-center" }),
+      letterboxBg,
+      letterboxCam,
+    );
+    // bottomGap = (1 - 0.95) * 720 = 36; height/2 = 36; bg.y+bg.height = 910 → y = 910 - 36 - 36 = 838
+    expect(bottomCenter.y).toBeCloseTo(838, 0);
+  });
+
   it("keeps the fixture's anchored EXIT on-screen and distinct from bg placement", () => {
     const exit = spawns.find((s) => s.id === "icon-exit");
     if (!exit) throw new Error("no exit");

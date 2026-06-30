@@ -57,15 +57,21 @@ export function placeSpawn(s: TiledSpawn, bg: Rect, cam: CameraSize): Rect {
   const height = s.h * bg.height;
 
   if (s.anchor === "ui-top-right") {
+    // X: pin to the camera right edge so the button never scrolls off-screen.
+    // Y: offset by bg.y so the hit area tracks the painted art when the bg is
+    //    letterboxed (contain fit adds a vertical margin; cover fit has bg.y ≤ 0).
     const rightGap = (1 - (s.cx + s.w / 2)) * bg.width;
     const topGap = (s.cy - s.h / 2) * bg.height;
-    return { x: cam.width - rightGap - width / 2, y: topGap + height / 2, width, height };
+    return { x: cam.width - rightGap - width / 2, y: bg.y + topGap + height / 2, width, height };
   }
   if (s.anchor === "ui-bottom-center") {
+    // X: offset by bg.x so the button tracks the painted art horizontally.
+    // Y: offset by bg.y so the hit area tracks the painted art when the bg is
+    //    letterboxed (contain fit adds a vertical margin; cover fit has bg.y ≤ 0).
     const bottomGap = (1 - (s.cy + s.h / 2)) * bg.height;
     return {
-      x: cam.width / 2 + (s.cx - 0.5) * bg.width,
-      y: cam.height - bottomGap - height / 2,
+      x: bg.x + bg.width / 2 + (s.cx - 0.5) * bg.width,
+      y: bg.y + bg.height - bottomGap - height / 2,
       width,
       height,
     };
