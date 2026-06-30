@@ -37,15 +37,23 @@
           "id": 1,
           "name": "btn-yard-workshop",
           "type": "nav",
-          "x": 40,
-          "y": 40,
+          "x": 427,
+          "y": 39,
           "width": 240,
           "height": 220,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-nav" },
-            { "name": "arg", "type": "string", "value": "workshop" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "workshop"
+            }
           ]
         },
         {
@@ -59,23 +67,39 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-nav" },
-            { "name": "arg", "type": "string", "value": "map" },
-            { "name": "anchor", "type": "string", "value": "ui-top-right" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "map"
+            },
+            {
+              "name": "anchor",
+              "type": "string",
+              "value": "ui-top-right"
+            }
           ]
         },
         {
           "id": 3,
           "name": "btn-edit-car",
           "type": "action",
-          "x": 120,
+          "x": 397,
           "y": 1148,
           "width": 230,
           "height": 210,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-edit-car" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-edit-car"
+            }
           ]
         },
         {
@@ -89,7 +113,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-add" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-add"
+            }
           ]
         },
         {
@@ -103,7 +131,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-remove-from-train" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-remove-from-train"
+            }
           ]
         },
         {
@@ -117,7 +149,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-depart" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-depart"
+            }
           ]
         },
         {
@@ -131,7 +167,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "yard-remove-car" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-remove-car"
+            }
           ]
         }
       ]

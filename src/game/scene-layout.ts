@@ -71,11 +71,18 @@ export const YARD_LAYOUT_V2 = {
 // MEASURED FROM ART — both the panel rect AND the matching Tiled coords need a
 // live visual tuning pass; nudge them together.
 export const YARD_CHROME = {
-  panel: { cx: 0.366, cy: 0.882, w: 0.727, h: 0.60 },
+  // Panel sprite centred at screen x≈320 (left-half of canvas), y≈970.
+  // Cover-fit bg: bgX=-338, bgW=1956 → cx = (320+338)/1956 = 0.336
+  // Panel sprite is ~640px wide on screen → w = 640/1956 = 0.327
+  // h tuned so the panel fills the bottom band without overflowing.
+  panel: { cx: 0.336, cy: 0.882, w: 0.327, h: 0.28 },
 } as const;
 
 export const TRACK_CHROME = {
-  panel: { cx: 0.51, cy: 0.88, w: 0.91, h: 0.62 },
+  // Panel sprite centred at screen x≈640 (full canvas width), y≈937.
+  // Cover-fit bg: bgX=-338, bgW=1956 → cx = (640+338)/1956 = 0.500
+  // Panel sprite is ~1280px wide on screen → w = 1280/1956 = 0.655
+  panel: { cx: 0.500, cy: 0.882, w: 0.655, h: 0.28 },
 } as const;
 
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each

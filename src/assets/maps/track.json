@@ -37,31 +37,51 @@
           "id": 1,
           "name": "btn-track-yard",
           "type": "nav",
-          "x": 40,
-          "y": 40,
+          "x": 427,
+          "y": 39,
           "width": 240,
           "height": 220,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "track-nav" },
-            { "name": "arg", "type": "string", "value": "yard" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "track-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "yard"
+            }
           ]
         },
         {
           "id": 2,
           "name": "btn-track-exit",
           "type": "nav",
-          "x": 2280,
-          "y": 40,
+          "x": 1893,
+          "y": 39,
           "width": 240,
           "height": 220,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "track-nav" },
-            { "name": "arg", "type": "string", "value": "map" },
-            { "name": "anchor", "type": "string", "value": "ui-top-right" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "track-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "map"
+            },
+            {
+              "name": "anchor",
+              "type": "string",
+              "value": "ui-top-right"
+            }
           ]
         },
         {
@@ -75,8 +95,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": -10 }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": -10
+            }
           ]
         },
         {
@@ -90,7 +118,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "transport-stop" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-stop"
+            }
           ]
         },
         {
@@ -104,7 +136,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "transport-stop" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-stop"
+            }
           ]
         },
         {
@@ -118,8 +154,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "ride" }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "ride"
+            }
           ]
         },
         {
@@ -133,8 +177,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": 10 }
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": 10
+            }
           ]
         },
         {
