@@ -1,38 +1,29 @@
 # iBeetKidz Three-Zone UI Refactor Delegation
 
-**Goal:** Refactor the UI architecture of all scenes (Workshop, Yard, Track) to follow the "Three-Zone" rule using a data-driven approach via Tiled map data, completely eliminating hardcoded UI layout logic in TypeScript.
+**Goal:** Complete the UI polish of the Workshop scene using the newly generated "Phase 2" steampunk sprite assets, and fix outstanding layout/rendering bugs. Then migrate Yard and Track to the same data-driven engine.
 
 All required sprite assets have been generated and committed to `src/assets/sprites/`.
 
-## Architectural Principles
-1. **Three-Zone Rule:** Every scene (except Map) has a Top Bar (navigation + mode switching), a Field (interactive manipulables), and a Bottom Bar (view-specific controls).
-2. **Data-Driven Layout (Principle 4):** The layout of these three zones must be defined entirely in the Tiled map JSON (`src/assets/maps/*.json`). The TypeScript scene classes must act purely as interpreters of this data.
-3. **No Baked UI:** Base plates (`bg-workshop`, etc.) must be clean environments. All panels, buttons, and instruments are standalone sprites placed by Tiled.
-
-## Phase 1: Update the Tiled Maps
+## Phase 1: Workshop UI Polish
 **Agent Prompt:**
-> You need to update the Tiled map JSON files (`workshop.json`, `yard.json`, `track.json`) to implement the new Three-Zone UI architecture.
-> 1. Add the new base plate panels to the maps: `panel-header` at the top, `panel-transport` at the bottom.
-> 2. In the `InteractiveObjects` layer, define the UI buttons as objects with `type: "ui-button"`, `id` (e.g., `btn-nav-left`), and `action` (e.g., `nav-map`).
-> 3. Define the field objects (e.g., instruments in the workshop) with `type: "instrument"`.
-> 4. Do not hardcode any pixel coordinates in TypeScript; rely entirely on the Tiled JSON data for placement.
+> The core data-driven engine (`ui-scene.ts`) is working, but the Workshop UI needs polish using the new "Phase 2" sprite assets.
+> 1. **Header Panel:** Update `assets.ts` and `workshop.json` to use `panel-header-v2.png` (the ornate steampunk frame) instead of the plain `panel-header.png`.
+> 2. **Top Bar Buttons:** Add the new top bar buttons to `workshop.json` and place them over the header panel:
+>    - `btn-map` (Left side, action: `nav-map`)
+>    - `btn-newcar` (Center, action: `toggle-car-picker`)
+>    - `btn-sendtoyard` (Right side, action: `nav-yard`)
+> 3. **Car Type Picker:** Implement the dropdown picker logic. When `toggle-car-picker` fires, spawn a Phaser Container holding the 4 car-type tiles (`btn-picker-boxcar`, `btn-picker-tanker`, `btn-picker-hopper`, `btn-picker-flatcar`). Clicking a tile should swap the boxcar art and close the picker.
+> 4. **Husky Piano:** Add the `inst-piano` sprite to the field in `workshop.json` and wire it to open the melody editor.
+> 5. **Text Labels:** Add text labels under all nav and transport buttons. The Tiled map should define a `label` property for each button object. In `ui-scene.ts`, after spawning each button sprite, add a Phaser Text object below it using the dark plum (`#2b2440`) font.
+> 6. **LCD Styling:** Fix the transport LCD text color. It should be dark plum (`#2b2440`) on the cream panel background, not green-on-dark.
+> 7. **Mobile Viewport:** Fix the Phaser `scale` config to use `Phaser.Scale.FIT` and `autoCenter: Phaser.Scale.CENTER_BOTH` so the canvas fills the mobile screen vertically.
 
-## Phase 2: Refactor Scene Classes
+## Phase 2: Migrate Yard and Track
 **Agent Prompt:**
-> You need to rewrite the scene classes (`WorkshopScene.ts`, `YardScene.ts`, `TrackScene.ts`) to be generic interpreters of the Tiled map data.
-> 1. Remove all hardcoded layout logic (e.g., `buildChrome()`, `layoutChrome()`, manual coordinate calculations).
-> 2. In the `create()` method, parse the Tiled JSON and spawn sprites based on the `InteractiveObjects` layer.
-> 3. Wire up interactivity based on the `action` property defined in the JSON.
-> 4. Implement button state changes: when a pointer is down on a button, swap its texture to the `-pressed` version; swap back on pointer up.
-> 5. Implement instrument state changes: passive (default), hover (pointer over), active (pointer down/playing).
-
-## Phase 3: Asset Registration and Cleanup
-**Agent Prompt:**
-> You need to update the asset loading pipeline to include the new sprites.
-> 1. Update `src/game/assets.ts` to register all new sprites in `src/assets/sprites/buttons/`, `src/assets/sprites/instruments/`, and `src/assets/sprites/panels/`.
-> 2. Ensure the preloader correctly loads these assets before scene creation.
-> 3. Remove any references to old baked UI base plates or obsolete hit-area rectangles.
-> 4. Run the TypeScript compiler (`npx tsc --noEmit`) and unit tests (`npx vitest run`) to ensure a clean build.
+> You need to migrate `YardScene.ts` and `TrackScene.ts` to use the generic `ui-scene.ts` engine.
+> 1. Create `yard.json` and `track.json` using the same three-zone structure (Top Bar, Field, Bottom Bar).
+> 2. Rewrite `YardScene.ts` and `TrackScene.ts` to be generic interpreters of the Tiled map data, removing all hardcoded layout logic (`buildChrome()`, `layoutChrome()`).
+> 3. Ensure all existing EventBus actions are preserved and wired correctly to the new Tiled objects.
 
 ## Expected Outcome
-The scenes should visually render the new UI panels and buttons. Clicking buttons should trigger the appropriate actions (navigation, mode switching, transport controls) and show pressed states. Hovering over and clicking instruments should trigger their respective state animations. All layout must be derived from Tiled data, making future UI changes a matter of map editing rather than code refactoring.
+The Workshop scene should feature the new ornate steampunk header, complete with the Map, New Car, and Send to Yard buttons. The Husky piano instrument should be present. All buttons should have text labels underneath them. The car picker dropdown should function. The canvas should scale correctly on mobile devices. The Yard and Track scenes should be fully data-driven.
