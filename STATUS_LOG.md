@@ -14,6 +14,7 @@ The project is transitioning from a hybrid HTML/Phaser state with hardcoded layo
 ### Recently Completed
 *   **Engine Refactor:** The data-driven UI-sprite engine (`ui-scene.ts`, `ui-sprites.ts`) is built and deployed. It successfully reads Tiled maps and spawns the new interactive sprites.
 *   **Workshop Phase 1:** The Workshop scene has been refactored to use the new engine. The field contains 4 instrument characters, and the bottom transport bar is active.
+*   **Workshop UI Polish (delegation Phase 1 — DONE):** Integrated the Phase 2 steampunk assets. The Workshop now renders the ornate `panel-header-v2` with the `btn-map` / `btn-newcar` / `btn-sendtoyard` plaques; the New Car button toggles a car-type picker dropdown (`btn-picker-*` tiles, boxcar shows its `-selected` art) that swaps the car type and closes; the husky `inst-piano` was added to the field (opens the melody editor); transport buttons carry dark-plum captions (STOP/PLAY/LOOP/SLOW/FAST) via a Tiled `label` property + `ui-scene.ts`; the SONG/TEMPO LCD is dark plum on a cream chip; and the Phaser scale config is `FIT` + `CENTER_BOTH` (2560×1440). Gates green (tsc, 175 unit tests, vite build), verified via headless screenshots.
 *   **Art Assets (Phase 2):** A new batch of high-quality, steampunk-styled pixel art sprites has been generated and committed to `src/assets/sprites/` to fix the visual regression of the initial refactor. This includes:
     *   `inst-piano` (husky dog on keyboards) in passive/hover/active states.
     *   `panel-header-v2` (an ornate wood/brass steampunk header panel to replace the plain cream bar).
@@ -29,19 +30,20 @@ The project is transitioning from a hybrid HTML/Phaser state with hardcoded layo
 
 ## 2. Immediate Next Steps (The Engineering Handoff)
 
-The immediate priority is to integrate the new "Phase 2" art assets into the Workshop scene to complete the UI polish, and then migrate Yard and Track to the new engine.
+Workshop UI Polish (delegation Phase 1) is **complete** (see Recently Completed).
+The immediate priority is now migrating Yard and Track to the new engine.
 
-### Step 1: Workshop UI Polish (Code Agent Task)
-1.  **Header Panel:** Update `assets.ts` and `workshop.json` to use `panel-header-v2.png` instead of the plain `panel-header.png`.
-2.  **Top Bar Buttons:** Add the `btn-map`, `btn-newcar`, and `btn-sendtoyard` sprites to `workshop.json` and place them over the new header panel.
-3.  **Car Type Picker:** Implement the dropdown picker logic. When `NEW CAR` is clicked, spawn a Phaser Container holding the 4 car-type tiles (`btn-picker-*`). Clicking a tile should swap the boxcar art and close the picker.
-4.  **Husky Piano:** Add the `inst-piano` sprite to the field in `workshop.json` and wire it to open the melody editor.
-5.  **Text Labels:** Add text labels under all nav and transport buttons. The Tiled map should define a `label` property for each button, and `ui-scene.ts` should spawn a Phaser Text object below the sprite using the dark plum (`#2b2440`) font.
-6.  **LCD Styling:** Fix the transport LCD text color. It should be dark plum (`#2b2440`) on the cream panel background, not green-on-dark.
-7.  **Mobile Viewport:** Fix the Phaser `scale` config to use `Phaser.Scale.FIT` and `autoCenter: Phaser.Scale.CENTER_BOTH` so the canvas fills the mobile screen vertically.
+### Step 1: Workshop UI Polish (Code Agent Task) — ✅ DONE
+1.  ✅ **Header Panel:** `workshop.json` uses `panel-header-v2` (registered in `ui-sprites.ts`).
+2.  ✅ **Top Bar Buttons:** `btn-map` (`nav-map`), `btn-newcar` (`toggle-car-picker`), `btn-sendtoyard` (`nav-yard`).
+3.  ✅ **Car Type Picker:** `toggle-car-picker` opens a Phaser container of the 4 `btn-picker-*` tiles; a tile emits `workshop-car-type-changed` and closes. (Note: no per-type open-boxcar base plate exists, so the field art itself is unchanged; the choice persists to the model and is reflected in Yard/Track.)
+4.  ✅ **Husky Piano:** `inst-piano` field instrument → `workshop-add-melody piano` (opens the melody editor).
+5.  ✅ **Text Labels:** Tiled `label` property + `ui-scene.ts` render a dark-plum caption under each icon button. (The nav plaques carry baked-in labels, so no caption is added to them.)
+6.  ✅ **LCD Styling:** SONG/TEMPO now dark plum (`#2b2440`) on a cream chip.
+7.  ✅ **Mobile Viewport:** `main.ts` scale is `Phaser.Scale.FIT` + `autoCenter: CENTER_BOTH` (2560×1440).
 
-### Step 2: Migrate Yard and Track
-Once Workshop is polished, create `yard.json` and `track.json` using the same three-zone structure and migrate `YardScene.ts` and `TrackScene.ts` to use the generic `ui-scene.ts` engine.
+### Step 2: Migrate Yard and Track (NEXT)
+Create `yard.json` and `track.json` using the same three-zone structure and migrate `YardScene.ts` and `TrackScene.ts` to use the generic `ui-scene.ts` engine, preserving all EventBus actions.
 
 ---
 
