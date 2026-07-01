@@ -17,11 +17,15 @@ export function startGame(
     // the browser's bilinear blur.
     pixelArt: true,
     scale: {
-      // Track the container element; the scene's RESIZE handler re-fits art.
-      mode: Phaser.Scale.RESIZE,
+      // FIT a fixed 16:9 design resolution into the container, letterboxing and
+      // centring so the whole scene stays on-screen (and fills mobile viewports
+      // vertically). The scene lays everything out in this fixed 2560×1440 space;
+      // Phaser scales the canvas to the device.
+      mode: Phaser.Scale.FIT,
+      autoCenter: Phaser.Scale.CENTER_BOTH,
       parent,
-      width: "100%",
-      height: "100%",
+      width: 2560,
+      height: 1440,
     },
     scene: scenes,
   });

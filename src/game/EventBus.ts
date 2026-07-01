@@ -44,6 +44,12 @@ export interface EventMap {
   "track-nav": [view: AppView];
   // Tiled hit -> React (Map): travel to a destination (guarded for Track).
   "map-nav": [view: AppView];
+  // Tiled button -> React (Workshop): top-bar nav plaques (Map / Send to Yard).
+  "nav-map": [];
+  "nav-yard": [];
+  // Tiled button -> WorkshopScene: toggle the car-type picker dropdown (handled
+  // inside the scene; choosing a tile emits `workshop-car-type-changed`).
+  "toggle-car-picker": [];
   // Phaser -> React (Workshop): a sequencer cell was tapped; `on` is the desired
   // next state (the scene shows it optimistically; the store flip is the truth).
   "workshop-cell-toggled": [cell: { layerId: string; stepIndex: number; on: boolean }];

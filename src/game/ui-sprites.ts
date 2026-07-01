@@ -46,21 +46,35 @@ export interface UiSpriteDef {
   readonly stretch: boolean;
 }
 
-// Buttons are near-square key-caps with a uniform ~13% transparent margin; the
+// Icon key-caps are near-square with a uniform ~13% transparent margin; the
 // measured per-file boxes are noisy (stray glow pixels), so a shared box is both
-// simpler and steadier across the idle/pressed pair.
+// simpler and steadier across the idle/pressed pair. Labelled steampunk plaques
+// (map / newcar / sendtoyard / picker tiles) are landscape and pass their own box.
 const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
 
-function buttonDef(id: string, pressed = true): UiSpriteDef {
+function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;
   const textures: Record<string, string> = { [idleKey]: btn(`${id}-idle.png`) };
   const states: Record<string, string> = { idle: idleKey };
-  if (pressed) {
+  if (opts.pressed ?? true) {
     const pk = `${id}-pressed`;
     textures[pk] = btn(`${id}-pressed.png`);
     states["pressed"] = pk;
   }
-  return { textures, states, base: idleKey, content: BUTTON_CONTENT, stretch: false };
+  return { textures, states, base: idleKey, content: opts.content ?? BUTTON_CONTENT, stretch: false };
+}
+
+// Car-type picker tiles: an idle art plus (boxcar only) a `selected` highlight.
+function pickerDef(type: string, content: ContentBox, selected = false): UiSpriteDef {
+  const idleKey = `btn-picker-${type}-idle`;
+  const textures: Record<string, string> = { [idleKey]: btn(`btn-picker-${type}-idle.png`) };
+  const states: Record<string, string> = { idle: idleKey };
+  if (selected) {
+    const sk = `btn-picker-${type}-selected`;
+    textures[sk] = btn(`btn-picker-${type}-selected.png`);
+    states["selected"] = sk;
+  }
+  return { textures, states, base: idleKey, content, stretch: false };
 }
 
 function instrumentDef(id: string, content: ContentBox): UiSpriteDef {
@@ -80,9 +94,18 @@ function panelDef(id: string, content: ContentBox): UiSpriteDef {
 
 /** The full Three-Zone UI sprite manifest, keyed by base id (= Tiled `sprite`). */
 export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
-  // Top-bar navigation (◀ / ▶).
+  // Top-bar navigation (◀ / ▶) — legacy, kept for compatibility.
   "btn-nav-left": buttonDef("btn-nav-left"),
   "btn-nav-right": buttonDef("btn-nav-right"),
+  // Top-bar steampunk plaques (Phase 2): Map · New Car · Send to Yard.
+  "btn-map": buttonDef("btn-map", { content: [0.103, 0.087, 0.897, 0.908] }),
+  "btn-newcar": buttonDef("btn-newcar", { content: [0.098, 0.179, 0.901, 0.81] }),
+  "btn-sendtoyard": buttonDef("btn-sendtoyard", { content: [0.069, 0.132, 0.928, 0.85] }),
+  // Car-type picker tiles (shown in the dropdown the New Car button toggles).
+  "btn-picker-boxcar": pickerDef("boxcar", [0.039, 0.255, 0.961, 0.719], true),
+  "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
+  "btn-picker-hopper": pickerDef("hopper", [0.018, 0.225, 0.982, 0.748]),
+  "btn-picker-flatcar": pickerDef("flatcar", [0.036, 0.261, 0.964, 0.714]),
   // Bottom-bar transport.
   "btn-stop": buttonDef("btn-stop"),
   "btn-play": buttonDef("btn-play"),
@@ -95,9 +118,11 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "inst-keys": instrumentDef("inst-keys", [0.085, 0.131, 0.953, 0.98]),
   "inst-mic": instrumentDef("inst-mic", [0.094, 0.14, 0.88, 0.853]),
   "inst-violin": instrumentDef("inst-violin", [0.169, 0.101, 0.815, 0.881]),
+  "inst-piano": instrumentDef("inst-piano", [0.04, 0.072, 0.96, 0.931]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
-  // The PNGs are pre-trimmed to the opaque bar, so the whole canvas is content.
+  // The PNGs are pre-trimmed to the opaque frame, so the whole canvas is content.
   "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
+  "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
   "panel-transport": panelDef("panel-transport", [0, 0, 1, 1]),
 } as const;
 

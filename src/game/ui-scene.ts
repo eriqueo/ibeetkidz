@@ -24,6 +24,8 @@ import { UI_SPRITES, placeUiSprite, type UiSpriteDef } from "./ui-sprites.ts";
 
 const PRESS_SCALE = 0.94;
 const PRESS_MS = 80;
+// Dark plum caption colour on the cream panels (PROJECT_CHARTER palette).
+const LABEL_COLOR = "#2b2440";
 
 /** One spawned chrome element, kept index-aligned with its spawn for relayout. */
 export interface UiElement {
@@ -32,6 +34,8 @@ export interface UiElement {
   readonly image?: Phaser.GameObjects.Image;
   /** The transparent fallback hit-area, when the spawn had no art. */
   readonly hit?: Phaser.GameObjects.Rectangle;
+  /** The caption rendered under the button, when the spawn carried a `label`. */
+  readonly label?: Phaser.GameObjects.Text;
   readonly def?: UiSpriteDef;
 }
 
@@ -131,13 +135,30 @@ export function spawnUiLayer(
 
     if (spawn.klass === "panel") {
       img.setDepth(panelDepth);
-    } else {
-      img.setDepth(hitDepth);
-      if (spawn.klass === "instrument") wireInstrument(img, def, spawn);
-      else wireButton(scene, img, def, spawn);
+      return { spawn, image: img, def };
     }
-    return { spawn, image: img, def };
+
+    img.setDepth(hitDepth);
+    if (spawn.klass === "instrument") wireInstrument(img, def, spawn);
+    else wireButton(scene, img, def, spawn);
+
+    // Optional dark-plum caption under an icon button (transport controls).
+    let label: Phaser.GameObjects.Text | undefined;
+    if (spawn.label) {
+      label = scene.add
+        .text(0, 0, spawn.label, { fontFamily: "'Press Start 2P', monospace", color: LABEL_COLOR })
+        .setOrigin(0.5, 0)
+        .setDepth(hitDepth + 1);
+      placeLabel(label, target);
+    }
+    return label ? { spawn, image: img, def, label } : { spawn, image: img, def };
   });
+}
+
+/** Position a button caption just under its sprite's placed rect, sized to it. */
+function placeLabel(label: Phaser.GameObjects.Text, target: { x: number; y: number; height: number }): void {
+  label.setFontSize(Math.max(9, Math.round(target.height * 0.16)));
+  label.setPosition(target.x, target.y + target.height * 0.5 + target.height * 0.04);
 }
 
 /**
@@ -154,5 +175,6 @@ export function relayoutUiLayer(
     const target = placeSpawn(el.spawn, bg, cam);
     if (el.image && el.def) placeUiSprite(el.image, el.def, target);
     else if (el.hit) el.hit.setPosition(target.x, target.y).setSize(target.width, target.height);
+    if (el.label) placeLabel(el.label, target);
   }
 }
