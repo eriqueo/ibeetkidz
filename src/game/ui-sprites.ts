@@ -1,0 +1,157 @@
+// Three-Zone UI sprite manifest + loader + content-aware placement.
+//
+// The v2→v3 refactor (UI_REFACTOR_DELEGATION.md) moves the scenes' static chrome
+// off baked-in base-plate art and onto STANDALONE sprites placed by Tiled data:
+//   - panels     (panel-header / panel-transport): the Top Bar + Bottom Bar plates
+//   - buttons    (btn-*): idle ⇄ pressed on press, emit an EventBus action
+//   - instruments(inst-*): passive → hover → active state art in the Field
+//
+// Every sprite is authored on a FIXED canvas with transparent padding, and each
+// state variant (idle/pressed, passive/hover/active) shares that canvas — so a
+// state swap is a texture change with NO reposition (the artist positioned each
+// variant within the shared canvas; e.g. the "active" instrument is drawn bigger,
+// which reads as a pop). We place the sprite ONCE using the BASE variant's opaque
+// content box so the visible art lands on its Tiled rect regardless of padding.
+//
+// This module is the single source of truth for "where does this UI texture come
+// from" + "how much of its canvas is real art". It stays Phaser-free except for
+// the two functions that take a `scene`/`image`, mirroring assets.ts. URLs are
+// STATIC `new URL(...)` literals (never a `${}` template) so Vite ships only these
+// files, not a glob of the whole directory — see the note in assets.ts.
+import type Phaser from "phaser";
+
+const btn = (file: string): string =>
+  new URL(`../assets/sprites/buttons/${file}`, import.meta.url).href;
+const inst = (file: string): string =>
+  new URL(`../assets/sprites/instruments/${file}`, import.meta.url).href;
+const panel = (file: string): string =>
+  new URL(`../assets/sprites/panels/${file}`, import.meta.url).href;
+
+/** Normalized opaque-content box within a sprite's own canvas, `[x0,y0,x1,y1]`. */
+export type ContentBox = readonly [number, number, number, number];
+
+/** A UI sprite: its per-state texture keys + the base state's content box. The
+ *  texture KEY equals the file stem (e.g. "btn-play-idle") so it is trivially
+ *  derivable and stable across the manifest. */
+export interface UiSpriteDef {
+  /** texture key → source URL, loaded in `loadUiSprites`. */
+  readonly textures: Readonly<Record<string, string>>;
+  /** state name → texture key (the state machine the adapter swaps between). */
+  readonly states: Readonly<Record<string, string>>;
+  /** the default/rest state key (idle / passive). */
+  readonly base: string;
+  /** opaque content box of the BASE state, used for placement. */
+  readonly content: ContentBox;
+  /** panels stretch to fill their rect; buttons/instruments scale uniformly. */
+  readonly stretch: boolean;
+}
+
+// Buttons are near-square key-caps with a uniform ~13% transparent margin; the
+// measured per-file boxes are noisy (stray glow pixels), so a shared box is both
+// simpler and steadier across the idle/pressed pair.
+const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
+
+function buttonDef(id: string, pressed = true): UiSpriteDef {
+  const idleKey = `${id}-idle`;
+  const textures: Record<string, string> = { [idleKey]: btn(`${id}-idle.png`) };
+  const states: Record<string, string> = { idle: idleKey };
+  if (pressed) {
+    const pk = `${id}-pressed`;
+    textures[pk] = btn(`${id}-pressed.png`);
+    states["pressed"] = pk;
+  }
+  return { textures, states, base: idleKey, content: BUTTON_CONTENT, stretch: false };
+}
+
+function instrumentDef(id: string, content: ContentBox): UiSpriteDef {
+  const p = `${id}-passive`, h = `${id}-hover`, a = `${id}-active`;
+  return {
+    textures: { [p]: inst(`${id}-passive.png`), [h]: inst(`${id}-hover.png`), [a]: inst(`${id}-active.png`) },
+    states: { passive: p, hover: h, active: a },
+    base: p,
+    content,
+    stretch: false,
+  };
+}
+
+function panelDef(id: string, content: ContentBox): UiSpriteDef {
+  return { textures: { [id]: panel(`${id}.png`) }, states: { base: id }, base: id, content, stretch: true };
+}
+
+/** The full Three-Zone UI sprite manifest, keyed by base id (= Tiled `sprite`). */
+export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
+  // Top-bar navigation (◀ / ▶).
+  "btn-nav-left": buttonDef("btn-nav-left"),
+  "btn-nav-right": buttonDef("btn-nav-right"),
+  // Bottom-bar transport.
+  "btn-stop": buttonDef("btn-stop"),
+  "btn-play": buttonDef("btn-play"),
+  "btn-loop": buttonDef("btn-loop"),
+  "btn-tempo-down": buttonDef("btn-tempo-down"),
+  "btn-tempo-up": buttonDef("btn-tempo-up"),
+  // Field instruments (content boxes measured from the passive PNGs' opaque bbox).
+  "inst-drums": instrumentDef("inst-drums", [0.05, 0.285, 0.959, 0.77]),
+  "inst-guitar": instrumentDef("inst-guitar", [0.053, 0.109, 0.956, 0.865]),
+  "inst-keys": instrumentDef("inst-keys", [0.085, 0.131, 0.953, 0.98]),
+  "inst-mic": instrumentDef("inst-mic", [0.094, 0.14, 0.88, 0.853]),
+  "inst-violin": instrumentDef("inst-violin", [0.169, 0.101, 0.815, 0.881]),
+  // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
+  // The PNGs are pre-trimmed to the opaque bar, so the whole canvas is content.
+  "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
+  "panel-transport": panelDef("panel-transport", [0, 0, 1, 1]),
+} as const;
+
+/** Load every texture in the manifest (idempotent — skips already-loaded keys).
+ *  Call from a scene's `preload`. */
+export function loadUiSprites(scene: Phaser.Scene): void {
+  for (const def of Object.values(UI_SPRITES)) {
+    for (const [key, url] of Object.entries(def.textures)) {
+      if (!scene.textures.exists(key)) scene.load.image(key, url);
+    }
+  }
+}
+
+/** A target rect (screen px, centre origin) the placement math resolves a spawn to. */
+export interface PlacedRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+/**
+ * Scale + position `img` so its BASE content box lands on `target`.
+ *
+ * - `stretch` (panels): the content box maps to the full target rect on BOTH axes
+ *   (non-uniform), so the plate fills its zone exactly — matching the legacy
+ *   composited Yard/Track panels.
+ * - otherwise (buttons/instruments): the content is scaled UNIFORMLY to "contain"
+ *   within the target rect (fit the binding axis), preserving the art's shape, and
+ *   centred on the target — so hover/active variants that draw larger pop past it.
+ *
+ * The image keeps its default 0.5 origin; we offset the whole canvas so the
+ * content centre (not the canvas centre) sits at the target centre.
+ */
+export function placeUiSprite(
+  img: Phaser.GameObjects.Image,
+  def: UiSpriteDef,
+  target: PlacedRect,
+): void {
+  const texW = img.width || 1;
+  const texH = img.height || 1;
+  const [x0, y0, x1, y1] = def.content;
+  const contentW = Math.max(1e-6, (x1 - x0) * texW);
+  const contentH = Math.max(1e-6, (y1 - y0) * texH);
+
+  const sx = target.width / contentW;
+  const sy = target.height / contentH;
+  const scaleX = def.stretch ? sx : Math.min(sx, sy);
+  const scaleY = def.stretch ? sy : scaleX;
+
+  img.setScale(scaleX, scaleY);
+  // Content centre within the canvas, as an offset from the canvas centre (px),
+  // then scaled — subtract so the content centre lands on the target centre.
+  const cxOff = ((x0 + x1) / 2 - 0.5) * texW * scaleX;
+  const cyOff = ((y0 + y1) / 2 - 0.5) * texH * scaleY;
+  img.setPosition(target.x - cxOff, target.y - cyOff);
+}

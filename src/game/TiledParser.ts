@@ -72,6 +72,10 @@ export interface TiledSpawn {
   id: string;
   /** object.type → semantic class ("toolbar" | "instrument" | "transport" | …). */
   klass: string;
+  /** Three-Zone UI: the `sprite` custom property → a UI_SPRITES base id
+   *  (e.g. "btn-play", "inst-drums", "panel-header"). Absent ⇒ the spawn has no
+   *  standalone art and renders as a transparent hit-area (legacy behaviour). */
+  sprite?: string;
   /** Normalized centre on the source image, 0..1 (resolution-independent). */
   cx: number;
   cy: number;
@@ -133,6 +137,7 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     const { cx, cy } = centrePx(o);
     const action = props["action"];
     const arg = props["arg"];
+    const sprite = props["sprite"];
 
     const spawn: TiledSpawn = {
       id: o.name,
@@ -146,6 +151,7 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     // exactOptionalPropertyTypes: only attach optional keys when truly present.
     if (typeof action === "string" && action.length > 0) spawn.action = action;
     if (typeof arg === "string" || typeof arg === "number") spawn.arg = arg;
+    if (typeof sprite === "string" && sprite.length > 0) spawn.sprite = sprite;
     return spawn;
   });
 }
