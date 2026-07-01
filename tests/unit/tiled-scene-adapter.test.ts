@@ -188,9 +188,10 @@ describe("placeSpawn", () => {
     expect(bottomCenter.y).toBeCloseTo(838, 0);
   });
 
-  it("keeps the fixture's anchored EXIT on-screen and distinct from bg placement", () => {
-    const exit = spawns.find((s) => s.id === "icon-exit");
-    if (!exit) throw new Error("no exit");
+  it("keeps a ui-top-right anchored control on-screen and distinct from bg placement", () => {
+    const exit: TiledSpawn = {
+      id: "exit", klass: "ui-button", cx: 0.94, cy: 0.09, w: 0.07, h: 0.1, anchor: "ui-top-right",
+    };
     const cam800 = { width: 800, height: 600 };
     const bgRect = coverRect(2560, 1440, cam800);
     const anchored = placeSpawn(exit, bgRect, cam800);
@@ -222,13 +223,13 @@ describe("spawnTiledScene", () => {
     }
   });
 
-  it("makes action-bearing spawns interactive and leaves the LCD inert", () => {
+  it("makes action-bearing spawns interactive and leaves the panels + LCD inert", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
     const interactive = rec.rects.filter((r) => r.interactive).length;
     expect(interactive).toBe(spawns.filter((s) => s.action !== undefined).length);
-    expect(interactive).toBe(18); // 19 spawns; the TEMPO LCD has no action
-    expect(rectFor(rec, "lcd-tempo-screen").interactive).toBe(false);
+    expect(interactive).toBe(11); // 14 spawns; the 2 panels + transport LCD have no action
+    expect(rectFor(rec, "lcd-transport").interactive).toBe(false);
   });
 
   it("runs the press tween (0.94 → 1.0, 80ms) on pointerdown", () => {
@@ -255,31 +256,23 @@ describe("spawnTiledScene", () => {
   it("emits numeric args as numbers", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    fire(rectFor(rec, "btn-speed-down"), "pointerup");
+    fire(rectFor(rec, "btn-tempo-down"), "pointerup");
     expect(emitSpy).toHaveBeenCalledWith("tempo-changed", -20);
   });
 
   it("emits no-arg actions with a single argument only", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    fire(rectFor(rec, "icon-star"), "pointerup");
-    expect(emitSpy).toHaveBeenCalledWith("workshop-surprise");
-    const call = emitSpy.mock.calls.find((c) => c[0] === "workshop-surprise");
-    expect(call).toEqual(["workshop-surprise"]);
+    fire(rectFor(rec, "btn-stop"), "pointerup");
+    expect(emitSpy).toHaveBeenCalledWith("transport-stop");
+    const call = emitSpy.mock.calls.find((c) => c[0] === "transport-stop");
+    expect(call).toEqual(["transport-stop"]);
   });
 
   it("does not emit for the inert LCD (no handlers wired)", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    expect((rectFor(rec, "lcd-tempo-screen").handlers as Record<string, unknown>)["pointerup"]).toBeUndefined();
-  });
-
-  it("anchors the EXIT hit-area via the camera so it stays on a narrow viewport", () => {
-    const { scene, rec } = makeScene(800, 600);
-    spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    const exit = rectFor(rec, "icon-exit");
-    expect(exit.x as number).toBeLessThan(800);
-    expect(exit.x as number).toBeGreaterThan(0);
+    expect((rectFor(rec, "lcd-transport").handlers as Record<string, unknown>)["pointerup"]).toBeUndefined();
   });
 });
 
@@ -323,8 +316,7 @@ describe("relayoutSpawns", () => {
     const newBg = coverRect(2560, 1440, newCam);
     relayoutSpawns(res.hits as never, spawns, newBg, newCam);
 
-    // Each hit now matches a fresh placeSpawn against the new rect/cam — incl. the
-    // camera-anchored EXIT (ui-top-right) which must differ from a bg placement.
+    // Each hit now matches a fresh placeSpawn against the new rect/cam.
     spawns.forEach((s, i) => {
       const expected = placeSpawn(s, newBg, newCam);
       const r = rec.rects[i] as Record<string, number>;
@@ -333,9 +325,5 @@ describe("relayoutSpawns", () => {
       expect(r.width).toBeCloseTo(expected.width, 6);
       expect(r.height).toBeCloseTo(expected.height, 6);
     });
-
-    const exit = rectFor(rec, "icon-exit");
-    expect(exit.x as number).toBeLessThan(800);
-    expect(exit.x as number).toBeGreaterThan(0);
   });
 });

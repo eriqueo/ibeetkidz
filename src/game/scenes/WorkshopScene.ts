@@ -1,38 +1,37 @@
-// The Workshop view (v2): the sequencer lives INSIDE Phaser now. The painted
-// boxcar interior holds a step grid (one row per lane, STEP_COUNT cells each); a
-// 4-way picker sets the (cosmetic) car type; a Play/Stop pair drives the loop.
-// All interaction flows out over the typed EventBus — React owns state + audio
-// and pushes a derived model back in.
+// The Workshop view (v3 — Three-Zone refactor, UI_REFACTOR_DELEGATION.md):
 //
-// The STATIC chrome (top toolbar, instrument shelf, transport buttons + LCD
-// displays) is DATA-DRIVEN from the Tiled map `assets/maps/workshop.json`
-// via TiledParser + TiledSceneAdapter: each object becomes a transparent hit-area
-// over the painted base plate that emits its authored EventBus action on tap. The
-// scene owns the clean background (BackgroundScene.addBackground) and hands the
-// adapter its `bgRect`, so there is exactly one background; `relayoutSpawns`
-// re-anchors the hit-areas to the painted art on every resize.
+//   • Top bar    (panel-header):    ◀ nav → Map, ▶ nav → Yard.
+//   • Field:      the open boxcar interior holds the sequencer grid; four
+//                 instrument character sprites (drums / mic / guitar / violin) sit
+//                 on the ground and open a tool / add a lane on tap.
+//   • Bottom bar (panel-transport): Stop · Play · Loop · Tempo− · Tempo+, plus the
+//                 SONG / TEMPO LCD rendered as Phaser Text in the panel's empty
+//                 LCD frame (no baked text, no mask rectangles).
 //
-// The base plate (workshop-scene-base.png) has EMPTY LCD frames — no baked-in
-// text. All LCD values (SONG number, SPEED level) and transport button labels
-// (STOP/PLAY/LOOP) are Phaser Text objects positioned by the Tiled map data.
-// NO black-rectangle masks. NO hardcoded pixel offsets.
+// The ENTIRE static chrome is data-driven from `assets/maps/workshop.json`: each
+// object is a `panel` / `ui-button` / `instrument` the generic `spawnUiLayer`
+// interprets — placing the real sprite, wiring its idle⇄pressed (buttons) or
+// passive→hover→active (instruments) states, and emitting its authored EventBus
+// action. The scene owns NO chrome coordinates; it only positions the two DYNAMIC
+// fixtures that are gameplay, not chrome: the sequencer grid and the LCD text
+// (anchored to the `lcd-transport` display object).
 //
-// The grid is built once per lane-set and only its cell tints/alpha change on a
-// store update (diffed); `update()` only sweeps the playhead.
+// The base plate is the CLEAN open-boxcar environment (workshop-boxcar-open.png)
+// — no painted toolbar, transport, LCDs, or instruments. All UI is sprites on top.
+//
+// (The old 8-icon toolbar, SONG/SPEED baked chrome, and the 4-way car-type picker
+// were retired here; their EventBus events + reducers live on for a later sprint.)
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
-import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
+import { loadUiSprites } from "../ui-sprites.ts";
 import { WORKSHOP_LAYOUT_V2, WORKSHOP_GRID_V2 } from "../scene-layout.ts";
-import {
-  parseTiledLayer,
-  type TiledSpawn,
-} from "../TiledParser.ts";
-import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
+import { placeSpawn } from "../TiledSceneAdapter.ts";
+import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import workshopMap from "../../assets/maps/workshop.json";
-import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
-import { pressPop } from "../press.ts";
+import { STEP_COUNT, type CarType, type LaneKind } from "../../core/types.ts";
 import {
   BaseToolPanel,
   VoiceToolPanel,
@@ -70,34 +69,11 @@ const MUTED_COLOR = "#ff6b6b";
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
-// SPEED control: discrete levels 1..N mapped onto BPM (level 4 = 120, matching
-// the painted defaults). The ↓/↑ buttons step one level (±SPEED_STEP_BPM via the
-// Tiled map); the SPEED LCD shows the level.
-const SPEED_BASE_BPM = 60;
-const SPEED_STEP_BPM = 20;
-const SPEED_MAX_LEVEL = 8;
-const speedLevel = (bpm: number): number =>
-  Math.max(1, Math.min(SPEED_MAX_LEVEL, Math.round((bpm - SPEED_BASE_BPM) / SPEED_STEP_BPM) + 1));
-
-// Human-readable labels for each toolbar icon, in Tiled map order.
-const TOOLBAR_LABELS = ["SONG", "THEREMIN", "PADS", "VOICE", "BEATS", "YARD", "BONUS", "KEYS"] as const;
-// Human-readable labels for each car type, in CAR_TYPES order.
-const CAR_TYPE_LABELS: Record<CarType, string> = {
-  boxcar: "BOXCAR",
-  tanker: "TANKER",
-  hopper: "HOPPER",
-  flatcar: "FLATCAR",
-};
-// Labels for the transport buttons (STOP/PLAY/LOOP), in Tiled map order.
-const TRANSPORT_LABELS: Record<string, string> = {
-  "btn-stop": "STOP",
-  "btn-play": "PLAY",
-  "btn-loop": "LOOP",
-};
-// LCD font style shared by SONG and SPEED displays.
+// LCD font shared by the SONG + TEMPO readouts, rendered into the transport
+// panel's empty green LCD frame (anchored to the `lcd-transport` display object).
 const LCD_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: "'Press Start 2P', monospace",
-  fontSize: "14px",
+  fontSize: "18px",
   color: "#90BA4F",
   letterSpacing: 2,
 };
@@ -127,16 +103,12 @@ export class WorkshopScene extends BackgroundScene {
   private cellH = 0;
   private gridLeft = 0;
   private gridTop = 0;
-  private carBtns: { type: CarType; img: Phaser.GameObjects.Image; lbl: Phaser.GameObjects.Text; base: number }[] = [];
-  // Data-driven static chrome: parsed Tiled spawns + their adapter hit-areas
-  // (index-aligned), re-anchored to the painted art on resize.
+  // Data-driven static chrome: parsed Tiled spawns + the generic UI layer.
   private chromeSpawns: readonly TiledSpawn[] = [];
-  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
-  // LCD display Text objects — positioned by Tiled map data, no masks needed.
-  private speedText: Phaser.GameObjects.Text | undefined; // live SPEED level in the SPEED LCD
-  private songText: Phaser.GameObjects.Text | undefined;  // song number in the SONG LCD
-  private toolbarLabels: Phaser.GameObjects.Text[] = []; // labels below each toolbar icon
-  private transportLabels: Phaser.GameObjects.Text[] = []; // STOP/PLAY/LOOP labels below buttons
+  private chrome: UiElement[] = [];
+  // LCD Text (SONG number + TEMPO bpm), anchored to the `lcd-transport` object.
+  private songText: Phaser.GameObjects.Text | undefined;
+  private tempoText: Phaser.GameObjects.Text | undefined;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -146,124 +118,47 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   preload(): void {
-    this.loadBackground(SCENE_BG_V2.workshop);
-    loadSpriteAssets(this); // train atlas → car-type picker sprites
+    this.loadBackground(SCENE_BG_V2.workshopBoxcarOpen);
+    loadUiSprites(this); // panels + buttons + instruments (Three-Zone chrome)
   }
 
   create(): void {
-    this.addBackground("contain"); // never crop the toolbar/transport off-screen
+    this.addBackground("contain"); // never crop the top/bottom bars off-screen
     this.buildChrome();
-    this.buildCarPicker();
     this.buildGrid();
     this.buildToolPanels();
     this.layoutFixtures();
     this.announceReady();
   }
 
-  // ── data-driven static chrome (toolbar / shelf / transport / LCD displays) ──
+  // ── data-driven static chrome (panels / nav / instruments / transport) ──────
   private buildChrome(): void {
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
-    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
+    this.chrome = spawnUiLayer(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
+      panelDepth: 1,
       hitDepth: 10,
     });
-    this.chromeHits = hits;
 
-    // SPEED LCD: Phaser Text centred inside the empty LCD frame painted on the
-    // base plate. No mask — the base plate frame is already empty.
-    this.speedText = this.add
-      .text(0, 0, "", LCD_STYLE)
-      .setOrigin(0.5)
-      .setDepth(10);
-
-    // SONG LCD: Phaser Text centred inside the SONG LCD frame.
-    this.songText = this.add
-      .text(0, 0, "001", LCD_STYLE)
-      .setOrigin(0.5)
-      .setDepth(10);
-
-    // Pixel-art labels below each toolbar icon (all 8 icons, skipping EXIT which
-    // already has a painted label). Built once; positioned in layoutChrome().
-    const iconSpawns = this.chromeSpawns.filter(
-      (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
-    );
-    this.toolbarLabels = iconSpawns.map((_spawn, i) =>
-      this.add
-        .text(0, 0, TOOLBAR_LABELS[i] ?? "", {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "9px",
-          color: "#D4B483",
-        })
-        .setOrigin(0.5, 0)
-        .setDepth(10),
-    );
-
-    // Transport button labels (STOP/PLAY/LOOP) as Phaser Text objects below each
-    // button. The base plate buttons have no painted text — these are the labels.
-    const transportSpawns = ["btn-stop", "btn-play", "btn-loop"].map(
-      (id) => this.chromeSpawns.find((s) => s.id === id),
-    ).filter((s): s is TiledSpawn => s !== undefined);
-    this.transportLabels = transportSpawns.map((spawn) =>
-      this.add
-        .text(0, 0, TRANSPORT_LABELS[spawn.id] ?? "", {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "11px",
-          color: "#D4B483",
-        })
-        .setOrigin(0.5, 0)
-        .setDepth(10),
-    );
+    // SONG + TEMPO LCD text, stacked in the transport panel's empty LCD frame.
+    this.songText = this.add.text(0, 0, "SONG 001", LCD_STYLE).setOrigin(0.5).setDepth(11);
+    this.tempoText = this.add.text(0, 0, "TEMP 120", LCD_STYLE).setOrigin(0.5).setDepth(11);
   }
 
-  // Re-anchor the chrome hit-areas + LCD Text + toolbar/transport labels after resize.
+  // Re-anchor chrome sprites + LCD text after a resize.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
-    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
+    relayoutUiLayer(this.chrome, r, { width, height });
 
-    // SPEED LCD Text: centred inside the lcd-speed-screen Tiled object.
-    const speedSpawn = this.chromeSpawns.find((s) => s.id === "lcd-speed-screen");
-    if (speedSpawn && this.speedText) {
-      const p = placeSpawn(speedSpawn, r, { width, height });
-      this.speedText
-        .setPosition(p.x, p.y)
-        .setFontSize(Math.max(12, Math.round(p.height * 0.75)));
-      this.refreshSpeed();
+    const lcd = this.chromeSpawns.find((s) => s.id === "lcd-transport");
+    if (lcd && this.songText && this.tempoText) {
+      const p = placeSpawn(lcd, r, { width, height });
+      const fs = Math.max(10, Math.round(p.height * 0.32));
+      this.songText.setPosition(p.x, p.y - p.height * 0.22).setFontSize(fs);
+      this.tempoText.setPosition(p.x, p.y + p.height * 0.22).setFontSize(fs);
     }
-
-    // SONG LCD Text: centred inside the lcd-song-screen Tiled object.
-    const songSpawn = this.chromeSpawns.find((s) => s.id === "lcd-song-screen");
-    if (songSpawn && this.songText) {
-      const p = placeSpawn(songSpawn, r, { width, height });
-      this.songText
-        .setPosition(p.x, p.y)
-        .setFontSize(Math.max(12, Math.round(p.height * 0.75)));
-    }
-
-    // Toolbar labels: centred below each icon hit-area.
-    const iconSpawns = this.chromeSpawns.filter(
-      (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
-    );
-    iconSpawns.forEach((spawn, i) => {
-      const lbl = this.toolbarLabels[i];
-      if (!lbl) return;
-      const p = placeSpawn(spawn, r, { width, height });
-      lbl.setPosition(p.x, p.y + p.height / 2 + 2);
-      lbl.setFontSize(Math.max(10, Math.round(p.height * 0.28)));
-    });
-
-    // Transport labels (STOP/PLAY/LOOP): centred below each button hit-area.
-    const transportIds = ["btn-stop", "btn-play", "btn-loop"];
-    transportIds.forEach((id, i) => {
-      const lbl = this.transportLabels[i];
-      if (!lbl) return;
-      const spawn = this.chromeSpawns.find((s) => s.id === id);
-      if (!spawn) return;
-      const p = placeSpawn(spawn, r, { width, height });
-      lbl.setPosition(p.x, p.y + p.height / 2 + 2);
-      lbl.setFontSize(Math.max(10, Math.round(p.height * 0.28)));
-    });
   }
 
   private buildToolPanels(): void {
@@ -314,13 +209,12 @@ export class WorkshopScene extends BackgroundScene {
       this.diffCells();
     }
     this.refreshSelection();
-    this.refreshCarPicker();
-    this.refreshSpeed();
     this.refreshMutes();
+    this.refreshLcd();
   }
 
-  private refreshSpeed(): void {
-    this.speedText?.setText(String(speedLevel(this.model.tempoBpm)).padStart(2, "0"));
+  private refreshLcd(): void {
+    this.tempoText?.setText(`TEMP ${Math.round(this.model.tempoBpm)}`);
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
@@ -341,7 +235,6 @@ export class WorkshopScene extends BackgroundScene {
 
   protected onResize(): void {
     if (!this.scene.isActive()) return;
-    this.layoutGrid();
     this.layoutFixtures();
     if (this.activeTool) {
       const { width, height } = this.scale.gameSize;
@@ -532,67 +425,8 @@ export class WorkshopScene extends BackgroundScene {
     this.playhead?.setSize(this.cellW, this.cellH * laneCount);
   }
 
-  // ── car-type picker ──────────────────────────────────────────────────────────
-
-  private buildCarPicker(): void {
-    this.carBtns = CAR_TYPES.map((type) => {
-      const img = this.add
-        .image(0, 0, "train", frameKey(type, "E"))
-        .setOrigin(0.5, 1) // anchor to bottom so label sits below
-        .setDepth(9)
-        .setInteractive({ useHandCursor: true });
-      img.on("pointerdown", () => EventBus.emit("workshop-car-type-changed", type));
-      pressPop(img);
-
-      const lbl = this.add
-        .text(0, 0, CAR_TYPE_LABELS[type], {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "8px",
-          color: "#D4B483",
-        })
-        .setOrigin(0.5, 0)
-        .setDepth(9);
-
-      return { type, img, lbl, base: 1 };
-    });
-  }
-
-  private layoutCarPicker(): void {
-    const r = this.backgroundRect;
-    if (r.width === 0) return;
-    const p = WORKSHOP_LAYOUT_V2.carTypePicker;
-    const slotW = (r.width * p.w) / CAR_TYPES.length;
-    // cy is the vertical centre of the picker region; images anchor bottom so
-    // they sit in the upper half of the slot and the label sits below.
-    const cy = r.y + r.height * (p.y + p.h * 0.4);
-    const lblY = r.y + r.height * (p.y + p.h * 0.75);
-    // Scale to fill ~80% of slot width. Use FRAME_SIZE (128) as fallback if the
-    // atlas frame hasn't reported its size yet — avoids the (0,0) stuck bug.
-    const frameW = 128;
-    const targetScale = (slotW * 0.8) / frameW;
-    this.carBtns.forEach((entry, i) => {
-      const cx = r.x + r.width * p.x + (i + 0.5) * slotW;
-      entry.img.setPosition(cx, cy);
-      entry.base = targetScale;
-      entry.img.setScale(targetScale);
-      entry.lbl.setPosition(cx, lblY);
-    });
-    this.refreshCarPicker();
-  }
-
-  private refreshCarPicker(): void {
-    this.carBtns.forEach(({ type, img, lbl }) => {
-      const active = type === this.model.carType;
-      img.setAlpha(active ? 1 : 0.45);
-      img.setTint(active ? 0xffffff : 0x888888);
-      lbl.setAlpha(active ? 1 : 0.45);
-      lbl.setColor(active ? "#ffd166" : "#D4B483");
-    });
-  }
-
   private layoutFixtures(): void {
     this.layoutChrome();
-    this.layoutCarPicker();
     this.layoutGrid();
   }
 }

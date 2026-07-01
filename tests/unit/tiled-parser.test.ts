@@ -41,16 +41,16 @@ const makeMap = (
   ...extra,
 });
 
-describe("workshop.json fixture", () => {
+describe("workshop.json fixture (Three-Zone v3)", () => {
   it("validates against the Tiled schema", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 21 descriptors", () => {
-    expect(spawns).toHaveLength(21);
-    expect(spawns.map((s) => s.id)).toContain("icon-notepad");
-    expect(spawns.map((s) => s.id)).toContain("lcd-tempo-screen");
-    expect(spawns.map((s) => s.id)).toContain("lcd-song-screen");
+  it("projects the ui-layer into 14 descriptors", () => {
+    expect(spawns).toHaveLength(14);
+    expect(spawns.map((s) => s.id)).toContain("panel-header");
+    expect(spawns.map((s) => s.id)).toContain("panel-transport");
+    expect(spawns.map((s) => s.id)).toContain("lcd-transport");
   });
 
   it("normalizes every descriptor into the open unit square", () => {
@@ -67,54 +67,56 @@ describe("workshop.json fixture", () => {
   });
 });
 
-describe("toolbar objects", () => {
-  it("wires a plain (no-arg) action: notepad → new car", () => {
-    const s = need("icon-notepad");
-    expect(s.klass).toBe("toolbar");
-    expect(s.action).toBe("workshop-new-car");
-    expect(s.arg).toBeUndefined();
-    expect(s.anchor).toBe("bg");
-    expect(s.cx).toBeCloseTo(0.295, 2);
-    expect(s.cy).toBeCloseTo(0.075, 3);
-    expect(s.w).toBeCloseTo(0.06, 2);
-    expect(s.h).toBeCloseTo(0.1, 2);
-  });
-
-  it("wires an action with a string arg: musicnote → open theremin", () => {
-    const s = need("icon-musicnote");
-    expect(s.action).toBe("workshop-open-tool");
-    expect(s.arg).toBe("theremin-xy");
-  });
-
-  it("carries the safe-zone anchor: exit → map, top-right", () => {
-    const s = need("icon-exit");
-    expect(s.action).toBe("workshop-nav");
-    expect(s.arg).toBe("map");
-    expect(s.anchor).toBe("ui-top-right");
-    expect(s.cx).toBeCloseTo(0.858, 2);
+describe("panel objects (zone plates)", () => {
+  it("carry a sprite key and no action", () => {
+    const s = need("panel-header");
+    expect(s.klass).toBe("panel");
+    expect(s.sprite).toBe("panel-header");
+    expect(s.action).toBeUndefined();
+    expect(need("panel-transport").sprite).toBe("panel-transport");
   });
 });
 
-describe("instrument objects", () => {
-  it("opens the right tool panel at the measured centre: drum → beat-grid", () => {
-    const s = need("inst-drum");
-    expect(s.klass).toBe("instrument");
-    expect(s.action).toBe("workshop-open-tool");
-    expect(s.arg).toBe("beat-grid");
-    expect(s.cx).toBeCloseTo(0.262, 2);
-    expect(s.cy).toBeCloseTo(0.69, 2);
+describe("top-bar nav buttons", () => {
+  it("wires the left arrow → Map with its sprite", () => {
+    const s = need("btn-nav-left");
+    expect(s.klass).toBe("ui-button");
+    expect(s.sprite).toBe("btn-nav-left");
+    expect(s.action).toBe("workshop-nav");
+    expect(s.arg).toBe("map");
+    expect(s.cx).toBeCloseTo(0.117, 2);
+    expect(s.cy).toBeCloseTo(0.094, 2);
   });
 
-  it("maps each instrument to its action: drum/mic open tools, guitar/piano add melody lanes", () => {
+  it("wires the right arrow → Yard", () => {
+    const s = need("btn-nav-right");
+    expect(s.sprite).toBe("btn-nav-right");
+    expect(s.action).toBe("workshop-nav");
+    expect(s.arg).toBe("yard");
+  });
+});
+
+describe("field instrument objects", () => {
+  it("opens the right tool panel at the measured centre: drums → beat-grid", () => {
+    const s = need("inst-drums");
+    expect(s.klass).toBe("instrument");
+    expect(s.sprite).toBe("inst-drums");
+    expect(s.action).toBe("workshop-open-tool");
+    expect(s.arg).toBe("beat-grid");
+    expect(s.cx).toBeCloseTo(0.281, 2);
+    expect(s.cy).toBeCloseTo(0.688, 2);
+  });
+
+  it("maps each instrument to its action: drums/mic open tools, guitar/violin add melody lanes", () => {
     expect(need("inst-mic").arg).toBe("record-voicefx");
     expect(need("inst-guitar").action).toBe("workshop-add-melody");
     expect(need("inst-guitar").arg).toBe("guitar");
-    expect(need("inst-keys").action).toBe("workshop-add-melody");
-    expect(need("inst-keys").arg).toBe("piano");
+    expect(need("inst-violin").action).toBe("workshop-add-melody");
+    expect(need("inst-violin").arg).toBe("violin");
   });
 });
 
-describe("transport objects", () => {
+describe("bottom-bar transport objects", () => {
   it("emits stop with no arg", () => {
     const s = need("btn-stop");
     expect(s.action).toBe("transport-stop");
@@ -127,22 +129,22 @@ describe("transport objects", () => {
   });
 
   it("preserves numeric tempo deltas as numbers, not strings", () => {
-    const down = need("btn-speed-down");
-    const up = need("btn-speed-up");
+    const down = need("btn-tempo-down");
+    const up = need("btn-tempo-up");
     expect(down.action).toBe("tempo-changed");
-    expect(down.arg).toBe(-20); // one SPEED level = ±SPEED_STEP_BPM
+    expect(down.arg).toBe(-20);
     expect(typeof down.arg).toBe("number");
     expect(up.arg).toBe(20);
   });
 });
 
 describe("non-interactive display object", () => {
-  it("leaves the TEMPO LCD actionless and positioned for the live BPM", () => {
-    const s = need("lcd-tempo-screen");
+  it("leaves the transport LCD actionless and positioned in the panel frame", () => {
+    const s = need("lcd-transport");
     expect(s.klass).toBe("display");
     expect(s.action).toBeUndefined();
-    expect(s.cx).toBeCloseTo(0.158, 2);
-    expect(s.cy).toBeCloseTo(0.915, 2);
+    expect(s.cx).toBeCloseTo(0.211, 2);
+    expect(s.cy).toBeCloseTo(0.906, 2);
   });
 });
 
@@ -178,6 +180,12 @@ describe("property coercion", () => {
   it("drops an empty-string action (treated as non-interactive)", () => {
     const s = withProps([{ name: "action", type: "string", value: "" }]);
     expect(s.action).toBeUndefined();
+  });
+
+  it("exposes a `sprite` property (Three-Zone art key), absent when unset", () => {
+    expect(withProps([{ name: "sprite", type: "string", value: "btn-play" }]).sprite).toBe("btn-play");
+    expect(withProps([{ name: "sprite", type: "string", value: "" }]).sprite).toBeUndefined();
+    expect(withProps([]).sprite).toBeUndefined();
   });
 
   it("falls back to bg anchor for an unknown anchor value", () => {
