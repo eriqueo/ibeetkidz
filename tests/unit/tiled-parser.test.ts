@@ -46,10 +46,11 @@ describe("workshop.json fixture", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 20 descriptors", () => {
-    expect(spawns).toHaveLength(20);
+  it("projects the ui-layer into 21 descriptors", () => {
+    expect(spawns).toHaveLength(21);
     expect(spawns.map((s) => s.id)).toContain("icon-notepad");
     expect(spawns.map((s) => s.id)).toContain("lcd-tempo-screen");
+    expect(spawns.map((s) => s.id)).toContain("lcd-song-screen");
   });
 
   it("normalizes every descriptor into the open unit square", () => {

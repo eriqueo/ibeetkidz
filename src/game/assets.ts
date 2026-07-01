@@ -31,7 +31,7 @@ export type SceneBgKey = keyof typeof SCENE_BG;
 // v2 redesign: clean scene backgrounds (no painted-in UI chrome) that the React
 // overlays + Phaser sprites are drawn on top of. See REDESIGN_SPEC.md.
 export const SCENE_BG_V2 = {
-  workshop: { key: "bg-workshop-v2", url: v2("workshop-scene-clean.png") },
+  workshop: { key: "bg-workshop-v2", url: v2("workshop-scene-base.png") },
   workshopBoxcarOpen: { key: "bg-workshop-boxcar-open", url: v2("workshop-boxcar-open.png") },
   yard: { key: "bg-yard-v2", url: v2("yard-scene-clean-v2.png") },
   track: { key: "bg-track-v2", url: v2("track-scene-clean-v2.png") },

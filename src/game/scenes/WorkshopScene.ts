@@ -4,13 +4,18 @@
 // All interaction flows out over the typed EventBus — React owns state + audio
 // and pushes a derived model back in.
 //
-// The STATIC chrome (top toolbar, instrument shelf, transport buttons + the
-// TEMPO LCD anchor) is DATA-DRIVEN from the Tiled map `assets/maps/workshop.json`
+// The STATIC chrome (top toolbar, instrument shelf, transport buttons + LCD
+// displays) is DATA-DRIVEN from the Tiled map `assets/maps/workshop.json`
 // via TiledParser + TiledSceneAdapter: each object becomes a transparent hit-area
 // over the painted base plate that emits its authored EventBus action on tap. The
 // scene owns the clean background (BackgroundScene.addBackground) and hands the
 // adapter its `bgRect`, so there is exactly one background; `relayoutSpawns`
 // re-anchors the hit-areas to the painted art on every resize.
+//
+// The base plate (workshop-scene-base.png) has EMPTY LCD frames — no baked-in
+// text. All LCD values (SONG number, SPEED level) and transport button labels
+// (STOP/PLAY/LOOP) are Phaser Text objects positioned by the Tiled map data.
+// NO black-rectangle masks. NO hardcoded pixel offsets.
 //
 // The grid is built once per lane-set and only its cell tints/alpha change on a
 // store update (diffed); `update()` only sweeps the playhead.
@@ -67,8 +72,7 @@ const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex
 
 // SPEED control: discrete levels 1..N mapped onto BPM (level 4 = 120, matching
 // the painted defaults). The ↓/↑ buttons step one level (±SPEED_STEP_BPM via the
-// Tiled map); the SPEED LCD shows the level — replacing the confusing live-TEMPO
-// readout the "speed" arrows used to drive.
+// Tiled map); the SPEED LCD shows the level.
 const SPEED_BASE_BPM = 60;
 const SPEED_STEP_BPM = 20;
 const SPEED_MAX_LEVEL = 8;
@@ -83,6 +87,19 @@ const CAR_TYPE_LABELS: Record<CarType, string> = {
   tanker: "TANKER",
   hopper: "HOPPER",
   flatcar: "FLATCAR",
+};
+// Labels for the transport buttons (STOP/PLAY/LOOP), in Tiled map order.
+const TRANSPORT_LABELS: Record<string, string> = {
+  "btn-stop": "STOP",
+  "btn-play": "PLAY",
+  "btn-loop": "LOOP",
+};
+// LCD font style shared by SONG and SPEED displays.
+const LCD_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
+  fontFamily: "'Press Start 2P', monospace",
+  fontSize: "14px",
+  color: "#90BA4F",
+  letterSpacing: 2,
 };
 
 interface LaneRow {
@@ -115,10 +132,11 @@ export class WorkshopScene extends BackgroundScene {
   // (index-aligned), re-anchored to the painted art on resize.
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chromeHits: Phaser.GameObjects.Rectangle[] = [];
-  private speedText: Phaser.GameObjects.Text | undefined; // live SPEED level over the painted SPEED LCD
-  private speedBg: Phaser.GameObjects.Rectangle | undefined; // mask under the level digits
-  private tempoHideBg: Phaser.GameObjects.Rectangle | undefined; // covers the now-unused painted TEMPO section
+  // LCD display Text objects — positioned by Tiled map data, no masks needed.
+  private speedText: Phaser.GameObjects.Text | undefined; // live SPEED level in the SPEED LCD
+  private songText: Phaser.GameObjects.Text | undefined;  // song number in the SONG LCD
   private toolbarLabels: Phaser.GameObjects.Text[] = []; // labels below each toolbar icon
+  private transportLabels: Phaser.GameObjects.Text[] = []; // STOP/PLAY/LOOP labels below buttons
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -142,7 +160,7 @@ export class WorkshopScene extends BackgroundScene {
     this.announceReady();
   }
 
-  // ── data-driven static chrome (toolbar / shelf / transport / TEMPO LCD) ──────
+  // ── data-driven static chrome (toolbar / shelf / transport / LCD displays) ──
   private buildChrome(): void {
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     const { hits } = spawnTiledScene(this, this.chromeSpawns, {
@@ -151,85 +169,99 @@ export class WorkshopScene extends BackgroundScene {
     });
     this.chromeHits = hits;
 
-    // Live SPEED level over the painted SPEED LCD — mask its digits, redraw the
-    // level in lime green. Font size is set in layoutChrome() from the LCD rect.
-    this.speedBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+    // SPEED LCD: Phaser Text centred inside the empty LCD frame painted on the
+    // base plate. No mask — the base plate frame is already empty.
     this.speedText = this.add
-      .text(0, 0, "", {
-        fontFamily: "'Press Start 2P', monospace",
-        fontSize: "14px",
-        color: "#90BA4F",
-        letterSpacing: 2,
-      })
+      .text(0, 0, "", LCD_STYLE)
       .setOrigin(0.5)
       .setDepth(10);
 
-    // Black mask covering the entire SONG/TEMPO left panel (TEMPO label + digits).
-    // The painted TEMPO text is retired — SPEED is the kid-facing control now.
-    this.tempoHideBg = this.add.rectangle(0, 0, 10, 10, 0x000000).setDepth(9);
+    // SONG LCD: Phaser Text centred inside the SONG LCD frame.
+    this.songText = this.add
+      .text(0, 0, "001", LCD_STYLE)
+      .setOrigin(0.5)
+      .setDepth(10);
 
     // Pixel-art labels below each toolbar icon (all 8 icons, skipping EXIT which
     // already has a painted label). Built once; positioned in layoutChrome().
     const iconSpawns = this.chromeSpawns.filter(
       (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
     );
-    this.toolbarLabels = iconSpawns.map((_spawn, i) => {
-      const lbl = this.add
+    this.toolbarLabels = iconSpawns.map((_spawn, i) =>
+      this.add
         .text(0, 0, TOOLBAR_LABELS[i] ?? "", {
           fontFamily: "'Press Start 2P', monospace",
           fontSize: "9px",
           color: "#D4B483",
         })
         .setOrigin(0.5, 0)
-        .setDepth(10);
-      return lbl;
-    });
+        .setDepth(10),
+    );
+
+    // Transport button labels (STOP/PLAY/LOOP) as Phaser Text objects below each
+    // button. The base plate buttons have no painted text — these are the labels.
+    const transportSpawns = ["btn-stop", "btn-play", "btn-loop"].map(
+      (id) => this.chromeSpawns.find((s) => s.id === id),
+    ).filter((s): s is TiledSpawn => s !== undefined);
+    this.transportLabels = transportSpawns.map((spawn) =>
+      this.add
+        .text(0, 0, TRANSPORT_LABELS[spawn.id] ?? "", {
+          fontFamily: "'Press Start 2P', monospace",
+          fontSize: "11px",
+          color: "#D4B483",
+        })
+        .setOrigin(0.5, 0)
+        .setDepth(10),
+    );
   }
 
-  // Re-anchor the chrome hit-areas + LCD mask/text + toolbar labels after resize.
+  // Re-anchor the chrome hit-areas + LCD Text + toolbar/transport labels after resize.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
     relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
 
-    // SPEED LCD: expand mask by 4px on each side so it fully covers painted digits.
-    const speed = this.chromeSpawns.find((s) => s.id === "lcd-speed-screen");
-    if (speed && this.speedBg && this.speedText) {
-      const p = placeSpawn(speed, r, { width, height });
-      const pad = 4;
-      this.speedBg.setSize(p.width + pad * 2, p.height + pad * 2).setPosition(p.x, p.y);
-      // Font at 80% of LCD height, centred inside the box.
-      this.speedText.setPosition(p.x, p.y).setFontSize(Math.max(12, Math.round(p.height * 0.80)));
+    // SPEED LCD Text: centred inside the lcd-speed-screen Tiled object.
+    const speedSpawn = this.chromeSpawns.find((s) => s.id === "lcd-speed-screen");
+    if (speedSpawn && this.speedText) {
+      const p = placeSpawn(speedSpawn, r, { width, height });
+      this.speedText
+        .setPosition(p.x, p.y)
+        .setFontSize(Math.max(12, Math.round(p.height * 0.75)));
       this.refreshSpeed();
     }
 
-    // TEMPO hide: cover the full TEMPO section (label + digit row).
-    // lcd-tempo-screen covers only the digit row (~24px tall at 0.5 scale).
-    // The painted "TEMPO" label sits ~85px above in screen space, so we extend
-    // the mask upward by 90px and downward by 10px to fully bury both.
-    const tempo = this.chromeSpawns.find((s) => s.id === "lcd-tempo-screen");
-    if (tempo && this.tempoHideBg) {
-      const p = placeSpawn(tempo, r, { width, height });
-      const upward = 90;
-      const downward = 10;
-      this.tempoHideBg
-        .setSize(p.width + 8, p.height + upward + downward)
-        .setPosition(p.x, p.y - upward / 2 + downward / 2);
+    // SONG LCD Text: centred inside the lcd-song-screen Tiled object.
+    const songSpawn = this.chromeSpawns.find((s) => s.id === "lcd-song-screen");
+    if (songSpawn && this.songText) {
+      const p = placeSpawn(songSpawn, r, { width, height });
+      this.songText
+        .setPosition(p.x, p.y)
+        .setFontSize(Math.max(12, Math.round(p.height * 0.75)));
     }
 
-    // Toolbar labels: position each label centred below its icon.
+    // Toolbar labels: centred below each icon hit-area.
     const iconSpawns = this.chromeSpawns.filter(
       (s) => s.id.startsWith("icon-") && s.id !== "icon-exit",
     );
-    iconSpawns.forEach((_spawn, i) => {
+    iconSpawns.forEach((spawn, i) => {
       const lbl = this.toolbarLabels[i];
       if (!lbl) return;
-      const spawn = iconSpawns[i]!;
       const p = placeSpawn(spawn, r, { width, height });
-      // Place label just below the bottom edge of the icon hit-area.
       lbl.setPosition(p.x, p.y + p.height / 2 + 2);
-      // Match the painted bottom-bar label size (STOP/PLAY/LOOP are ~18px at 0.5 scale).
+      lbl.setFontSize(Math.max(10, Math.round(p.height * 0.28)));
+    });
+
+    // Transport labels (STOP/PLAY/LOOP): centred below each button hit-area.
+    const transportIds = ["btn-stop", "btn-play", "btn-loop"];
+    transportIds.forEach((id, i) => {
+      const lbl = this.transportLabels[i];
+      if (!lbl) return;
+      const spawn = this.chromeSpawns.find((s) => s.id === id);
+      if (!spawn) return;
+      const p = placeSpawn(spawn, r, { width, height });
+      lbl.setPosition(p.x, p.y + p.height / 2 + 2);
       lbl.setFontSize(Math.max(10, Math.round(p.height * 0.28)));
     });
   }
@@ -245,7 +277,6 @@ export class WorkshopScene extends BackgroundScene {
     };
   }
 
-  /** React → scene: which satellite tool panel is open (null = none). */
   /** Test-only read of the currently open satellite tool panel (null = none). */
   get activeToolId(): string | null {
     return this.activeTool;
