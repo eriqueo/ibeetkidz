@@ -190,6 +190,9 @@ export const Workshop: FC = () => {
     // Painted toolbar: nav + new car + surprise + open a tool panel.
     const onOpenTool = (toolId: string | null): void => setOpenTool((cur) => (cur === toolId ? null : toolId));
     const onNav = (view: AppView): void => dispatch({ type: "setActiveView", view });
+    // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
+    const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
+    const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });
     const onNewCar = (): void => dispatch({ type: "addCar", id: newCarId() });
     const onSurprise = (): void => surprise();
 
@@ -398,6 +401,7 @@ export const Workshop: FC = () => {
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
       ["tool-closed", onToolClosed],
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
+      ["nav-map", onNavMap], ["nav-yard", onNavYard],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
       ["workshop-layer-muted", onLayerMuted],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],

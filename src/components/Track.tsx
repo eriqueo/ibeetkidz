@@ -31,9 +31,11 @@ export const Track: FC = () => {
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     sceneRef.current = scene as TrackScene;
     sceneRef.current.setCars(carsRef.current);
+    sceneRef.current.setTempo(projectRef.current.tempoBpm);
   }, []);
 
   useEffect(() => { sceneRef.current?.setCars(cars); }, [cars]);
+  useEffect(() => { sceneRef.current?.setTempo(project.tempoBpm); }, [project.tempoBpm]);
 
   // Phaser transport buttons → audio engine / state, across the EventBus.
   useEffect(() => {

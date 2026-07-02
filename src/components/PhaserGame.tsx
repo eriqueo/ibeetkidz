@@ -48,8 +48,22 @@ export const PhaserGame = forwardRef<PhaserGameHandle, PhaserGameProps>(
     // paint; the container has its layout size by then.
     useLayoutEffect(() => {
       if (!containerRef.current || gameRef.current) return;
-      gameRef.current = startGame(containerRef.current, scenes);
+      const game = startGame(containerRef.current, scenes);
+      gameRef.current = game;
+      // Phaser caches the canvas bounds at boot — but this game boots during a
+      // React view swap, while the outgoing view can still be pushing this
+      // container off-layout. The stale bounds then mis-map every pointer
+      // (first taps land at world 0,0; buttons feel dead) because nothing
+      // fires a window resize. Re-measure right before the pointer arrives.
+      const refresh = (): void => {
+        if (game.isBooted) game.scale.refresh();
+      };
+      const container = containerRef.current;
+      container.addEventListener("pointerenter", refresh);
+      container.addEventListener("pointerdown", refresh, true); // touch: no hover
       return () => {
+        container.removeEventListener("pointerenter", refresh);
+        container.removeEventListener("pointerdown", refresh, true);
         gameRef.current?.destroy(true);
         gameRef.current = null;
       };

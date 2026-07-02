@@ -46,11 +46,12 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 14 descriptors", () => {
-    expect(spawns).toHaveLength(14);
+  it("projects the ui-layer into 16 descriptors", () => {
+    expect(spawns).toHaveLength(16);
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");
+    expect(spawns.map((s) => s.id)).toContain("inst-piano");
   });
 
   it("normalizes every descriptor into the open unit square", () => {
@@ -68,31 +69,37 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
 });
 
 describe("panel objects (zone plates)", () => {
-  it("carry a sprite key and no action", () => {
+  it("carry a sprite key and no action; header uses the v2 steampunk plate", () => {
     const s = need("panel-header");
     expect(s.klass).toBe("panel");
-    expect(s.sprite).toBe("panel-header");
+    expect(s.sprite).toBe("panel-header-v2");
     expect(s.action).toBeUndefined();
     expect(need("panel-transport").sprite).toBe("panel-transport");
   });
 });
 
-describe("top-bar nav buttons", () => {
-  it("wires the left arrow → Map with its sprite", () => {
-    const s = need("btn-nav-left");
+describe("top-bar plaques", () => {
+  it("wires the Map plaque → nav-map", () => {
+    const s = need("btn-map");
     expect(s.klass).toBe("ui-button");
-    expect(s.sprite).toBe("btn-nav-left");
-    expect(s.action).toBe("workshop-nav");
-    expect(s.arg).toBe("map");
-    expect(s.cx).toBeCloseTo(0.117, 2);
-    expect(s.cy).toBeCloseTo(0.094, 2);
+    expect(s.sprite).toBe("btn-map");
+    expect(s.action).toBe("nav-map");
+    expect(s.arg).toBeUndefined();
+    expect(s.cx).toBeCloseTo(0.152, 2);
+    expect(s.cy).toBeCloseTo(0.135, 2);
   });
 
-  it("wires the right arrow → Yard", () => {
-    const s = need("btn-nav-right");
-    expect(s.sprite).toBe("btn-nav-right");
-    expect(s.action).toBe("workshop-nav");
-    expect(s.arg).toBe("yard");
+  it("wires the New Car plaque → toggle-car-picker (centred)", () => {
+    const s = need("btn-newcar");
+    expect(s.sprite).toBe("btn-newcar");
+    expect(s.action).toBe("toggle-car-picker");
+    expect(s.cx).toBeCloseTo(0.5, 2);
+  });
+
+  it("wires the Send to Yard plaque → nav-yard", () => {
+    const s = need("btn-sendtoyard");
+    expect(s.sprite).toBe("btn-sendtoyard");
+    expect(s.action).toBe("nav-yard");
   });
 });
 
@@ -103,38 +110,43 @@ describe("field instrument objects", () => {
     expect(s.sprite).toBe("inst-drums");
     expect(s.action).toBe("workshop-open-tool");
     expect(s.arg).toBe("beat-grid");
-    expect(s.cx).toBeCloseTo(0.281, 2);
-    expect(s.cy).toBeCloseTo(0.688, 2);
+    expect(s.cx).toBeCloseTo(0.184, 2);
+    expect(s.cy).toBeCloseTo(0.635, 2);
   });
 
-  it("maps each instrument to its action: drums/mic open tools, guitar/violin add melody lanes", () => {
+  it("maps each instrument to its action: drums/mic open tools, guitar/violin/piano add melody lanes", () => {
     expect(need("inst-mic").arg).toBe("record-voicefx");
     expect(need("inst-guitar").action).toBe("workshop-add-melody");
     expect(need("inst-guitar").arg).toBe("guitar");
-    expect(need("inst-violin").action).toBe("workshop-add-melody");
     expect(need("inst-violin").arg).toBe("violin");
+    expect(need("inst-piano").action).toBe("workshop-add-melody");
+    expect(need("inst-piano").arg).toBe("piano");
   });
 });
 
 describe("bottom-bar transport objects", () => {
-  it("emits stop with no arg", () => {
+  it("emits stop with no arg and carries a STOP caption", () => {
     const s = need("btn-stop");
     expect(s.action).toBe("transport-stop");
     expect(s.arg).toBeUndefined();
+    expect(s.label).toBe("STOP");
   });
 
   it("emits play with the loop mode arg", () => {
     expect(need("btn-play").action).toBe("transport-play");
     expect(need("btn-play").arg).toBe("loop");
+    expect(need("btn-play").label).toBe("PLAY");
   });
 
-  it("preserves numeric tempo deltas as numbers, not strings", () => {
+  it("preserves numeric tempo deltas as numbers, not strings, and labels them", () => {
     const down = need("btn-tempo-down");
     const up = need("btn-tempo-up");
     expect(down.action).toBe("tempo-changed");
     expect(down.arg).toBe(-20);
     expect(typeof down.arg).toBe("number");
+    expect(down.label).toBe("SLOW");
     expect(up.arg).toBe(20);
+    expect(up.label).toBe("FAST");
   });
 });
 
@@ -143,8 +155,8 @@ describe("non-interactive display object", () => {
     const s = need("lcd-transport");
     expect(s.klass).toBe("display");
     expect(s.action).toBeUndefined();
-    expect(s.cx).toBeCloseTo(0.211, 2);
-    expect(s.cy).toBeCloseTo(0.906, 2);
+    expect(s.cx).toBeCloseTo(0.182, 2);
+    expect(s.cy).toBeCloseTo(0.854, 2);
   });
 });
 
@@ -186,6 +198,18 @@ describe("property coercion", () => {
     expect(withProps([{ name: "sprite", type: "string", value: "btn-play" }]).sprite).toBe("btn-play");
     expect(withProps([{ name: "sprite", type: "string", value: "" }]).sprite).toBeUndefined();
     expect(withProps([]).sprite).toBeUndefined();
+  });
+
+  it("exposes a `label` property (button caption), absent when unset", () => {
+    expect(withProps([{ name: "label", type: "string", value: "STOP" }]).label).toBe("STOP");
+    expect(withProps([{ name: "label", type: "string", value: "" }]).label).toBeUndefined();
+    expect(withProps([]).label).toBeUndefined();
+  });
+
+  it("exposes a `labelColor` property (caption colour), absent when unset", () => {
+    expect(withProps([{ name: "labelColor", type: "string", value: "#e8dcc8" }]).labelColor).toBe("#e8dcc8");
+    expect(withProps([{ name: "labelColor", type: "string", value: "" }]).labelColor).toBeUndefined();
+    expect(withProps([]).labelColor).toBeUndefined();
   });
 
   it("falls back to bg anchor for an unknown anchor value", () => {

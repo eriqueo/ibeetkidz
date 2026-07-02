@@ -51,14 +51,8 @@ export const SPRITES = {
   smokePuff: { key: "spr-smoke", url: sprite("smoke-puff.png") },
   tarp: { key: "spr-tarp", url: sprite("tarp.png") },
   handcar: { key: "spr-handcar", url: sprite("handcar.png") },
-  // Nav & action buttons (Yard, Track, Map scenes)
-  btnNavExit: { key: "spr-btn-nav-exit", url: sprite("btn-nav-exit.png") },
-  btnNavYard: { key: "spr-btn-nav-yard", url: sprite("btn-nav-yard.png") },
-  btnNavWorkshop: { key: "spr-btn-nav-workshop", url: sprite("btn-nav-workshop.png") },
-  btnSendToTrack: { key: "spr-btn-send-to-track", url: sprite("btn-send-to-track.png") },
-  yardPanelButtons: { key: "spr-yard-panel-buttons", url: sprite("yard-panel-buttons.png") },
-  trackPanelButtons: { key: "spr-track-panel-buttons", url: sprite("track-panel-buttons.png") },
-  lcdTempoScreen: { key: "spr-lcd-tempo", url: sprite("lcd-tempo-screen.png") },
+  // (The Yard/Track nav + panel chrome moved into the UI_SPRITES manifest in
+  // ui-sprites.ts — the Three-Zone engine owns that art now.)
 } as const satisfies Record<string, ImageAsset>;
 
 /** All car-type sprites — used by scenes that load every car body up front. */

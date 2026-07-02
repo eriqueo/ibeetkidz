@@ -30,8 +30,9 @@ import { WORKSHOP_LAYOUT_V2, WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
+import { UI_SPRITES, placeUiSprite, type UiSpriteDef } from "../ui-sprites.ts";
 import workshopMap from "../../assets/maps/workshop.json";
-import { STEP_COUNT, type CarType, type LaneKind } from "../../core/types.ts";
+import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
 import {
   BaseToolPanel,
   VoiceToolPanel,
@@ -69,12 +70,14 @@ const MUTED_COLOR = "#ff6b6b";
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
-// LCD font shared by the SONG + TEMPO readouts, rendered into the transport
-// panel's empty green LCD frame (anchored to the `lcd-transport` display object).
+// LCD font shared by the SONG + TEMPO readouts. Dark plum on a cream chip drawn
+// over the transport panel (PROJECT_CHARTER: dark text on light "paper" panels).
+const LCD_PLUM = "#2b2440";
+const LCD_CREAM = 0xe9d7ac;
 const LCD_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
   fontFamily: "'Press Start 2P', monospace",
   fontSize: "18px",
-  color: "#90BA4F",
+  color: LCD_PLUM,
   letterSpacing: 2,
 };
 
@@ -106,9 +109,14 @@ export class WorkshopScene extends BackgroundScene {
   // Data-driven static chrome: parsed Tiled spawns + the generic UI layer.
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chrome: UiElement[] = [];
-  // LCD Text (SONG number + TEMPO bpm), anchored to the `lcd-transport` object.
+  // LCD Text (SONG number + TEMPO bpm) on a cream chip, anchored to `lcd-transport`.
+  private lcdChip: Phaser.GameObjects.Graphics | undefined;
   private songText: Phaser.GameObjects.Text | undefined;
   private tempoText: Phaser.GameObjects.Text | undefined;
+  // Car-type picker dropdown (toggled by the New Car button).
+  private carPicker: Phaser.GameObjects.Container | undefined;
+  private pickerTiles: { type: CarType; img: Phaser.GameObjects.Image; def: UiSpriteDef }[] = [];
+  private pickerOpen = false;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
@@ -125,9 +133,11 @@ export class WorkshopScene extends BackgroundScene {
   create(): void {
     this.addBackground("contain"); // never crop the top/bottom bars off-screen
     this.buildChrome();
+    this.buildCarPicker();
     this.buildGrid();
     this.buildToolPanels();
     this.layoutFixtures();
+    this.bindPickerToggle();
     this.announceReady();
   }
 
@@ -140,12 +150,13 @@ export class WorkshopScene extends BackgroundScene {
       hitDepth: 10,
     });
 
-    // SONG + TEMPO LCD text, stacked in the transport panel's empty LCD frame.
+    // SONG + TEMPO LCD: dark-plum text on a cream chip drawn over the panel.
+    this.lcdChip = this.add.graphics().setDepth(9);
     this.songText = this.add.text(0, 0, "SONG 001", LCD_STYLE).setOrigin(0.5).setDepth(11);
     this.tempoText = this.add.text(0, 0, "TEMP 120", LCD_STYLE).setOrigin(0.5).setDepth(11);
   }
 
-  // Re-anchor chrome sprites + LCD text after a resize.
+  // Re-anchor chrome sprites + LCD (chip + text) after a resize.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
@@ -153,12 +164,70 @@ export class WorkshopScene extends BackgroundScene {
     relayoutUiLayer(this.chrome, r, { width, height });
 
     const lcd = this.chromeSpawns.find((s) => s.id === "lcd-transport");
-    if (lcd && this.songText && this.tempoText) {
+    if (lcd && this.songText && this.tempoText && this.lcdChip) {
       const p = placeSpawn(lcd, r, { width, height });
-      const fs = Math.max(10, Math.round(p.height * 0.32));
-      this.songText.setPosition(p.x, p.y - p.height * 0.22).setFontSize(fs);
-      this.tempoText.setPosition(p.x, p.y + p.height * 0.22).setFontSize(fs);
+      const rad = Math.min(p.height * 0.28, 18);
+      this.lcdChip
+        .clear()
+        .fillStyle(LCD_CREAM, 1)
+        .fillRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad)
+        .lineStyle(Math.max(2, p.height * 0.04), 0x2b2440, 1)
+        .strokeRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad);
+      const fs = Math.max(10, Math.round(p.height * 0.26));
+      this.songText.setPosition(p.x, p.y - p.height * 0.24).setFontSize(fs);
+      this.tempoText.setPosition(p.x, p.y + p.height * 0.24).setFontSize(fs);
     }
+  }
+
+  // ── car-type picker (toggled by the New Car button) ─────────────────────────
+  private bindPickerToggle(): void {
+    const onToggle = (): void => this.toggleCarPicker();
+    EventBus.on("toggle-car-picker", onToggle);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("toggle-car-picker", onToggle));
+  }
+
+  private buildCarPicker(): void {
+    this.pickerTiles = CAR_TYPES.map((type) => {
+      const def = UI_SPRITES[`btn-picker-${type}`]!;
+      const img = this.add.image(0, 0, def.base).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      img.on("pointerup", () => this.chooseCarType(type));
+      return { type, img, def };
+    });
+    this.carPicker = this.add
+      .container(0, 0, this.pickerTiles.map((t) => t.img))
+      .setDepth(30)
+      .setVisible(false);
+  }
+
+  private toggleCarPicker(): void {
+    this.pickerOpen = !this.pickerOpen;
+    this.carPicker?.setVisible(this.pickerOpen);
+    if (this.pickerOpen) this.layoutCarPicker();
+  }
+
+  private chooseCarType(type: CarType): void {
+    EventBus.emit("workshop-car-type-changed", type);
+    this.pickerOpen = false;
+    this.carPicker?.setVisible(false);
+  }
+
+  private layoutCarPicker(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0) return;
+    // A vertical dropdown centred under the New Car button. Tile aspect (~3:1) is
+    // preserved by placeUiSprite's contain fit within each slot rect.
+    const cx = r.x + r.width * 0.5;
+    const slotW = r.width * 0.2;
+    const slotH = r.height * 0.11;
+    this.pickerTiles.forEach((t, i) => {
+      const cy = r.y + r.height * (0.30 + i * 0.115);
+      placeUiSprite(t.img, t.def, { x: cx, y: cy, width: slotW, height: slotH });
+      const selected = t.type === this.model.carType;
+      // Boxcar has dedicated `selected` art; others just brighten when chosen.
+      const selKey = t.def.states["selected"];
+      if (selKey) t.img.setTexture(selected ? selKey : t.def.base);
+      t.img.setAlpha(selected ? 1 : 0.82);
+    });
   }
 
   private buildToolPanels(): void {
@@ -236,6 +305,7 @@ export class WorkshopScene extends BackgroundScene {
   protected onResize(): void {
     if (!this.scene.isActive()) return;
     this.layoutFixtures();
+    if (this.pickerOpen) this.layoutCarPicker();
     if (this.activeTool) {
       const { width, height } = this.scale.gameSize;
       this.toolPanels[this.activeTool]?.layout(width, height);

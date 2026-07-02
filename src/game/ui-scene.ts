@@ -24,6 +24,8 @@ import { UI_SPRITES, placeUiSprite, type UiSpriteDef } from "./ui-sprites.ts";
 
 const PRESS_SCALE = 0.94;
 const PRESS_MS = 80;
+// Dark plum caption colour on the cream panels (PROJECT_CHARTER palette).
+const LABEL_COLOR = "#2b2440";
 
 /** One spawned chrome element, kept index-aligned with its spawn for relayout. */
 export interface UiElement {
@@ -32,6 +34,8 @@ export interface UiElement {
   readonly image?: Phaser.GameObjects.Image;
   /** The transparent fallback hit-area, when the spawn had no art. */
   readonly hit?: Phaser.GameObjects.Rectangle;
+  /** The caption rendered under the button, when the spawn carried a `label`. */
+  readonly label?: Phaser.GameObjects.Text;
   readonly def?: UiSpriteDef;
 }
 
@@ -123,21 +127,64 @@ export function spawnUiLayer(
 
   return spawns.map((spawn) => {
     const def = defFor(spawn);
-    if (!def) return { spawn, hit: makeHit(scene, spawn, opts.bgRect, camSize, hitDepth) };
-
     const target = placeSpawn(spawn, opts.bgRect, camSize);
+    if (!def) {
+      // Art-less spawn → transparent hit-area; it still gets its authored
+      // caption (e.g. the interim Yard strip's baked, unlabeled tiles).
+      const hit = makeHit(scene, spawn, opts.bgRect, camSize, hitDepth);
+      const label = makeLabel(scene, spawn, target, hitDepth + 1);
+      return label ? { spawn, hit, label } : { spawn, hit };
+    }
+
     const img = scene.add.image(0, 0, def.base).setOrigin(0.5);
     placeUiSprite(img, def, target);
 
     if (spawn.klass === "panel") {
       img.setDepth(panelDepth);
-    } else {
-      img.setDepth(hitDepth);
-      if (spawn.klass === "instrument") wireInstrument(img, def, spawn);
-      else wireButton(scene, img, def, spawn);
+      return { spawn, image: img, def };
     }
-    return { spawn, image: img, def };
+
+    img.setDepth(hitDepth);
+    if (spawn.klass === "instrument") wireInstrument(img, def, spawn);
+    else wireButton(scene, img, def, spawn);
+
+    const label = makeLabel(scene, spawn, target, hitDepth + 1);
+    return label ? { spawn, image: img, def, label } : { spawn, image: img, def };
   });
+}
+
+/** Caption under a button, when the spawn authored a `label`. Colour comes from
+ *  the Tiled `labelColor` property (dark scenes use a cream) or the plum default. */
+function makeLabel(
+  scene: Phaser.Scene,
+  spawn: TiledSpawn,
+  target: { x: number; y: number; width: number; height: number },
+  depth: number,
+): Phaser.GameObjects.Text | undefined {
+  if (!spawn.label) return undefined;
+  const label = scene.add
+    .text(0, 0, spawn.label, {
+      fontFamily: "'Press Start 2P', monospace",
+      color: spawn.labelColor ?? LABEL_COLOR,
+    })
+    .setOrigin(0.5, 0)
+    .setDepth(depth);
+  placeLabel(label, target);
+  return label;
+}
+
+/** Position a button caption just under its sprite's placed rect, sized to it.
+ *  Long captions shrink to fit the button's width so adjacent labels never
+ *  collide (the caption may overhang its button by at most ~5%). */
+function placeLabel(
+  label: Phaser.GameObjects.Text,
+  target: { x: number; y: number; width: number; height: number },
+): void {
+  const fs = Math.max(9, Math.round(target.height * 0.16));
+  label.setFontSize(fs);
+  const maxW = target.width * 1.05;
+  if (label.width > maxW) label.setFontSize(Math.max(8, Math.floor((fs * maxW) / label.width)));
+  label.setPosition(target.x, target.y + target.height * 0.5 + target.height * 0.04);
 }
 
 /**
@@ -154,5 +201,6 @@ export function relayoutUiLayer(
     const target = placeSpawn(el.spawn, bg, cam);
     if (el.image && el.def) placeUiSprite(el.image, el.def, target);
     else if (el.hit) el.hit.setPosition(target.x, target.y).setSize(target.width, target.height);
+    if (el.label) placeLabel(el.label, target);
   }
 }

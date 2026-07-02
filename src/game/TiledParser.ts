@@ -76,6 +76,13 @@ export interface TiledSpawn {
    *  (e.g. "btn-play", "inst-drums", "panel-header"). Absent ⇒ the spawn has no
    *  standalone art and renders as a transparent hit-area (legacy behaviour). */
   sprite?: string;
+  /** The `label` custom property → a caption rendered under a button sprite
+   *  (icon-only transport buttons). Absent ⇒ no caption (e.g. plaques with
+   *  baked-in text). */
+  label?: string;
+  /** The `labelColor` custom property → the caption's CSS colour. Absent ⇒ the
+   *  default dark plum (right on cream panels; dark scenes author a cream). */
+  labelColor?: string;
   /** Normalized centre on the source image, 0..1 (resolution-independent). */
   cx: number;
   cy: number;
@@ -138,6 +145,8 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     const action = props["action"];
     const arg = props["arg"];
     const sprite = props["sprite"];
+    const label = props["label"];
+    const labelColor = props["labelColor"];
 
     const spawn: TiledSpawn = {
       id: o.name,
@@ -152,6 +161,8 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     if (typeof action === "string" && action.length > 0) spawn.action = action;
     if (typeof arg === "string" || typeof arg === "number") spawn.arg = arg;
     if (typeof sprite === "string" && sprite.length > 0) spawn.sprite = sprite;
+    if (typeof label === "string" && label.length > 0) spawn.label = label;
+    if (typeof labelColor === "string" && labelColor.length > 0) spawn.labelColor = labelColor;
     return spawn;
   });
 }

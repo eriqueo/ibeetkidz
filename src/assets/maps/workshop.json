@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 14,
+  "nextobjectid": 16,
   "layers": [
     {
       "id": 2,
@@ -37,14 +37,14 @@
           "id": 1,
           "name": "panel-header",
           "type": "panel",
-          "x": 120,
-          "y": 30,
-          "width": 2320,
-          "height": 210,
+          "x": 90,
+          "y": 20,
+          "width": 2380,
+          "height": 360,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "panel-header" }
+            { "name": "sprite", "type": "string", "value": "panel-header-v2" }
           ]
         },
         {
@@ -52,9 +52,9 @@
           "name": "panel-transport",
           "type": "panel",
           "x": 120,
-          "y": 1195,
+          "y": 1150,
           "width": 2320,
-          "height": 215,
+          "height": 270,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -63,44 +63,57 @@
         },
         {
           "id": 3,
-          "name": "btn-nav-left",
+          "name": "btn-map",
           "type": "ui-button",
-          "x": 210,
-          "y": 45,
-          "width": 180,
-          "height": 180,
+          "x": 270,
+          "y": 75,
+          "width": 240,
+          "height": 240,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-left" },
-            { "name": "action", "type": "string", "value": "workshop-nav" },
-            { "name": "arg", "type": "string", "value": "map" }
+            { "name": "sprite", "type": "string", "value": "btn-map" },
+            { "name": "action", "type": "string", "value": "nav-map" }
           ]
         },
         {
           "id": 4,
-          "name": "btn-nav-right",
+          "name": "btn-newcar",
           "type": "ui-button",
-          "x": 2170,
-          "y": 45,
-          "width": 180,
-          "height": 180,
+          "x": 1050,
+          "y": 80,
+          "width": 460,
+          "height": 230,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-right" },
-            { "name": "action", "type": "string", "value": "workshop-nav" },
-            { "name": "arg", "type": "string", "value": "yard" }
+            { "name": "sprite", "type": "string", "value": "btn-newcar" },
+            { "name": "action", "type": "string", "value": "toggle-car-picker" }
           ]
         },
         {
           "id": 5,
+          "name": "btn-sendtoyard",
+          "type": "ui-button",
+          "x": 1970,
+          "y": 80,
+          "width": 440,
+          "height": 230,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "sprite", "type": "string", "value": "btn-sendtoyard" },
+            { "name": "action", "type": "string", "value": "nav-yard" }
+          ]
+        },
+        {
+          "id": 6,
           "name": "inst-drums",
           "type": "instrument",
-          "x": 550,
-          "y": 810,
+          "x": 300,
+          "y": 740,
           "width": 340,
-          "height": 360,
+          "height": 350,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -110,13 +123,13 @@
           ]
         },
         {
-          "id": 6,
+          "id": 7,
           "name": "inst-mic",
           "type": "instrument",
-          "x": 960,
-          "y": 810,
+          "x": 720,
+          "y": 740,
           "width": 340,
-          "height": 360,
+          "height": 350,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -126,13 +139,13 @@
           ]
         },
         {
-          "id": 7,
+          "id": 8,
           "name": "inst-guitar",
           "type": "instrument",
-          "x": 1370,
-          "y": 810,
+          "x": 1140,
+          "y": 740,
           "width": 340,
-          "height": 360,
+          "height": 350,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -142,13 +155,13 @@
           ]
         },
         {
-          "id": 8,
+          "id": 9,
           "name": "inst-violin",
           "type": "instrument",
-          "x": 1780,
-          "y": 810,
+          "x": 1560,
+          "y": 740,
           "width": 340,
-          "height": 360,
+          "height": 350,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -158,93 +171,114 @@
           ]
         },
         {
-          "id": 9,
-          "name": "lcd-transport",
-          "type": "display",
-          "x": 360,
-          "y": 1250,
-          "width": 360,
-          "height": 110,
-          "rotation": 0,
-          "visible": true
-        },
-        {
           "id": 10,
-          "name": "btn-stop",
-          "type": "ui-button",
-          "x": 805,
-          "y": 1205,
-          "width": 190,
-          "height": 190,
+          "name": "inst-piano",
+          "type": "instrument",
+          "x": 1980,
+          "y": 740,
+          "width": 340,
+          "height": 350,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-stop" },
-            { "name": "action", "type": "string", "value": "transport-stop" }
+            { "name": "sprite", "type": "string", "value": "inst-piano" },
+            { "name": "action", "type": "string", "value": "workshop-add-melody" },
+            { "name": "arg", "type": "string", "value": "piano" }
           ]
         },
         {
           "id": 11,
+          "name": "lcd-transport",
+          "type": "display",
+          "x": 250,
+          "y": 1155,
+          "width": 430,
+          "height": 150,
+          "rotation": 0,
+          "visible": true
+        },
+        {
+          "id": 12,
+          "name": "btn-stop",
+          "type": "ui-button",
+          "x": 820,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "sprite", "type": "string", "value": "btn-stop" },
+            { "name": "action", "type": "string", "value": "transport-stop" },
+            { "name": "label", "type": "string", "value": "STOP" }
+          ]
+        },
+        {
+          "id": 13,
           "name": "btn-play",
           "type": "ui-button",
-          "x": 1135,
-          "y": 1205,
-          "width": 190,
-          "height": 190,
+          "x": 1150,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
             { "name": "sprite", "type": "string", "value": "btn-play" },
             { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "loop" }
+            { "name": "arg", "type": "string", "value": "loop" },
+            { "name": "label", "type": "string", "value": "PLAY" }
           ]
         },
         {
-          "id": 12,
+          "id": 14,
           "name": "btn-loop",
           "type": "ui-button",
-          "x": 1465,
-          "y": 1205,
-          "width": 190,
-          "height": 190,
+          "x": 1480,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
             { "name": "sprite", "type": "string", "value": "btn-loop" },
             { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "loop" }
+            { "name": "arg", "type": "string", "value": "loop" },
+            { "name": "label", "type": "string", "value": "LOOP" }
           ]
         },
         {
-          "id": 13,
+          "id": 15,
           "name": "btn-tempo-down",
           "type": "ui-button",
-          "x": 1842,
-          "y": 1212,
-          "width": 175,
-          "height": 175,
+          "x": 1855,
+          "y": 1155,
+          "width": 150,
+          "height": 150,
           "rotation": 0,
           "visible": true,
           "properties": [
             { "name": "sprite", "type": "string", "value": "btn-tempo-down" },
             { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": -20 }
+            { "name": "arg", "type": "int", "value": -20 },
+            { "name": "label", "type": "string", "value": "SLOW" }
           ]
         },
         {
-          "id": 14,
+          "id": 16,
           "name": "btn-tempo-up",
           "type": "ui-button",
-          "x": 2182,
-          "y": 1212,
-          "width": 175,
-          "height": 175,
+          "x": 2185,
+          "y": 1155,
+          "width": 150,
+          "height": 150,
           "rotation": 0,
           "visible": true,
           "properties": [
             { "name": "sprite", "type": "string", "value": "btn-tempo-up" },
             { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": 20 }
+            { "name": "arg", "type": "int", "value": 20 },
+            { "name": "label", "type": "string", "value": "FAST" }
           ]
         }
       ]

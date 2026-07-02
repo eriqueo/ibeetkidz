@@ -13,7 +13,7 @@
 // tempo controls owned by React.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
-import { SCENE_BG_V2, SPRITES } from "../assets.ts";
+import { SCENE_BG_V2 } from "../assets.ts";
 import {
   loadSpriteAssets,
   registerAnimations,
@@ -22,12 +22,11 @@ import {
   spawnSmoke,
   type TrainType,
 } from "../sprite-assets.ts";
-import { TRACK_LAYOUT_V2, TRACK_CHROME } from "../scene-layout.ts";
-import {
-  parseTiledLayer,
-  type TiledSpawn,
-} from "../TiledParser.ts";
-import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
+import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
+import { placeSpawn } from "../TiledSceneAdapter.ts";
+import { loadUiSprites } from "../ui-sprites.ts";
+import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import trackMap from "../../assets/maps/track.json";
 import type { CarType } from "../../core/types.ts";
 
@@ -56,12 +55,16 @@ export class TrackScene extends BackgroundScene {
   private direction: 1 | -1 = 1;
   private moving = false;
   private lastSignalBar = -1;
-  // Composited static chrome: placed transport-panel sprite + corner nav sprites,
-  // plus the parsed Tiled spawns and their (index-aligned) hit-areas.
-  private panelImg?: Phaser.GameObjects.Image;
-  private navImgs = new Map<string, Phaser.GameObjects.Image>();
+  // Data-driven static chrome (track.json): nav plaques + the sprite transport
+  // bar (SLOW/STOP/RIDE/FAST) placed on the base plate's painted panel frame.
   private chromeSpawns: readonly TiledSpawn[] = [];
-  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
+  private chrome: UiElement[] = [];
+  // SPEED LCD: dark-plum text on a cream chip, anchored to the `lcd-transport`
+  // Tiled display object (same treatment as the Workshop's SONG/TEMPO LCD).
+  private lcdChip?: Phaser.GameObjects.Graphics;
+  private tempoText?: Phaser.GameObjects.Text;
+  private tempoBpm = 120;
+  private lcdRect?: { width: number; height: number };
 
   constructor() {
     super(TrackScene.KEY);
@@ -71,10 +74,9 @@ export class TrackScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.track);
     // train / smoke / signal / tarp atlases (the single source of truth).
     loadSpriteAssets(this);
-    // Chrome sprites: transport panel strip + corner nav buttons.
-    this.load.image(SPRITES.trackPanelButtons.key, SPRITES.trackPanelButtons.url);
-    this.load.image(SPRITES.btnNavYard.key, SPRITES.btnNavYard.url);
-    this.load.image(SPRITES.btnNavExit.key, SPRITES.btnNavExit.url);
+    // Chrome art: only the manifest sprites this scene's Tiled map references.
+    this.chromeSpawns = parseTiledLayer(trackMap, "ui-layer");
+    loadUiSprites(this, this.chromeSpawns.map((s) => s.sprite ?? s.id));
   }
 
   create(): void {
@@ -100,46 +102,65 @@ export class TrackScene extends BackgroundScene {
     this.announceReady();
   }
 
-  // ── composited chrome (transport panel + nav sprites + Tiled hit-areas) ──────
-  // The clean base plate paints an EMPTY panel frame at the bottom, so place the
-  // transport-panel sprite over it and the nav sprites in the top corners, then
-  // lay the data-driven transparent hit-areas (parsed from track.json) on top.
-  // The adapter auto-wires each hit's authored EventBus action (transport +
-  // track-nav); `layoutChrome` re-anchors everything to the painted art on resize.
+  // ── data-driven chrome (nav plaques + sprite transport bar + SPEED LCD) ─────
+  // The clean base plate paints an EMPTY panel frame at the bottom; every button
+  // is a real sprite spawned by the generic Three-Zone engine from track.json.
   private buildChrome(): void {
-    this.panelImg = this.add.image(0, 0, SPRITES.trackPanelButtons.key).setOrigin(0.5).setDepth(1);
-    for (const id of ["btn-track-yard", "btn-track-exit"] as const) {
-      const key = id === "btn-track-yard" ? SPRITES.btnNavYard.key : SPRITES.btnNavExit.key;
-      this.navImgs.set(id, this.add.image(0, 0, key).setOrigin(0.5).setDepth(2));
-    }
-    this.chromeSpawns = parseTiledLayer(trackMap, "ui-layer");
-    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
+    this.chrome = spawnUiLayer(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
+      panelDepth: 1,
       hitDepth: 10,
     });
-    this.chromeHits = hits;
+    this.lcdChip = this.add.graphics().setDepth(9);
+    this.tempoText = this.add
+      .text(0, 0, "", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#2b2440",
+        letterSpacing: 2,
+      })
+      .setOrigin(0.5)
+      .setDepth(11);
   }
 
-  // Re-anchor the placed panel/nav sprites + their Tiled hit-areas to the painted
-  // art after the background refits (the adapter places hits once at create).
+  // Re-anchor the chrome sprites + the LCD (chip + text) after the bg refits.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
+    relayoutUiLayer(this.chrome, r, { width, height });
 
-    const P = TRACK_CHROME.panel;
-    this.panelImg
-      ?.setDisplaySize(r.width * P.w, r.height * P.h)
-      .setPosition(r.x + r.width * P.cx, r.y + r.height * P.cy);
+    const lcd = this.chromeSpawns.find((s) => s.id === "lcd-transport");
+    if (lcd && this.tempoText && this.lcdChip) {
+      const p = placeSpawn(lcd, r, { width, height });
+      const rad = Math.min(p.height * 0.28, 18);
+      this.lcdChip
+        .clear()
+        .fillStyle(0xe9d7ac, 1)
+        .fillRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad)
+        .lineStyle(Math.max(2, p.height * 0.04), 0x2b2440, 1)
+        .strokeRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad);
+      this.tempoText.setPosition(p.x, p.y);
+      this.lcdRect = { width: p.width, height: p.height };
+      this.refreshLcd();
+    }
+  }
 
-    this.navImgs.forEach((img, id) => {
-      const s = this.chromeSpawns.find((sp) => sp.id === id);
-      if (!s) return;
-      const p = placeSpawn(s, r, { width, height });
-      img.setDisplaySize(p.width, p.height).setPosition(p.x, p.y);
-    });
+  /** React → scene: the song tempo shown on the SPEED LCD. */
+  setTempo(bpm: number): void {
+    this.tempoBpm = bpm;
+    if (this.ready) this.refreshLcd();
+  }
 
-    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
+  private refreshLcd(): void {
+    if (!this.tempoText || !this.lcdRect) return;
+    this.tempoText.setText(`SPEED ${Math.round(this.tempoBpm)}`);
+    // Fit the readout inside the chip (shrink long text; never overflow).
+    const fs = Math.max(10, Math.round(this.lcdRect.height * 0.32));
+    this.tempoText.setFontSize(fs);
+    const maxW = this.lcdRect.width * 0.86;
+    if (this.tempoText.width > maxW) {
+      this.tempoText.setFontSize(Math.max(8, Math.floor((fs * maxW) / this.tempoText.width)));
+    }
   }
 
   /** React → scene: the cars to draw (one per train slot, in order). */

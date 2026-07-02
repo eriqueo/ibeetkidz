@@ -26,6 +26,11 @@ const inst = (file: string): string =>
   new URL(`../assets/sprites/instruments/${file}`, import.meta.url).href;
 const panel = (file: string): string =>
   new URL(`../assets/sprites/panels/${file}`, import.meta.url).href;
+// Legacy chrome sprites still living at the sprites/ root (Yard/Track nav
+// plaques + the baked Yard action strip) — see ART_REQUESTS.md for their
+// steampunk replacements.
+const spr = (file: string): string =>
+  new URL(`../assets/sprites/${file}`, import.meta.url).href;
 
 /** Normalized opaque-content box within a sprite's own canvas, `[x0,y0,x1,y1]`. */
 export type ContentBox = readonly [number, number, number, number];
@@ -44,23 +49,41 @@ export interface UiSpriteDef {
   readonly content: ContentBox;
   /** panels stretch to fill their rect; buttons/instruments scale uniformly. */
   readonly stretch: boolean;
+  /** crop the drawn texture to the content box (for canvases whose padding is
+   *  OPAQUE junk — e.g. the RGB yard strip's black margins — rather than
+   *  transparent). Placement math is unchanged; only the drawn region shrinks. */
+  readonly crop?: boolean;
 }
 
-// Buttons are near-square key-caps with a uniform ~13% transparent margin; the
+// Icon key-caps are near-square with a uniform ~13% transparent margin; the
 // measured per-file boxes are noisy (stray glow pixels), so a shared box is both
-// simpler and steadier across the idle/pressed pair.
+// simpler and steadier across the idle/pressed pair. Labelled steampunk plaques
+// (map / newcar / sendtoyard / picker tiles) are landscape and pass their own box.
 const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
 
-function buttonDef(id: string, pressed = true): UiSpriteDef {
+function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;
   const textures: Record<string, string> = { [idleKey]: btn(`${id}-idle.png`) };
   const states: Record<string, string> = { idle: idleKey };
-  if (pressed) {
+  if (opts.pressed ?? true) {
     const pk = `${id}-pressed`;
     textures[pk] = btn(`${id}-pressed.png`);
     states["pressed"] = pk;
   }
-  return { textures, states, base: idleKey, content: BUTTON_CONTENT, stretch: false };
+  return { textures, states, base: idleKey, content: opts.content ?? BUTTON_CONTENT, stretch: false };
+}
+
+// Car-type picker tiles: an idle art plus (boxcar only) a `selected` highlight.
+function pickerDef(type: string, content: ContentBox, selected = false): UiSpriteDef {
+  const idleKey = `btn-picker-${type}-idle`;
+  const textures: Record<string, string> = { [idleKey]: btn(`btn-picker-${type}-idle.png`) };
+  const states: Record<string, string> = { idle: idleKey };
+  if (selected) {
+    const sk = `btn-picker-${type}-selected`;
+    textures[sk] = btn(`btn-picker-${type}-selected.png`);
+    states["selected"] = sk;
+  }
+  return { textures, states, base: idleKey, content, stretch: false };
 }
 
 function instrumentDef(id: string, content: ContentBox): UiSpriteDef {
@@ -78,11 +101,33 @@ function panelDef(id: string, content: ContentBox): UiSpriteDef {
   return { textures: { [id]: panel(`${id}.png`) }, states: { base: id }, base: id, content, stretch: true };
 }
 
+// Single-state nav plaque living at the sprites/ root (no pressed art yet — the
+// engine falls back to a scale pop). Content boxes measured from each PNG's
+// solid-alpha bbox (alpha > 220; the canvases carry a faint translucent halo).
+function navDef(id: string, content: ContentBox): UiSpriteDef {
+  return {
+    textures: { [id]: spr(`${id}.png`) },
+    states: { idle: id },
+    base: id,
+    content,
+    stretch: false,
+  };
+}
+
 /** The full Three-Zone UI sprite manifest, keyed by base id (= Tiled `sprite`). */
 export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
-  // Top-bar navigation (◀ / ▶).
+  // Top-bar navigation (◀ / ▶) — legacy, kept for compatibility.
   "btn-nav-left": buttonDef("btn-nav-left"),
   "btn-nav-right": buttonDef("btn-nav-right"),
+  // Top-bar steampunk plaques (Phase 2): Map · New Car · Send to Yard.
+  "btn-map": buttonDef("btn-map", { content: [0.103, 0.087, 0.897, 0.908] }),
+  "btn-newcar": buttonDef("btn-newcar", { content: [0.098, 0.179, 0.901, 0.81] }),
+  "btn-sendtoyard": buttonDef("btn-sendtoyard", { content: [0.069, 0.132, 0.928, 0.85] }),
+  // Car-type picker tiles (shown in the dropdown the New Car button toggles).
+  "btn-picker-boxcar": pickerDef("boxcar", [0.039, 0.255, 0.961, 0.719], true),
+  "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
+  "btn-picker-hopper": pickerDef("hopper", [0.018, 0.225, 0.982, 0.748]),
+  "btn-picker-flatcar": pickerDef("flatcar", [0.036, 0.261, 0.964, 0.714]),
   // Bottom-bar transport.
   "btn-stop": buttonDef("btn-stop"),
   "btn-play": buttonDef("btn-play"),
@@ -95,16 +140,38 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "inst-keys": instrumentDef("inst-keys", [0.085, 0.131, 0.953, 0.98]),
   "inst-mic": instrumentDef("inst-mic", [0.094, 0.14, 0.88, 0.853]),
   "inst-violin": instrumentDef("inst-violin", [0.169, 0.101, 0.815, 0.881]),
+  "inst-piano": instrumentDef("inst-piano", [0.04, 0.072, 0.96, 0.931]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
-  // The PNGs are pre-trimmed to the opaque bar, so the whole canvas is content.
+  // The PNGs are pre-trimmed to the opaque frame, so the whole canvas is content.
   "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
+  "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
   "panel-transport": panelDef("panel-transport", [0, 0, 1, 1]),
+  // Yard/Track top-bar nav plaques (legacy square icons; steampunk-framed).
+  "btn-nav-workshop": navDef("btn-nav-workshop", [0.141, 0.125, 0.859, 0.868]),
+  "btn-nav-yard": navDef("btn-nav-yard", [0.138, 0.107, 0.862, 0.862]),
+  "btn-nav-exit": navDef("btn-nav-exit", [0.08, 0.073, 0.92, 0.916]),
+  // Yard bottom bar: the INTERIM baked six-tile action strip (RGB, black
+  // margins — hence crop). The frame content box was measured from the art;
+  // yard.json lays labelled hit-areas over the baked tiles via the same box.
+  // Individual idle/pressed button sprites are on order in ART_REQUESTS.md.
+  "panel-yard-actions": {
+    textures: { "panel-yard-actions": spr("yard-panel-buttons.png") },
+    states: { base: "panel-yard-actions" },
+    base: "panel-yard-actions",
+    content: [0.0039, 0.2528, 0.9961, 0.7271],
+    stretch: true,
+    crop: true,
+  },
 } as const;
 
-/** Load every texture in the manifest (idempotent — skips already-loaded keys).
- *  Call from a scene's `preload`. */
-export function loadUiSprites(scene: Phaser.Scene): void {
-  for (const def of Object.values(UI_SPRITES)) {
+/** Load manifest textures (idempotent — skips already-loaded keys). Call from a
+ *  scene's `preload`. Pass `only` (UI_SPRITES base ids, e.g. derived from the
+ *  scene's parsed Tiled spawns) to load just that scene's chrome; omit it to
+ *  load everything (Workshop needs off-map sprites like the picker tiles). */
+export function loadUiSprites(scene: Phaser.Scene, only?: readonly string[]): void {
+  const wanted = only === undefined ? undefined : new Set(only);
+  for (const [id, def] of Object.entries(UI_SPRITES)) {
+    if (wanted !== undefined && !wanted.has(id)) continue;
     for (const [key, url] of Object.entries(def.textures)) {
       if (!scene.textures.exists(key)) scene.load.image(key, url);
     }
@@ -142,6 +209,10 @@ export function placeUiSprite(
   const [x0, y0, x1, y1] = def.content;
   const contentW = Math.max(1e-6, (x1 - x0) * texW);
   const contentH = Math.max(1e-6, (y1 - y0) * texH);
+
+  // Opaque-padded canvases draw only their content region; position/scale math
+  // is unaffected (setCrop works in un-scaled texture coordinates).
+  if (def.crop) img.setCrop(x0 * texW, y0 * texH, contentW, contentH);
 
   const sx = target.width / contentW;
   const sy = target.height / contentH;

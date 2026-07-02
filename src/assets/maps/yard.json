@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 9,
+  "nextobjectid": 10,
   "layers": [
     {
       "id": 2,
@@ -36,142 +36,132 @@
         {
           "id": 1,
           "name": "btn-yard-workshop",
-          "type": "nav",
-          "x": 427,
-          "y": 39,
+          "type": "ui-button",
+          "x": 270,
+          "y": 75,
           "width": 240,
-          "height": 220,
+          "height": 240,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-nav"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "workshop"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-nav-workshop" },
+            { "name": "action", "type": "string", "value": "yard-nav" },
+            { "name": "arg", "type": "string", "value": "workshop" },
+            { "name": "label", "type": "string", "value": "WORKSHOP" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 2,
           "name": "btn-yard-exit",
-          "type": "nav",
-          "x": 2280,
-          "y": 40,
+          "type": "ui-button",
+          "x": 2050,
+          "y": 75,
           "width": 240,
-          "height": 220,
+          "height": 240,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-nav"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "map"
-            },
-            {
-              "name": "anchor",
-              "type": "string",
-              "value": "ui-top-right"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-nav-exit" },
+            { "name": "action", "type": "string", "value": "yard-nav" },
+            { "name": "arg", "type": "string", "value": "map" },
+            { "name": "anchor", "type": "string", "value": "ui-top-right" },
+            { "name": "label", "type": "string", "value": "MAP" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 3,
-          "name": "btn-edit-car",
-          "type": "action",
-          "x": 397,
-          "y": 1148,
-          "width": 230,
-          "height": 210,
+          "name": "panel-yard-actions",
+          "type": "panel",
+          "x": 480,
+          "y": 980,
+          "width": 1600,
+          "height": 430,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-edit-car"
-            }
+            { "name": "sprite", "type": "string", "value": "panel-yard-actions" }
           ]
         },
         {
           "id": 4,
-          "name": "btn-add-to-train",
+          "name": "btn-edit-car",
           "type": "action",
-          "x": 650,
-          "y": 1148,
-          "width": 230,
-          "height": 210,
+          "x": 567,
+          "y": 1048,
+          "width": 224,
+          "height": 269,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-add"
-            }
+            { "name": "action", "type": "string", "value": "yard-edit-car" },
+            { "name": "label", "type": "string", "value": "EDIT" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 5,
-          "name": "btn-remove-from-train",
+          "name": "btn-add-to-train",
           "type": "action",
-          "x": 915,
-          "y": 1148,
-          "width": 230,
-          "height": 210,
+          "x": 1053,
+          "y": 1048,
+          "width": 224,
+          "height": 269,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-remove-from-train"
-            }
+            { "name": "action", "type": "string", "value": "yard-add" },
+            { "name": "label", "type": "string", "value": "HITCH" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 6,
-          "name": "btn-send-to-track",
+          "name": "btn-remove-from-train",
           "type": "action",
-          "x": 1180,
-          "y": 1148,
-          "width": 230,
-          "height": 210,
+          "x": 1295,
+          "y": 1048,
+          "width": 224,
+          "height": 269,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-depart"
-            }
+            { "name": "action", "type": "string", "value": "yard-remove-from-train" },
+            { "name": "label", "type": "string", "value": "UNHITCH" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 7,
-          "name": "btn-delete-car",
+          "name": "btn-send-to-track",
           "type": "action",
-          "x": 1441,
-          "y": 1148,
-          "width": 230,
-          "height": 210,
+          "x": 1538,
+          "y": 1048,
+          "width": 224,
+          "height": 269,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-remove-car"
-            }
+            { "name": "action", "type": "string", "value": "yard-depart" },
+            { "name": "label", "type": "string", "value": "TO TRACK" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "btn-delete-car",
+          "type": "action",
+          "x": 1781,
+          "y": 1048,
+          "width": 224,
+          "height": 269,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "action", "type": "string", "value": "yard-remove-car" },
+            { "name": "label", "type": "string", "value": "DELETE" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         }
       ]

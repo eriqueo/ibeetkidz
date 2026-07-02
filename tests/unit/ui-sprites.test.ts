@@ -5,12 +5,16 @@ import { UI_SPRITES, placeUiSprite, type UiSpriteDef, type PlacedRect } from "..
 // calls setScale/setPosition, so we record those without loading Phaser.
 function makeImg(w: number, h: number): {
   width: number; height: number; scaleX: number; scaleY: number; x: number; y: number;
+  crop: [number, number, number, number] | null;
   setScale: (sx: number, sy?: number) => unknown; setPosition: (x: number, y: number) => unknown;
+  setCrop: (x: number, y: number, w: number, h: number) => unknown;
 } {
   const img = {
     width: w, height: h, scaleX: 1, scaleY: 1, x: 0, y: 0,
+    crop: null as [number, number, number, number] | null,
     setScale(sx: number, sy?: number) { img.scaleX = sx; img.scaleY = sy ?? sx; return img; },
     setPosition(x: number, y: number) { img.x = x; img.y = y; return img; },
+    setCrop(x: number, y: number, cw: number, ch: number) { img.crop = [x, y, cw, ch]; return img; },
   };
   return img;
 }
@@ -60,6 +64,31 @@ describe("placeUiSprite", () => {
     // symmetric content box → centred on the target with no offset.
     expect(img.x).toBeCloseTo(500, 6);
     expect(img.y).toBeCloseTo(300, 6);
+  });
+
+  it("crops an opaque-padded canvas to its content box, leaving placement alone", () => {
+    // Mirrors panel-yard-actions: an RGB strip whose margins are baked black.
+    const def: UiSpriteDef = {
+      textures: {}, states: {}, base: "p",
+      content: [0.1, 0.25, 0.9, 0.75], stretch: true, crop: true,
+    };
+    const img = makeImg(1000, 500);
+    placeUiSprite(img as never, def, target);
+    // crop rect = content box in un-scaled texture px.
+    expect(img.crop).toEqual([100, 125, 800, 250]);
+    // stretch: content (800×250) fills the 200×100 target exactly.
+    expect(img.scaleX).toBeCloseTo(200 / 800, 6);
+    expect(img.scaleY).toBeCloseTo(100 / 250, 6);
+    // content centre = canvas centre here → lands on the target centre.
+    expect(img.x).toBeCloseTo(500, 6);
+    expect(img.y).toBeCloseTo(300, 6);
+  });
+
+  it("never crops when the def doesn't ask for it", () => {
+    const def: UiSpriteDef = { textures: {}, states: {}, base: "p", content: [0, 0, 1, 1], stretch: true };
+    const img = makeImg(1000, 500);
+    placeUiSprite(img as never, def, target);
+    expect(img.crop).toBeNull();
   });
 
   it("offsets so an off-centre content box lands on the target centre", () => {
