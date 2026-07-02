@@ -151,12 +151,16 @@ describe("bottom-bar transport objects", () => {
 });
 
 describe("non-interactive display object", () => {
-  it("leaves the transport LCD actionless and positioned in the panel frame", () => {
+  it("leaves the transport LCD actionless, covering the panel's baked window", () => {
     const s = need("lcd-transport");
     expect(s.klass).toBe("display");
     expect(s.action).toBeUndefined();
-    expect(s.cx).toBeCloseTo(0.182, 2);
-    expect(s.cy).toBeCloseTo(0.854, 2);
+    // The chip must cover the sage LCD window baked into panel-transport.png
+    // (measured at design 266,1229 → 832,1347 through the panel's Tiled rect).
+    expect(s.cx - s.w / 2).toBeLessThanOrEqual(266 / 2560);
+    expect(s.cx + s.w / 2).toBeGreaterThanOrEqual(832 / 2560);
+    expect(s.cy - s.h / 2).toBeLessThanOrEqual(1229 / 1440);
+    expect(s.cy + s.h / 2).toBeGreaterThanOrEqual(1347 / 1440);
   });
 });
 

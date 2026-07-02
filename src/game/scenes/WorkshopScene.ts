@@ -127,7 +127,13 @@ export class WorkshopScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.workshopBoxcarOpen);
-    loadUiSprites(this); // panels + buttons + instruments (Three-Zone chrome)
+    // Only this scene's chrome: the map's sprites plus the (off-map) car-type
+    // picker tiles — never the whole manifest, which stalls the first paint.
+    this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
+    loadUiSprites(this, [
+      ...this.chromeSpawns.map((s) => s.sprite ?? s.id),
+      ...CAR_TYPES.map((t) => `btn-picker-${t}`),
+    ]);
   }
 
   create(): void {
@@ -143,7 +149,6 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── data-driven static chrome (panels / nav / instruments / transport) ──────
   private buildChrome(): void {
-    this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     this.chrome = spawnUiLayer(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
       panelDepth: 1,
