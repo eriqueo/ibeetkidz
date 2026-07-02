@@ -14,7 +14,24 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-02 — engineering pass wiring the art sprint in)
+### Recently Completed (2026-07-02, later — deploy unblocked + asset perf pass)
+*   **Live-site outage root-caused (Eric: "no headers"):** the Pages workflow
+    gates on `npm run test`; a fixture test still asserting the LCD's pre-fit
+    position shipped red, so the deploy FAILED and the site stayed on the
+    pre-header build. Lesson encoded: re-run the FULL suite after the last
+    edit, not the second-to-last. The test now asserts the real invariant
+    (chip covers the baked sage window).
+*   **Downscale pass DONE (was a long-standing TODO):** all runtime PNGs
+    downscaled to sane resolutions (keycaps 512, plaques 1024, instruments
+    768) and palette-quantized to PNG8 — 265 MB → 12 MB. Workshop now
+    preloads only its own map's sprites + picker tiles like Yard/Track.
+    Scenes previously queued ~130 MB and painted NOTHING until preload
+    finished — minutes of black screen on a real connection. Verified against
+    the production build: every scene complete in ~2 s, art visually unchanged.
+*   Remaining perf follow-up: a loading indicator between view swaps would
+    still be kind on slow connections (Phaser paints only after preload).
+
+### Previously Completed (2026-07-02 — engineering pass wiring the art sprint in)
 *   **Yard bottom bar is real buttons:** the interim baked strip + labelled hits
     are gone; `yard.json` now places `panel-yard-actions` (the empty plate) with
     five `ui-button` keycaps (`btn-yard-edit/hitch/unhitch/totrack/delete`,
