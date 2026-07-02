@@ -59,32 +59,6 @@ export const YARD_LAYOUT_V2 = {
   crane: { x: 0.50, y: 0.12, w: 0.40, h: 0.55 } satisfies NormRegion,
 } as const;
 
-// ── Phase C composited chrome (Yard / Track) ────────────────────────────────
-// The button-panel sprites (`yard-panel-buttons.png`, `track-panel-buttons.png`)
-// are NOT painted into the clean base plates — they are placed as Phaser images
-// over the bottom band of the scene, with the Tiled transparent hit-areas laid
-// on top. `panel` is the placed sprite's rect on the backgroundRect (centre +
-// size, non-uniform — the flat panel graphic stretches to fill the band). The
-// hit coordinates in `yard.json` / `track.json` were derived from this same
-// placement so each hit lands on its painted button — i.e. for button at the
-// sprite's canvas-normalized centre `u`, hit.cx = panel.cx + (u - 0.5)*panel.w.
-// MEASURED FROM ART — both the panel rect AND the matching Tiled coords need a
-// live visual tuning pass; nudge them together.
-export const YARD_CHROME = {
-  // Panel sprite centred at screen x≈320 (left-half of canvas), y≈970.
-  // Cover-fit bg: bgX=-338, bgW=1956 → cx = (320+338)/1956 = 0.336
-  // Panel sprite is ~640px wide on screen → w = 640/1956 = 0.327
-  // h tuned so the panel fills the bottom band without overflowing.
-  panel: { cx: 0.336, cy: 0.882, w: 0.327, h: 0.28 },
-} as const;
-
-export const TRACK_CHROME = {
-  // Panel sprite centred at screen x≈640 (full canvas width), y≈937.
-  // Cover-fit bg: bgX=-338, bgW=1956 → cx = (640+338)/1956 = 0.500
-  // Panel sprite is ~1280px wide on screen → w = 1280/1956 = 0.655
-  panel: { cx: 0.500, cy: 0.882, w: 0.655, h: 0.28 },
-} as const;
-
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each
 // siding + the shared x-range; cars lay out left→right along the active siding.
 export const YARD_SIDINGS_V2 = {

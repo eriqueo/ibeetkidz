@@ -9,14 +9,12 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
-import { SCENE_BG_V2, SPRITES } from "../assets.ts";
+import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
-import { YARD_SIDINGS_V2, YARD_LAYOUT_V2, YARD_CHROME } from "../scene-layout.ts";
-import {
-  parseTiledLayer,
-  type TiledSpawn,
-} from "../TiledParser.ts";
-import { spawnTiledScene, relayoutSpawns, placeSpawn } from "../TiledSceneAdapter.ts";
+import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
+import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
+import { loadUiSprites } from "../ui-sprites.ts";
+import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import yardMap from "../../assets/maps/yard.json";
 import type { CarType } from "../../core/types.ts";
 
@@ -92,12 +90,12 @@ export class YardScene extends BackgroundScene {
   private paletteTokens = new Map<string, Phaser.GameObjects.Container>();
   private trainTokens: Phaser.GameObjects.Container[] = [];
   private busy = false; // a crane/departure tween is in flight — ignore presses
-  // Composited static chrome: the placed button-panel sprite + corner nav sprites,
-  // plus the parsed Tiled spawns and their (index-aligned) hit-areas.
-  private panelImg?: Phaser.GameObjects.Image;
-  private navImgs = new Map<string, Phaser.GameObjects.Image>();
+  // Data-driven static chrome (yard.json): nav plaques + the interim action
+  // strip, spawned by the generic Three-Zone engine. The action buttons are
+  // labelled transparent hits over the strip's baked tiles until the individual
+  // idle/pressed sprites land (ART_REQUESTS.md).
   private chromeSpawns: readonly TiledSpawn[] = [];
-  private chromeHits: Phaser.GameObjects.Rectangle[] = [];
+  private chrome: UiElement[] = [];
 
   constructor() {
     super(YardScene.KEY);
@@ -107,39 +105,21 @@ export class YardScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.yard);
     // train (car bodies, top-down) + tarp atlases.
     loadSpriteAssets(this);
-    // Chrome sprites: panel strip + corner nav buttons.
-    this.load.image(SPRITES.yardPanelButtons.key, SPRITES.yardPanelButtons.url);
-    this.load.image(SPRITES.btnNavWorkshop.key, SPRITES.btnNavWorkshop.url);
-    this.load.image(SPRITES.btnNavExit.key, SPRITES.btnNavExit.url);
+    // Chrome art: only the manifest sprites this scene's Tiled map references.
+    this.chromeSpawns = parseTiledLayer(yardMap, "ui-layer");
+    loadUiSprites(this, this.chromeSpawns.map((s) => s.sprite ?? s.id));
   }
 
   create(): void {
     this.addBackground("contain");
-    this.buildChrome();
+    this.chrome = spawnUiLayer(this, this.chromeSpawns, {
+      bgRect: this.backgroundRect,
+      panelDepth: 1,
+      hitDepth: 10,
+    });
     this.rebuild();
     this.bindIntents();
     this.announceReady();
-  }
-
-  // ── composited chrome (panel + nav sprites + Tiled hit-areas) ───────────────
-  // The clean base plate paints NO buttons, so place the panel sprite over the
-  // bottom band and the nav sprites in the top corners, then lay the data-driven
-  // transparent hit-areas (parsed from yard.json) on top. The adapter auto-wires
-  // each hit's authored EventBus action; `layoutChrome` re-anchors everything to
-  // the painted art on resize.
-  private buildChrome(): void {
-    this.panelImg = this.add.image(0, 0, SPRITES.yardPanelButtons.key).setOrigin(0.5).setDepth(1);
-    for (const id of ["btn-yard-workshop", "btn-yard-exit"] as const) {
-      const key = id === "btn-yard-workshop" ? SPRITES.btnNavWorkshop.key : SPRITES.btnNavExit.key;
-      this.navImgs.set(id, this.add.image(0, 0, key).setOrigin(0.5).setDepth(2));
-    }
-    this.chromeSpawns = parseTiledLayer(yardMap, "ui-layer");
-    const { hits } = spawnTiledScene(this, this.chromeSpawns, {
-      bgRect: this.backgroundRect,
-      hitDepth: 10,
-    });
-    this.chromeHits = hits;
-    this.layoutChrome();
   }
 
   // YardScene owns the palette selection, so the animated/selection-aware action
@@ -331,28 +311,12 @@ export class YardScene extends BackgroundScene {
     this.layoutChrome();
   }
 
-  // Re-anchor the placed panel/nav sprites + their Tiled hit-areas to the painted
-  // art after the background refits (the adapter places hits once at create).
+  // Re-anchor the data-driven chrome to the painted art after the bg refits —
+  // one call into the generic engine's pure placement math.
   private layoutChrome(): void {
     const r = this.backgroundRect;
     if (r.width === 0) return;
-    const { width, height } = this.scale.gameSize;
-
-    const P = YARD_CHROME.panel;
-    this.panelImg
-      ?.setDisplaySize(r.width * P.w, r.height * P.h)
-      .setPosition(r.x + r.width * P.cx, r.y + r.height * P.cy);
-
-    // Nav sprites track their own Tiled spawn (same anchor math the hits use), so
-    // sprite + transparent hit always coincide, including ui-top-right pinning.
-    this.navImgs.forEach((img, id) => {
-      const s = this.chromeSpawns.find((sp) => sp.id === id);
-      if (!s) return;
-      const p = placeSpawn(s, r, { width, height });
-      img.setDisplaySize(p.width, p.height).setPosition(p.x, p.y);
-    });
-
-    relayoutSpawns(this.chromeHits, this.chromeSpawns, r, { width, height });
+    relayoutUiLayer(this.chrome, r, this.scale.gameSize);
   }
 
   /** Scale a car container so its sprite body is ~`targetW` px wide. */

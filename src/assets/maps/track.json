@@ -36,169 +36,121 @@
         {
           "id": 1,
           "name": "btn-track-yard",
-          "type": "nav",
-          "x": 427,
-          "y": 39,
+          "type": "ui-button",
+          "x": 270,
+          "y": 75,
           "width": 240,
-          "height": 220,
+          "height": 240,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "track-nav"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "yard"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-nav-yard" },
+            { "name": "action", "type": "string", "value": "track-nav" },
+            { "name": "arg", "type": "string", "value": "yard" },
+            { "name": "label", "type": "string", "value": "YARD" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 2,
           "name": "btn-track-exit",
-          "type": "nav",
-          "x": 1893,
-          "y": 39,
+          "type": "ui-button",
+          "x": 2050,
+          "y": 75,
           "width": 240,
-          "height": 220,
+          "height": 240,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "track-nav"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "map"
-            },
-            {
-              "name": "anchor",
-              "type": "string",
-              "value": "ui-top-right"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-nav-exit" },
+            { "name": "action", "type": "string", "value": "track-nav" },
+            { "name": "arg", "type": "string", "value": "map" },
+            { "name": "anchor", "type": "string", "value": "ui-top-right" },
+            { "name": "label", "type": "string", "value": "MAP" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 3,
-          "name": "btn-rewind",
-          "type": "transport",
-          "x": 308,
-          "y": 1112,
-          "width": 300,
-          "height": 230,
+          "name": "lcd-transport",
+          "type": "display",
+          "x": 240,
+          "y": 1160,
+          "width": 430,
+          "height": 150,
           "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "tempo-changed"
-            },
-            {
-              "name": "arg",
-              "type": "int",
-              "value": -10
-            }
-          ]
+          "visible": true
         },
         {
           "id": 4,
-          "name": "btn-pause",
-          "type": "transport",
-          "x": 718,
-          "y": 1112,
-          "width": 300,
-          "height": 230,
+          "name": "btn-tempo-down",
+          "type": "ui-button",
+          "x": 900,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "transport-stop"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-tempo-down" },
+            { "name": "action", "type": "string", "value": "tempo-changed" },
+            { "name": "arg", "type": "int", "value": -10 },
+            { "name": "label", "type": "string", "value": "SLOW" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 5,
           "name": "btn-stop",
-          "type": "transport",
-          "x": 1127,
-          "y": 1112,
-          "width": 300,
-          "height": 230,
+          "type": "ui-button",
+          "x": 1280,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "transport-stop"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-stop" },
+            { "name": "action", "type": "string", "value": "transport-stop" },
+            { "name": "label", "type": "string", "value": "STOP" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 6,
           "name": "btn-ride",
-          "type": "transport",
-          "x": 1538,
-          "y": 1112,
-          "width": 300,
-          "height": 230,
+          "type": "ui-button",
+          "x": 1660,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "transport-play"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "ride"
-            }
+            { "name": "sprite", "type": "string", "value": "btn-play" },
+            { "name": "action", "type": "string", "value": "transport-play" },
+            { "name": "arg", "type": "string", "value": "ride" },
+            { "name": "label", "type": "string", "value": "RIDE" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
         },
         {
           "id": 7,
-          "name": "btn-ff",
-          "type": "transport",
-          "x": 1948,
-          "y": 1112,
-          "width": 300,
-          "height": 230,
+          "name": "btn-tempo-up",
+          "type": "ui-button",
+          "x": 2040,
+          "y": 1150,
+          "width": 160,
+          "height": 160,
           "rotation": 0,
           "visible": true,
           "properties": [
-            {
-              "name": "action",
-              "type": "string",
-              "value": "tempo-changed"
-            },
-            {
-              "name": "arg",
-              "type": "int",
-              "value": 10
-            }
+            { "name": "sprite", "type": "string", "value": "btn-tempo-up" },
+            { "name": "action", "type": "string", "value": "tempo-changed" },
+            { "name": "arg", "type": "int", "value": 10 },
+            { "name": "label", "type": "string", "value": "FAST" },
+            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
           ]
-        },
-        {
-          "id": 8,
-          "name": "lcd-tempo-screen",
-          "type": "display",
-          "x": 663,
-          "y": 1149,
-          "width": 210,
-          "height": 49,
-          "rotation": 0,
-          "visible": true
         }
       ]
     }
