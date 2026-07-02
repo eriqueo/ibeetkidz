@@ -206,6 +206,12 @@ describe("property coercion", () => {
     expect(withProps([]).label).toBeUndefined();
   });
 
+  it("exposes a `labelColor` property (caption colour), absent when unset", () => {
+    expect(withProps([{ name: "labelColor", type: "string", value: "#e8dcc8" }]).labelColor).toBe("#e8dcc8");
+    expect(withProps([{ name: "labelColor", type: "string", value: "" }]).labelColor).toBeUndefined();
+    expect(withProps([]).labelColor).toBeUndefined();
+  });
+
   it("falls back to bg anchor for an unknown anchor value", () => {
     const s = withProps([{ name: "anchor", type: "string", value: "diagonal" }]);
     expect(s.anchor).toBe("bg");

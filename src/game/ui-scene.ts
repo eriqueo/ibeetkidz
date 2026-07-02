@@ -127,9 +127,15 @@ export function spawnUiLayer(
 
   return spawns.map((spawn) => {
     const def = defFor(spawn);
-    if (!def) return { spawn, hit: makeHit(scene, spawn, opts.bgRect, camSize, hitDepth) };
-
     const target = placeSpawn(spawn, opts.bgRect, camSize);
+    if (!def) {
+      // Art-less spawn → transparent hit-area; it still gets its authored
+      // caption (e.g. the interim Yard strip's baked, unlabeled tiles).
+      const hit = makeHit(scene, spawn, opts.bgRect, camSize, hitDepth);
+      const label = makeLabel(scene, spawn, target, hitDepth + 1);
+      return label ? { spawn, hit, label } : { spawn, hit };
+    }
+
     const img = scene.add.image(0, 0, def.base).setOrigin(0.5);
     placeUiSprite(img, def, target);
 
@@ -142,22 +148,42 @@ export function spawnUiLayer(
     if (spawn.klass === "instrument") wireInstrument(img, def, spawn);
     else wireButton(scene, img, def, spawn);
 
-    // Optional dark-plum caption under an icon button (transport controls).
-    let label: Phaser.GameObjects.Text | undefined;
-    if (spawn.label) {
-      label = scene.add
-        .text(0, 0, spawn.label, { fontFamily: "'Press Start 2P', monospace", color: LABEL_COLOR })
-        .setOrigin(0.5, 0)
-        .setDepth(hitDepth + 1);
-      placeLabel(label, target);
-    }
+    const label = makeLabel(scene, spawn, target, hitDepth + 1);
     return label ? { spawn, image: img, def, label } : { spawn, image: img, def };
   });
 }
 
-/** Position a button caption just under its sprite's placed rect, sized to it. */
-function placeLabel(label: Phaser.GameObjects.Text, target: { x: number; y: number; height: number }): void {
-  label.setFontSize(Math.max(9, Math.round(target.height * 0.16)));
+/** Caption under a button, when the spawn authored a `label`. Colour comes from
+ *  the Tiled `labelColor` property (dark scenes use a cream) or the plum default. */
+function makeLabel(
+  scene: Phaser.Scene,
+  spawn: TiledSpawn,
+  target: { x: number; y: number; width: number; height: number },
+  depth: number,
+): Phaser.GameObjects.Text | undefined {
+  if (!spawn.label) return undefined;
+  const label = scene.add
+    .text(0, 0, spawn.label, {
+      fontFamily: "'Press Start 2P', monospace",
+      color: spawn.labelColor ?? LABEL_COLOR,
+    })
+    .setOrigin(0.5, 0)
+    .setDepth(depth);
+  placeLabel(label, target);
+  return label;
+}
+
+/** Position a button caption just under its sprite's placed rect, sized to it.
+ *  Long captions shrink to fit the button's width so adjacent labels never
+ *  collide (the caption may overhang its button by at most ~5%). */
+function placeLabel(
+  label: Phaser.GameObjects.Text,
+  target: { x: number; y: number; width: number; height: number },
+): void {
+  const fs = Math.max(9, Math.round(target.height * 0.16));
+  label.setFontSize(fs);
+  const maxW = target.width * 1.05;
+  if (label.width > maxW) label.setFontSize(Math.max(8, Math.floor((fs * maxW) / label.width)));
   label.setPosition(target.x, target.y + target.height * 0.5 + target.height * 0.04);
 }
 
