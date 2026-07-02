@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 9,
+  "nextobjectid": 10,
   "layers": [
     {
       "id": 2,
@@ -35,43 +35,53 @@
       "objects": [
         {
           "id": 1,
+          "name": "panel-header",
+          "type": "panel",
+          "x": 90,
+          "y": 20,
+          "width": 2380,
+          "height": 360,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "sprite", "type": "string", "value": "panel-header-v2" }
+          ]
+        },
+        {
+          "id": 2,
           "name": "btn-track-yard",
           "type": "ui-button",
-          "x": 270,
-          "y": 75,
-          "width": 240,
-          "height": 240,
+          "x": 180,
+          "y": 110,
+          "width": 480,
+          "height": 170,
           "rotation": 0,
           "visible": true,
           "properties": [
             { "name": "sprite", "type": "string", "value": "btn-nav-yard" },
             { "name": "action", "type": "string", "value": "track-nav" },
-            { "name": "arg", "type": "string", "value": "yard" },
-            { "name": "label", "type": "string", "value": "YARD" },
-            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
-          ]
-        },
-        {
-          "id": 2,
-          "name": "btn-track-exit",
-          "type": "ui-button",
-          "x": 2050,
-          "y": 75,
-          "width": 240,
-          "height": 240,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-exit" },
-            { "name": "action", "type": "string", "value": "track-nav" },
-            { "name": "arg", "type": "string", "value": "map" },
-            { "name": "anchor", "type": "string", "value": "ui-top-right" },
-            { "name": "label", "type": "string", "value": "MAP" },
-            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
+            { "name": "arg", "type": "string", "value": "yard" }
           ]
         },
         {
           "id": 3,
+          "name": "btn-track-map",
+          "type": "ui-button",
+          "x": 1900,
+          "y": 110,
+          "width": 480,
+          "height": 170,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            { "name": "sprite", "type": "string", "value": "btn-nav-map" },
+            { "name": "action", "type": "string", "value": "track-nav" },
+            { "name": "arg", "type": "string", "value": "map" },
+            { "name": "anchor", "type": "string", "value": "ui-top-right" }
+          ]
+        },
+        {
+          "id": 4,
           "name": "lcd-transport",
           "type": "display",
           "x": 240,
@@ -82,7 +92,7 @@
           "visible": true
         },
         {
-          "id": 4,
+          "id": 5,
           "name": "btn-tempo-down",
           "type": "ui-button",
           "x": 900,
@@ -100,7 +110,7 @@
           ]
         },
         {
-          "id": 5,
+          "id": 6,
           "name": "btn-stop",
           "type": "ui-button",
           "x": 1280,
@@ -117,25 +127,23 @@
           ]
         },
         {
-          "id": 6,
+          "id": 7,
           "name": "btn-ride",
           "type": "ui-button",
-          "x": 1660,
-          "y": 1150,
-          "width": 160,
-          "height": 160,
+          "x": 1640,
+          "y": 1140,
+          "width": 180,
+          "height": 180,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-play" },
+            { "name": "sprite", "type": "string", "value": "btn-track-ride" },
             { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "ride" },
-            { "name": "label", "type": "string", "value": "RIDE" },
-            { "name": "labelColor", "type": "string", "value": "#e8dcc8" }
+            { "name": "arg", "type": "string", "value": "ride" }
           ]
         },
         {
-          "id": 7,
+          "id": 8,
           "name": "btn-tempo-up",
           "type": "ui-button",
           "x": 2040,

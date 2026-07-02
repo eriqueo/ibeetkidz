@@ -26,11 +26,6 @@ const inst = (file: string): string =>
   new URL(`../assets/sprites/instruments/${file}`, import.meta.url).href;
 const panel = (file: string): string =>
   new URL(`../assets/sprites/panels/${file}`, import.meta.url).href;
-// Legacy chrome sprites still living at the sprites/ root (Yard/Track nav
-// plaques + the baked Yard action strip) — see ART_REQUESTS.md for their
-// steampunk replacements.
-const spr = (file: string): string =>
-  new URL(`../assets/sprites/${file}`, import.meta.url).href;
 
 /** Normalized opaque-content box within a sprite's own canvas, `[x0,y0,x1,y1]`. */
 export type ContentBox = readonly [number, number, number, number];
@@ -101,28 +96,11 @@ function panelDef(id: string, content: ContentBox): UiSpriteDef {
   return { textures: { [id]: panel(`${id}.png`) }, states: { base: id }, base: id, content, stretch: true };
 }
 
-// Single-state nav plaque living at the sprites/ root (no pressed art yet — the
-// engine falls back to a scale pop). Content boxes measured from each PNG's
-// solid-alpha bbox (alpha > 220; the canvases carry a faint translucent halo).
-function navDef(id: string, content: ContentBox): UiSpriteDef {
-  return {
-    textures: { [id]: spr(`${id}.png`) },
-    states: { idle: id },
-    base: id,
-    content,
-    stretch: false,
-  };
-}
 
 /** The full Three-Zone UI sprite manifest, keyed by base id (= Tiled `sprite`). */
 export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
-  // Top-bar navigation (◀ / ▶) — legacy, kept for compatibility.
-  "btn-nav-left": buttonDef("btn-nav-left"),
-  "btn-nav-right": buttonDef("btn-nav-right"),
-  // Top-bar steampunk plaques (Phase 2): Map · New Car · Send to Yard.
-  "btn-map": buttonDef("btn-map", { content: [0.103, 0.087, 0.897, 0.908] }),
+  // Workshop top-bar: the New Car plaque (nav plaques are the shared set below).
   "btn-newcar": buttonDef("btn-newcar", { content: [0.098, 0.179, 0.901, 0.81] }),
-  "btn-sendtoyard": buttonDef("btn-sendtoyard", { content: [0.069, 0.132, 0.928, 0.85] }),
   // Car-type picker tiles (shown in the dropdown the New Car button toggles).
   "btn-picker-boxcar": pickerDef("boxcar", [0.039, 0.255, 0.961, 0.719], true),
   "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
@@ -134,6 +112,21 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-loop": buttonDef("btn-loop"),
   "btn-tempo-down": buttonDef("btn-tempo-down"),
   "btn-tempo-up": buttonDef("btn-tempo-up"),
+  // Track: the dedicated RIDE keycap (golden loco, baked label — no caption).
+  "btn-track-ride": buttonDef("btn-track-ride"),
+  // Yard bottom-bar action keycaps (baked labels — no captions).
+  "btn-yard-edit": buttonDef("btn-yard-edit"),
+  "btn-yard-hitch": buttonDef("btn-yard-hitch"),
+  "btn-yard-unhitch": buttonDef("btn-yard-unhitch"),
+  "btn-yard-totrack": buttonDef("btn-yard-totrack"),
+  "btn-yard-delete": buttonDef("btn-yard-delete"),
+  // Cross-scene nav plaques (landscape parchment signs, baked text + arrows).
+  // Content boxes measured from each idle PNG's solid-alpha bbox (alpha > 220).
+  // Only MAP has pressed art so far (ART_REQUESTS AR-006 covers the rest).
+  "btn-nav-map": buttonDef("btn-nav-map", { content: [0.036, 0.234, 0.961, 0.719] }),
+  "btn-nav-workshop": buttonDef("btn-nav-workshop", { pressed: false, content: [0.044, 0.254, 0.965, 0.703] }),
+  "btn-nav-yard": buttonDef("btn-nav-yard", { pressed: false, content: [0.049, 0.225, 0.951, 0.733] }),
+  "btn-nav-track": buttonDef("btn-nav-track", { pressed: false, content: [0.067, 0.255, 0.948, 0.734] }),
   // Field instruments (content boxes measured from the passive PNGs' opaque bbox).
   "inst-drums": instrumentDef("inst-drums", [0.05, 0.285, 0.959, 0.77]),
   "inst-guitar": instrumentDef("inst-guitar", [0.053, 0.109, 0.956, 0.865]),
@@ -142,26 +135,12 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "inst-violin": instrumentDef("inst-violin", [0.169, 0.101, 0.815, 0.881]),
   "inst-piano": instrumentDef("inst-piano", [0.04, 0.072, 0.96, 0.931]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
-  // The PNGs are pre-trimmed to the opaque frame, so the whole canvas is content.
+  // panel-header/transport PNGs are pre-trimmed (whole canvas = content); the
+  // yard actions plate carries transparent margins, so it passes a measured box.
   "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
   "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
   "panel-transport": panelDef("panel-transport", [0, 0, 1, 1]),
-  // Yard/Track top-bar nav plaques (legacy square icons; steampunk-framed).
-  "btn-nav-workshop": navDef("btn-nav-workshop", [0.141, 0.125, 0.859, 0.868]),
-  "btn-nav-yard": navDef("btn-nav-yard", [0.138, 0.107, 0.862, 0.862]),
-  "btn-nav-exit": navDef("btn-nav-exit", [0.08, 0.073, 0.92, 0.916]),
-  // Yard bottom bar: the INTERIM baked six-tile action strip (RGB, black
-  // margins — hence crop). The frame content box was measured from the art;
-  // yard.json lays labelled hit-areas over the baked tiles via the same box.
-  // Individual idle/pressed button sprites are on order in ART_REQUESTS.md.
-  "panel-yard-actions": {
-    textures: { "panel-yard-actions": spr("yard-panel-buttons.png") },
-    states: { base: "panel-yard-actions" },
-    base: "panel-yard-actions",
-    content: [0.0039, 0.2528, 0.9961, 0.7271],
-    stretch: true,
-    crop: true,
-  },
+  "panel-yard-actions": panelDef("panel-yard-actions", [0.021, 0.325, 0.979, 0.672]),
 } as const;
 
 /** Load manifest textures (idempotent — skips already-loaded keys). Call from a

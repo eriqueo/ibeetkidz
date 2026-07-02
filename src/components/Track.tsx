@@ -95,9 +95,10 @@ export const Track: FC = () => {
       {/* Nav + transport now live inside TrackScene (Tiled hits over composited
           panel/nav sprites), driven through the EventBus — no HTML nav here. */}
 
-      {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live */}
+      {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live.
+          Sits just below the steampunk header band (top ~26% of the canvas). */}
       {cars.length > 0 && (
-        <div style={{ position: "absolute", top: 40, left: "50%", transform: "translateX(-50%)", zIndex: 19, display: "flex", gap: 4, maxWidth: "90%", flexWrap: "wrap", justifyContent: "center" }}>
+        <div style={{ position: "absolute", top: "27%", left: "50%", transform: "translateX(-50%)", zIndex: 19, display: "flex", gap: 4, maxWidth: "90%", flexWrap: "wrap", justifyContent: "center" }}>
           {liveTrain(project).map((c, i) => {
             const part = project.parts.find((p) => p.id === c.partId)!;
             return (

@@ -51,12 +51,14 @@ export const WORKSHOP_TOOL_MODAL = {
   x: 0.07, y: 0.11, w: 0.86, h: 0.70,
 } as const;
 
-// Yard v2: 4 parallel sidings on the left hold the built-car palette; the top
-// straight track is the assembly line; the gantry crane occupies the right.
+// Yard v2: 4 parallel sidings hold the built-car palette; the straight track
+// inside the oval is the assembly line the crane drops cars onto. Measured
+// from the 2026-07-02 repainted base plate (rail rows: oval top 0.289,
+// assembly straight 0.361, oval bottom 0.473, sidings from 0.517).
 export const YARD_LAYOUT_V2 = {
-  palette: { x: 0.03, y: 0.30, w: 0.55, h: 0.40 } satisfies NormRegion,
-  assemblyLine: { x: 0.06, y: 0.05, w: 0.86, h: 0.10 } satisfies NormRegion,
-  crane: { x: 0.50, y: 0.12, w: 0.40, h: 0.55 } satisfies NormRegion,
+  palette: { x: 0.03, y: 0.47, w: 0.55, h: 0.40 } satisfies NormRegion,
+  assemblyLine: { x: 0.17, y: 0.316, w: 0.66, h: 0.09 } satisfies NormRegion,
+  crane: { x: 0.50, y: 0.35, w: 0.40, h: 0.40 } satisfies NormRegion,
 } as const;
 
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each
@@ -64,7 +66,7 @@ export const YARD_LAYOUT_V2 = {
 export const YARD_SIDINGS_V2 = {
   rows: 4,
   x0: 0.06, // left edge of a siding (first car centre offset added per index)
-  y0: 0.345, // centre y of the top siding
+  y0: 0.517, // centre y of the top siding (2026-07-02 plate: rails at 0.517)
   dy: 0.092, // vertical spacing between sidings
   carW: 0.11, // car sprite / hit-area width (fraction of image)
   carH: 0.07,
@@ -75,7 +77,9 @@ export const YARD_SIDINGS_V2 = {
 // straight, and the bottom control panel band.
 export const TRACK_LAYOUT_V2 = {
   // Ellipse centre + radii (fractions of the image), tracing the painted oval.
-  oval: { cx: 0.5, cy: 0.335, rx: 0.40, ry: 0.245 } as const,
+  // Measured from the 2026-07-02 repainted plate (straights at 0.307/0.634,
+  // side bands at 0.154/0.846).
+  oval: { cx: 0.5, cy: 0.47, rx: 0.346, ry: 0.163 } as const,
   // Normalized path position (0..1 around the ellipse) where the signal sits —
   // the bottom-centre straight. Phaser.Curves.Ellipse starts at 3 o'clock and
   // goes counter-clockwise, so the bottom is at 0.75.
@@ -83,9 +87,9 @@ export const TRACK_LAYOUT_V2 = {
   // Where the loco head sits at progress 0 (train parked): 0.25 = top-centre
   // straight, so the coupled train rests along the top and drives off CCW.
   parkAngle: 0.25,
-  // The crossing signal sprite anchor (bottom-centre of the oval) + display width
-  // as a fraction of the scene (it was rendering at full 2560px — a monolith).
-  signal: { x: 0.5, y: 0.585, w: 0.05 } as const,
+  // The crossing signal sprite anchor (bottom-centre of the oval, over the
+  // plate's painted signal) + display width as a fraction of the scene.
+  signal: { x: 0.5, y: 0.683, w: 0.05 } as const,
 } as const;
 
 // Map: where the handcar location-marker sits over each painted landmark

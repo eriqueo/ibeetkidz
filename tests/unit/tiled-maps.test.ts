@@ -47,72 +47,92 @@ describe.each([
     }
   });
 
-  it("captions every interactive object (labels are the kid-readable names)", () => {
+  it("gives every interactive object real art or a caption (nothing anonymous)", () => {
+    // Buttons with baked-in labels (nav plaques, yard keycaps, RIDE) need no
+    // Tiled caption; icon-only keycaps (SLOW/STOP/FAST) author one.
     for (const s of spawns) {
       if (s.action !== undefined) {
-        expect(s.label, `${s.id} needs a label`).toBeTypeOf("string");
+        expect(
+          s.sprite !== undefined || s.label !== undefined,
+          `${s.id} needs a sprite or a label`,
+        ).toBe(true);
       }
+    }
+  });
+
+  it("resolves every sprite button in the manifest with idle art", () => {
+    for (const s of spawns) {
+      if (s.sprite === undefined || s.klass !== "ui-button") continue;
+      expect(UI_SPRITES[s.sprite]!.states["idle"], `${s.id} idle`).toBeTypeOf("string");
     }
   });
 });
 
 describe("yard.json wiring", () => {
-  it("wires the top-bar nav plaques", () => {
+  it("mounts the shared steampunk header with nav plaques on it", () => {
+    expect(need(yard, "panel-header").sprite).toBe("panel-header-v2");
     const ws = need(yard, "btn-yard-workshop");
     expect(ws.sprite).toBe("btn-nav-workshop");
     expect(ws.action).toBe("yard-nav");
     expect(ws.arg).toBe("workshop");
-    const exit = need(yard, "btn-yard-exit");
-    expect(exit.action).toBe("yard-nav");
-    expect(exit.arg).toBe("map");
-    expect(exit.anchor).toBe("ui-top-right");
+    const track_ = need(yard, "btn-yard-track");
+    expect(track_.sprite).toBe("btn-nav-track");
+    expect(track_.action).toBe("yard-nav");
+    expect(track_.arg).toBe("track");
+    expect(track_.anchor).toBe("ui-top-right");
   });
 
-  it("places the interim action strip as a panel", () => {
+  it("places the empty actions plate as a panel", () => {
     const p = need(yard, "panel-yard-actions");
     expect(p.klass).toBe("panel");
     expect(p.sprite).toBe("panel-yard-actions");
     expect(p.action).toBeUndefined();
   });
 
-  it("wires all five bottom-bar actions", () => {
-    expect(need(yard, "btn-edit-car").action).toBe("yard-edit-car");
-    expect(need(yard, "btn-add-to-train").action).toBe("yard-add");
-    expect(need(yard, "btn-remove-from-train").action).toBe("yard-remove-from-train");
-    expect(need(yard, "btn-send-to-track").action).toBe("yard-depart");
-    expect(need(yard, "btn-delete-car").action).toBe("yard-remove-car");
+  it("wires all five bottom-bar actions to real keycap sprites with pressed art", () => {
+    for (const [id, sprite, action] of [
+      ["btn-edit-car", "btn-yard-edit", "yard-edit-car"],
+      ["btn-add-to-train", "btn-yard-hitch", "yard-add"],
+      ["btn-remove-from-train", "btn-yard-unhitch", "yard-remove-from-train"],
+      ["btn-send-to-track", "btn-yard-totrack", "yard-depart"],
+      ["btn-delete-car", "btn-yard-delete", "yard-remove-car"],
+    ] as const) {
+      const s = need(yard, id);
+      expect(s.sprite).toBe(sprite);
+      expect(s.action).toBe(action);
+      expect(UI_SPRITES[sprite]!.states["pressed"], `${sprite} pressed`).toBeTypeOf("string");
+    }
   });
 
-  it("lands the action hits on the strip's baked tiles (content-box mapping)", () => {
-    // The strip's frame content box maps [480,980,1600,430] onto the canvas;
-    // tile centres were measured from the art. Spot-check the first + last.
-    expect(need(yard, "btn-edit-car").cx).toBeCloseTo(679 / 2560, 3);
-    expect(need(yard, "btn-delete-car").cx).toBeCloseTo(1893 / 2560, 3);
-    // Every action hit sits inside the panel's span.
+  it("keeps the action keycaps inside the plate's span", () => {
     const p = need(yard, "panel-yard-actions");
-    for (const s of yard.filter((x) => x.klass === "action")) {
-      expect(Math.abs(s.cx - p.cx)).toBeLessThan(p.w / 2);
-      expect(Math.abs(s.cy - p.cy)).toBeLessThan(p.h / 2);
+    const ids = ["btn-edit-car", "btn-add-to-train", "btn-remove-from-train", "btn-send-to-track", "btn-delete-car"];
+    for (const id of ids) {
+      const s = need(yard, id);
+      expect(Math.abs(s.cx - p.cx), `${id} x`).toBeLessThan(p.w / 2);
+      expect(Math.abs(s.cy - p.cy), `${id} y`).toBeLessThan(p.h / 2);
     }
   });
 });
 
 describe("track.json wiring", () => {
-  it("wires the top-bar nav plaques", () => {
+  it("mounts the shared steampunk header with nav plaques on it", () => {
+    expect(need(track, "panel-header").sprite).toBe("panel-header-v2");
     const y = need(track, "btn-track-yard");
     expect(y.sprite).toBe("btn-nav-yard");
     expect(y.action).toBe("track-nav");
     expect(y.arg).toBe("yard");
-    const exit = need(track, "btn-track-exit");
-    expect(exit.arg).toBe("map");
-    expect(exit.anchor).toBe("ui-top-right");
+    const map = need(track, "btn-track-map");
+    expect(map.sprite).toBe("btn-nav-map");
+    expect(map.arg).toBe("map");
+    expect(map.anchor).toBe("ui-top-right");
   });
 
   it("builds the transport bar from real sprite buttons with pressed states", () => {
     for (const [id, sprite] of [
       ["btn-tempo-down", "btn-tempo-down"],
       ["btn-stop", "btn-stop"],
-      ["btn-ride", "btn-play"],
+      ["btn-ride", "btn-track-ride"],
       ["btn-tempo-up", "btn-tempo-up"],
     ] as const) {
       const s = need(track, id);

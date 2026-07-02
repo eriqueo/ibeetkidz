@@ -80,12 +80,12 @@ describe("panel objects (zone plates)", () => {
 
 describe("top-bar plaques", () => {
   it("wires the Map plaque → nav-map", () => {
-    const s = need("btn-map");
+    const s = need("btn-nav-map");
     expect(s.klass).toBe("ui-button");
-    expect(s.sprite).toBe("btn-map");
+    expect(s.sprite).toBe("btn-nav-map");
     expect(s.action).toBe("nav-map");
     expect(s.arg).toBeUndefined();
-    expect(s.cx).toBeCloseTo(0.152, 2);
+    expect(s.cx).toBeCloseTo(0.164, 2);
     expect(s.cy).toBeCloseTo(0.135, 2);
   });
 
@@ -96,9 +96,9 @@ describe("top-bar plaques", () => {
     expect(s.cx).toBeCloseTo(0.5, 2);
   });
 
-  it("wires the Send to Yard plaque → nav-yard", () => {
-    const s = need("btn-sendtoyard");
-    expect(s.sprite).toBe("btn-sendtoyard");
+  it("wires the Yard plaque → nav-yard", () => {
+    const s = need("btn-nav-yard");
+    expect(s.sprite).toBe("btn-nav-yard");
     expect(s.action).toBe("nav-yard");
   });
 });

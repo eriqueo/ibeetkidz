@@ -1,7 +1,7 @@
 # iBeetKidz Status Log
 
 **Date:** July 2, 2026
-**Current Phase:** Art Polish Sprint — Cross-Scene Visual Consistency
+**Current Phase:** Cross-Scene Consistency — art landed + wired in
 
 > **Purpose:** This document tracks the current implementation state, what was just completed, what is currently blocking, and the immediate next steps for the engineering agents. It is highly volatile and should be updated after every major work session.
 
@@ -14,7 +14,36 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-02 — Art Sprint: Cross-Scene Consistency)
+### Recently Completed (2026-07-02 — engineering pass wiring the art sprint in)
+*   **Yard bottom bar is real buttons:** the interim baked strip + labelled hits
+    are gone; `yard.json` now places `panel-yard-actions` (the empty plate) with
+    five `ui-button` keycaps (`btn-yard-edit/hitch/unhitch/totrack/delete`,
+    idle⇄pressed, baked labels — no captions needed). Zero scene-code changes,
+    exactly as designed.
+*   **Nav plaques unified across scenes:** all three maps mount `panel-header-v2`
+    with the new landscape parchment plaques on it — Workshop: ←MAP · NEW CAR ·
+    YARD→; Yard: ←WORKSHOP · TRACK→; Track: ←YARD (returns) · MAP→ (top-right).
+    Old `btn-map`/`btn-sendtoyard`/root `btn-nav-*` manifest entries retired.
+*   **Yard→Track guard:** the TRACK plaque navigates directly, so `Yard.tsx`
+    now mirrors the Map's build-a-train-first guard (toast, stays in the Yard).
+    Verified live with an emptied train.
+*   **Track RIDE:** dedicated `btn-track-ride` keycap (baked label) replaces the
+    reused play triangle.
+*   **Field constants retuned to the repainted plates** (`scene-layout.ts`):
+    Yard sidings now start at y 0.517 (rails measured), assembly line is the
+    interior straight at 0.361; Track oval is `{cx .5, cy .47, rx .346, ry .163}`
+    with the signal anchor at 0.683. Measured from the PNGs, not eyeballed.
+*   **Workshop LCD fixed (old bug #2):** `lcd-transport` re-authored to exactly
+    cover the panel's baked sage window (measured at design 266,1229→832,1347) —
+    no more green sliver, clear of the STOP keycap. Tiled-only fix.
+*   **Track tarp strip** moved below the new header band (top 27%).
+*   **Verification:** typecheck clean, **198 unit tests**, build clean, **5/5
+    e2e**, live click-through of every new button (EDIT→Workshop, plaques across
+    all scenes, RIDE/STOP, guard toast), fresh screenshots of all three scenes.
+*   AR-007 verified (`inst-piano` key matches); AR-009 logged (semi-opaque halo
+    on the new keycap canvases).
+
+### Previously Completed (2026-07-02 — Art Sprint: Cross-Scene Consistency)
 *   **Yard/Track base plates updated:** both `yard-scene-clean-v2.png` and
     `track-scene-clean-v2.png` repainted to include a clear top band (~180px)
     so `panel-header-v2` can sit over all three scenes identically.
@@ -88,26 +117,18 @@ hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
 ## 2. Immediate Next Steps
 
-1.  **Swap the Yard strip for individual buttons** — art is now ready (AR-001/
-    AR-002 done). Replace the `panel-yard-actions` panel + hit objects in
-    `yard.json` with five `ui-button` sprite objects pointing to
-    `btn-yard-<name>-idle/pressed.png`. Pure Tiled edit + 5 manifest entries;
-    zero scene-code changes. Track's transport bar is the template.
-2.  **Swap Workshop nav plaques** — replace the old `btn-nav-workshop` /
-    `btn-nav-yard` references in `workshop.json` with the new
-    `btn-nav-map-idle/pressed` (left) and `btn-nav-yard-idle` (right).
-    Same for `yard.json` (WORKSHOP left, TRACK right) and `track.json`
-    (YARD left, MAP right). Pure Tiled + manifest edit.
-3.  **Add inst-piano to Workshop field** — add a `ui-instrument` object in
-    `workshop.json` pointing to `inst-piano` sprite, with `action:
-    workshop-add-melody`. Position it between the cat/guitar and alien/violin.
-2.  **Reorder UI:** the strip's arrows tile is intentionally unwired (no
-    `reorderTrain` EventBus event yet). Needs a small design (tap-to-swap? drag
-    on the assembly line?) then an `EventMap` entry + reducer wiring.
-3.  **Track loop-count control:** design + art + `EventMap` event still missing
+(The art sprint's three engineering asks — yard button swap, nav plaque swap,
+inst-piano — are all DONE; inst-piano had already been in `workshop.json` since
+the Phase 2 migration.)
+
+1.  **Reorder UI:** no reorder control exists (the old strip's arrows tile was
+    never wired; `reorderTrain` has no EventBus event). Needs a small design
+    (tap-to-swap? drag on the assembly line?) then an `EventMap` entry +
+    reducer wiring — and a `btn-yard-reorder` keycap from the art queue.
+2.  **Track loop-count control:** design + art + `EventMap` event still missing
     (charter lists Mute/Loop as Track's bottom bar; mute is the HTML tarp strip
     today and could migrate into the canvas per-car).
-4.  **Track playback position sync** (long-standing #4): drive playback FROM the
+3.  **Track playback position sync** (long-standing): drive playback FROM the
     physical crossing-signal pass rather than the transport driving the visual.
 
 ---
@@ -116,10 +137,8 @@ hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
 1.  **Lane Delete UI (Workshop grid):** the per-lane ✕ exists in the grid rows —
     verify against the delegation ask and kid-size the hit target.
-2.  **Workshop LCD/STOP overlap:** the SONG/TEMPO chip slightly overlaps the
-    STOP button at some widths — nudge `lcd-transport` / `btn-stop` rects in
-    `workshop.json` (Tiled-only fix).
-3.  **Yard assembly-line visuals:** holding-area emphasis + richer crane motion
-    remain future polish.
-4.  **Sprite weight:** the button/instrument PNGs are still 2–4 MB each
+2.  **Yard assembly-line visuals:** holding-area emphasis + richer crane motion
+    remain future polish (the crane lift height in `YardScene.animatePickup`
+    deserves a look against the repainted plate).
+3.  **Sprite weight:** the button/instrument PNGs are still 2–4 MB each
     (oversized canvases); the downscale pass is still TODO.

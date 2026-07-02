@@ -77,13 +77,26 @@ alpha edges."
 
 ---
 
-## AR-007 · Husky-on-keyboards instrument — confirm file name — LOW
+## ✅ VERIFIED — AR-007 · Husky-on-keyboards instrument file name
 
-**Current file:** `src/assets/sprites/instruments/inst-piano-passive/hover/active.png`
+`workshop.json` references `sprite: inst-piano` (action `workshop-add-melody`,
+arg `piano`) and the manifest maps it to
+`instruments/inst-piano-passive/hover/active.png`. Nothing to change.
 
-**Note:** the instrument key in `workshop.json` should reference `inst-piano`
-(not `inst-keys`) to match the generated filenames. Code agent: verify the
-Tiled map `sprite` property matches.
+---
+
+## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
+
+**Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,
+`btn-track-ride-idle.png` (and a faint one on `btn-nav-track-idle.png`).
+
+**Why:** the canvases carry a semi-transparent dark backdrop across the full
+1920×1920 canvas (minimum alpha ≈ 19–47 measured, i.e. an 8–18% opaque wash)
+instead of alpha 0 — it reads as a faint dark square behind each keycap.
+Tolerable on the dark yard plate, but visible on lighter grounds.
+
+**Prompt:** "Re-export with a fully transparent background (alpha 0 everywhere
+outside the keycap plaque). Same size, position, art unchanged."
 
 ---
 

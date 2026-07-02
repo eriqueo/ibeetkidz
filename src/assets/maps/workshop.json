@@ -63,16 +63,16 @@
         },
         {
           "id": 3,
-          "name": "btn-map",
+          "name": "btn-nav-map",
           "type": "ui-button",
-          "x": 270,
-          "y": 75,
-          "width": 240,
-          "height": 240,
+          "x": 180,
+          "y": 110,
+          "width": 480,
+          "height": 170,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-map" },
+            { "name": "sprite", "type": "string", "value": "btn-nav-map" },
             { "name": "action", "type": "string", "value": "nav-map" }
           ]
         },
@@ -93,16 +93,16 @@
         },
         {
           "id": 5,
-          "name": "btn-sendtoyard",
+          "name": "btn-nav-yard",
           "type": "ui-button",
-          "x": 1970,
-          "y": 80,
-          "width": 440,
-          "height": 230,
+          "x": 1900,
+          "y": 110,
+          "width": 480,
+          "height": 170,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-sendtoyard" },
+            { "name": "sprite", "type": "string", "value": "btn-nav-yard" },
             { "name": "action", "type": "string", "value": "nav-yard" }
           ]
         },
@@ -190,10 +190,10 @@
           "id": 11,
           "name": "lcd-transport",
           "type": "display",
-          "x": 250,
-          "y": 1155,
-          "width": 430,
-          "height": 150,
+          "x": 248,
+          "y": 1208,
+          "width": 590,
+          "height": 158,
           "rotation": 0,
           "visible": true
         },

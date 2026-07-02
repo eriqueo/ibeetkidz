@@ -1,4 +1,4 @@
-import { FC, useCallback, useEffect, useMemo, useRef } from "react";
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { YardScene, type YardCar, type YardTrainCar } from "../game/scenes/YardScene.ts";
@@ -15,6 +15,7 @@ export const Yard: FC = () => {
   const { dispatch } = useApp();
   const project = useProject();
   const sceneRef = useRef<YardScene | null>(null);
+  const [toast, setToast] = useState<string | null>(null);
 
   const cars = useMemo<YardCar[]>(
     () => project.parts.map((p) => ({ id: p.id, color: p.color, name: p.name, carType: p.carType })),
@@ -58,7 +59,15 @@ export const Yard: FC = () => {
     const onEditCar = () => dispatch({ type: "setActiveView", view: "workshop" });
     const onRemoveCar = () =>
       dispatch({ type: "removeCar", partId: projectRef.current.activePartId });
-    const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
+    // The TRACK plaque needs an assembled train (same guard as the Map's hit).
+    const onNav = (view: AppView) => {
+      if (view === "track" && liveTrain(projectRef.current).length === 0) {
+        setToast("Build a train first! HITCH some cars.");
+        window.setTimeout(() => setToast(null), 2200);
+        return;
+      }
+      dispatch({ type: "setActiveView", view });
+    };
     EventBus.on("yard-car-selected", onSelect);
     EventBus.on("yard-add-to-train", onAdd);
     EventBus.on("yard-send-to-track", onSend);
@@ -84,6 +93,28 @@ export const Yard: FC = () => {
             so the canvas takes pointer events (global default is none for overlays). */}
         <PhaserGame scenes={YARD_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
       </div>
+
+      {/* "Build a train first" toast (same treatment as the Map's Track guard) */}
+      {toast && (
+        <div style={{
+          position: "absolute",
+          left: "50%",
+          bottom: "8%",
+          transform: "translateX(-50%)",
+          zIndex: 30,
+          padding: "10px 16px",
+          background: "rgba(0,0,0,0.82)",
+          border: "2px solid #ffd166",
+          borderRadius: 8,
+          color: "#ffd166",
+          font: "400 10px/1.6 var(--font-label, 'Press Start 2P')",
+          letterSpacing: "1px",
+          textAlign: "center",
+          pointerEvents: "none",
+        }}>
+          {toast}
+        </div>
+      )}
     </div>
   );
 };
