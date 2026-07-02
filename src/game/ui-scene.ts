@@ -62,12 +62,21 @@ function defFor(spawn: TiledSpawn): UiSpriteDef | undefined {
   return UI_SPRITES[key];
 }
 
-/** Wire a button sprite: idle ⇄ pressed, emit action on release. */
+// Phaser delivers `pointerup` to whatever sits under the pointer at release,
+// even when the press began elsewhere. A modal that hides itself on
+// pointerdown (e.g. a tool panel's ✕) would therefore leak its release into
+// the chrome underneath — closing the Beat Maker used to fire the Send to
+// Yard plaque under it. Every chrome control ARMS on its own pointerdown and
+// fires only an armed release.
+
+/** Wire a button sprite: idle ⇄ pressed, emit action on an armed release. */
 function wireButton(scene: Phaser.Scene, img: Phaser.GameObjects.Image, def: UiSpriteDef, spawn: TiledSpawn): void {
   const idle = def.states["idle"] ?? def.base;
   const pressed = def.states["pressed"];
+  let armed = false;
   img.setInteractive({ useHandCursor: true });
   const down = (): void => {
+    armed = true;
     if (pressed) img.setTexture(pressed);
     else {
       // No pressed art (e.g. some car buttons): fall back to a scale pop.
@@ -77,20 +86,24 @@ function wireButton(scene: Phaser.Scene, img: Phaser.GameObjects.Image, def: UiS
   };
   const restore = (): void => { if (pressed) img.setTexture(idle); };
   img.on("pointerdown", down);
-  img.on("pointerup", () => { restore(); fire(spawn); });
-  img.on("pointerout", restore);
+  img.on("pointerup", () => { restore(); if (armed) { armed = false; fire(spawn); } });
+  img.on("pointerout", () => { armed = false; restore(); });
 }
 
-/** Wire an instrument sprite: passive → hover → active, emit action on release. */
+/** Wire an instrument sprite: passive → hover → active, emit on an armed release. */
 function wireInstrument(img: Phaser.GameObjects.Image, def: UiSpriteDef, spawn: TiledSpawn): void {
   const passive = def.states["passive"] ?? def.base;
   const hover = def.states["hover"] ?? passive;
   const active = def.states["active"] ?? passive;
+  let armed = false;
   img.setInteractive({ useHandCursor: true });
   img.on("pointerover", () => img.setTexture(hover));
-  img.on("pointerout", () => img.setTexture(passive));
-  img.on("pointerdown", () => img.setTexture(active));
-  img.on("pointerup", () => { img.setTexture(hover); fire(spawn); });
+  img.on("pointerout", () => { armed = false; img.setTexture(passive); });
+  img.on("pointerdown", () => { armed = true; img.setTexture(active); });
+  img.on("pointerup", () => {
+    img.setTexture(hover);
+    if (armed) { armed = false; fire(spawn); }
+  });
 }
 
 /** Build a transparent hit-area for an art-less spawn (legacy behaviour). */
@@ -98,14 +111,16 @@ function makeHit(scene: Phaser.Scene, spawn: TiledSpawn, rect: Rect, cam: Camera
   const p = placeSpawn(spawn, rect, cam);
   const hit = scene.add.rectangle(p.x, p.y, p.width, p.height, 0xffffff, 0).setDepth(depth);
   if (spawn.action !== undefined) {
+    let armed = false;
     hit.setInteractive({ useHandCursor: true });
     hit.on("pointerdown", () => {
+      armed = true;
       hit.setScale(PRESS_SCALE);
       scene.tweens.add({ targets: hit, scale: 1, duration: PRESS_MS });
     });
     const restore = (): void => { hit.setScale(1); };
-    hit.on("pointerup", () => { restore(); fire(spawn); });
-    hit.on("pointerout", restore);
+    hit.on("pointerup", () => { restore(); if (armed) { armed = false; fire(spawn); } });
+    hit.on("pointerout", () => { armed = false; restore(); });
   }
   return hit;
 }

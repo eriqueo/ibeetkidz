@@ -256,17 +256,41 @@ describe("spawnTiledScene", () => {
   it("emits numeric args as numbers", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    fire(rectFor(rec, "btn-tempo-down"), "pointerup");
+    const down = rectFor(rec, "btn-tempo-down");
+    fire(down, "pointerdown");
+    fire(down, "pointerup");
     expect(emitSpy).toHaveBeenCalledWith("tempo-changed", -20);
   });
 
   it("emits no-arg actions with a single argument only", () => {
     const { scene, rec } = makeScene(2560, 1440);
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
-    fire(rectFor(rec, "btn-stop"), "pointerup");
+    const stop = rectFor(rec, "btn-stop");
+    fire(stop, "pointerdown");
+    fire(stop, "pointerup");
     expect(emitSpy).toHaveBeenCalledWith("transport-stop");
     const call = emitSpy.mock.calls.find((c) => c[0] === "transport-stop");
     expect(call).toEqual(["transport-stop"]);
+  });
+
+  it("ignores a release whose press did not start on the hit (no click-through)", () => {
+    // Phaser delivers pointerup to whatever is under the pointer at release —
+    // when a modal hides itself on pointerdown, the release lands on the
+    // chrome underneath. An un-armed release must not emit.
+    const { scene, rec } = makeScene(2560, 1440);
+    spawnTiledScene(scene as never, spawns, { baseKey: "b" });
+    fire(rectFor(rec, "btn-stop"), "pointerup");
+    expect(emitSpy).not.toHaveBeenCalled();
+  });
+
+  it("disarms when the pointer leaves mid-press (drag off = cancel)", () => {
+    const { scene, rec } = makeScene(2560, 1440);
+    spawnTiledScene(scene as never, spawns, { baseKey: "b" });
+    const stop = rectFor(rec, "btn-stop");
+    fire(stop, "pointerdown");
+    fire(stop, "pointerout");
+    fire(stop, "pointerup");
+    expect(emitSpy).not.toHaveBeenCalled();
   });
 
   it("does not emit for the inert LCD (no handlers wired)", () => {

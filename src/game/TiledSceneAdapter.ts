@@ -151,8 +151,13 @@ export function spawnTiledScene(
     const action = s.action;
     if (action !== undefined) {
       const arg = s.arg;
+      // Arm on our own pointerdown and fire only an armed release — Phaser
+      // delivers pointerup to whatever is under the pointer, so an overlay
+      // that hides mid-gesture must not leak its release into this hit.
+      let armed = false;
       hit.setInteractive({ useHandCursor: true });
       hit.on("pointerdown", () => {
+        armed = true;
         hit.setScale(PRESS_SCALE);
         scene.tweens.add({ targets: hit, scale: 1, duration: PRESS_MS });
       });
@@ -161,10 +166,15 @@ export function spawnTiledScene(
       };
       hit.on("pointerup", () => {
         restore();
+        if (!armed) return;
+        armed = false;
         if (arg !== undefined) emit(action, arg);
         else emit(action);
       });
-      hit.on("pointerout", restore);
+      hit.on("pointerout", () => {
+        armed = false;
+        restore();
+      });
     }
     return hit;
   });

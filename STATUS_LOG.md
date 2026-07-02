@@ -41,6 +41,12 @@ hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
     the event. Verified by real headless canvas clicks on every migrated button.
 *   **Cleanup:** dead `SPRITES` entries (nav/panel/lcd chrome) removed from
     `assets.ts`; chrome constants removed from `scene-layout.ts`.
+*   **Click-through bug fixed (Eric report):** closing a Workshop tool modal
+    teleported to the Yard — the ✕ fires on pointerdown, the panel hides, and
+    Phaser delivered the pointerup to the Send to Yard plaque underneath. All
+    chrome controls (ui-scene buttons/instruments/hits + the adapter hits) now
+    arm on their own pointerdown and fire only an armed release; dragging off a
+    button cancels it. Reproduced and re-verified with real headless clicks.
 *   **Verification:** typecheck clean, **194 unit tests** (new `tiled-maps`
     fixture suite + labelColor/crop coverage), vite build clean, **5/5 e2e**,
     plus headless click-through of Yard EDIT→Workshop, Track nav→Yard, and
