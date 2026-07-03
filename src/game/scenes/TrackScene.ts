@@ -24,7 +24,7 @@ import {
   type TrainType,
 } from "../sprite-assets.ts";
 import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
-import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
+import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { loadUiSprites } from "../ui-sprites.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
@@ -39,14 +39,19 @@ export interface TrackCar {
 }
 
 const SMOKE_INTERVAL_MS = 800;
-// Arc occupied by one coupled car = its display width (makeCar uses 0.075 of the
-// scene) + a small coupler gap, as a fraction of the scene width.
-const CAR_COUPLE_W = 0.082;
+// Depth band the train tokens draw in (y-sorted within it, under the chrome).
+const TRAIN_DEPTH = 4;
 
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
   private path!: Phaser.Curves.Path;
+  // Perspective: token scale interpolates farScale→nearScale across the path's
+  // vertical extent (authored on the `track-path` Tiled object, tuned per plate).
+  private pathYMin = 0;
+  private pathYMax = 1;
+  private farScale = 1;
+  private nearScale = 1;
   private loco!: Phaser.GameObjects.Container;
   private signal?: Phaser.GameObjects.Sprite;
   private cars: TrackCar[] = [];
@@ -189,19 +194,26 @@ export class TrackScene extends BackgroundScene {
     if (!this.path || !this.loco) return;
     const dir = this.direction;
     // Coupled train: the loco leads at `parkAngle + progress`; each car trails
-    // bumper-to-bumper by one car-arc (a car's display width as a fraction of the
-    // oval's perimeter). The whole consist drives round the loop as progress runs.
+    // BUMPER-TO-BUMPER — its distance from the previous vehicle is half of each
+    // of their on-screen coupled lengths. Lengths come from the tokens' live
+    // display size (which the perspective depth-scale already shrinks toward
+    // the far side), so spacing adapts to car size AND perspective with no
+    // hardcoded arc. Each token's ~8% transparent frame padding is the coupler.
     const len = this.path.getLength() || 1;
-    const carArc = (this.backgroundRect.width * CAR_COUPLE_W) / len;
     const headU = TRACK_LAYOUT_V2.parkAngle + dir * this.progress;
     this.placeOnPath(this.loco, headU, -1);
     this.faceAlongPath(this.loco, headU, dir, "loco");
+    let prevU = headU;
+    let prevLen = this.coupledLen(this.loco);
     this.cars.forEach((car, i) => {
       const token = this.carTokens[i];
       if (!token) return;
-      const u = headU - dir * carArc * (i + 1);
+      const du = (prevLen / 2 + this.coupledLen(token) / 2) / len;
+      const u = prevU - dir * du;
       this.placeOnPath(token, u, i);
       this.faceAlongPath(token, u, dir, car.carType);
+      prevU = u;
+      prevLen = this.coupledLen(token); // re-read: placement updated its depth scale
     });
 
     // Flash the crossing signal as the train passes the bottom-centre each bar.
@@ -223,27 +235,32 @@ export class TrackScene extends BackgroundScene {
 
   // ── internals ────────────────────────────────────────────────────────────
 
-  /** Rebuild the ride path as a STADIUM matching the painted track: two
-   *  straights joined by semicircular end caps. Runs clockwise from the right
-   *  apex, so (with Path's arc-length parameterization) t=0.25 is exactly the
-   *  bottom-centre straight — the park position at the crossing signal. */
+  /** Rebuild the ride path from the `track-path` polygon authored in
+   *  track.json's geometry-layer — the track centreline traced over the
+   *  painted art (64 arc-uniform vertices, clockwise from the right apex, so
+   *  t=0.25 is the bottom-centre park position at the crossing signal). The
+   *  path is pure Tiled data: repaint the plate, retrace the polygon, done. */
   private layoutPath(): void {
     const r = this.backgroundRect;
-    const S = TRACK_LAYOUT_V2.stadium;
-    const yTop = r.y + r.height * S.top;
-    const yBot = r.y + r.height * S.bottom;
-    const cy = (yTop + yBot) / 2;
-    const cap = (yBot - yTop) / 2; // end-cap radius (circular, from track height)
-    const xL = r.x + r.width * S.left + cap; // left cap centre
-    const xR = r.x + r.width * S.right - cap; // right cap centre
+    const data = parseTiledPath(trackMap, "geometry-layer", "track-path");
+    const pts = data.points.map((p) => ({ x: r.x + p.x * r.width, y: r.y + p.y * r.height }));
+    const first = pts[0]!;
+    const path = new Phaser.Curves.Path(first.x, first.y);
+    for (let i = 1; i < pts.length; i++) path.lineTo(pts[i]!.x, pts[i]!.y);
+    if (data.closed) path.lineTo(first.x, first.y);
+    this.path = path;
 
-    const p = new Phaser.Curves.Path(xR + cap, cy);
-    p.add(new Phaser.Curves.Ellipse(xR, cy, cap, cap, 0, 90)); // right cap → down
-    p.lineTo(xL, yBot); // bottom straight (right → left)
-    p.add(new Phaser.Curves.Ellipse(xL, cy, cap, cap, 90, 270)); // left cap
-    p.lineTo(xR, yTop); // top straight (left → right)
-    p.add(new Phaser.Curves.Ellipse(xR, cy, cap, cap, 270, 360)); // right cap → close
-    this.path = p;
+    this.pathYMin = Math.min(...pts.map((p) => p.y));
+    this.pathYMax = Math.max(...pts.map((p) => p.y));
+    this.farScale = typeof data.props["farScale"] === "number" ? data.props["farScale"] : 1;
+    this.nearScale = typeof data.props["nearScale"] === "number" ? data.props["nearScale"] : 1;
+  }
+
+  /** Perspective size factor at a screen y: far (top of the loop) → near. */
+  private depthScaleAt(y: number): number {
+    const span = Math.max(1, this.pathYMax - this.pathYMin);
+    const t = Phaser.Math.Clamp((y - this.pathYMin) / span, 0, 1);
+    return this.farScale + (this.nearScale - this.farScale) * t;
   }
 
   private layoutFixtures(): void {
@@ -259,9 +276,20 @@ export class TrackScene extends BackgroundScene {
     }
   }
 
+  /** A vehicle's current on-screen length along the track (atlas frame width
+   *  at its live scale — the frame's transparent padding doubles as coupler). */
+  private coupledLen(token: Phaser.GameObjects.Container): number {
+    const body = token.getData("body") as Phaser.GameObjects.Image | undefined;
+    return body ? body.width * token.scaleX : 0;
+  }
+
   private placeOnPath(token: Phaser.GameObjects.Container, t: number, index: number): void {
     const u = ((t % 1) + 1) % 1;
     const p = this.path.getPoint(u);
+    // Perspective: shrink toward the far (top) side and y-sort so nearer
+    // vehicles draw over farther ones.
+    token.setScale(((token.getData("baseScale") as number) || 1) * this.depthScaleAt(p.y));
+    token.setDepth(TRAIN_DEPTH + p.y / Math.max(1, this.pathYMax));
     // Gentle bounce while moving — phase-offset per car so they don't sync.
     const bounce =
       this.moving && index >= 0
@@ -330,8 +358,10 @@ export class TrackScene extends BackgroundScene {
     }
     const c = this.add.container(0, 0, children);
     c.setData("body", body);
-    if (body.width > 0) c.setScale(targetW / body.width);
-    c.setDepth(4);
+    const baseScale = body.width > 0 ? targetW / body.width : 1;
+    c.setData("baseScale", baseScale);
+    c.setScale(baseScale);
+    c.setDepth(TRAIN_DEPTH);
     // Kid-sized hit area (1.6× the body) around the moving car. Same armed
     // press/release rule as the chrome so nothing leaks a stray pointerup.
     const hit = new Phaser.Geom.Rectangle(
@@ -356,8 +386,10 @@ export class TrackScene extends BackgroundScene {
     const img = this.add.image(0, 0, "train", frameKey("loco", "E")).setOrigin(0.5);
     const c = this.add.container(0, 0, [img]);
     c.setData("body", img);
-    if (img.width > 0) c.setScale(targetW / img.width);
-    c.setDepth(6);
+    const baseScale = img.width > 0 ? targetW / img.width : 1;
+    c.setData("baseScale", baseScale);
+    c.setScale(baseScale);
+    c.setDepth(TRAIN_DEPTH);
     return c;
   }
 }

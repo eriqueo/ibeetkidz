@@ -14,7 +14,30 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-03, latest — ride freeze fixed + chrome fit pass)
+### Recently Completed (2026-07-03, night — ride quality pass from Eric's review)
+*   **Smoothness fixed:** the train position was read via `getTransportStep(16)`
+    — the transport FLOORS to the requested subdivision count, so the ride was
+    quantized to 16 visible hops per bar. Track.tsx now reads at 4096
+    subdivisions: continuous motion.
+*   **Coupling is dynamic (Eric's "buffer zones" idea, verbatim):** the fixed
+    car-arc constant is gone; each vehicle now trails the previous one
+    bumper-to-bumper — spaced by half of each of their LIVE on-screen lengths,
+    so spacing adapts to car size and perspective with zero hardcoding. The
+    frames' transparent padding is the coupler gap.
+*   **Perspective wired:** vehicles depth-scale between `farScale`/`nearScale`
+    (authored as properties on the track-path Tiled object; currently a subtle
+    0.9→1.06) and y-sort so near cars draw over far ones.
+*   **The ride path is now pure Tiled data:** `track.json` gained a
+    geometry-layer with a `track-path` polygon (64 arc-uniform vertices traced
+    over the painted centreline). `parseTiledPath` in TiledParser exposes it;
+    TrackScene builds its Path from it. Swapping the background = repaint +
+    retrace the polygon + tune two properties. No code.
+*   **AR-014 queued (Eric-approved):** re-render the track plate in the train
+    sprites' 3/4 perspective — the engineering contract makes it a data-only
+    swap. **AR-015 queued:** 16-direction refs + 2-frame wheel cycle (halves
+    the heading snap, wheels roll instead of slide).
+
+### Previously Completed (2026-07-03, latest — ride freeze fixed + chrome fit pass)
 *   **"Train never animates" root-caused and fixed (Eric report):**
     `sprite-assets.ts` used `Phaser.Animations.Events.ANIMATION_COMPLETE` as a
     runtime value without importing Phaser — the ambient namespace types make

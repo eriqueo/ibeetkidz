@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseTiledLayer, TiledMapSchema, type TiledSpawn } from "../../src/game/TiledParser.ts";
+import { parseTiledLayer, parseTiledPath, TiledMapSchema, type TiledSpawn } from "../../src/game/TiledParser.ts";
 import { UI_SPRITES } from "../../src/game/ui-sprites.ts";
 // The real on-disk Tiled fixtures the scenes interpret verbatim.
 import YARD from "../../src/assets/maps/yard.json";
@@ -155,5 +155,39 @@ describe("track.json wiring", () => {
     const lcd = need(track, "lcd-transport");
     expect(lcd.klass).toBe("display");
     expect(lcd.action).toBeUndefined();
+  });
+});
+
+describe("track.json ride-path geometry", () => {
+  const path = parseTiledPath(TRACK, "geometry-layer", "track-path");
+
+  it("is a closed, densely-traced polygon in the unit square", () => {
+    expect(path.closed).toBe(true);
+    expect(path.points.length).toBeGreaterThanOrEqual(32);
+    for (const p of path.points) {
+      expect(p.x).toBeGreaterThan(0);
+      expect(p.x).toBeLessThan(1);
+      expect(p.y).toBeGreaterThan(0);
+      expect(p.y).toBeLessThan(1);
+    }
+  });
+
+  it("starts at the right apex and puts the quarter point at the bottom-centre (park)", () => {
+    // The scene's park convention: t=0.25 must be the bottom-centre straight.
+    const first = path.points[0]!;
+    const quarter = path.points[Math.round(path.points.length / 4)]!;
+    expect(first.x).toBeGreaterThan(0.8); // right apex
+    expect(quarter.x).toBeCloseTo(0.5, 1); // bottom centre
+    expect(quarter.y).toBeGreaterThan(first.y); // on the bottom straight
+  });
+
+  it("carries numeric perspective tuning props", () => {
+    expect(typeof path.props["farScale"]).toBe("number");
+    expect(typeof path.props["nearScale"]).toBe("number");
+  });
+
+  it("throws loudly when the geometry is missing", () => {
+    expect(() => parseTiledPath(TRACK, "geometry-layer", "nope")).toThrow(/no object named/);
+    expect(() => parseTiledPath(TRACK, "nope-layer", "track-path")).toThrow(/no object layer/);
   });
 });

@@ -28,6 +28,8 @@ const TiledProperty = z.object({
   value: PropValue,
 });
 
+const TiledPoint = z.object({ x: z.number(), y: z.number() });
+
 const TiledObject = z.object({
   id: z.number(),
   name: z.string(),
@@ -39,6 +41,8 @@ const TiledObject = z.object({
   rotation: z.number().optional(),
   visible: z.boolean().optional(),
   gid: z.number().optional(), // present when placed as a tile object (Insert Tile)
+  polygon: z.array(TiledPoint).optional(), // closed shape (scene geometry)
+  polyline: z.array(TiledPoint).optional(), // open shape
   properties: z.array(TiledProperty).optional(),
 });
 export type TiledObject = z.infer<typeof TiledObject>;
@@ -118,6 +122,39 @@ function centrePx(o: TiledObject): { cx: number; cy: number } {
   return {
     cx: o.x + o.width / 2,
     cy: o.gid !== undefined ? o.y - o.height / 2 : o.y + o.height / 2,
+  };
+}
+
+/** A polygon/polyline object projected to normalized (0..1) coordinates —
+ *  scene GEOMETRY (e.g. the Track ride path), as opposed to UI spawns. */
+export interface TiledPath {
+  /** Vertices normalized to the source image, in authored order. */
+  points: { x: number; y: number }[];
+  /** true when authored as a Tiled polygon (closed loop). */
+  closed: boolean;
+  /** The object's custom properties (e.g. perspective tuning values). */
+  props: Record<string, string | number | boolean>;
+}
+
+/**
+ * Find a polygon/polyline object by name in the named object layer and project
+ * it into normalized coordinates. Throws if the map/layer/object is missing —
+ * geometry the scene depends on must not silently vanish.
+ */
+export function parseTiledPath(mapJson: unknown, layerName: string, objectName: string): TiledPath {
+  const map = TiledMapSchema.parse(mapJson);
+  const pxW = map.width * map.tilewidth;
+  const pxH = map.height * map.tileheight;
+  const layer = map.layers.find((l) => l.type === "objectgroup" && l.name === layerName);
+  if (!layer) throw new Error(`Tiled map has no object layer named "${layerName}"`);
+  const o = (layer.objects ?? []).find((x) => x.name === objectName);
+  if (!o) throw new Error(`Layer "${layerName}" has no object named "${objectName}"`);
+  const raw = o.polygon ?? o.polyline;
+  if (!raw || raw.length < 3) throw new Error(`Object "${objectName}" has no polygon/polyline`);
+  return {
+    points: raw.map((p) => ({ x: (o.x + p.x) / pxW, y: (o.y + p.y) / pxH })),
+    closed: o.polygon !== undefined,
+    props: recordOf(o.properties),
   };
 }
 

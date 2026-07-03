@@ -1,6 +1,6 @@
 import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { STEP_COUNT, AppView } from "../core/types.ts";
+import { AppView } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { EventBus } from "../game/EventBus.ts";
@@ -76,8 +76,12 @@ export const Track: FC = () => {
         const riding = engine.isPlaying && engine.playMode === "ride";
         scene.setMoving(riding);
         if (riding) {
-          const step = sound.getTransportStep(STEP_COUNT);
-          const frac = step >= 0 ? step / STEP_COUNT : 0;
+          // Read the in-bar position at high resolution — getTransportStep(n)
+          // FLOORS to n subdivisions, so reading at STEP_COUNT quantized the
+          // ride to 16 visible hops per bar (the jerky train).
+          const RES = 4096;
+          const sub = sound.getTransportStep(RES);
+          const frac = sub >= 0 ? sub / RES : 0;
           const totalBars = carsRef.current.length;
           if (totalBars > 0) {
             const bar = engine.getTransportBar?.() ?? 0;

@@ -188,6 +188,65 @@ graphics chip is then retired and only the text remains on top.
 
 ---
 
+## AR-014 · Track base plate re-render: perspective matched to the train — HIGH
+
+**Target file:** `src/assets/scenes-v2/track-scene-clean-v2.png` (2560×1440)
+
+**Why (Eric, 2026-07-03):** the vehicles are drawn in a 3/4 view (you see
+their sides and roofs), but the track plate is near-top-down — the train reads
+as standing on a flat map. Eric has signed off on re-rendering the background
+to match the TRAIN's perspective (the vehicle sprites are the expensive,
+beautiful assets; the plate serves them).
+
+**Prompt:** "Re-render the track scene in the SAME 3/4 perspective as the
+train sprites (use boxcar-ref-E.png / loco-ref-E.png as the perspective
+reference): a closed loop of track on grass where the BOTTOM straight is
+nearest the viewer (rails drawn large, ties clearly foreshortened at the
+train-sprite angle) and the TOP straight is farthest (visibly smaller/
+narrower, roughly 80–90% of the bottom straight's gauge). Keep the overall
+composition: clear sky band across the top ~360px (for the header panel),
+empty dark slate panel band across the bottom ~340px, crossing signal at the
+bottom-centre straight, pine trees and rocks in the surround. The track's
+CENTERLINE must be a clean, unambiguous single loop — the engineering side
+retraces it as a Tiled polygon, so avoid overlapping decoration on the rails.
+Warm 16-color palette, chunky pixels, same grass/tree family as the current
+plate."
+
+**Engineering contract (already in place — this swap is data-only):** the ride
+path is the `track-path` polygon in `track.json`'s geometry-layer, and the
+perspective is two properties on that object (`farScale`/`nearScale`, the
+sprite scale at the top/bottom of the loop). When the new plate lands: retrace
+the polygon over the new centreline, set the scales to match the painted
+gauge ratio, done. No code changes. Car coupling is computed bumper-to-bumper
+from live on-screen sizes, so it adapts to the new perspective automatically.
+
+---
+
+## AR-015 · Train animation upgrade: 16 directions + wheel motion — MEDIUM
+
+**Target files:** `src/assets/spritesheets/<type>-ref-<dir>-f1.png` +
+`-f2.png` — 16 compass directions (E, ENE, NE, NNE, N, … all 16) × 2 wheel
+frames, for loco, boxcar, tanker, hopper, flatcar.
+
+**Why:** with 8 directions the train visibly SNAPS between headings on the
+curves; 16 halves the snap angle. A 2-frame wheel cycle (rods pumping on the
+loco, wheels rotated a half-spoke on the cars) makes the motion read as
+rolling rather than sliding. Eric has approved the sprite investment.
+
+**Prompt:** "For each existing train vehicle ref, produce 16 compass-direction
+views (22.5° apart) in the same 3/4 perspective and scale as the current
+8-direction set, each in TWO animation frames: frame 1 as-is, frame 2 with
+drive rods/wheel spokes advanced half a cycle (loco rods visibly moved; car
+wheel spokes rotated). Same canvas and backdrop conventions as the current
+refs. Naming: loco-ref-ENE-f1.png, loco-ref-ENE-f2.png, etc."
+
+**Engineering note:** the atlas builder (`scripts/build_train_atlas.py`) and
+`sprite-assets.ts` will be extended to a 16-direction × 2-frame atlas when
+this lands — deliver the full set in one drop if possible so the format
+changes once.
+
+---
+
 ## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
 
 **Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,

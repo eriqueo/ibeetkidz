@@ -67,14 +67,11 @@ export const YARD_SIDINGS_V2 = {
 // Track v2: the oval the train rides, the crossing-signal point on the bottom
 // straight, and the bottom control panel band.
 export const TRACK_LAYOUT_V2 = {
-  // The painted track is a STADIUM (two straights + semicircular end caps),
-  // not an ellipse — an ellipse only touches it at four points and drifts off
-  // the rails everywhere else. These are the track CENTERLINE extremes,
-  // measured from the 2026-07-02 plate (straight centrelines at 0.307/0.634,
-  // side apexes at 0.154/0.846). The cap radius follows: (bottom-top)/2 of the
-  // painted height; TrackScene builds the Path from these each layout.
-  stadium: { left: 0.154, right: 0.846, top: 0.307, bottom: 0.634 } as const,
-  // Where the loco head sits at progress 0 (train parked). The stadium path
+  // The ride path itself is DATA: the `track-path` polygon in track.json's
+  // geometry-layer (64 arc-uniform vertices traced over the painted
+  // centreline, clockwise from the right apex). Repaint the plate → retrace
+  // the polygon in Tiled; no code here.
+  // Where the loco head sits at progress 0 (train parked). The traced path
   // starts at the right apex and runs clockwise, so 0.25 is EXACTLY the
   // bottom-centre straight — right at the crossing signal.
   parkAngle: 0.25,
