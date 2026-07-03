@@ -85,7 +85,7 @@ arg `piano`) and the manifest maps it to
 
 ---
 
-## AR-010 · Unified transport keycaps (Workshop + Track) — HIGH
+## ✅ DONE — AR-010 · Unified transport keycaps (Workshop + Track) — HIGH
 
 **Target files (idle + pressed each):**
 - `buttons/btn-transport-stop-{idle,pressed}.png` — red square icon, baked "STOP"
@@ -118,7 +118,7 @@ captions and their crowding issues disappear.
 
 ---
 
-## AR-011 · Dark workshop bottom plate (transport bar) — MEDIUM
+## ✅ DONE — AR-011 · Dark workshop bottom plate (transport bar) — MEDIUM
 
 **Target file:** `panels/panel-transport-v2.png`
 
