@@ -105,9 +105,8 @@ export class YardScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.yard);
     // train (car bodies, top-down) + tarp atlases.
     loadSpriteAssets(this);
-    // Chrome art: only the manifest sprites this scene's Tiled map references.
     this.chromeSpawns = parseTiledLayer(yardMap, "ui-layer");
-    loadUiSprites(this, this.chromeSpawns.map((s) => s.sprite ?? s.id));
+    loadUiSprites(this); // the one packed chrome multiatlas
   }
 
   create(): void {

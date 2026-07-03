@@ -20,12 +20,10 @@
 // files, not a glob of the whole directory — see the note in assets.ts.
 import type Phaser from "phaser";
 
-const btn = (file: string): string =>
-  new URL(`../assets/sprites/buttons/${file}`, import.meta.url).href;
-const inst = (file: string): string =>
-  new URL(`../assets/sprites/instruments/${file}`, import.meta.url).href;
-const panel = (file: string): string =>
-  new URL(`../assets/sprites/panels/${file}`, import.meta.url).href;
+// All chrome art ships in ONE packed multiatlas (public/assets/spritesheets/
+// ui-atlas.*, rebuilt by scripts/build_ui_atlas.py). Frame names equal the
+// source file stems, so the state maps below reference frames directly.
+export const UI_ATLAS_KEY = "ui-atlas";
 
 /** Normalized opaque-content box within a sprite's own canvas, `[x0,y0,x1,y1]`. */
 export type ContentBox = readonly [number, number, number, number];
@@ -34,9 +32,7 @@ export type ContentBox = readonly [number, number, number, number];
  *  texture KEY equals the file stem (e.g. "btn-play-idle") so it is trivially
  *  derivable and stable across the manifest. */
 export interface UiSpriteDef {
-  /** texture key → source URL, loaded in `loadUiSprites`. */
-  readonly textures: Readonly<Record<string, string>>;
-  /** state name → texture key (the state machine the adapter swaps between). */
+  /** state name → ui-atlas FRAME name (the state machine the engine swaps). */
   readonly states: Readonly<Record<string, string>>;
   /** the default/rest state key (idle / passive). */
   readonly base: string;
@@ -58,42 +54,26 @@ const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
 
 function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;
-  const textures: Record<string, string> = { [idleKey]: btn(`${id}-idle.png`) };
   const states: Record<string, string> = { idle: idleKey };
-  if (opts.pressed ?? true) {
-    const pk = `${id}-pressed`;
-    textures[pk] = btn(`${id}-pressed.png`);
-    states["pressed"] = pk;
-  }
-  return { textures, states, base: idleKey, content: opts.content ?? BUTTON_CONTENT, stretch: false };
+  if (opts.pressed ?? true) states["pressed"] = `${id}-pressed`;
+  return { states, base: idleKey, content: opts.content ?? BUTTON_CONTENT, stretch: false };
 }
 
 // Car-type picker tiles: an idle art plus (boxcar only) a `selected` highlight.
 function pickerDef(type: string, content: ContentBox, selected = false): UiSpriteDef {
   const idleKey = `btn-picker-${type}-idle`;
-  const textures: Record<string, string> = { [idleKey]: btn(`btn-picker-${type}-idle.png`) };
   const states: Record<string, string> = { idle: idleKey };
-  if (selected) {
-    const sk = `btn-picker-${type}-selected`;
-    textures[sk] = btn(`btn-picker-${type}-selected.png`);
-    states["selected"] = sk;
-  }
-  return { textures, states, base: idleKey, content, stretch: false };
+  if (selected) states["selected"] = `btn-picker-${type}-selected`;
+  return { states, base: idleKey, content, stretch: false };
 }
 
 function instrumentDef(id: string, content: ContentBox): UiSpriteDef {
   const p = `${id}-passive`, h = `${id}-hover`, a = `${id}-active`;
-  return {
-    textures: { [p]: inst(`${id}-passive.png`), [h]: inst(`${id}-hover.png`), [a]: inst(`${id}-active.png`) },
-    states: { passive: p, hover: h, active: a },
-    base: p,
-    content,
-    stretch: false,
-  };
+  return { states: { passive: p, hover: h, active: a }, base: p, content, stretch: false };
 }
 
 function panelDef(id: string, content: ContentBox): UiSpriteDef {
-  return { textures: { [id]: panel(`${id}.png`) }, states: { base: id }, base: id, content, stretch: true };
+  return { states: { base: id }, base: id, content, stretch: true };
 }
 
 
@@ -145,17 +125,12 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "panel-yard-actions": panelDef("panel-yard-actions", [0.021, 0.325, 0.979, 0.672]),
 } as const;
 
-/** Load manifest textures (idempotent — skips already-loaded keys). Call from a
- *  scene's `preload`. Pass `only` (UI_SPRITES base ids, e.g. derived from the
- *  scene's parsed Tiled spawns) to load just that scene's chrome; omit it to
- *  load everything (Workshop needs off-map sprites like the picker tiles). */
-export function loadUiSprites(scene: Phaser.Scene, only?: readonly string[]): void {
-  const wanted = only === undefined ? undefined : new Set(only);
-  for (const [id, def] of Object.entries(UI_SPRITES)) {
-    if (wanted !== undefined && !wanted.has(id)) continue;
-    for (const [key, url] of Object.entries(def.textures)) {
-      if (!scene.textures.exists(key)) scene.load.image(key, url);
-    }
+/** Load the packed chrome multiatlas (idempotent). ONE atlas serves every
+ *  scene — a handful of requests instead of ~38 per view switch, and the
+ *  browser cache makes later navigations free. Call from a scene's `preload`. */
+export function loadUiSprites(scene: Phaser.Scene): void {
+  if (!scene.textures.exists(UI_ATLAS_KEY)) {
+    scene.load.multiatlas(UI_ATLAS_KEY, "assets/spritesheets/ui-atlas.json", "assets/spritesheets");
   }
 }
 

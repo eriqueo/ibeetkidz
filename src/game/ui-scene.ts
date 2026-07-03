@@ -20,7 +20,7 @@ import type Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import type { TiledSpawn } from "./TiledParser.ts";
 import { placeSpawn, type Rect, type CameraSize } from "./TiledSceneAdapter.ts";
-import { UI_SPRITES, placeUiSprite, type UiSpriteDef } from "./ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef } from "./ui-sprites.ts";
 
 const PRESS_SCALE = 0.94;
 const PRESS_MS = 80;
@@ -77,14 +77,14 @@ function wireButton(scene: Phaser.Scene, img: Phaser.GameObjects.Image, def: UiS
   img.setInteractive({ useHandCursor: true });
   const down = (): void => {
     armed = true;
-    if (pressed) img.setTexture(pressed);
+    if (pressed) img.setFrame(pressed);
     else {
       // No pressed art (e.g. some car buttons): fall back to a scale pop.
       img.setScale(img.scaleX * PRESS_SCALE, img.scaleY * PRESS_SCALE);
       scene.tweens.add({ targets: img, scaleX: img.scaleX / PRESS_SCALE, scaleY: img.scaleY / PRESS_SCALE, duration: PRESS_MS });
     }
   };
-  const restore = (): void => { if (pressed) img.setTexture(idle); };
+  const restore = (): void => { if (pressed) img.setFrame(idle); };
   img.on("pointerdown", down);
   img.on("pointerup", () => { restore(); if (armed) { armed = false; fire(spawn); } });
   img.on("pointerout", () => { armed = false; restore(); });
@@ -97,11 +97,11 @@ function wireInstrument(img: Phaser.GameObjects.Image, def: UiSpriteDef, spawn: 
   const active = def.states["active"] ?? passive;
   let armed = false;
   img.setInteractive({ useHandCursor: true });
-  img.on("pointerover", () => img.setTexture(hover));
-  img.on("pointerout", () => { armed = false; img.setTexture(passive); });
-  img.on("pointerdown", () => { armed = true; img.setTexture(active); });
+  img.on("pointerover", () => img.setFrame(hover));
+  img.on("pointerout", () => { armed = false; img.setFrame(passive); });
+  img.on("pointerdown", () => { armed = true; img.setFrame(active); });
   img.on("pointerup", () => {
-    img.setTexture(hover);
+    img.setFrame(hover);
     if (armed) { armed = false; fire(spawn); }
   });
 }
@@ -151,7 +151,7 @@ export function spawnUiLayer(
       return label ? { spawn, hit, label } : { spawn, hit };
     }
 
-    const img = scene.add.image(0, 0, def.base).setOrigin(0.5);
+    const img = scene.add.image(0, 0, UI_ATLAS_KEY, def.base).setOrigin(0.5);
     placeUiSprite(img, def, target);
 
     if (spawn.klass === "panel") {

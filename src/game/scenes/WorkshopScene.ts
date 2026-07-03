@@ -30,7 +30,7 @@ import { WORKSHOP_LAYOUT_V2, WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
-import { UI_SPRITES, placeUiSprite, type UiSpriteDef } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef } from "../ui-sprites.ts";
 import workshopMap from "../../assets/maps/workshop.json";
 import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
 import {
@@ -127,13 +127,8 @@ export class WorkshopScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.workshopBoxcarOpen);
-    // Only this scene's chrome: the map's sprites plus the (off-map) car-type
-    // picker tiles — never the whole manifest, which stalls the first paint.
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
-    loadUiSprites(this, [
-      ...this.chromeSpawns.map((s) => s.sprite ?? s.id),
-      ...CAR_TYPES.map((t) => `btn-picker-${t}`),
-    ]);
+    loadUiSprites(this); // the one packed chrome multiatlas
   }
 
   create(): void {
@@ -194,7 +189,7 @@ export class WorkshopScene extends BackgroundScene {
   private buildCarPicker(): void {
     this.pickerTiles = CAR_TYPES.map((type) => {
       const def = UI_SPRITES[`btn-picker-${type}`]!;
-      const img = this.add.image(0, 0, def.base).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base).setOrigin(0.5).setInteractive({ useHandCursor: true });
       img.on("pointerup", () => this.chooseCarType(type));
       return { type, img, def };
     });
@@ -230,7 +225,7 @@ export class WorkshopScene extends BackgroundScene {
       const selected = t.type === this.model.carType;
       // Boxcar has dedicated `selected` art; others just brighten when chosen.
       const selKey = t.def.states["selected"];
-      if (selKey) t.img.setTexture(selected ? selKey : t.def.base);
+      if (selKey) t.img.setFrame(selected ? selKey : t.def.base);
       t.img.setAlpha(selected ? 1 : 0.82);
     });
   }

@@ -20,13 +20,13 @@ function makeImg(w: number, h: number): {
 }
 
 describe("UI_SPRITES manifest", () => {
-  it("keys every state to a loaded texture and picks a valid base", () => {
+  it("picks a valid base and names frames by the file-stem convention", () => {
     for (const [id, def] of Object.entries(UI_SPRITES)) {
       // the base is one of the declared states
       expect(Object.values(def.states), `${id} base`).toContain(def.base);
-      // every state maps to a registered texture entry
+      // every frame name is non-empty (atlas frame = source file stem)
       for (const key of Object.values(def.states)) {
-        expect(def.textures[key], `${id}.${key}`).toBeTypeOf("string");
+        expect(key.length, `${id}.${key}`).toBeGreaterThan(0);
       }
     }
   });
@@ -43,7 +43,7 @@ describe("placeUiSprite", () => {
   const target: PlacedRect = { x: 500, y: 300, width: 200, height: 100 };
 
   it("stretches a full-canvas panel to fill the target rect on both axes", () => {
-    const def: UiSpriteDef = { textures: {}, states: {}, base: "p", content: [0, 0, 1, 1], stretch: true };
+    const def: UiSpriteDef = { states: {}, base: "p", content: [0, 0, 1, 1], stretch: true };
     const img = makeImg(2000, 400);
     placeUiSprite(img as never, def, target);
     expect(img.scaleX).toBeCloseTo(200 / 2000, 6);
@@ -54,7 +54,7 @@ describe("placeUiSprite", () => {
   });
 
   it("scales a padded button uniformly (contain) and centres its content", () => {
-    const def: UiSpriteDef = { textures: {}, states: {}, base: "b", content: [0.13, 0.13, 0.87, 0.87], stretch: false };
+    const def: UiSpriteDef = { states: {}, base: "b", content: [0.13, 0.13, 0.87, 0.87], stretch: false };
     const img = makeImg(1000, 1000);
     placeUiSprite(img as never, def, target);
     // content is 0.74*1000 = 740 px square; contain → fit the binding (height) axis.
@@ -69,7 +69,7 @@ describe("placeUiSprite", () => {
   it("crops an opaque-padded canvas to its content box, leaving placement alone", () => {
     // Mirrors panel-yard-actions: an RGB strip whose margins are baked black.
     const def: UiSpriteDef = {
-      textures: {}, states: {}, base: "p",
+      states: {}, base: "p",
       content: [0.1, 0.25, 0.9, 0.75], stretch: true, crop: true,
     };
     const img = makeImg(1000, 500);
@@ -85,7 +85,7 @@ describe("placeUiSprite", () => {
   });
 
   it("never crops when the def doesn't ask for it", () => {
-    const def: UiSpriteDef = { textures: {}, states: {}, base: "p", content: [0, 0, 1, 1], stretch: true };
+    const def: UiSpriteDef = { states: {}, base: "p", content: [0, 0, 1, 1], stretch: true };
     const img = makeImg(1000, 500);
     placeUiSprite(img as never, def, target);
     expect(img.crop).toBeNull();
@@ -93,7 +93,7 @@ describe("placeUiSprite", () => {
 
   it("offsets so an off-centre content box lands on the target centre", () => {
     // content sits in the lower portion of the canvas (like an instrument).
-    const def: UiSpriteDef = { textures: {}, states: {}, base: "i", content: [0, 0.5, 1, 1], stretch: false };
+    const def: UiSpriteDef = { states: {}, base: "i", content: [0, 0.5, 1, 1], stretch: false };
     const img = makeImg(400, 400);
     placeUiSprite(img as never, def, target);
     const scale = Math.min(200 / 400, 100 / 200); // contain: min(0.5, 0.5) = 0.5

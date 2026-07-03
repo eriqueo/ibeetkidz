@@ -79,9 +79,8 @@ export class TrackScene extends BackgroundScene {
     this.loadBackground(SCENE_BG_V2.track);
     // train / smoke / signal / tarp atlases (the single source of truth).
     loadSpriteAssets(this);
-    // Chrome art: only the manifest sprites this scene's Tiled map references.
     this.chromeSpawns = parseTiledLayer(trackMap, "ui-layer");
-    loadUiSprites(this, this.chromeSpawns.map((s) => s.sprite ?? s.id));
+    loadUiSprites(this); // the one packed chrome multiatlas
   }
 
   create(): void {
