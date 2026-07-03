@@ -140,7 +140,7 @@ band empty scenery and shipping the panel as a sprite like the Yard's.
 
 ---
 
-## AR-012 · Train ref frames: flatcar directions + loco rear view — MEDIUM
+## ✅ DONE — AR-012 · Train ref frames: flatcar directions + loco rear view
 
 **Assembled:** the new refs are live in `public/assets/spritesheets/train.png`
 (rebuild any time with `python3 scripts/build_train_atlas.py`). Two gaps ship
