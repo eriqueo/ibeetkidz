@@ -85,6 +85,61 @@ arg `piano`) and the manifest maps it to
 
 ---
 
+## AR-010 · Unified transport keycaps (Workshop + Track) — HIGH
+
+**Target files (idle + pressed each):**
+- `buttons/btn-transport-stop-{idle,pressed}.png` — red square icon, baked "STOP"
+- `buttons/btn-transport-play-{idle,pressed}.png` — green triangle, baked "PLAY"
+- `buttons/btn-transport-loop-{idle,pressed}.png` — gold circular arrows, baked "LOOP"
+- `buttons/btn-transport-slow-{idle,pressed}.png` — blue down-arrow, baked "SLOW"
+- `buttons/btn-transport-fast-{idle,pressed}.png` — blue up-arrow, baked "FAST"
+
+**Why (Eric's screenshots, 2026-07-03):** the three bottom bars are three
+different design languages right now. Yard has the dark stone plate with
+silver-framed steampunk keycaps and baked labels (the keeper). Workshop still
+has flat cream keycaps with engine-drawn captions on a cream plate. Track mixes
+both families in one bar — cream SLOW/STOP/FAST sitting next to the dark
+framed RIDE keycap. One keycap family everywhere.
+
+**Prompt:** "Square steampunk keycap buttons for a kids' train game, EXACTLY
+matching the existing yard action set (btn-yard-hitch-idle.png): dark riveted
+stone face, silver bevel frame, small brass corner gears, baked cream label
+text at the bottom. Five buttons: STOP (chunky red square icon), PLAY (chunky
+green right-facing triangle), LOOP (gold circular repeat arrows), SLOW (blue
+double down-chevron), FAST (blue double up-chevron). Idle + pressed states
+(pressed = bevel inverted, content 2px down, face slightly darker). Fully
+transparent background (alpha 0 outside the plaque — see AR-009), 512×512
+canvas, warm 16-color palette, 1px dark plum outline."
+
+**Unblocks:** swapping the `btn-stop/play/loop/tempo-down/tempo-up` sprite
+keys in `workshop.json` + `track.json` (Tiled + manifest edit, no scene code);
+Track's bar becomes all one family alongside `btn-track-ride`; the engine
+captions and their crowding issues disappear.
+
+---
+
+## AR-011 · Dark workshop bottom plate (transport bar) — MEDIUM
+
+**Target file:** `panels/panel-transport-v2.png`
+
+**Why:** the Workshop's cream/lavender `panel-transport` plate doesn't belong
+to the same family as the Yard plate and the Track base plate's slate frame.
+With AR-010's dark keycaps it would clash even harder.
+
+**Prompt:** "Empty steampunk bottom-bar panel plate matching
+panel-yard-actions.png: dark riveted slate/stone face with a silver bevel
+frame, landscape ~8.5:1 (it spans the full scene width), NO baked LCD window
+and NO buttons — completely empty face. Pre-trimmed to the frame, transparent
+outside it. The engine draws a cream LCD chip on top, which reads great on the
+dark stone."
+
+**Note (no action needed):** Track's bottom panel is painted INTO its base
+plate while Yard's is a separate sprite — visually the same family, so it's
+fine, but if the track plate is ever regenerated, prefer leaving the bottom
+band empty scenery and shipping the panel as a sprite like the Yard's.
+
+---
+
 ## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
 
 **Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,

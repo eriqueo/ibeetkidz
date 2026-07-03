@@ -14,7 +14,25 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-02, later — deploy unblocked + asset perf pass)
+### Recently Completed (2026-07-03 — consistency pass from Eric's device shots)
+*   **Bottom-bar inconsistency logged for Manus (AR-010/AR-011):** the three
+    bars are three design languages — Yard's dark steampunk keycaps with baked
+    labels are the keeper; Workshop's cream keycaps + captions and Track's
+    mixed cream/dark bar get replaced once the unified `btn-transport-*` set
+    and the dark `panel-transport-v2` plate land. Swapping them in will be a
+    pure Tiled + manifest edit.
+*   **Muting moved into the canvas:** tap a car on the Track oval to cover /
+    uncover it with the tarp (`track-car-mute-toggled` + kid-sized armed hit
+    on each car token). The HTML tarp strip is gone — on non-16:9 screens
+    (Eric's iPad) it floated in the letterbox above the canvas, because HTML
+    overlays can't track the FIT-scaled canvas. Verified with real clicks on
+    a 4:3 viewport; e2e updated to exercise the new event.
+*   **Dead code pruned:** `assets.ts` is down to `SCENE_BG_V2` + the handcar
+    (the v1 `SCENE_BG` glob was silently bundling the whole `references/`
+    dir); `WORKSHOP_LAYOUT`/`SCENE_ASPECT` and the unused car-sprite maps are
+    gone. dist: 39 MB → **14 MB**.
+
+### Previously Completed (2026-07-02, later — deploy unblocked + asset perf pass)
 *   **Live-site outage root-caused (Eric: "no headers"):** the Pages workflow
     gates on `npm run test`; a fixture test still asserting the LCD's pre-fit
     position shipped red, so the deploy FAILED and the site stayed on the
@@ -143,8 +161,11 @@ the Phase 2 migration.)
     (tap-to-swap? drag on the assembly line?) then an `EventMap` entry +
     reducer wiring — and a `btn-yard-reorder` keycap from the art queue.
 2.  **Track loop-count control:** design + art + `EventMap` event still missing
-    (charter lists Mute/Loop as Track's bottom bar; mute is the HTML tarp strip
-    today and could migrate into the canvas per-car).
+    (charter lists Mute/Loop as Track's bottom bar; mute is now in-canvas —
+    tap a car to tarp it — so loop-count is the remaining gap).
+3.  **Swap in the AR-010/AR-011 art when it lands** (unified transport keycaps
+    + dark workshop plate): update the `sprite` keys in `workshop.json` /
+    `track.json`, add the manifest entries, drop the captions. No scene code.
 3.  **Track playback position sync** (long-standing): drive playback FROM the
     physical crossing-signal pass rather than the transport driving the visual.
 

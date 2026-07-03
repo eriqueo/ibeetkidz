@@ -5,15 +5,6 @@
 // one-file edit shared by both the Phaser scene and the React overlay.
 import type { NormRegion } from "../app/use-overlay-rect.ts";
 
-export const SCENE_ASPECT = 2560 / 1440; // 16:9, all reference renders
-
-// Workshop: the live sequencer grid + controls overlay the painted car UI.
-export const WORKSHOP_LAYOUT = {
-  grid: { x: 0.17, y: 0.24, w: 0.62, h: 0.30 } satisfies NormRegion,
-  shelf: { x: 0.12, y: 0.62, w: 0.76, h: 0.18 } satisfies NormRegion,
-  transport: { x: 0.30, y: 0.84, w: 0.40, h: 0.12 } satisfies NormRegion,
-} as const;
-
 // ── v2 redesign layouts (clean backgrounds) ─────────────────────────────────
 // Fractions of the 16:9 scene-v2 art, eyeballed from the renders. STARTING
 // estimates — they need a visual tuning pass against `npm run dev`. Single

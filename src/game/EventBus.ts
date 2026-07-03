@@ -42,6 +42,9 @@ export interface EventMap {
   "yard-nav": [view: AppView];
   // Tiled hit -> React (Track): travel to another view.
   "track-nav": [view: AppView];
+  // Phaser -> React (Track): a car on the oval was tapped — toggle its tarp
+  // (mute). The payload is the train slot's instanceId.
+  "track-car-mute-toggled": [instanceId: string];
   // Tiled hit -> React (Map): travel to a destination (guarded for Track).
   "map-nav": [view: AppView];
   // Tiled button -> React (Workshop): top-bar nav plaques (Map / Send to Yard).

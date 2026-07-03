@@ -48,15 +48,23 @@ export const Track: FC = () => {
     const onStop = () => engine.stop();
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
     const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
+    // Tap a car on the oval → toggle its tarp (mute). The tarp visual follows
+    // from the state change (setCars rebuild).
+    const onMuteToggle = (instanceId: string) => {
+      const slot = liveTrain(projectRef.current).find((c) => c.instanceId === instanceId);
+      if (slot) dispatch({ type: "muteCar", instanceId, muted: !slot.muted });
+    };
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
     EventBus.on("tempo-changed", onTempo);
     EventBus.on("track-nav", onNav);
+    EventBus.on("track-car-mute-toggled", onMuteToggle);
     return () => {
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);
       EventBus.off("track-nav", onNav);
+      EventBus.off("track-car-mute-toggled", onMuteToggle);
     };
   }, [dispatch, engine]);
 
@@ -92,32 +100,10 @@ export const Track: FC = () => {
         <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
       </div>
 
-      {/* Nav + transport now live inside TrackScene (Tiled hits over composited
-          panel/nav sprites), driven through the EventBus — no HTML nav here. */}
-
-      {/* Tarp strip — one chip per car; tap to cover/uncover (mute) live.
-          Sits just below the steampunk header band (top ~26% of the canvas). */}
-      {cars.length > 0 && (
-        <div style={{ position: "absolute", top: "27%", left: "50%", transform: "translateX(-50%)", zIndex: 19, display: "flex", gap: 4, maxWidth: "90%", flexWrap: "wrap", justifyContent: "center" }}>
-          {liveTrain(project).map((c, i) => {
-            const part = project.parts.find((p) => p.id === c.partId)!;
-            return (
-              <button
-                key={c.instanceId}
-                className="pixel-tap"
-                title={c.muted ? "Uncover (unmute)" : "Cover with a tarp (mute)"}
-                onClick={() => dispatch({ type: "muteCar", instanceId: c.instanceId, muted: !c.muted })}
-                style={{ minWidth: 30, height: 28, background: c.muted ? "rgba(40,40,40,0.9)" : part.color, border: "2px solid rgba(0,0,0,0.55)", borderRadius: 3, color: "#fff", font: "400 8px/1 var(--font-label, 'Press Start 2P')", cursor: "pointer", opacity: c.muted ? 0.6 : 1, textShadow: "1px 1px 0 #000" }}
-              >
-                {c.muted ? "🛡️" : i + 1}
-              </button>
-            );
-          })}
-        </div>
-      )}
-
-      {/* Transport controls (Ride / Stop / Speed) now live inside TrackScene,
-          driven through the EventBus — no HTML overlays here. */}
+      {/* The whole view lives inside TrackScene now: nav + transport are Tiled
+          chrome, and muting is tap-the-car-to-tarp-it, all over the EventBus.
+          (The old HTML tarp strip drifted into the letterbox on non-16:9
+          screens — HTML overlays can't track the FIT-scaled canvas.) */}
     </div>
   );
 };

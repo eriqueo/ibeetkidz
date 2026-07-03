@@ -121,9 +121,14 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   // Depart for the Track.
   await emit(page, "yard-send-to-track");
   await expect.poll(async () => (await getProject(page)).activeView).toBe("track");
-  // The Track tarp strip renders one chip per live car.
-  await expect(page.locator("button.pixel-tap").first()).toBeVisible();
   await waitForScene(page, "TrackScene");
+
+  // Tap-a-car-to-tarp-it: the scene's car token emits the mute toggle.
+  const slot = (await getProject(page)).train[0];
+  await emit(page, "track-car-mute-toggled", slot.instanceId);
+  await expect.poll(async () => (await getProject(page)).train[0].muted).toBe(true);
+  await emit(page, "track-car-mute-toggled", slot.instanceId);
+  await expect.poll(async () => (await getProject(page)).train[0].muted).toBe(false);
 
   await emit(page, "transport-play", "ride");
   await page.waitForTimeout(500);

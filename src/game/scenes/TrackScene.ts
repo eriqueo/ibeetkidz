@@ -13,6 +13,7 @@
 // tempo controls owned by React.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
+import { EventBus } from "../EventBus.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import {
   loadSpriteAssets,
@@ -302,7 +303,8 @@ export class TrackScene extends BackgroundScene {
     this.update();
   }
 
-  /** A car: directional atlas body; overlay a tarp frame when muted. */
+  /** A car: directional atlas body; overlay a tarp frame when muted. Tapping
+   *  the car toggles its tarp (mute) — the kid covers/uncovers the load. */
   private makeCar(car: TrackCar): Phaser.GameObjects.Container {
     const r = this.backgroundRect;
     const targetW = r.width * 0.075;
@@ -317,6 +319,21 @@ export class TrackScene extends BackgroundScene {
     c.setData("body", body);
     if (body.width > 0) c.setScale(targetW / body.width);
     c.setDepth(4);
+    // Kid-sized hit area (1.6× the body) around the moving car. Same armed
+    // press/release rule as the chrome so nothing leaks a stray pointerup.
+    const hit = new Phaser.Geom.Rectangle(
+      -body.width * 0.8, -body.height * 0.8, body.width * 1.6, body.height * 1.6,
+    );
+    c.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+    if (c.input) c.input.cursor = "pointer";
+    let armed = false;
+    c.on("pointerdown", () => { armed = true; });
+    c.on("pointerout", () => { armed = false; });
+    c.on("pointerup", () => {
+      if (!armed) return;
+      armed = false;
+      EventBus.emit("track-car-mute-toggled", car.id);
+    });
     return c;
   }
 
