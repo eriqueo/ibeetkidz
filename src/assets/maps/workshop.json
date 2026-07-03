@@ -44,7 +44,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "panel-header-v2" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-header-v2"
+            }
           ]
         },
         {
@@ -58,7 +62,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "panel-transport" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-transport-v2"
+            }
           ]
         },
         {
@@ -72,8 +80,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-map" },
-            { "name": "action", "type": "string", "value": "nav-map" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-nav-map"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "nav-map"
+            }
           ]
         },
         {
@@ -87,8 +103,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-newcar" },
-            { "name": "action", "type": "string", "value": "toggle-car-picker" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-newcar"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "toggle-car-picker"
+            }
           ]
         },
         {
@@ -102,8 +126,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-yard" },
-            { "name": "action", "type": "string", "value": "nav-yard" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-nav-yard"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "nav-yard"
+            }
           ]
         },
         {
@@ -117,9 +149,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "inst-drums" },
-            { "name": "action", "type": "string", "value": "workshop-open-tool" },
-            { "name": "arg", "type": "string", "value": "beat-grid" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-drums"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "beat-grid"
+            }
           ]
         },
         {
@@ -133,9 +177,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "inst-mic" },
-            { "name": "action", "type": "string", "value": "workshop-open-tool" },
-            { "name": "arg", "type": "string", "value": "record-voicefx" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-mic"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "record-voicefx"
+            }
           ]
         },
         {
@@ -149,9 +205,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "inst-guitar" },
-            { "name": "action", "type": "string", "value": "workshop-add-melody" },
-            { "name": "arg", "type": "string", "value": "guitar" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-guitar"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "guitar"
+            }
           ]
         },
         {
@@ -165,9 +233,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "inst-violin" },
-            { "name": "action", "type": "string", "value": "workshop-add-melody" },
-            { "name": "arg", "type": "string", "value": "violin" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-violin"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "violin"
+            }
           ]
         },
         {
@@ -181,9 +261,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "inst-piano" },
-            { "name": "action", "type": "string", "value": "workshop-add-melody" },
-            { "name": "arg", "type": "string", "value": "piano" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-piano"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "piano"
+            }
           ]
         },
         {
@@ -208,9 +300,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-stop" },
-            { "name": "action", "type": "string", "value": "transport-stop" },
-            { "name": "label", "type": "string", "value": "STOP" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-transport-stop"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-stop"
+            }
           ]
         },
         {
@@ -224,10 +323,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-play" },
-            { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "loop" },
-            { "name": "label", "type": "string", "value": "PLAY" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-transport-play"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "loop"
+            }
           ]
         },
         {
@@ -241,10 +351,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-loop" },
-            { "name": "action", "type": "string", "value": "transport-play" },
-            { "name": "arg", "type": "string", "value": "loop" },
-            { "name": "label", "type": "string", "value": "LOOP" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-transport-loop"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "transport-play"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "loop"
+            }
           ]
         },
         {
@@ -258,10 +379,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-tempo-down" },
-            { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": -20 },
-            { "name": "label", "type": "string", "value": "SLOW" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-transport-slow"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": -20
+            }
           ]
         },
         {
@@ -275,10 +407,21 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-tempo-up" },
-            { "name": "action", "type": "string", "value": "tempo-changed" },
-            { "name": "arg", "type": "int", "value": 20 },
-            { "name": "label", "type": "string", "value": "FAST" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-transport-fast"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "tempo-changed"
+            },
+            {
+              "name": "arg",
+              "type": "int",
+              "value": 20
+            }
           ]
         }
       ]

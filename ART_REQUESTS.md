@@ -140,6 +140,31 @@ band empty scenery and shipping the panel as a sprite like the Yard's.
 
 ---
 
+## AR-012 · Train ref frames: flatcar directions + loco rear view — MEDIUM
+
+**Assembled:** the new refs are live in `public/assets/spritesheets/train.png`
+(rebuild any time with `python3 scripts/build_train_atlas.py`). Two gaps ship
+as placeholders:
+
+1. **Flatcar has only E + NE refs.** The other six directions are currently
+   mirror/rotate derivations — the N/S cells are a side view rotated 90° (wrong
+   perspective) and SE/SW show the deck flipped upside-down. Need real refs:
+   `flatcar-ref-{N,NW,W,SW,S,SE}.png`, same canvas/backdrop conventions as the
+   boxcar set.
+2. **`loco-ref-N.png` is a FRONT-facing view (same as S).** North should be the
+   REAR of the locomotive (tender/cab back, no cowcatcher visible). On the
+   oval's left straight the train drives "up" and currently shows its face
+   backwards.
+
+**Prompt:** "Steampunk pixel-art train cars matching the existing ref set:
+(a) flat deck car (flatcar-ref-E.png family) seen from N, NW, W, SW, S, SE in
+the same 3/4 game perspective and scale as the boxcar refs; (b) the locomotive
+seen from directly behind (rear of cab/tender, heading away from the viewer)
+to replace loco-ref-N. 1920×1920 canvas, same backdrop treatment as the
+existing refs."
+
+---
+
 ## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
 
 **Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,

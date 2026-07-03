@@ -74,7 +74,7 @@ describe("panel objects (zone plates)", () => {
     expect(s.klass).toBe("panel");
     expect(s.sprite).toBe("panel-header-v2");
     expect(s.action).toBeUndefined();
-    expect(need("panel-transport").sprite).toBe("panel-transport");
+    expect(need("panel-transport").sprite).toBe("panel-transport-v2");
   });
 });
 
@@ -124,29 +124,31 @@ describe("field instrument objects", () => {
   });
 });
 
-describe("bottom-bar transport objects", () => {
-  it("emits stop with no arg and carries a STOP caption", () => {
+describe("bottom-bar transport objects (unified AR-010 keycaps, baked labels)", () => {
+  it("emits stop with no arg and no engine caption (label is baked in)", () => {
     const s = need("btn-stop");
+    expect(s.sprite).toBe("btn-transport-stop");
     expect(s.action).toBe("transport-stop");
     expect(s.arg).toBeUndefined();
-    expect(s.label).toBe("STOP");
+    expect(s.label).toBeUndefined();
   });
 
   it("emits play with the loop mode arg", () => {
+    expect(need("btn-play").sprite).toBe("btn-transport-play");
     expect(need("btn-play").action).toBe("transport-play");
     expect(need("btn-play").arg).toBe("loop");
-    expect(need("btn-play").label).toBe("PLAY");
+    expect(need("btn-loop").sprite).toBe("btn-transport-loop");
   });
 
-  it("preserves numeric tempo deltas as numbers, not strings, and labels them", () => {
+  it("preserves numeric tempo deltas as numbers, not strings", () => {
     const down = need("btn-tempo-down");
     const up = need("btn-tempo-up");
+    expect(down.sprite).toBe("btn-transport-slow");
     expect(down.action).toBe("tempo-changed");
     expect(down.arg).toBe(-20);
     expect(typeof down.arg).toBe("number");
-    expect(down.label).toBe("SLOW");
+    expect(up.sprite).toBe("btn-transport-fast");
     expect(up.arg).toBe(20);
-    expect(up.label).toBe("FAST");
   });
 });
 

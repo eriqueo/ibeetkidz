@@ -106,12 +106,14 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
   "btn-picker-hopper": pickerDef("hopper", [0.018, 0.225, 0.982, 0.748]),
   "btn-picker-flatcar": pickerDef("flatcar", [0.036, 0.261, 0.964, 0.714]),
-  // Bottom-bar transport.
-  "btn-stop": buttonDef("btn-stop"),
-  "btn-play": buttonDef("btn-play"),
-  "btn-loop": buttonDef("btn-loop"),
-  "btn-tempo-down": buttonDef("btn-tempo-down"),
-  "btn-tempo-up": buttonDef("btn-tempo-up"),
+  // Bottom-bar transport: the unified dark steampunk keycap set (AR-010) —
+  // baked labels, same family as the yard keycaps, shared by Workshop + Track.
+  // Content boxes measured from each idle PNG's solid-alpha bbox.
+  "btn-transport-stop": buttonDef("btn-transport-stop", { content: [0.181, 0.155, 0.819, 0.845] }),
+  "btn-transport-play": buttonDef("btn-transport-play", { content: [0.18, 0.155, 0.841, 0.833] }),
+  "btn-transport-loop": buttonDef("btn-transport-loop", { content: [0.179, 0.134, 0.821, 0.847] }),
+  "btn-transport-slow": buttonDef("btn-transport-slow", { content: [0.181, 0.129, 0.819, 0.882] }),
+  "btn-transport-fast": buttonDef("btn-transport-fast", { content: [0.181, 0.155, 0.819, 0.845] }),
   // Track: the dedicated RIDE keycap (golden loco, baked label — no caption).
   "btn-track-ride": buttonDef("btn-track-ride"),
   // Yard bottom-bar action keycaps (baked labels — no captions).
@@ -139,7 +141,7 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // yard actions plate carries transparent margins, so it passes a measured box.
   "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
   "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
-  "panel-transport": panelDef("panel-transport", [0, 0, 1, 1]),
+  "panel-transport-v2": panelDef("panel-transport-v2", [0.0164, 0.2066, 0.981, 0.7283]),
   "panel-yard-actions": panelDef("panel-yard-actions", [0.021, 0.325, 0.979, 0.672]),
 } as const;
 

@@ -128,15 +128,16 @@ describe("track.json wiring", () => {
     expect(map.anchor).toBe("ui-top-right");
   });
 
-  it("builds the transport bar from real sprite buttons with pressed states", () => {
+  it("builds the transport bar from the unified keycap family with pressed states", () => {
     for (const [id, sprite] of [
-      ["btn-tempo-down", "btn-tempo-down"],
-      ["btn-stop", "btn-stop"],
+      ["btn-tempo-down", "btn-transport-slow"],
+      ["btn-stop", "btn-transport-stop"],
       ["btn-ride", "btn-track-ride"],
-      ["btn-tempo-up", "btn-tempo-up"],
+      ["btn-tempo-up", "btn-transport-fast"],
     ] as const) {
       const s = need(track, id);
       expect(s.sprite).toBe(sprite);
+      expect(s.label, `${id} label is baked into the art`).toBeUndefined();
       expect(UI_SPRITES[sprite]!.states["pressed"]).toBeTypeOf("string");
     }
   });

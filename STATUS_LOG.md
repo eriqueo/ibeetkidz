@@ -14,7 +14,26 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-03 — consistency pass from Eric's device shots)
+### Recently Completed (2026-07-03, later — bottom bars unified + new train atlas)
+*   **AR-010/AR-011 wired in:** Workshop + Track transport bars now use the
+    unified dark keycap set (`btn-transport-stop/play/loop/slow/fast`, baked
+    labels, idle⇄pressed) on the dark `panel-transport-v2` plate — all three
+    bottom bars are ONE design language with the Yard. Engine captions on the
+    transport buttons removed (labels are in the art); the old
+    `btn-stop/play/loop/tempo-down/tempo-up` + `panel-transport` manifest
+    entries retired. Pure Tiled + manifest edit, zero scene code — as designed.
+*   **AR-012 train atlas assembled:** `scripts/build_train_atlas.py` keys the
+    grey wash off the new per-direction ref frames, crops to content, applies
+    one scale per car type, and writes the 5×8 128px atlas to
+    `public/assets/spritesheets/train.png` (train.json unchanged). Verified
+    riding the oval in the production build. Placeholders logged as AR-012:
+    flatcar's six missing directions are mirror/rotate derivations, and
+    `loco-ref-N` is a front view where a rear view belongs.
+*   **New art run through the perf pipeline:** transport keycaps → 512px PNG8,
+    panel quantized (32 MB → 1 MB); the ten committed `_original` duplicate
+    PNGs removed (established precedent — they re-bloat the buttons/ glob).
+
+### Previously Completed (2026-07-03 — consistency pass from Eric's device shots)
 *   **Bottom-bar inconsistency logged for Manus (AR-010/AR-011):** the three
     bars are three design languages — Yard's dark steampunk keycaps with baked
     labels are the keeper; Workshop's cream keycaps + captions and Track's
@@ -163,9 +182,9 @@ the Phase 2 migration.)
 2.  **Track loop-count control:** design + art + `EventMap` event still missing
     (charter lists Mute/Loop as Track's bottom bar; mute is now in-canvas —
     tap a car to tarp it — so loop-count is the remaining gap).
-3.  **Swap in the AR-010/AR-011 art when it lands** (unified transport keycaps
-    + dark workshop plate): update the `sprite` keys in `workshop.json` /
-    `track.json`, add the manifest entries, drop the captions. No scene code.
+3.  **Swap in AR-012 art when it lands** (flatcar directions + loco rear
+    view): drop the refs into `src/assets/spritesheets/` and re-run
+    `python3 scripts/build_train_atlas.py` — nothing else changes.
 3.  **Track playback position sync** (long-standing): drive playback FROM the
     physical crossing-signal pass rather than the transport driving the visual.
 

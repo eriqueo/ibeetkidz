@@ -32,10 +32,10 @@ describe("UI_SPRITES manifest", () => {
   });
 
   it("gives buttons idle+pressed, instruments passive/hover/active, panels one plate", () => {
-    expect(Object.keys(UI_SPRITES["btn-play"]!.states).sort()).toEqual(["idle", "pressed"]);
+    expect(Object.keys(UI_SPRITES["btn-transport-play"]!.states).sort()).toEqual(["idle", "pressed"]);
     expect(Object.keys(UI_SPRITES["inst-drums"]!.states).sort()).toEqual(["active", "hover", "passive"]);
     expect(UI_SPRITES["panel-header"]!.stretch).toBe(true);
-    expect(UI_SPRITES["btn-play"]!.stretch).toBe(false);
+    expect(UI_SPRITES["btn-transport-play"]!.stretch).toBe(false);
   });
 });
 
