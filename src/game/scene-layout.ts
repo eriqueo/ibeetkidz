@@ -67,16 +67,16 @@ export const YARD_SIDINGS_V2 = {
 // Track v2: the oval the train rides, the crossing-signal point on the bottom
 // straight, and the bottom control panel band.
 export const TRACK_LAYOUT_V2 = {
-  // Ellipse centre + radii (fractions of the image), tracing the painted oval.
-  // Measured from the 2026-07-02 repainted plate (straights at 0.307/0.634,
-  // side bands at 0.154/0.846).
-  oval: { cx: 0.5, cy: 0.47, rx: 0.346, ry: 0.163 } as const,
-  // Normalized path position (0..1 around the ellipse) where the signal sits —
-  // the bottom-centre straight. Phaser.Curves.Ellipse starts at 3 o'clock and
-  // goes counter-clockwise, so the bottom is at 0.75.
-  signalAngle: 0.75,
-  // Where the loco head sits at progress 0 (train parked): 0.25 = top-centre
-  // straight, so the coupled train rests along the top and drives off CCW.
+  // The painted track is a STADIUM (two straights + semicircular end caps),
+  // not an ellipse — an ellipse only touches it at four points and drifts off
+  // the rails everywhere else. These are the track CENTERLINE extremes,
+  // measured from the 2026-07-02 plate (straight centrelines at 0.307/0.634,
+  // side apexes at 0.154/0.846). The cap radius follows: (bottom-top)/2 of the
+  // painted height; TrackScene builds the Path from these each layout.
+  stadium: { left: 0.154, right: 0.846, top: 0.307, bottom: 0.634 } as const,
+  // Where the loco head sits at progress 0 (train parked). The stadium path
+  // starts at the right apex and runs clockwise, so 0.25 is EXACTLY the
+  // bottom-centre straight — right at the crossing signal.
   parkAngle: 0.25,
   // The crossing signal sprite anchor (bottom-centre of the oval, over the
   // plate's painted signal) + display width as a fraction of the scene.

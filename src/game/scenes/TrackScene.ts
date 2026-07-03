@@ -38,7 +38,6 @@ export interface TrackCar {
   readonly muted: boolean;
 }
 
-const OVAL = TRACK_LAYOUT_V2.oval;
 const SMOKE_INTERVAL_MS = 800;
 // Arc occupied by one coupled car = its display width (makeCar uses 0.075 of the
 // scene) + a small coupler gap, as a fraction of the scene width.
@@ -47,7 +46,7 @@ const CAR_COUPLE_W = 0.082;
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
-  private path!: Phaser.Curves.Ellipse;
+  private path!: Phaser.Curves.Path;
   private loco!: Phaser.GameObjects.Container;
   private signal?: Phaser.GameObjects.Sprite;
   private cars: TrackCar[] = [];
@@ -83,7 +82,6 @@ export class TrackScene extends BackgroundScene {
   create(): void {
     this.addBackground("contain");
     registerAnimations(this);
-    this.path = new Phaser.Curves.Ellipse(0, 0, 1, 1);
     this.layoutPath();
     this.loco = this.makeLoco();
     this.signal = this.add
@@ -225,12 +223,27 @@ export class TrackScene extends BackgroundScene {
 
   // ── internals ────────────────────────────────────────────────────────────
 
+  /** Rebuild the ride path as a STADIUM matching the painted track: two
+   *  straights joined by semicircular end caps. Runs clockwise from the right
+   *  apex, so (with Path's arc-length parameterization) t=0.25 is exactly the
+   *  bottom-centre straight — the park position at the crossing signal. */
   private layoutPath(): void {
     const r = this.backgroundRect;
-    this.path.x = r.x + r.width * OVAL.cx;
-    this.path.y = r.y + r.height * OVAL.cy;
-    this.path.xRadius = r.width * OVAL.rx;
-    this.path.yRadius = r.height * OVAL.ry;
+    const S = TRACK_LAYOUT_V2.stadium;
+    const yTop = r.y + r.height * S.top;
+    const yBot = r.y + r.height * S.bottom;
+    const cy = (yTop + yBot) / 2;
+    const cap = (yBot - yTop) / 2; // end-cap radius (circular, from track height)
+    const xL = r.x + r.width * S.left + cap; // left cap centre
+    const xR = r.x + r.width * S.right - cap; // right cap centre
+
+    const p = new Phaser.Curves.Path(xR + cap, cy);
+    p.add(new Phaser.Curves.Ellipse(xR, cy, cap, cap, 0, 90)); // right cap → down
+    p.lineTo(xL, yBot); // bottom straight (right → left)
+    p.add(new Phaser.Curves.Ellipse(xL, cy, cap, cap, 90, 270)); // left cap
+    p.lineTo(xR, yTop); // top straight (left → right)
+    p.add(new Phaser.Curves.Ellipse(xR, cy, cap, cap, 270, 360)); // right cap → close
+    this.path = p;
   }
 
   private layoutFixtures(): void {
