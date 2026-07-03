@@ -165,6 +165,29 @@ existing refs."
 
 ---
 
+## AR-013 · Steampunk LCD display plate (SONG/TEMPO + SPEED readouts) — HIGH
+
+**Target file:** `panels/panel-lcd.png`
+
+**Why (Eric, 2026-07-03):** the SONG/TEMPO chip in the Workshop (and the SPEED
+chip on the Track) is an engine-drawn flat cream rounded rectangle — it isn't
+in concert with the steampunk headers/footers around it.
+
+**Prompt:** "Steampunk display housing for a kids' train game, matching the
+dark keycap set (btn-transport-stop-idle.png): a silver riveted bevel frame
+with small brass corner gears around a cream parchment display window (the
+window must be plain and empty — dark plum text is rendered on it at runtime).
+Landscape, window-to-frame ratio generous (~80% window). Transparent outside
+the frame, pre-trimmed, warm 16-color palette, 1px dark plum outline. One
+asset serves both the Workshop SONG/TEMPO readout (~590×160 on screen) and the
+Track SPEED readout (~430×150)."
+
+**Unblocks (zero scene code):** add a `panel` object with `sprite: panel-lcd`
+at the `lcd-transport` rect in `workshop.json`/`track.json`; the engine's
+graphics chip is then retired and only the text remains on top.
+
+---
+
 ## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
 
 **Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,

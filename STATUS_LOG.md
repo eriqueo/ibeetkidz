@@ -14,7 +14,31 @@ now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
 hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
-### Recently Completed (2026-07-03, later — bottom bars unified + new train atlas)
+### Recently Completed (2026-07-03, latest — ride freeze fixed + chrome fit pass)
+*   **"Train never animates" root-caused and fixed (Eric report):**
+    `sprite-assets.ts` used `Phaser.Animations.Events.ANIMATION_COMPLETE` as a
+    runtime value without importing Phaser — the ambient namespace types make
+    it typecheck, but the first smoke puff threw `ReferenceError: Phaser is
+    not defined` inside the game step and KILLED the whole render loop, so
+    the train (and everything else) froze ~1s into every ride. One-line
+    import fix; audited the codebase for other value-position uses of the
+    global (none). New e2e guard: ride past the smoke timer and assert the
+    loco is still moving — that catches any future update-loop death.
+*   **Nav plaques contained + uniform (Eric report):** the header art has
+    brass gear medallions at each end that the oversized plaques were
+    COVERING. All plaques across the three maps now share one height (150)
+    with aspect-true widths, inset inside the measured parchment band
+    (design 352–2200 × 87–310) — the gears are visible again. Fixture test
+    now asserts plaque-inside-header containment instead of magic coords.
+*   **Bottom bars centred (Eric report):** Workshop keycaps unified to
+    160×160 and centred on the plate face (cy 1285, LCD too — the old
+    baked-window constraint is gone with the dark plate); Track keycaps/LCD
+    centred on the painted frame (cy 1257).
+*   **AR-013 queued:** steampunk LCD display plate to replace the engine's
+    flat cream chip (SONG/TEMPO + SPEED) — wiring it will be a Tiled-only
+    panel object at the lcd anchor.
+
+### Previously Completed (2026-07-03, later — bottom bars unified + new train atlas)
 *   **AR-010/AR-011 wired in:** Workshop + Track transport bars now use the
     unified dark keycap set (`btn-transport-stop/play/loop/slow/fast`, baked
     labels, idle⇄pressed) on the dark `panel-transport-v2` plate — all three

@@ -130,8 +130,15 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   await emit(page, "track-car-mute-toggled", slot.instanceId);
   await expect.poll(async () => (await getProject(page)).train[0].muted).toBe(false);
 
+  // Ride long enough for the loco smoke timer (800ms) to fire — a runtime
+  // error anywhere in the game step kills Phaser's whole render loop, which
+  // shows up as the loco freezing while React keeps pushing progress.
   await emit(page, "transport-play", "ride");
-  await page.waitForTimeout(500);
+  await page.waitForTimeout(1200);
+  const x1 = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().loco.x);
+  await page.waitForTimeout(1200);
+  const x2 = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().loco.x);
+  expect(x2, "the loco must still be moving after the smoke timer fires").not.toBe(x1);
   await emit(page, "transport-stop");
 });
 

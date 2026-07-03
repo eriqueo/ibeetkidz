@@ -79,14 +79,20 @@ describe("panel objects (zone plates)", () => {
 });
 
 describe("top-bar plaques", () => {
-  it("wires the Map plaque → nav-map", () => {
+  it("wires the Map plaque → nav-map, contained inside the header panel", () => {
     const s = need("btn-nav-map");
     expect(s.klass).toBe("ui-button");
     expect(s.sprite).toBe("btn-nav-map");
     expect(s.action).toBe("nav-map");
     expect(s.arg).toBeUndefined();
-    expect(s.cx).toBeCloseTo(0.164, 2);
-    expect(s.cy).toBeCloseTo(0.135, 2);
+    // Eric's ask: plaques must sit INSIDE the header art, not on its frame.
+    const header = need("panel-header");
+    for (const plaque of [s, need("btn-nav-yard")]) {
+      expect(plaque.cx - plaque.w / 2).toBeGreaterThan(header.cx - header.w / 2);
+      expect(plaque.cx + plaque.w / 2).toBeLessThan(header.cx + header.w / 2);
+      expect(plaque.cy - plaque.h / 2).toBeGreaterThan(header.cy - header.h / 2);
+      expect(plaque.cy + plaque.h / 2).toBeLessThan(header.cy + header.h / 2);
+    }
   });
 
   it("wires the New Car plaque → toggle-car-picker (centred)", () => {

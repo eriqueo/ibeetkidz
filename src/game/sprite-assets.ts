@@ -22,6 +22,11 @@
  *   tarp.png   — 1 frame
  *     tarp
  */
+// NB: Phaser must be a REAL import here. `Phaser.Animations.Events.…` below is
+// a runtime value; with only the ambient namespace types it typechecks but
+// throws `ReferenceError: Phaser is not defined` at runtime — inside the game
+// step, which killed the whole render loop (the "train freezes on ride" bug).
+import Phaser from "phaser";
 
 export const FRAME_SIZE = 128;
 

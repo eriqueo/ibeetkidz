@@ -44,40 +44,72 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "panel-header-v2" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-header-v2"
+            }
           ]
         },
         {
           "id": 2,
           "name": "btn-yard-workshop",
           "type": "ui-button",
-          "x": 180,
-          "y": 110,
-          "width": 480,
-          "height": 170,
+          "x": 380,
+          "y": 124,
+          "width": 462,
+          "height": 150,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-workshop" },
-            { "name": "action", "type": "string", "value": "yard-nav" },
-            { "name": "arg", "type": "string", "value": "workshop" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-nav-workshop"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "workshop"
+            }
           ]
         },
         {
           "id": 3,
           "name": "btn-yard-track",
           "type": "ui-button",
-          "x": 1900,
-          "y": 110,
-          "width": 480,
-          "height": 170,
+          "x": 1766,
+          "y": 124,
+          "width": 414,
+          "height": 150,
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-nav-track" },
-            { "name": "action", "type": "string", "value": "yard-nav" },
-            { "name": "arg", "type": "string", "value": "track" },
-            { "name": "anchor", "type": "string", "value": "ui-top-right" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-nav-track"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-nav"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "track"
+            },
+            {
+              "name": "anchor",
+              "type": "string",
+              "value": "ui-top-right"
+            }
           ]
         },
         {
@@ -91,7 +123,11 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "panel-yard-actions" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-yard-actions"
+            }
           ]
         },
         {
@@ -105,8 +141,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-yard-edit" },
-            { "name": "action", "type": "string", "value": "yard-edit-car" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-yard-edit"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-edit-car"
+            }
           ]
         },
         {
@@ -120,8 +164,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-yard-hitch" },
-            { "name": "action", "type": "string", "value": "yard-add" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-yard-hitch"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-add"
+            }
           ]
         },
         {
@@ -135,8 +187,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-yard-unhitch" },
-            { "name": "action", "type": "string", "value": "yard-remove-from-train" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-yard-unhitch"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-remove-from-train"
+            }
           ]
         },
         {
@@ -150,8 +210,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-yard-totrack" },
-            { "name": "action", "type": "string", "value": "yard-depart" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-yard-totrack"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-depart"
+            }
           ]
         },
         {
@@ -165,8 +233,16 @@
           "rotation": 0,
           "visible": true,
           "properties": [
-            { "name": "sprite", "type": "string", "value": "btn-yard-delete" },
-            { "name": "action", "type": "string", "value": "yard-remove-car" }
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-yard-delete"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-remove-car"
+            }
           ]
         }
       ]
