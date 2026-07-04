@@ -216,7 +216,35 @@ hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
 
 ---
 
-## 2. Immediate Next Steps
+## 2. Workshop Revamp — Sprint intake (2026-07-03, Eric-approved)
+
+`WORKSHOP_REVAMP_DESIGN_V2.md` is the brief. Engineering triage of Eric's
+priority list:
+
+*   **Tasks 1–4 + 6 are blocked on AR-016** (production exports of the
+    approved concepts: clean interior plate, four car-side sprites with the
+    standardized void rect, chalkboard surface). Concepts are approved; Manus
+    should ship AR-016 first — it is the sprint's critical path.
+*   **Task 5 (ground characters to floor Y)** is a Tiled-only edit but the
+    floor line moves with the new interior plate — do it WITH task 1, not
+    before, or it lands twice.
+*   **Task 7 correction (good news):** the core already has most of the
+    editor's data model — `StepNote { row, length, roll?, slideTo? }` with
+    pure `addNote/removeNote/resizeNote/setRoll` commands and scheduler
+    support for length + roll ("double beats" = roll). New work is: pitch
+    bend using the reserved `slideTo`, per-lane knob values (2 new Layer
+    fields + commands), and the modal UI itself. `types.ts` changes are
+    additive and small.
+*   **Task 8:** the adapter already sustains length and subdivides roll;
+    it needs slideTo (pitch ramp) + two per-lane effect sends (wobble=LFO/
+    chorus, crunch=bitcrush — both effects already exist in the offline FX
+    code and can be adapted for live lanes).
+*   Implementation order once AR-016 lands: layer split (Tiled) → car swap on
+    `workshop-car-type-changed` → slide-in/out animations (+ choo-choo SFX
+    via the existing procedural synthesis, no binary audio) → chalkboard grid
+    mount → editor modal → adapter params.
+
+## 2b. Other Next Steps
 
 (The art sprint's three engineering asks — yard button swap, nav plaque swap,
 inst-piano — are all DONE; inst-piano had already been in `workshop.json` since

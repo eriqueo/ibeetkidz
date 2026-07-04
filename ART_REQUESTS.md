@@ -247,6 +247,36 @@ changes once.
 
 ---
 
+## AR-016 · Workshop Revamp production exports (Sprint 1 approved concepts) — CRITICAL PATH
+
+The whole revamp implementation chain (design doc §6, tasks 1–4 and 6) is
+blocked on these production exports of the approved concepts:
+
+1. **`scenes-v2/workshop-interior-clean.png`** — 2560×1440 static interior
+   (brick arches, lamps, wooden floor, rails across the bottom third). NO car,
+   NO characters, NO chrome. This replaces the monolithic boxcar plate.
+2. **`sprites/cars/car-side-{boxcar,tanker,hopper,flatcar}.png`** — the four
+   side-on car sprites, transparent PNGs, all on the SAME canvas size with the
+   wheels on the same baseline. **The dark interior void must be an identical
+   pixel rect across all four** (the chalkboard mounts there). Ship the void
+   rect measurements (x, y, w, h relative to the canvas) with the drop — or
+   keep the void exactly centred so engineering can measure it once.
+3. **`sprites/panels/sequencer-chalkboard.png`** — the empty chalkboard
+   surface only (frame + board, no notes/no icons: notes and the playhead are
+   engine-drawn on top).
+4. **Instrument character redraws** (design doc §4) — passive/hover/active
+   each, grounded on a flat floor plane, chunky-pixel style. Include the
+   3-eyed alien fix. Same canvas conventions as the current instrument set.
+5. **`sprites/panels/panel-editor.png`** — the Instrument Editor frame (note
+   canvas top half EMPTY — engine-drawn; control deck bottom half with knob/
+   fader/toggle ART POSITIONS but the knobs as separate sprites:
+   `knob-wobble`, `knob-crunch`, `fader-handle`, `toggle-double` idle art).
+
+Everything goes through the established pipeline (engineering downsizes/
+quantizes and packs into the ui-atlas — no need to pre-optimize).
+
+---
+
 ## AR-009 · Yard keycaps + RIDE: stray semi-opaque halo — LOW
 
 **Files:** `buttons/btn-yard-edit/hitch/unhitch/totrack-*.png`,
