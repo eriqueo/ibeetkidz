@@ -15,10 +15,21 @@ import { MELODY_ROWS } from "../core/scale.ts";
 import { STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
 
 const FONT = "'Press Start 2P', monospace";
-const PANEL_BG = 0x1a140d;
+// Charter: light "paper" panels with dark text (the old flat near-black
+// modals read as debug UI next to the steampunk chrome). Parchment face,
+// dark-plum edge + hard offset shadow, plum body text; buttons stay dark
+// keycaps (same contrast pairing as the parchment header's plaques).
+const PANEL_BG = 0xe9d7ac;
+const PANEL_EDGE = 0x2b2440;
 const BTN_BG = 0x2a2118;
-const ACCENT = 0xffd166;
 const TEXT = "#e8dcc8";
+const INK = "#2b2440";
+
+/** Dark ink on light button fills, cream on dark ones. */
+function labelColorFor(fill: number): string {
+  const r = (fill >> 16) & 0xff, g = (fill >> 8) & 0xff, b = fill & 0xff;
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.45 ? INK : TEXT;
+}
 
 /** Funny-effect tiles for My Voice (mirrors the old EFFECT_TILES presentation). */
 const FX_TILES: { id: EffectId; label: string; emoji: string; color: number }[] = [
@@ -70,9 +81,12 @@ class PanelButton {
   private hit: Phaser.Geom.Rectangle;
   private enabled = true;
 
+  private fill: number;
+
   constructor(scene: Phaser.Scene, text: string, onPress: () => void, fill = BTN_BG) {
-    this.bg = scene.add.rectangle(0, 0, 10, 10, fill).setStrokeStyle(3, 0x000000);
-    this.label = scene.add.text(0, 0, text, { fontFamily: FONT, fontSize: "12px", color: TEXT, align: "center" }).setOrigin(0.5);
+    this.fill = fill;
+    this.bg = scene.add.rectangle(0, 0, 10, 10, fill).setStrokeStyle(3, PANEL_EDGE);
+    this.label = scene.add.text(0, 0, text, { fontFamily: FONT, fontSize: "12px", color: labelColorFor(fill), align: "center" }).setOrigin(0.5);
     this.container = scene.add.container(0, 0, [this.bg, this.label]);
     this.hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
     this.container.setInteractive(this.hit, Phaser.Geom.Rectangle.Contains);
@@ -90,7 +104,9 @@ class PanelButton {
 
   private rest(): void {
     this.container.setScale(1);
-    this.bg.setFillStyle(BTN_BG, 1);
+    // Restore the button's OWN fill — resetting to the dark default turned
+    // every coloured tile (pads / FX) permanently dark after its first tap.
+    this.bg.setFillStyle(this.fill, 1);
   }
 
   place(b: Box, fontPx = 12): void {
@@ -102,7 +118,11 @@ class PanelButton {
   }
 
   setText(t: string): void { this.label.setText(t); }
-  setFill(c: number): void { this.bg.setFillStyle(c, 1); }
+  setFill(c: number): void {
+    this.fill = c;
+    this.bg.setFillStyle(c, 1);
+    this.label.setColor(labelColorFor(c));
+  }
   setVisible(v: boolean): void { this.container.setVisible(v); }
   setEnabled(v: boolean): void {
     this.enabled = v;
@@ -113,6 +133,7 @@ class PanelButton {
 // ── base modal panel ──────────────────────────────────────────────────────────
 export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
   protected backdrop: Phaser.GameObjects.Rectangle;
+  protected shadow: Phaser.GameObjects.Rectangle;
   protected frame: Phaser.GameObjects.Rectangle;
   protected titleText: Phaser.GameObjects.Text;
   protected closeBtn: PanelButton;
@@ -125,10 +146,13 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     scene.add.existing(this);
     this.setDepth(50).setVisible(false);
     this.backdrop = scene.add.rectangle(0, 0, 10, 10, 0x000000, 0.62).setOrigin(0).setInteractive();
-    this.frame = scene.add.rectangle(0, 0, 10, 10, PANEL_BG, 0.98).setStrokeStyle(4, ACCENT).setOrigin(0);
-    this.titleText = scene.add.text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: "#ffd166" }).setOrigin(0, 0.5);
+    // Parchment plate with a dark-plum edge and a hard offset drop shadow —
+    // the charter's paper-panel language (no gradients, no glow).
+    this.shadow = scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.55).setOrigin(0);
+    this.frame = scene.add.rectangle(0, 0, 10, 10, PANEL_BG, 1).setStrokeStyle(4, PANEL_EDGE).setOrigin(0);
+    this.titleText = scene.add.text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: INK }).setOrigin(0, 0.5);
     this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"));
-    this.add([this.backdrop, this.frame, this.titleText, this.closeBtn.container]);
+    this.add([this.backdrop, this.shadow, this.frame, this.titleText, this.closeBtn.container]);
   }
 
   /** Position the modal over the viewport and re-flow content. */
@@ -137,6 +161,8 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.backdrop.setSize(screenW, screenH).setPosition(0, 0);
     const m = WORKSHOP_TOOL_MODAL;
     const fx = screenW * m.x, fy = screenH * m.y, fw = screenW * m.w, fh = screenH * m.h;
+    const drop = Math.max(4, Math.round(fh * 0.012));
+    this.shadow.setSize(fw, fh).setPosition(fx + drop, fy + drop);
     this.frame.setSize(fw, fh).setPosition(fx, fy);
     const pad = Math.round(Math.min(fw, fh) * 0.05);
     const headerH = Math.round(fh * 0.12);
@@ -170,7 +196,7 @@ export class VoiceToolPanel extends BaseToolPanel {
       .on("pointerdown", () => EventBus.emit("tool-voice-record", true))
       .on("pointerup", () => EventBus.emit("tool-voice-record", false))
       .on("pointerout", () => EventBus.emit("tool-voice-record", false));
-    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: TEXT, align: "center" }).setOrigin(0.5);
+    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: INK, align: "center" }).setOrigin(0.5);
     this.fxBtns = FX_TILES.map((t) => ({ id: t.id, btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color) }));
     this.sendBeat = new PanelButton(this.scene, "🥁 Send as Beat", () => EventBus.emit("tool-voice-send", "beat"), 0x2a5c2a);
     this.sendNotes = new PanelButton(this.scene, "🎹 Send as Notes", () => EventBus.emit("tool-voice-send", "notes"), 0x2a5c2a);
@@ -222,7 +248,7 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
       .on("pointerdown", () => EventBus.emit("tool-keys-record", true))
       .on("pointerup", () => EventBus.emit("tool-keys-record", false))
       .on("pointerout", () => EventBus.emit("tool-keys-record", false));
-    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: TEXT, align: "center" }).setOrigin(0.5);
+    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: INK, align: "center" }).setOrigin(0.5);
     this.keys = Array.from({ length: MELODY_ROWS }, (_, row) =>
       new PanelButton(this.scene, "", () => EventBus.emit("tool-keys-audition", row), 0x6a5520));
     this.sendBtn = new PanelButton(this.scene, "➡️ Add to Car", () => EventBus.emit("tool-keys-send"), 0x2a5c2a);
@@ -304,7 +330,7 @@ export class BeatToolPanel extends BaseToolPanel {
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
       for (let s = 0; s < STEP_COUNT; s++) {
-        const cell = this.scene.add.rectangle(0, 0, 10, 10, BTN_BG, 0.35).setStrokeStyle(1, 0x000000, 0.5).setInteractive({ useHandCursor: true });
+        const cell = this.scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.12).setStrokeStyle(1, PANEL_EDGE, 0.4).setInteractive({ useHandCursor: true });
         const step = s;
         cell.on("pointerdown", () => EventBus.emit("tool-beat-toggle", drum.assetId, step));
         this.add(cell);
@@ -340,7 +366,7 @@ export class BeatToolPanel extends BaseToolPanel {
         const isOn = b.cells[s] ?? false;
         if (isOn !== row.on[s]) {
           row.on[s] = isOn;
-          row.cells[s]?.setFillStyle(isOn ? row.color : BTN_BG, isOn ? 1 : 0.35);
+          row.cells[s]?.setFillStyle(isOn ? row.color : PANEL_EDGE, isOn ? 1 : 0.12);
         }
       }
     });
@@ -363,6 +389,7 @@ export class MagicToolPanel extends BaseToolPanel {
   protected buildContent(): void {
     this.zone = this.scene.add.rectangle(0, 0, 10, 10, 0x2a1f3a, 0.9).setStrokeStyle(3, 0x8338ec).setOrigin(0).setInteractive();
     this.dot = this.scene.add.circle(0, 0, 10, 0xffd166).setVisible(false);
+    // The hint floats INSIDE the dark XY pad, so it stays cream (not ink).
     this.hint = this.scene.add.text(0, 0, "Drag your finger to play! ✨", { fontFamily: FONT, fontSize: "10px", color: TEXT, align: "center" }).setOrigin(0.5);
     this.zone.on("pointerdown", (p: Phaser.Input.Pointer) => { this.dragging = true; this.emitPointer("down", p); });
     this.scene.input.on("pointermove", (p: Phaser.Input.Pointer) => { if (this.dragging && this.visible) this.emitPointer("move", p); });
@@ -450,8 +477,11 @@ export class MelodyEditorPanel extends BaseToolPanel {
   } as const;
 
   protected buildContent(): void {
-    // The framed art replaces the generic rectangle frame.
+    // The framed art replaces the generic parchment plate + shadow; the title
+    // floats over the DARK dimmed scene, so it stays cream, not ink.
     this.frame.setVisible(false);
+    this.shadow.setVisible(false);
+    this.titleText.setColor("#ffd166");
     this.panelImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["panel-editor"]!.base);
     this.add(this.panelImg);
 
@@ -464,7 +494,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
       const rowOn: boolean[] = [];
       const rowDouble: boolean[] = [];
       for (let s = 0; s < STEP_COUNT; s++) {
-        const cell = this.scene.add.rectangle(0, 0, 10, 10, BTN_BG, 0.35).setStrokeStyle(1, 0x000000, 0.4).setInteractive({ useHandCursor: true });
+        const cell = this.scene.add.rectangle(0, 0, 10, 10, 0xf6efdc, 0.06).setStrokeStyle(1, 0xf6efdc, 0.16).setInteractive({ useHandCursor: true });
         const step = s;
         cell.on("pointerdown", () => {
           cell.setScale(0.85);
@@ -628,7 +658,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
           this.cellOn[r]![s] = isOn;
           this.cellDouble[r]![s] = isDouble;
           const cell = this.cells[r]?.[s];
-          cell?.setFillStyle(isOn ? 0x06d6a0 : BTN_BG, isOn ? 1 : 0.35);
+          cell?.setFillStyle(isOn ? 0x06d6a0 : 0xf6efdc, isOn ? 1 : 0.06);
           // A doubled note wears a gold ring (reads as "×2" at kid size).
           cell?.setStrokeStyle(isDouble ? 3 : 1, isDouble ? 0xffd166 : 0x000000, isDouble ? 1 : 0.4);
         }

@@ -697,6 +697,14 @@ export class WorkshopScene extends BackgroundScene {
     const pad = Math.min(this.cellW, this.cellH) * WORKSHOP_GRID_V2.cellPad;
 
     const iconPx = Math.max(11, Math.min(this.cellH * 0.62, labelW * 0.26));
+    // Kid-size the row buttons: a 12px glyph is an impossible touch target,
+    // so grow each text's hit area well past its bounds (row-height pads).
+    const growHit = (t: Phaser.GameObjects.Text): void => {
+      const pad = Math.max(10, this.cellH * 0.35);
+      (t.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(
+        -pad, -pad, t.width + pad * 2, t.height + pad * 2,
+      );
+    };
     this.rows.forEach((row, li) => {
       const cy = gy + (li + 0.5) * this.cellH;
       // Lane band: full grid width, a hair shorter than the row so a thin gap
@@ -715,6 +723,9 @@ export class WorkshopScene extends BackgroundScene {
       }
       row.edit?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
       row.mute.setPosition(gx + labelW * 0.86, cy).setFontSize(iconPx);
+      growHit(row.del);
+      if (row.edit) growHit(row.edit);
+      growHit(row.mute);
       row.cells.forEach((cell, i) => {
         cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
         cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));

@@ -15,18 +15,13 @@ import type { NormRegion } from "../app/use-overlay-rect.ts";
 // TiledParser + TiledSceneAdapter — those coordinates live in the Tiled map, not
 // here. Only the DYNAMIC, model-driven fixtures keep hand-tuned regions: the
 // sequencer grid (boxcar interior) and the 4-way car-type picker.
-export const WORKSHOP_LAYOUT_V2 = {
-  // The dark boxcar interior back-wall (the sequencer "screen"). Measured off the
-  // painted art (workshop-scene-clean.png): the cells must stay inside the wooden
-  // frame — interior left ~0.185, right ~0.815, top ~0.285, floor ~0.475.
-  carInterior: { x: 0.185, y: 0.285, w: 0.63, h: 0.19 } satisfies NormRegion,
-  carTypePicker: { x: 0.40, y: 0.485, w: 0.20, h: 0.07 } satisfies NormRegion,
-} as const;
+// (WORKSHOP_LAYOUT_V2 retired with the AR-016 layered scene: the grid now
+// mounts on the chalkboard's slate, anchored to the car sprite, and the
+// car-type picker lays out inline in WorkshopScene.)
 
-// Workshop v2 sequencer grid (Phaser-native). The grid fills the painted boxcar
-// interior (WORKSHOP_LAYOUT_V2.carInterior); a left column holds the lane labels
-// and the remaining width is split into STEP_COUNT cells. No scrolling: at most
-// `maxLanes` rows show at once.
+// Workshop v2 sequencer grid (Phaser-native). The grid fills the chalkboard
+// slate; a left column holds the lane labels and the remaining width is split
+// into STEP_COUNT cells. No scrolling: at most `maxLanes` rows show at once.
 export const WORKSHOP_GRID_V2 = {
   maxLanes: 6,
   // Rows are sized as if at least this many lanes exist (lanes stack from the

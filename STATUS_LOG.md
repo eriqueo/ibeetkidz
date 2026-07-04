@@ -9,6 +9,37 @@
 
 ## 1. Current State
 
+### Autonomous UI sweep (2026-07-04 — Eric: "find and fix as many as you can")
+Swept every view + tool panel + interaction at 16:9 and portrait viewports
+(screenshots + pageerror listeners; zero runtime errors found). Fixed:
+*   **Editor deck doubling (Eric's phone shot):** panel-editor.png shipped
+    with the knobs/fader/toggle PAINTED into the recesses — erased them from
+    the plate in the pipeline (circular stone fills, track slot repainted) and
+    re-anchored the movable sprites to the measured centres/sizes.
+*   **All six satellite tool panels restyled** to the charter's paper-panel
+    language: parchment face, dark-plum edge, hard offset shadow, ink title —
+    they were flat near-black rectangles that read as debug UI.
+*   **PanelButton fill bug:** releasing ANY panel button reset its fill to the
+    dark default, so coloured tiles (Sound Pads, FX tiles, wave buttons)
+    turned permanently dark after their first tap. Buttons now restore their
+    own fill; labels are luminance-aware (ink on light fills, cream on dark).
+*   **Beat Maker grid** was dark-on-dark; now a plum-inked grid on parchment.
+    **Editor slate cells** were equally invisible; now the same chalk ruling
+    as the main board.
+*   **Kid-sized the board's row buttons** (✕/🎹/🔊 had glyph-sized hit areas;
+    now padded to ~row height) — closes known-bug #1.
+*   Dead `WORKSHOP_LAYOUT_V2` removed (retired by the layered scene).
+
+Known gaps logged, NOT fixed (need product/art decisions):
+*   **No undo control in the v2 sprite UI** (charter says "undo everywhere";
+    the core still has full undo/redo — it just has no button).
+*   No way to change the ACTIVE car's cosmetic type since NEW CAR became
+    "fresh empty car" (setCarType still exists in core).
+*   Yard palette labels ("LOOP 1") are tiny engine captions on the dark plate;
+    yard plate itself is much darker than the other scenes (art).
+*   Satellite panels now wear engine parchment; dedicated painted plates from
+    Manus would still be nicer (candidate AR).
+
 ### NEW CAR clears the board (2026-07-04 — Eric's review)
 *   `addCar` now creates a FRESH EMPTY car (design doc §5) instead of copying
     the active car's lanes — the copy behavior was the retired v1 song-train
