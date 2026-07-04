@@ -407,7 +407,10 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   private chooseCarType(type: CarType): void {
-    EventBus.emit("workshop-car-type-changed", type);
+    // The NEW CAR picker starts a FRESH EMPTY car of this type (Eric: "clear
+    // all the tracks when you say new car") — re-skinning the current car was
+    // the old picker's job and read as NEW CAR doing nothing.
+    EventBus.emit("workshop-new-car", type);
     this.pickerOpen = false;
     this.carPicker?.setVisible(false);
   }

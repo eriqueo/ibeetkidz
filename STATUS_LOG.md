@@ -9,6 +9,20 @@
 
 ## 1. Current State
 
+### NEW CAR clears the board (2026-07-04 — Eric's review)
+*   `addCar` now creates a FRESH EMPTY car (design doc §5) instead of copying
+    the active car's lanes — the copy behavior was the retired v1 song-train
+    flow and made NEW CAR feel broken (the "new" car arrived full). Copying is
+    `duplicateCar`'s job (unchanged).
+*   The NEW CAR dropdown picker now STARTS a new empty car of the picked type
+    (`workshop-new-car` carries the carType) — it no longer re-skins the
+    current car. NOTE: that means the Workshop currently has no control to
+    change the ACTIVE car's cosmetic type (`setCarType` still exists in core;
+    resurface it if Eric wants it back).
+*   The edit-vs-new modal's NEW CAR takes the same path (defaults to boxcar).
+    Verified live: 1 car w/ guitar lane → NEW CAR (tanker) → 2 cars, active is
+    an empty tanker, the old car keeps its music in the library.
+
 ### Chalkboard fix pass (2026-07-03, late — Eric's live review)
 *   **Board squash root-caused:** the board's aspect was read via
     `textures.get("sequencer-chalkboard")`, which misses ATLAS FRAMES and

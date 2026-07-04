@@ -256,7 +256,7 @@ export type Command =
   // duplicates the active car into the library (the kid tweaks the copy) and
   // selects it; the rest target a car by id. Adding a car to the LIBRARY does
   // not place it in the song — that's `addToTrain` (the Yard).
-  | { readonly type: "addCar"; readonly id: string }
+  | { readonly type: "addCar"; readonly id: string; readonly carType?: CarType }
   | { readonly type: "selectCar"; readonly partId: string }
   | { readonly type: "renameCar"; readonly partId: string; readonly name: string }
   | { readonly type: "removeCar"; readonly partId: string }

@@ -646,25 +646,25 @@ describe("Song Train cars", () => {
     return s;
   };
 
-  it("addCar duplicates the active car, appends it, and selects the copy", () => {
+  it("addCar starts a FRESH EMPTY car (clears the board) and selects it", () => {
     const base = oneCarWithLane();
-    const car1 = base.activePartId;
-    const s = reduce(base, { type: "addCar", id: "car-2" });
+    const s = reduce(base, { type: "addCar", id: "car-2", carType: "tanker" });
 
     expect(s.parts).toHaveLength(2);
-    expect(s.activePartId).toBe("car-2"); // opens the copy for editing
+    expect(s.activePartId).toBe("car-2"); // opens the new car for editing
     // addCar adds to the LIBRARY only — the train is untouched (that's the Yard's job).
     expect(s.train).toEqual(base.train);
-    expect(car1).toBe(base.activePartId);
-    // The copy carries the same lanes (with the hit), but its own array.
-    expect(activeLayers(s).map((l) => l.id)).toEqual(["d1"]);
-    expect(activeLayers(s)[0]?.steps[0]).toEqual({ row: 0, length: 1 });
-    expect(activeLayers(s)).not.toBe(activePart(base).layers);
-    expect(s.parts[1]?.color).not.toBe(s.parts[0]?.color); // distinct car color
+    // NEW CAR means new: no lanes carried over (copying is duplicateCar's job),
+    // and the picked type sticks.
+    expect(activeLayers(s)).toEqual([]);
+    expect(s.parts[1]?.carType).toBe("tanker");
+    // The source car is untouched.
+    expect(s.parts[0]?.layers.map((l) => l.id)).toEqual(["d1"]);
   });
 
   it("edits to one car don't bleed into its duplicate (copy-on-write)", () => {
-    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const base = oneCarWithLane();
+    let s = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     const car1 = s.parts[0]!.id;
     // Edit car 2 (active): add a second hit. Car 1 must be untouched.
     s = reduce(s, { type: "toggleStep", layerId: "d1", index: 4 });
@@ -770,7 +770,8 @@ describe("Song Train cars", () => {
   });
 
   it("copyLayerToCar no-ops on same car, unknown target, unknown lane, or dup id", () => {
-    let s = reduce(oneCarWithLane(), { type: "addCar", id: "car-2" });
+    const base = oneCarWithLane();
+    let s = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     const car1 = s.parts[0]!.id;
     s = reduce(s, { type: "selectCar", partId: car1 });
     // same car as active

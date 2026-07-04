@@ -209,7 +209,8 @@ export const Workshop: FC = () => {
     // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
     const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
     const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });
-    const onNewCar = (): void => dispatch({ type: "addCar", id: newCarId() });
+    const onNewCar = (carType?: CarType): void =>
+      dispatch(carType ? { type: "addCar", id: newCarId(), carType } : { type: "addCar", id: newCarId() });
     const onSurprise = (): void => surprise();
     // SEND TO YARD: the scene runs the slide-out; we voice a two-tone train
     // whistle when it starts (procedural — no binary audio) and travel to the

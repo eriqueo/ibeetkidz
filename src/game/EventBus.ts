@@ -74,7 +74,9 @@ export interface EventMap {
   // Phaser -> React (Workshop): painted toolbar actions (all in-canvas now).
   "workshop-open-tool": [toolId: string | null]; // open/close a satellite panel
   "workshop-nav": [view: AppView];               // travel to another view
-  "workshop-new-car": [];                         // add a fresh car to the library
+  // Add a FRESH EMPTY car to the library (clears the board — design doc §5).
+  // The optional carType comes from the NEW CAR dropdown picker tile.
+  "workshop-new-car": [carType?: CarType];
   "workshop-surprise": [];                        // seeded "surprise me" generation
   // Phaser -> React (Workshop): delete a lane / open the piano-roll for a lane.
   "workshop-layer-delete": [layerId: string];

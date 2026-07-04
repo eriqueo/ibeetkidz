@@ -120,7 +120,8 @@ describe("AudioEngine play modes", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     // Add a second library car and place it on the train → a 2-bar song.
-    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
     expect(engine.playMode).toBe("ride");
@@ -135,7 +136,8 @@ describe("AudioEngine play modes", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     // Place the default car a SECOND time, then car-2 → a 3-bar song.
-    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     const car1 = project.parts[0]!.id;
     project = reduce(project, { type: "addToTrain", instanceId: "r2", partId: car1 });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
@@ -151,7 +153,8 @@ describe("AudioEngine play modes", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     // 3-bar song; tarp the middle slot.
-    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     const car1 = project.parts[0]!.id;
     project = reduce(project, { type: "addToTrain", instanceId: "mid", partId: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "last", partId: car1 });
@@ -167,7 +170,8 @@ describe("AudioEngine play modes", () => {
   it("playCarLoop loops a single car at one bar regardless of the train", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playCarLoop(project.parts[0]!.id, project);
     expect(engine.playMode).toBe("loop");
@@ -188,7 +192,8 @@ describe("AudioEngine play modes", () => {
   it("reconcile re-clears and follows the active mode on edits", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    let project = reduce(oneHitCar(), { type: "addCar", id: "car-2" });
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
     const clearsAfterPlay = sound.clears;

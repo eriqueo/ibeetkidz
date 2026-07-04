@@ -789,24 +789,19 @@ export function reduce(state: Project, cmd: Command): Project {
 
     // ── Car library (Workshop) ───────────────────────────────────────────────
 
-    // Duplicate the active car into a fresh one (its own id + color, copied
-    // lanes), append it to the arrangement, and open it for editing. The copy
-    // shares clip ids and (immutable) layer objects — every lane edit is scoped
-    // to the active car (editActivePart), so identical layer ids across cars are
-    // safe and the cars diverge copy-on-write.
+    // Start a FRESH, EMPTY car and open it for editing (design doc §5: "NEW
+    // CAR clears the tracks"). Copying the current car is `duplicateCar`'s
+    // job — addCar used to copy lanes for the retired v1 song-train flow,
+    // which made NEW CAR feel broken (the "new" car arrived full).
     case "addCar": {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
       if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
-      const src = activePart(state);
-      // Color + sprite are derived from the dominant lane kind so the car reads
-      // as what it IS at a glance (drum=red/hopper, melody=teal/tanker, mixed=grape/boxcar).
-      const color = carColorFromLayers(src.layers, state.parts.length);
       const part = makePart(
         cmd.id,
         `Loop ${state.parts.length + 1}`,
-        color,
-        [...src.layers],
-        carTypeFromLayers(src.layers),
+        carColorFromLayers([], state.parts.length),
+        [],
+        cmd.carType ?? "boxcar",
       );
       return {
         ...state,
