@@ -11,6 +11,62 @@
 > existing `src/assets/sprites/buttons/` set. All sprites are transparent PNGs
 > with a small uniform margin; state variants share one canvas so a texture swap
 > needs no reposition.
+>
+> **⚠ Export rule (three drops have now violated it):** backgrounds must be
+> TRUE alpha 0 everywhere outside the art — no semi-opaque paper/grey wash on
+> the canvas (AR-009, AR-012's grey key, AR-017). Engineering keys these out
+> in the pipeline when they slip through, but every wash risks eating art.
+
+---
+
+## PRIORITY ORDER (2026-07-04)
+
+1. **AR-016 item 4 — instrument character redraws** (the last Workshop Revamp
+   piece; the old smooth-illustrated characters now clash with the pixel
+   interior around them).
+2. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring
+   is Tiled-only).
+3. **AR-015 remainder — 16-dir × 2-frame refs** for loco/tanker/flatcar
+   (supersedes the AR-012 gaps for those types).
+4. **AR-018 — satellite tool panel plate** (engine parchment interim shipped).
+5. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
+   AR-019 (yard readability polish).
+
+---
+
+## AR-018 · Satellite tool panel plate (parchment modal) — MEDIUM
+
+**Target file:** `src/assets/sprites/panels/panel-tool.png` (one shared
+landscape plate; per-tool variants optional later).
+
+**Why (2026-07-04 UI sweep):** the five satellite tools (Beat Maker, My Voice,
+Voice Keys, Sound Pads, Magic Pad) render on an ENGINE-DRAWN parchment
+rectangle (flat fill, plum edge, hard shadow) — correct language, but a
+painted plate would match the instrument editor's framed art.
+
+**Prompt:** "Landscape parchment tool panel for a kids' train game, matching
+panel-editor.png's family: cream parchment face, dark wooden frame with brass
+corner gears, a slim darker header band across the top (title text is
+engine-rendered on it), body EMPTY — all content (buttons, grids, pads) is
+engine-drawn on the face. ~16:10, 2048px wide, transparent outside the frame,
+warm 16-color palette, 1px dark plum outline, hard drop shadow baked OFF (the
+engine draws it)."
+
+**Unblocks:** BaseToolPanel swaps its engine rectangle for the plate (one
+manifest entry + a placeUiSprite call, no per-tool changes).
+
+---
+
+## AR-019 · Yard readability polish — LOW
+
+**Files:** `scenes-v2/yard-scene-clean-v2.png` (+ possibly small caption
+plaques).
+
+**Why (2026-07-04 UI sweep):** the yard plate is much darker than the other
+three scenes, and the palette cars are labelled by tiny engine captions
+("LOOP 1") that vanish against the dark ground. Options: lift the plate's
+midtones slightly, or ship small parchment name-tag plaques the engine can
+place under each palette car.
 
 ---
 
@@ -140,7 +196,11 @@ band empty scenery and shipping the panel as a sprite like the Yard's.
 
 ---
 
-## ✅ DONE — AR-012 · Train ref frames: flatcar directions + loco rear view
+## ✅ DONE (gaps superseded by AR-015) — AR-012 · Train ref frames: flatcar directions + loco rear view
+
+> The two placeholder gaps below (flatcar's six missing directions, loco rear
+> view) are covered by AR-015's full 16-direction set for loco/tanker/flatcar —
+> deliver AR-015 and skip these.
 
 **Assembled:** the new refs are live in `public/assets/spritesheets/train.png`
 (rebuild any time with `python3 scripts/build_train_atlas.py`). Two gaps ship
