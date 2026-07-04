@@ -36,8 +36,9 @@ export default defineConfig(({ mode }) => {
       },
     },
     server: {
-      open: true,
+      open: false,
       port: 5173,
+      allowedHosts: true,
     },
   };
 });

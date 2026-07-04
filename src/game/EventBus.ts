@@ -145,3 +145,9 @@ class TypedEventBus extends Phaser.Events.EventEmitter {
 }
 
 export const EventBus = new TypedEventBus();
+
+// Dev-only: expose on window so the browser console can trigger navigation
+// (e.g. window.__eb.emit('map-nav', 'workshop'))
+if (import.meta.env.DEV) {
+  (window as unknown as Record<string, unknown>).__eb = EventBus;
+}
