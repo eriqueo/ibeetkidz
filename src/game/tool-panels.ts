@@ -441,10 +441,12 @@ export class MelodyEditorPanel extends BaseToolPanel {
    *  from the PNG: slate bounds + the baked knob/fader/toggle recesses). */
   private static readonly ART = {
     slate: { x0: 0.117, y0: 0.095, x1: 0.885, y1: 0.624 },
-    knobWobble: { cx: 0.173, cy: 0.782, w: 0.13 },
-    knobCrunch: { cx: 0.399, cy: 0.782, w: 0.13 },
-    fader: { x: 0.607, y0: 0.705, y1: 0.875, w: 0.085 },
-    toggle: { cx: 0.826, cy: 0.785, w: 0.1 },
+    // Control positions/sizes measured from the BAKED controls before they
+    // were erased from the plate (the sprites replace them 1:1).
+    knobWobble: { cx: 0.1665, cy: 0.76, w: 0.185 },
+    knobCrunch: { cx: 0.399, cy: 0.76, w: 0.185 },
+    fader: { x: 0.5985, y0: 0.695, y1: 0.838, w: 0.1 },
+    toggle: { cx: 0.82, cy: 0.775, w: 0.12 },
   } as const;
 
   protected buildContent(): void {
