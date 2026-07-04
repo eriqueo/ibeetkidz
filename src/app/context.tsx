@@ -26,7 +26,8 @@ import type { EventMap } from "../game/EventBus.ts";
 import type Phaser from "phaser";
 
 // ── Singletons (one per page load) ──────────────────────────────────────────
-const sound: SoundPort = new ToneSoundPort();
+const toneSound = new ToneSoundPort();
+const sound: SoundPort = toneSound;
 const storage = new LocalStoragePort();
 const engine = new AudioEngine(sound);
 const rng: RngPort = createRng(Date.now() & 0xffffffff);
@@ -47,10 +48,16 @@ interface TestBridge {
   // EventBus path for (e.g. emptying the default-seeded train so the Map→Track
   // guard can fire). Goes through the same `dispatch` React uses; no new behavior.
   dispatch: (cmd: Command) => void;
+  // Audio health probe: Tone context/transport state + master-output peak
+  // (read off the visualizer analyser). Lets e2e assert "samples actually
+  // reached the destination", not just "the transport clock ran".
+  audioDiag: () => ReturnType<ToneSoundPort["getAudioDiag"]>;
 }
 declare global {
   interface Window {
     __ibeetkidz_test__?: TestBridge;
+    /** Production audio-health probe (see below) — read-only, opt-in. */
+    __ibeetkidz_audio__?: { diag: () => ReturnType<ToneSoundPort["getAudioDiag"]> };
   }
 }
 if (import.meta.env.DEV && typeof window !== "undefined") {
@@ -61,7 +68,22 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     getProject,
     getScene: () => lastScene,
     dispatch: (cmd) => dispatch(cmd),
+    audioDiag: () => toneSound.getAudioDiag(),
   };
+}
+
+// Production audio-health probe: a desktop "no sound" report can't be debugged
+// through the dev-only bridge on the live site, so `?audiodiag` in the URL
+// exposes JUST the read-only diagnostics (context/transport state + master
+// output peak). Open the live app with ?audiodiag, press play, then run
+// `__ibeetkidz_audio__.diag()` in the console: masterPeak > 0 means samples
+// are reaching the browser's output — silence beyond that point is the OS /
+// output device, not the app.
+if (
+  typeof window !== "undefined" &&
+  new URLSearchParams(window.location.search).has("audiodiag")
+) {
+  window.__ibeetkidz_audio__ = { diag: () => toneSound.getAudioDiag() };
 }
 
 // Dispatch wrapper: mutate state, then reconcile the transport if a beat is

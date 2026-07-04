@@ -190,6 +190,38 @@ export class ToneSoundPort implements SoundPort {
     this.installKeepAlive();
   }
 
+  /** Dev-only diagnostics for the test bridge: is the context actually
+   *  running, is the transport rolling, and is signal reaching the master
+   *  output? `masterPeak` is the normalized peak deviation read off the same
+   *  analyser that feeds the visualizer (0 = digital silence, ~1 = full scale),
+   *  so it measures the REAL destination signal, never a fake. */
+  getAudioDiag(): {
+    contextState: string;
+    currentTime: number;
+    transportState: string;
+    destinationMute: boolean;
+    destinationVolumeDb: number;
+    masterPeak: number;
+  } {
+    let masterPeak = -1;
+    if (this.analyser) {
+      const data = new Uint8Array(this.analyser.fftSize);
+      this.analyser.getByteTimeDomainData(data);
+      let peak = 0;
+      for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
+      masterPeak = peak / 128;
+    }
+    const dest = Tone.getDestination();
+    return {
+      contextState: this.ctx ? this.ctx.state : "unbooted",
+      currentTime: this.ctx ? this.ctx.currentTime : -1,
+      transportState: Tone.getTransport().state,
+      destinationMute: dest.mute,
+      destinationVolumeDb: dest.volume.value,
+      masterPeak,
+    };
+  }
+
   /** iOS suspends the AudioContext on interruptions (incoming call, screen
    *  lock, backgrounding) and does NOT auto-resume it — the app would go silent
    *  until reload. Resume on return-to-foreground and on any context state

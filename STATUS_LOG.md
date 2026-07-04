@@ -9,6 +9,30 @@
 
 ## 1. Current State
 
+### Desktop "no sound" report — empirically ruled OUT in the app (2026-07-03)
+*   Instrumented the audio chain: `audioDiag()` on the adapter reads the
+    Tone context state, transport state, destination mute/volume, and a
+    master-output peak off the destination-tapped analyser (the visualizer's).
+    Exposed via the dev test bridge AND — read-only — on the live site behind
+    `?audiodiag` (`window.__ibeetkidz_audio__.diag()` in the console).
+*   **Dev + PRODUCTION build both verified audible** headlessly: real canvas
+    clicks (boot → Map → Workshop → guitar → PLAY) on the built app show
+    masterPeak ≈ 0.28–0.43 at the destination. Context `running`, transport
+    `started`, destination unmuted at 0 dB in every scenario.
+*   **Silence-by-design confirmed:** the boot-seeded train car has ZERO lanes,
+    so a fresh profile riding the Track animates the train in total silence —
+    indistinguishable from broken audio. Same for PLAY in Workshop before any
+    instrument is tapped. If Eric's desktop repro was a fresh browser profile,
+    this is the whole bug (UX gap, not regression).
+*   New e2e guard: `audio-output.spec.ts` asserts PLAY with a notes lane pushes
+    real samples to the master output (peak > 0.02) — the transport clock
+    running is NOT accepted as proof of audio anymore.
+*   **If it recurs on Eric's desktop:** open the live site with `?audiodiag`,
+    press play, run `__ibeetkidz_audio__.diag()`. `masterPeak > 0` = the app is
+    producing sound and the silence is OS/output-device routing; `masterPeak
+    === 0` with notes present = capture the full diag object + what the lanes
+    contain.
+
 All four views run on the data-driven pipeline. **Workshop, Yard, and Track are
 now fully migrated to the generic Three-Zone engine** (`ui-scene.ts` +
 `ui-sprites.ts` interpreting `src/assets/maps/*.json`); Map uses the plain
