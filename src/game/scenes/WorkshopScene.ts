@@ -47,7 +47,8 @@ import {
 /** One sequencer lane, derived by React from the active car's layers. */
 export interface WorkshopLane {
   readonly id: string;
-  readonly label: string; // emoji / short tag for the row
+  readonly label: string; // emoji / short tag for the row (icon fallback)
+  readonly icon: string | null; // UI_SPRITES key of the row's instrument sprite
   readonly color: string; // laneColor() — the lane-group colour
   readonly kind: LaneKind; // melody lanes get a piano-roll edit button
   readonly cells: readonly boolean[]; // length STEP_COUNT
@@ -62,11 +63,25 @@ export interface WorkshopModel {
   readonly tempoBpm: number;
 }
 
-const OFF_FILL = 0x2a2118;
-const OFF_ALPHA = 0.32;
 const LABEL_COLOR = "#e8dcc8";
 const LABEL_SELECTED = "#ffd166";
 const MUTED_COLOR = "#ff6b6b";
+
+// Chalk rendering (design doc §2): notes are chunky chalk marks on the slate,
+// the playhead is a sweeping chalk line, and the step grid is a faint chalk
+// ruling — all engine-drawn on the delivered empty board.
+const CHALK = 0xf6efdc;
+const OFF_FILL = CHALK;
+const OFF_ALPHA = 0.05;
+const CHALK_GRID_ALPHA = 0.16;
+
+/** A lane colour pushed toward chalk-white, so notes read as coloured chalk
+ *  sticks on the slate rather than flat paint swatches. */
+function chalkTint(colorInt: number): number {
+  const c = Phaser.Display.Color.IntegerToColor(colorInt);
+  const mix = (v: number): number => Math.round(v + (255 - v) * 0.45);
+  return Phaser.Display.Color.GetColor(mix(c.red), mix(c.green), mix(c.blue));
+}
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
@@ -93,7 +108,7 @@ const LCD_STYLE: Phaser.Types.GameObjects.Text.TextStyle = {
 interface LaneRow {
   layerId: string;
   band: Phaser.GameObjects.Rectangle; // full-width lane-colour band (separates lanes)
-  label: Phaser.GameObjects.Text;
+  label: Phaser.GameObjects.Text | Phaser.GameObjects.Image; // instrument sprite (emoji fallback)
   del: Phaser.GameObjects.Text; // ✕ remove this lane
   edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
   mute: Phaser.GameObjects.Text; // 🔇 mute toggle
@@ -211,10 +226,11 @@ export class WorkshopScene extends BackgroundScene {
     // The board fills the void's width at its OWN aspect (top-aligned to the
     // void), extending down over the car's open side — per the approved
     // chalkboard concept (the board spans the car body, not just the slot).
+    // Aspect comes from the atlas FRAME the image carries (a standalone
+    // textures.get() lookup misses atlas frames and silently squashed it).
     const boardDef = UI_SPRITES["sequencer-chalkboard"]!;
     const [bx0, by0, bx1, by1] = boardDef.content;
-    const boardTex = this.textures.get(boardDef.base)?.getSourceImage();
-    const bAspect = boardTex ? ((by1 - by0) * boardTex.height) / ((bx1 - bx0) * boardTex.width) : 0.545;
+    const bAspect = ((by1 - by0) * this.board.height) / ((bx1 - bx0) * this.board.width);
     const boardH = voidW * bAspect;
     placeUiSprite(this.board, boardDef, {
       x: voidX + voidW / 2, y: voidY + boardH / 2, width: voidW, height: boardH,
@@ -563,7 +579,16 @@ export class WorkshopScene extends BackgroundScene {
         .setDepth(3)
         .setInteractive({ useHandCursor: true });
       band.on("pointerdown", () => EventBus.emit("workshop-layer-selected", lane.id));
-      const label = this.makeIconText(lane.label, () => EventBus.emit("workshop-layer-selected", lane.id));
+      // Row icon: the instrument's own sprite chalked onto the board's label
+      // column (per-track art, design doc §2). Emoji text is the fallback.
+      const iconDef = lane.icon ? UI_SPRITES[lane.icon] : undefined;
+      const label = iconDef
+        ? this.add
+            .image(0, 0, UI_ATLAS_KEY, iconDef.base)
+            .setDepth(7)
+            .setInteractive({ useHandCursor: true })
+            .on("pointerdown", () => EventBus.emit("workshop-layer-selected", lane.id))
+        : this.makeIconText(lane.label, () => EventBus.emit("workshop-layer-selected", lane.id));
       const del = this.makeIconText("✕", () => EventBus.emit("workshop-layer-delete", lane.id));
       del.setColor("#ff6b6b");
       const edit = lane.kind === "melody"
@@ -577,9 +602,9 @@ export class WorkshopScene extends BackgroundScene {
       for (let i = 0; i < STEP_COUNT; i++) {
         const isOn = lane.cells[i] ?? false;
         const cell = this.add
-          .rectangle(0, 0, 10, 10, isOn ? colorInt : OFF_FILL, isOn ? 1 : OFF_ALPHA)
+          .rectangle(0, 0, 10, 10, isOn ? chalkTint(colorInt) : OFF_FILL, isOn ? 0.95 : OFF_ALPHA)
           .setOrigin(0.5)
-          .setStrokeStyle(1, 0x000000, 0.5)
+          .setStrokeStyle(1, CHALK, CHALK_GRID_ALPHA)
           .setDepth(5)
           .setInteractive({ useHandCursor: true });
         const stepIndex = i;
@@ -597,10 +622,9 @@ export class WorkshopScene extends BackgroundScene {
       this.rows.push({ layerId: lane.id, band, label, del, edit, mute, colorInt, cells, on });
     });
 
-    // The playhead is a full-height COLUMN highlight (one cell wide) so the
-    // currently-playing step is obvious across every lane. Sits below the cells
-    // (depth 4) so lit notes still read on top of the tint.
-    this.playhead = this.add.rectangle(0, 0, 10, 10, 0xffd166, 0.28).setOrigin(0, 0).setDepth(4).setVisible(false);
+    // The playhead is a full-height chalk line sweeping the board (one cell
+    // wide). Sits below the cells (depth 4) so notes still read on top.
+    this.playhead = this.add.rectangle(0, 0, 10, 10, CHALK, 0.22).setOrigin(0, 0).setDepth(4).setVisible(false);
     this.layoutGrid();
     this.refreshSelection();
   }
@@ -620,7 +644,7 @@ export class WorkshopScene extends BackgroundScene {
         const isOn = lane.cells[i] ?? false;
         if (isOn !== row.on[i]) {
           row.on[i] = isOn;
-          row.cells[i]?.setFillStyle(isOn ? row.colorInt : OFF_FILL, isOn ? 1 : OFF_ALPHA);
+          row.cells[i]?.setFillStyle(isOn ? chalkTint(row.colorInt) : OFF_FILL, isOn ? 0.95 : OFF_ALPHA);
         }
       }
     });
@@ -630,8 +654,15 @@ export class WorkshopScene extends BackgroundScene {
     const sel = this.model.selectedLayerId;
     this.rows.forEach((row) => {
       const on = row.layerId === sel;
-      row.band.setFillStyle(row.colorInt, on ? 0.28 : 0.1);
-      row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR);
+      row.band.setFillStyle(row.colorInt, on ? 0.16 : 0.06);
+      if (row.label instanceof Phaser.GameObjects.Text) {
+        row.label.setColor(on ? LABEL_SELECTED : LABEL_COLOR);
+      } else {
+        // Sprite icons brighten when selected, dim slightly otherwise.
+        row.label.setAlpha(on ? 1 : 0.85);
+        if (on) row.label.clearTint();
+        else row.label.setTint(0xdddddd);
+      }
     });
   }
 
@@ -671,7 +702,14 @@ export class WorkshopScene extends BackgroundScene {
       // Label column layout (left to right):
       //   [✕ delete] [instrument emoji] [🎹 edit (melody only)] [🔇/🔊 mute]
       row.del.setPosition(gx + labelW * 0.12, cy).setFontSize(iconPx);
-      row.label.setPosition(gx + labelW * 0.38, cy).setFontSize(iconPx);
+      row.label.setPosition(gx + labelW * 0.38, cy);
+      if (row.label instanceof Phaser.GameObjects.Text) {
+        row.label.setFontSize(iconPx);
+      } else {
+        // Instrument sprite icon: uniform-fit into the row height.
+        const s = Math.min((this.cellH * 0.92) / row.label.height, (labelW * 0.3) / row.label.width);
+        row.label.setScale(s);
+      }
       row.edit?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
       row.mute.setPosition(gx + labelW * 0.86, cy).setFontSize(iconPx);
       row.cells.forEach((cell, i) => {

@@ -73,20 +73,30 @@ export const Workshop: FC = () => {
         layer.kind === "drum" ? layer.steps[i] != null : (layer.notes[i]?.length ?? 0) > 0,
       );
       let label = "🎵";
+      // The lane's row icon on the chalkboard: the instrument's OWN character
+      // sprite (design doc §2 — per-track art on the board), emoji fallback.
+      let icon: string | null = null;
       const melodyInst = layer.kind === "melody" ? layer.instrument : undefined;
       if (melodyInst && isVoiceInstrument(melodyInst)) {
         label = "🎤"; // a recording played chromatically (Voice Keys / Send as Notes)
+        icon = "inst-mic";
       } else if (melodyInst) {
         label = INSTRUMENTS.find((i) => i.id === melodyInst)?.emoji ?? "🎵";
+        // Runtime ids can exceed the synth union (the Tiled violin arg), so
+        // map by string.
+        icon = ({ guitar: "inst-guitar", piano: "inst-piano", violin: "inst-violin" } as Record<string, string>)[melodyInst] ?? "inst-keys";
       } else if (clip?.source.kind === "builtin") {
         const assetId = clip.source.assetId;
         label = BUILTIN_SOUNDS.find((s) => s.assetId === assetId)?.emoji ?? "🎵";
+        icon = "inst-drums";
       } else if (clip?.source.kind === "recording") {
         label = "🎤";
+        icon = "inst-mic";
       } else if (layer.kind === "drum") {
         label = "🥁";
+        icon = "inst-drums";
       }
-      return { id: layer.id, label, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
+      return { id: layer.id, label, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
     carType: part.carType,
     selectedLayerId: selectedLayer,

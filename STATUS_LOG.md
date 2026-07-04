@@ -9,6 +9,20 @@
 
 ## 1. Current State
 
+### Chalkboard fix pass (2026-07-03, late — Eric's live review)
+*   **Board squash root-caused:** the board's aspect was read via
+    `textures.get("sequencer-chalkboard")`, which misses ATLAS FRAMES and
+    returned the 32px missing-texture — the board rendered near-square and
+    oversized. Now reads the frame dims off the mounted image itself.
+*   **Car resized** (`car-anchor` 1680×680, bottom 1080): the boxcar reads as a
+    vehicle again — roof, walls, wheels visible around the board.
+*   **Chalk rendering (design §2, was flat rectangles):** notes are chalk-tinted
+    marks (lane colour pushed toward chalk-white), the step grid is a faint
+    chalk ruling, the playhead is a sweeping chalk line — all engine-drawn.
+*   **Per-track art on the board:** each lane row is labelled with its
+    instrument's OWN sprite from the atlas (guitar cat, husky piano, frog
+    drums, chipmunk mic…), emoji only as fallback.
+
 ### Workshop Revamp — tasks 1–7 LANDED (2026-07-03, night)
 *   **Layered field (tasks 1+2):** `workshop-interior-clean` is the bg; the
     active car is a sprite on a Tiled `car-anchor` rect (wheels bottom-aligned
