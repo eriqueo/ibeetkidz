@@ -83,6 +83,12 @@ export interface EventMap {
   "workshop-layer-muted": [layerId: string];
   // Phaser -> React (Workshop): toggle a note in the piano-roll editor.
   "tool-melody-toggle": [stepIndex: number, row: number];
+  // Instrument editor (AR-016): toggle an existing note's ×2 double-beat roll.
+  "tool-melody-double": [stepIndex: number, row: number];
+  // Instrument editor control deck → the lane being edited (0..1 values).
+  "tool-lane-wobble": [value: number];
+  "tool-lane-crunch": [value: number];
+  "tool-lane-volume": [value: number];
 
   // ── Satellite tool panels (Phaser) -> React (audio/state) ──────────────────
   // The kid closed the open tool panel.

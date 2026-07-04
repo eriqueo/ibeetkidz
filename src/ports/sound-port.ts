@@ -31,6 +31,10 @@ export interface StepOptions {
   readonly echo: number;
   /** Tone/brightness, 0..1 (1 = fully open; lower darkens via a low-pass). */
   readonly tone: number;
+  /** Wobble (chorus/vibrato depth), 0..1. Absent/0 = dry. */
+  readonly wobble?: number;
+  /** Crunch (bitcrush amount), 0..1. Absent/0 = clean. */
+  readonly crunch?: number;
 }
 
 export interface SoundPort {

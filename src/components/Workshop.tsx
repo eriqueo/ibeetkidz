@@ -123,6 +123,12 @@ export const Workshop: FC = () => {
         title: editLayer ? (project.clips[editLayer.clipId]?.label ?? "Melody") : "Melody",
         keyLabels,
         cells: melodyCells,
+        doubles: Array.from({ length: MELODY_ROWS }, (_, degree) =>
+          Array.from({ length: STEP_COUNT }, (_, step) =>
+            editLayer?.notes[step]?.some((n) => n.row === degree && (n.roll ?? 1) > 1) ?? false)),
+        wobble: editLayer?.wobble ?? 0,
+        crunch: editLayer?.crunch ?? 0,
+        volume: editLayer?.volume ?? 1,
       },
     };
   }, [project, layers, voiceClipId, voiceStatus, keysClipId, keysStatus, magicClipId, magicRecording, magicStatus, editMelodyId]);
@@ -239,6 +245,28 @@ export const Workshop: FC = () => {
         const p = getProject();
         sound.previewNote(degreeToNote(p.scaleId, p.keyId, row), resolveInstrument(layer.instrument, layer.wave));
       }
+    };
+    // Instrument editor (AR-016): ×2 toggles an existing note's double-beat
+    // roll; the deck knobs/fader write straight onto the lane being edited.
+    const onMelodyDouble = (step: number, row: number): void => {
+      const id = editMelodyRef.current;
+      if (!id) return;
+      const layer = activeLayers(getProject()).find((l) => l.id === id);
+      const note = layer?.notes[step]?.find((n) => n.row === row);
+      if (!note) return;
+      dispatch({ type: "setRoll", layerId: id, index: step, row, roll: (note.roll ?? 1) > 1 ? 1 : 2 });
+    };
+    const onLaneWobble = (value: number): void => {
+      const id = editMelodyRef.current;
+      if (id) dispatch({ type: "setLayerWobble", layerId: id, wobble: value });
+    };
+    const onLaneCrunch = (value: number): void => {
+      const id = editMelodyRef.current;
+      if (id) dispatch({ type: "setLayerCrunch", layerId: id, crunch: value });
+    };
+    const onLaneVolume = (value: number): void => {
+      const id = editMelodyRef.current;
+      if (id) dispatch({ type: "setLayerVolume", layerId: id, volume: value });
     };
 
     // Generic hold-to-record state machine (mic), reused by Voice + Keys. The
@@ -415,7 +443,9 @@ export const Workshop: FC = () => {
       ["workshop-layer-muted", onLayerMuted],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
       ["workshop-add-melody", onAddMelody],
-      ["tool-melody-toggle", onMelodyToggle],
+      ["tool-melody-toggle", onMelodyToggle], ["tool-melody-double", onMelodyDouble],
+      ["tool-lane-wobble", onLaneWobble], ["tool-lane-crunch", onLaneCrunch],
+      ["tool-lane-volume", onLaneVolume],
       ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],
       ["tool-pads-play", onPadsPlay], ["tool-beat-toggle", onBeatToggle],

@@ -423,6 +423,24 @@ describe("melody + song settings", () => {
     expect(activeLayers(s)[0]?.tone).toBe(0.4);
     expect(activeLayers(s)[0]?.swing).toBe(1); // clamped to 0..1
   });
+
+  it("sets the per-lane silliness knobs (wobble/crunch), clamped", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "l1", clipId: "c1" }) });
+    // A fresh lane is dry + clean (both absent — pre-knob saves stay valid).
+    expect(activeLayers(s)[0]?.wobble).toBeUndefined();
+    expect(activeLayers(s)[0]?.crunch).toBeUndefined();
+
+    s = reduce(s, { type: "setLayerWobble", layerId: "l1", wobble: 0.7 });
+    s = reduce(s, { type: "setLayerCrunch", layerId: "l1", crunch: 9 });
+    expect(activeLayers(s)[0]?.wobble).toBe(0.7);
+    expect(activeLayers(s)[0]?.crunch).toBe(1); // clamped to 0..1
+
+    // The knobs survive a save/load round-trip (makeLayer passthrough).
+    const rebuilt = makeLayer(activeLayers(s)[0] as never);
+    expect(rebuilt.wobble).toBe(0.7);
+    expect(rebuilt.crunch).toBe(1);
+  });
 });
 
 describe("Song Train structure (Inc 0 — one car, invisible)", () => {

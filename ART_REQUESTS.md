@@ -252,10 +252,29 @@ changes once.
 
 ---
 
-## AR-016 · Workshop Revamp production exports (Sprint 1 approved concepts) — CRITICAL PATH
+## AR-017 · AR-016 control sprites: semi-opaque backdrop wash — LOW
 
-The whole revamp implementation chain (design doc §6, tasks 1–4 and 6) is
-blocked on these production exports of the approved concepts:
+**Files:** `panels/knob-wobble.png`, `knob-crunch.png`, `toggle-double.png`,
+`fader-handle.png`, `modal-edit-or-new.png`, `panel-editor.png`.
+
+**Why:** the drop shipped with an AR-009-class defect — a semi-opaque backdrop
+wash across the full canvas (alpha ~20–170 outside the art) instead of alpha 0.
+Engineering flood-keyed the border-connected wash to transparency in the
+pipeline, so the committed files are CLEAN — no action needed unless these
+assets are ever regenerated, in which case: "fully transparent background
+(alpha 0 everywhere outside the art), same art, same canvas."
+
+---
+
+## AR-016 · Workshop Revamp production exports — items 1–3 + 5 ✅ WIRED IN; item 4 (characters) still needed
+
+Items 1 (interior plate), 2 (four car-side sprites + standardized void),
+3 (chalkboard), 5 (editor panel + knob/fader/toggle + edit-vs-new modal +
+send-to-yard button) landed and are LIVE in the layered Workshop.
+**Still needed: item 4 — the instrument character redraws** (passive/hover/
+active each, grounded, chunky-pixel style, 3-eyed alien fix, per design doc §4).
+
+Original brief:
 
 1. **`scenes-v2/workshop-interior-clean.png`** — 2560×1440 static interior
    (brick arches, lamps, wooden floor, rails across the bottom third). NO car,

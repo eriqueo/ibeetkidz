@@ -136,6 +136,12 @@ export class WorkshopScene extends BackgroundScene {
   /** The board's slate surface in screen px — the grid's mount rect. */
   private slateRect = { x: 0, y: 0, w: 0, h: 0 };
   private departing = false;
+  // Edit-vs-New modal (AR-016): offered once per Workshop visit when the
+  // active car already has lanes — keep working, or start a fresh car.
+  private editOrNew: Phaser.GameObjects.Container | undefined;
+  private editOrNewImg: Phaser.GameObjects.Image | undefined;
+  private editOrNewHits: { zone: "edit" | "new"; rect: Phaser.GameObjects.Rectangle }[] = [];
+  private editOrNewDecided = false;
 
   constructor() {
     super(WorkshopScene.KEY);
@@ -159,6 +165,7 @@ export class WorkshopScene extends BackgroundScene {
     this.buildCarPicker();
     this.buildGrid();
     this.buildToolPanels();
+    this.buildEditOrNewModal();
     this.layoutFixtures();
     this.bindPickerToggle();
     this.bindSendToYard();
@@ -225,6 +232,69 @@ export class WorkshopScene extends BackgroundScene {
       w: (sx1 - sx0) * bTexW * bs,
       h: (sy1 - sy0) * bTexH * this.board.scaleY,
     };
+  }
+
+  // ── Edit-vs-New modal (AR-016): shown when arriving at a non-empty car ─────
+  /** The baked KEEP EDITING / NEW CAR plaques, as fractions of the modal art's
+   *  canvas (measured from modal-edit-or-new.png). */
+  private static readonly MODAL_HITS = {
+    edit: { x0: 0.14, y0: 0.42, x1: 0.5, y1: 0.8 },
+    new: { x0: 0.52, y0: 0.42, x1: 0.89, y1: 0.8 },
+  } as const;
+
+  private buildEditOrNewModal(): void {
+    const backdrop = this.add.rectangle(0, 0, 10, 10, 0x000000, 0.62).setOrigin(0).setInteractive();
+    this.editOrNewImg = this.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["modal-edit-or-new"]!.base);
+    this.editOrNewHits = (["edit", "new"] as const).map((zone) => {
+      const rect = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0.001).setOrigin(0).setInteractive({ useHandCursor: true });
+      // Armed press: fire only a release whose press started on this plaque.
+      let armed = false;
+      rect.on("pointerdown", () => { armed = true; this.editOrNewImg?.setScale(this.editOrNewImg.scaleX * 1.0); });
+      rect.on("pointerout", () => { armed = false; });
+      rect.on("pointerup", () => {
+        if (!armed) return;
+        armed = false;
+        if (zone === "new") EventBus.emit("workshop-new-car");
+        this.editOrNew?.setVisible(false);
+      });
+      return { zone, rect };
+    });
+    this.editOrNew = this.add
+      .container(0, 0, [backdrop, this.editOrNewImg, ...this.editOrNewHits.map((h) => h.rect)])
+      .setDepth(60)
+      .setVisible(false);
+    // Keep the backdrop sized on resize; layoutEditOrNew handles the rest.
+    this.editOrNew.setDataEnabled();
+    this.editOrNew.setData("backdrop", backdrop);
+  }
+
+  private layoutEditOrNew(): void {
+    if (!this.editOrNew || !this.editOrNewImg) return;
+    const { width, height } = this.scale.gameSize;
+    const backdrop = this.editOrNew.getData("backdrop") as Phaser.GameObjects.Rectangle;
+    backdrop.setSize(width, height);
+    placeUiSprite(this.editOrNewImg, UI_SPRITES["modal-edit-or-new"]!, {
+      x: width / 2, y: height / 2, width: width * 0.62, height: height * 0.62,
+    });
+    const img = this.editOrNewImg;
+    const left = img.x - (img.width / 2) * img.scaleX;
+    const top = img.y - (img.height / 2) * img.scaleY;
+    for (const { zone, rect } of this.editOrNewHits) {
+      const z = WorkshopScene.MODAL_HITS[zone];
+      rect
+        .setPosition(left + z.x0 * img.width * img.scaleX, top + z.y0 * img.height * img.scaleY)
+        .setSize((z.x1 - z.x0) * img.width * img.scaleX, (z.y1 - z.y0) * img.height * img.scaleY);
+    }
+  }
+
+  /** Decide once per visit, on the first model push: a car with lanes offers
+   *  KEEP EDITING / NEW CAR (design doc §5). An empty car just opens. */
+  private maybeOfferEditOrNew(): void {
+    if (this.editOrNewDecided) return;
+    this.editOrNewDecided = true;
+    if (this.model.lanes.length === 0) return;
+    this.editOrNew?.setVisible(true);
+    this.layoutEditOrNew();
   }
 
   // ── SEND TO YARD: slide the car (grid and all) off right, then hand off ────
@@ -399,6 +469,7 @@ export class WorkshopScene extends BackgroundScene {
     this.refreshSelection();
     this.refreshMutes();
     this.refreshLcd();
+    this.maybeOfferEditOrNew();
   }
 
   private refreshLcd(): void {
@@ -425,6 +496,7 @@ export class WorkshopScene extends BackgroundScene {
     if (!this.scene.isActive()) return;
     this.layoutFixtures();
     if (this.pickerOpen) this.layoutCarPicker();
+    if (this.editOrNew?.visible) this.layoutEditOrNew();
     if (this.activeTool) {
       const { width, height } = this.scale.gameSize;
       this.toolPanels[this.activeTool]?.layout(width, height);

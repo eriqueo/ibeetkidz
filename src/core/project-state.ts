@@ -269,13 +269,23 @@ export function makeLayer(partial: LayerInit): Layer {
     partial.instrument === undefined
       ? withSwing
       : { ...withSwing, instrument: partial.instrument };
+  // The silliness knobs are optional too (absent = dry/clean) — pass them
+  // through so a saved lane keeps its wobble/crunch across reloads.
+  const withWobble =
+    partial.wobble === undefined
+      ? withInstrument
+      : { ...withInstrument, wobble: clamp(partial.wobble, 0, 1) };
+  const withCrunch =
+    partial.crunch === undefined
+      ? withWobble
+      : { ...withWobble, crunch: clamp(partial.crunch, 0, 1) };
   // Pattern variations are optional; only attach them (with a clamped active
   // index) when a saved lane actually carried some, so the common lane stays
   // field-free under exactOptionalPropertyTypes.
   const variations = normalizePatterns(kind, partial.variations);
-  if (!variations) return withInstrument;
+  if (!variations) return withCrunch;
   return {
-    ...withInstrument,
+    ...withCrunch,
     variations,
     patternIndex: clamp(partial.patternIndex ?? 0, 0, variations.length),
   };
@@ -682,6 +692,20 @@ export function reduce(state: Project, cmd: Command): Project {
       return editActivePart(state, (layers) =>
         layers.map((l) =>
           l.id === cmd.layerId ? { ...l, swing: clamp(cmd.swing, 0, 1) } : l,
+        ),
+      );
+
+    case "setLayerWobble":
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
+          l.id === cmd.layerId ? { ...l, wobble: clamp(cmd.wobble, 0, 1) } : l,
+        ),
+      );
+
+    case "setLayerCrunch":
+      return editActivePart(state, (layers) =>
+        layers.map((l) =>
+          l.id === cmd.layerId ? { ...l, crunch: clamp(cmd.crunch, 0, 1) } : l,
         ),
       );
 

@@ -569,6 +569,29 @@ export class ToneSoundPort implements SoundPort {
       head = filter;
     }
 
+    // Silliness knobs (live per-lane sends, adapted from the offline FX bakes):
+    // crunch = the bitcrush stage (fewer bits as the knob turns), wobble = a
+    // chorus whose depth/mix track the knob (the offline "robot"/wobble family).
+    if ((opts.crunch ?? 0) > 0.01) {
+      const crunch = opts.crunch ?? 0;
+      const crusher = new Tone.BitCrusher(Math.round(8 - crunch * 5)); // 8→3 bits
+      crusher.wet.value = Math.min(1, 0.3 + crunch * 0.7);
+      crusher.connect(head);
+      this.scheduledFx.push(crusher);
+      head = crusher;
+    }
+    if ((opts.wobble ?? 0) > 0.01) {
+      const wobble = opts.wobble ?? 0;
+      const chorus = new Tone.Chorus({
+        frequency: 1.5 + wobble * 4.5, // gentle shimmer → seasick wobble
+        depth: 0.3 + wobble * 0.7,
+        wet: Math.min(1, 0.35 + wobble * 0.65),
+      }).start();
+      chorus.connect(head);
+      this.scheduledFx.push(chorus);
+      head = chorus;
+    }
+
     return head;
   }
 

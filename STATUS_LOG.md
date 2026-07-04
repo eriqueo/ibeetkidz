@@ -9,6 +9,41 @@
 
 ## 1. Current State
 
+### Workshop Revamp — tasks 1–7 LANDED (2026-07-03, night)
+*   **Layered field (tasks 1+2):** `workshop-interior-clean` is the bg; the
+    active car is a sprite on a Tiled `car-anchor` rect (wheels bottom-aligned
+    to the painted rails); the sequencer chalkboard mounts over the punched
+    interior void (`CAR_SIDE_VOID` in assets.ts — identical across all four car
+    sprites), so a car-type swap is a pure texture change (verified live,
+    boxcar⇄tanker). The note grid draws on the chalkboard slate; rows size for
+    ≥4 lanes so one lane doesn't balloon.
+*   **Characters grounded (task 5):** feet on the interior's floor line
+    (~1195); slimmed so board rows 1–3 stay clear. Rows 4+ can sit behind the
+    cast — **composition needs Eric's eye** (5 characters × full board width
+    can't fully avoid overlap).
+*   **SEND TO YARD (part of task 4):** header plaque → the car+board+grid
+    slide off right with a two-tone whistle (procedural) → travel to the Yard.
+*   **Edit-vs-New modal (task 6):** offered once per Workshop visit when the
+    active car has lanes — KEEP EDITING closes; NEW CAR emits
+    `workshop-new-car` (fresh empty active car). Baked-plaque hits, armed-press.
+*   **Instrument editor (task 7):** the melody 🎹 editor now renders on the
+    AR-016 `panel-editor` art — note canvas on the slate; control deck = the
+    wobble/crunch knobs (drag up/down, ±120° sweep), LEVEL fader (lane volume),
+    and the ×2 toggle (arms double-beat mode: tapping an existing note toggles
+    its roll; doubled notes wear a gold ring). New Layer fields
+    `wobble`/`crunch` (+ `setLayerWobble/Crunch` commands, makeLayer
+    passthrough so saves keep them) drive LIVE per-lane sends in the adapter
+    (Chorus / BitCrusher in `scheduledDestination`) — audibility verified via
+    the audio probe (masterPeak 0.28 with both knobs hot).
+*   **Art pipeline:** whole AR-016 drop + the unquantized AR-014 track plate
+    through downscale+PNG8 (34 MB → 3 MB); the knob/toggle/fader/modal/editor
+    canvases shipped with a semi-opaque backdrop wash (AR-009 class) —
+    flood-keyed to true alpha-0 in the pipeline (logged as AR-017); ui-atlas
+    rebuilt (4 pages).
+*   Remaining from the design doc: instrument character redraws (AR-016 item
+    4, still with Manus); pitch-bend UI in the editor (playback via `pins`
+    already works end-to-end); editor-modal polish per Eric's review.
+
 ### Desktop "no sound" report — empirically ruled OUT in the app (2026-07-03)
 *   Instrumented the audio chain: `audioDiag()` on the adapter reads the
     Tone context state, transport state, destination mute/volume, and a

@@ -9,6 +9,7 @@
 import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import { WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite } from "./ui-sprites.ts";
 import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
 import { STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
@@ -45,12 +46,17 @@ export interface ToolModel {
   readonly pads: readonly { id: string; label: string; emoji: string; color: string }[];
   readonly beat: readonly { id: string; emoji: string; cells: readonly boolean[] }[];
   readonly magic: { recording: boolean; hasClip: boolean; onHome: boolean; status: string };
-  // Piano-roll editor for the selected melody lane (MELODY_ROWS × STEP_COUNT).
+  // Instrument editor for the selected melody lane (MELODY_ROWS × STEP_COUNT).
   readonly melody: {
     active: boolean;
     title: string;
     keyLabels: readonly string[]; // index = scale degree (0 = lowest), length MELODY_ROWS
     cells: readonly (readonly boolean[])[]; // [degree][step] → note present
+    doubles: readonly (readonly boolean[])[]; // [degree][step] → note rolls (×2 fill)
+    // The control deck (AR-016 panel-editor): silliness knobs + level fader.
+    wobble: number; // 0..1
+    crunch: number; // 0..1
+    volume: number; // 0..1
   };
 }
 
@@ -415,36 +421,165 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private cells: Phaser.GameObjects.Rectangle[][] = [];
   private cellOn: boolean[][] = [];
 
+  private cellDouble: boolean[][] = [];
+  // AR-016 instrument editor: the framed panel art + its control deck.
+  private panelImg!: Phaser.GameObjects.Image;
+  private knobWobble!: Phaser.GameObjects.Image;
+  private knobCrunch!: Phaser.GameObjects.Image;
+  private fader!: Phaser.GameObjects.Image;
+  private toggle!: Phaser.GameObjects.Image;
+  private values = { wobble: 0, crunch: 0, volume: 1 };
+  private draggingKnob: string | null = null;
+  /** ×2 mode: while armed, tapping an existing note toggles its double-beat
+   *  roll instead of removing it. */
+  private doubleMode = false;
+  private faderTrack = { y0: 0, y1: 0, x: 0 };
+
   constructor(scene: Phaser.Scene) { super(scene, "🎹 Melody"); }
 
+  /** The panel-editor art's geometry, as fractions of its canvas (measured
+   *  from the PNG: slate bounds + the baked knob/fader/toggle recesses). */
+  private static readonly ART = {
+    slate: { x0: 0.117, y0: 0.095, x1: 0.885, y1: 0.624 },
+    knobWobble: { cx: 0.173, cy: 0.782, w: 0.13 },
+    knobCrunch: { cx: 0.399, cy: 0.782, w: 0.13 },
+    fader: { x: 0.607, y0: 0.705, y1: 0.875, w: 0.085 },
+    toggle: { cx: 0.826, cy: 0.785, w: 0.1 },
+  } as const;
+
   protected buildContent(): void {
+    // The framed art replaces the generic rectangle frame.
+    this.frame.setVisible(false);
+    this.panelImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["panel-editor"]!.base);
+    this.add(this.panelImg);
+
     for (let r = 0; r < MELODY_ROWS; r++) {
       const degree = MELODY_ROWS - 1 - r; // top row = highest degree
-      const label = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "9px", color: TEXT }).setOrigin(0.5);
+      const label = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "9px", color: "#e8dcc8" }).setOrigin(0.5);
       this.add(label);
       this.rowLabels.push(label);
       const rowCells: Phaser.GameObjects.Rectangle[] = [];
       const rowOn: boolean[] = [];
+      const rowDouble: boolean[] = [];
       for (let s = 0; s < STEP_COUNT; s++) {
         const cell = this.scene.add.rectangle(0, 0, 10, 10, BTN_BG, 0.35).setStrokeStyle(1, 0x000000, 0.4).setInteractive({ useHandCursor: true });
         const step = s;
         cell.on("pointerdown", () => {
           cell.setScale(0.85);
-          EventBus.emit("tool-melody-toggle", step, degree);
+          // ×2 mode retunes an existing note into a double-beat; otherwise a
+          // tap toggles the note as always.
+          if (this.doubleMode && this.cellOn[r]?.[step]) {
+            EventBus.emit("tool-melody-double", step, degree);
+          } else {
+            EventBus.emit("tool-melody-toggle", step, degree);
+          }
         });
         cell.on("pointerup", () => cell.setScale(1));
         cell.on("pointerout", () => cell.setScale(1));
         this.add(cell);
         rowCells.push(cell);
         rowOn.push(false);
+        rowDouble.push(false);
       }
       this.cells.push(rowCells);
       this.cellOn.push(rowOn);
+      this.cellDouble.push(rowDouble);
     }
+
+    // Control deck: the movable sprites over the baked recesses.
+    this.knobWobble = this.makeKnob("knob-wobble", "wobble", (v) => EventBus.emit("tool-lane-wobble", v));
+    this.knobCrunch = this.makeKnob("knob-crunch", "crunch", (v) => EventBus.emit("tool-lane-crunch", v));
+    this.fader = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["fader-handle"]!.base).setInteractive({ useHandCursor: true });
+    this.bindVerticalDrag(this.fader, "volume", (v) => {
+      EventBus.emit("tool-lane-volume", v);
+      this.placeFader();
+    });
+    this.toggle = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base).setInteractive({ useHandCursor: true });
+    this.toggle.on("pointerdown", () => {
+      this.doubleMode = !this.doubleMode;
+      this.toggle.setTint(this.doubleMode ? 0xffd166 : 0xffffff);
+      this.toggle.setScale(this.toggle.scaleX * (this.doubleMode ? 1 : 1)); // tint is the state cue
+    });
+    this.add([this.knobWobble, this.knobCrunch, this.fader, this.toggle]);
+    this.bringToTop(this.closeBtn.container);
+  }
+
+  private makeKnob(frame: string, key: "wobble" | "crunch", emit: (v: number) => void): Phaser.GameObjects.Image {
+    const img = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES[frame]!.base).setInteractive({ useHandCursor: true });
+    this.bindVerticalDrag(img, key, (v) => {
+      emit(v);
+      img.setRotation((v - 0.5) * 4.2); // ±120° sweep
+    });
+    return img;
+  }
+
+  /** Drag up = value towards 1, down = towards 0 (kid-simple, works for knobs
+   *  and the fader alike). Emits only on real change while the drag lives. */
+  private bindVerticalDrag(
+    img: Phaser.GameObjects.Image,
+    key: "wobble" | "crunch" | "volume",
+    onChange: (v: number) => void,
+  ): void {
+    img.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      const startY = p.y;
+      const startV = this.values[key];
+      this.draggingKnob = key;
+      const move = (mp: Phaser.Input.Pointer): void => {
+        const v = Math.min(1, Math.max(0, startV + (startY - mp.y) / 140));
+        if (Math.abs(v - this.values[key]) > 0.01) {
+          this.values[key] = v;
+          onChange(v);
+        }
+      };
+      const up = (): void => {
+        this.draggingKnob = null;
+        this.scene.input.off("pointermove", move);
+        this.scene.input.off("pointerup", up);
+      };
+      this.scene.input.on("pointermove", move);
+      this.scene.input.on("pointerup", up);
+    });
+  }
+
+  /** The art's placed content rect in screen px (contain-fit, centre origin). */
+  private artRect(): Box {
+    const img = this.panelImg;
+    const def = UI_SPRITES["panel-editor"]!;
+    const [x0, y0, x1, y1] = def.content;
+    const w = (x1 - x0) * img.width * img.scaleX;
+    const h = (y1 - y0) * img.height * img.scaleY;
+    return { x: img.x - w / 2, y: img.y - h / 2, w, h };
+  }
+
+  private placeFader(): void {
+    const t = this.faderTrack;
+    this.fader.setPosition(t.x, t.y1 + (t.y0 - t.y1) * this.values.volume);
   }
 
   protected layoutContent(): void {
-    const i = this.inner;
+    // Contain-fit the framed art into the modal region (it's portrait).
+    const m = WORKSHOP_TOOL_MODAL;
+    const { width: sw, height: sh } = this.scene.scale.gameSize;
+    const region = { x: sw * m.x, y: sh * m.y, w: sw * m.w, h: sh * m.h };
+    placeUiSprite(this.panelImg, UI_SPRITES["panel-editor"]!, {
+      x: region.x + region.w / 2, y: region.y + region.h / 2, width: region.w, height: region.h,
+    });
+    const art = this.artRect();
+    const A = MelodyEditorPanel.ART;
+
+    // Title + close anchor to the ART (the base layout spread them across the
+    // whole modal region, which is wider than the portrait panel).
+    const closeSz = Math.max(28, art.w * 0.09);
+    this.titleText.setPosition(art.x, art.y - closeSz * 0.55).setFontSize(Math.max(12, Math.round(closeSz * 0.5)));
+    this.closeBtn.place({ x: art.x + art.w - closeSz, y: art.y - closeSz - 4, w: closeSz, h: closeSz }, Math.round(closeSz * 0.45));
+
+    // Note canvas on the slate.
+    const i = {
+      x: art.x + art.w * A.slate.x0,
+      y: art.y + art.h * A.slate.y0,
+      w: art.w * (A.slate.x1 - A.slate.x0),
+      h: art.h * (A.slate.y1 - A.slate.y0),
+    };
     const labelW = i.w * 0.1;
     const rowH = i.h / MELODY_ROWS;
     const cellW = (i.w - labelW) / STEP_COUNT;
@@ -456,6 +591,26 @@ export class MelodyEditorPanel extends BaseToolPanel {
         this.cells[r]?.[s]?.setPosition(i.x + labelW + (s + 0.5) * cellW, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
       }
     }
+
+    // Control deck sprites over their baked recesses.
+    const knobW = art.w * A.knobWobble.w;
+    placeUiSprite(this.knobWobble, UI_SPRITES["knob-wobble"]!, { x: art.x + art.w * A.knobWobble.cx, y: art.y + art.h * A.knobWobble.cy, width: knobW, height: knobW });
+    placeUiSprite(this.knobCrunch, UI_SPRITES["knob-crunch"]!, { x: art.x + art.w * A.knobCrunch.cx, y: art.y + art.h * A.knobCrunch.cy, width: knobW, height: knobW });
+    this.knobWobble.setRotation((this.values.wobble - 0.5) * 4.2);
+    this.knobCrunch.setRotation((this.values.crunch - 0.5) * 4.2);
+    const toggleW = art.w * A.toggle.w;
+    placeUiSprite(this.toggle, UI_SPRITES["toggle-double"]!, { x: art.x + art.w * A.toggle.cx, y: art.y + art.h * A.toggle.cy, width: toggleW, height: toggleW * 1.6 });
+    const faderW = art.w * A.fader.w;
+    const fDef = UI_SPRITES["fader-handle"]!;
+    const [fx0, fy0, fx1, fy1] = fDef.content;
+    const fH = faderW * (((fy1 - fy0) * 512) / ((fx1 - fx0) * 512));
+    placeUiSprite(this.fader, fDef, { x: art.x + art.w * A.fader.x, y: art.y + art.h * A.fader.y1, width: faderW, height: fH });
+    this.faderTrack = {
+      x: this.fader.x,
+      y0: art.y + art.h * A.fader.y0,
+      y1: art.y + art.h * A.fader.y1,
+    };
+    this.placeFader();
   }
 
   apply(model: ToolModel): void {
@@ -466,11 +621,29 @@ export class MelodyEditorPanel extends BaseToolPanel {
       this.rowLabels[r]?.setText(m.keyLabels[degree] ?? "");
       for (let s = 0; s < STEP_COUNT; s++) {
         const isOn = m.cells[degree]?.[s] ?? false;
-        if (isOn !== this.cellOn[r]?.[s]) {
+        const isDouble = m.doubles[degree]?.[s] ?? false;
+        if (isOn !== this.cellOn[r]?.[s] || isDouble !== this.cellDouble[r]?.[s]) {
           this.cellOn[r]![s] = isOn;
-          this.cells[r]?.[s]?.setFillStyle(isOn ? 0x06d6a0 : BTN_BG, isOn ? 1 : 0.35);
+          this.cellDouble[r]![s] = isDouble;
+          const cell = this.cells[r]?.[s];
+          cell?.setFillStyle(isOn ? 0x06d6a0 : BTN_BG, isOn ? 1 : 0.35);
+          // A doubled note wears a gold ring (reads as "×2" at kid size).
+          cell?.setStrokeStyle(isDouble ? 3 : 1, isDouble ? 0xffd166 : 0x000000, isDouble ? 1 : 0.4);
         }
       }
+    }
+    // Deck values come from the store — unless the kid is mid-drag on one.
+    if (this.draggingKnob !== "wobble") {
+      this.values.wobble = m.wobble;
+      this.knobWobble?.setRotation((m.wobble - 0.5) * 4.2);
+    }
+    if (this.draggingKnob !== "crunch") {
+      this.values.crunch = m.crunch;
+      this.knobCrunch?.setRotation((m.crunch - 0.5) * 4.2);
+    }
+    if (this.draggingKnob !== "volume") {
+      this.values.volume = m.volume;
+      if (this.fader) this.placeFader();
     }
   }
 }

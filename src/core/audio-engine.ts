@@ -104,6 +104,8 @@ export class AudioEngine {
         swing: layer.swing ?? project.swing,
         echo: layer.echo,
         tone: layer.tone,
+        wobble: layer.wobble ?? 0,
+        crunch: layer.crunch ?? 0,
       };
       if (layer.kind === "melody") {
         const total = layer.notes.length || STEP_COUNT;

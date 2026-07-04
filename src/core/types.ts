@@ -127,6 +127,10 @@ export interface Layer {
   /** Per-lane groove/swing, 0..1. Absent = inherit the song-level swing, so a
    *  lane only departs from the global groove once a kid tweaks it. */
   readonly swing?: number;
+  /** Silliness knob 1 — wobble (chorus/vibrato depth), 0..1. Absent = dry. */
+  readonly wobble?: number;
+  /** Silliness knob 2 — crunch (bitcrush amount), 0..1. Absent = clean. */
+  readonly crunch?: number;
   /** Numbered pattern variations (BeepBox "0-9"). The INACTIVE slots only — the
    *  live one is in `steps`/`notes`. Absent = a single-pattern lane (today). */
   readonly variations?: readonly LayerPattern[];
@@ -239,6 +243,8 @@ export type Command =
   | { readonly type: "setLayerEcho"; readonly layerId: string; readonly echo: number }
   | { readonly type: "setLayerTone"; readonly layerId: string; readonly tone: number }
   | { readonly type: "setLayerSwing"; readonly layerId: string; readonly swing: number }
+  | { readonly type: "setLayerWobble"; readonly layerId: string; readonly wobble: number }
+  | { readonly type: "setLayerCrunch"; readonly layerId: string; readonly crunch: number }
   | { readonly type: "setTempo"; readonly bpm: number }
   | { readonly type: "setScale"; readonly scaleId: ScaleId }
   | { readonly type: "setKey"; readonly keyId: KeyId }

@@ -128,6 +128,16 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // AR-016: the sequencer chalkboard mounted in the car's interior void. Placed
   // by the WorkshopScene (anchored to the car sprite), not by a Tiled rect.
   "sequencer-chalkboard": panelDef("sequencer-chalkboard", [0.068, 0.075, 0.931, 0.911]),
+  // AR-016 instrument editor: the framed panel (note canvas + baked control
+  // deck) and its movable controls. Placed by the editor tool panel, not Tiled.
+  "panel-editor": { states: { base: "panel-editor" }, base: "panel-editor", content: [0.03, 0.023, 0.969, 0.973], stretch: false },
+  "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
+  "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
+  "toggle-double": { states: { base: "toggle-double" }, base: "toggle-double", content: [0.199, 0.102, 0.799, 0.865], stretch: false },
+  "fader-handle": { states: { base: "fader-handle" }, base: "fader-handle", content: [0.189, 0.316, 0.811, 0.662], stretch: false },
+  // AR-016 edit-vs-new modal (baked KEEP EDITING / NEW CAR buttons — the scene
+  // lays transparent hits over the two plaques).
+  "modal-edit-or-new": { states: { base: "modal-edit-or-new" }, base: "modal-edit-or-new", content: [0.046, 0.103, 0.954, 0.865], stretch: false },
 } as const;
 
 /** The chalkboard's inner slate surface (where the note grid draws), normalized
