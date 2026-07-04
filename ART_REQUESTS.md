@@ -188,7 +188,7 @@ graphics chip is then retired and only the text remains on top.
 
 ---
 
-## AR-014 · Track base plate re-render: perspective matched to the train — HIGH
+## ✅ DONE — AR-014 · Track base plate re-render: perspective matched to the train
 
 **Target file:** `src/assets/scenes-v2/track-scene-clean-v2.png` (2560×1440)
 
@@ -222,7 +222,12 @@ from live on-screen sizes, so it adapts to the new perspective automatically.
 
 ---
 
-## AR-015 · Train animation upgrade: 16 directions + wheel motion — MEDIUM
+## AR-015 · Train animation upgrade: 16 directions + wheel motion — MEDIUM (PARTIAL)
+
+**Completed:** boxcar (32/32), hopper (32/32) — files in `src/assets/spritesheets/ar015/`.
+**Still needed:** loco, tanker, flatcar (0/32 each — credit limit hit mid-run).
+
+**Resume prompt:** Re-run the AR-015 generation for loco, tanker, and flatcar only. Same style rules, same output path `src/assets/spritesheets/ar015/<type>-ref-<DIR>-f1/f2.png`.
 
 **Target files:** `src/assets/spritesheets/<type>-ref-<dir>-f1.png` +
 `-f2.png` — 16 compass directions (E, ENE, NE, NNE, N, … all 16) × 2 wheel
