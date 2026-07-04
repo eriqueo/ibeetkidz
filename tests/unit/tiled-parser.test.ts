@@ -46,8 +46,9 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 16 descriptors", () => {
-    expect(spawns).toHaveLength(16);
+  it("projects the ui-layer into 18 descriptors", () => {
+    // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display.
+    expect(spawns).toHaveLength(18);
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");
@@ -95,11 +96,23 @@ describe("top-bar plaques", () => {
     }
   });
 
-  it("wires the New Car plaque → toggle-car-picker (centred)", () => {
+  it("wires the New Car plaque → toggle-car-picker (left of SEND TO YARD)", () => {
     const s = need("btn-newcar");
     expect(s.sprite).toBe("btn-newcar");
     expect(s.action).toBe("toggle-car-picker");
-    expect(s.cx).toBeCloseTo(0.5, 2);
+    // Shifted off-centre to make header room for the SEND TO YARD plaque.
+    expect(s.cx).toBeCloseTo(0.449, 2);
+  });
+
+  it("wires the SEND TO YARD plaque → workshop-send-to-yard, inside the header", () => {
+    const s = need("btn-send-to-yard");
+    expect(s.sprite).toBe("btn-send-to-yard");
+    expect(s.action).toBe("workshop-send-to-yard");
+    const header = need("panel-header");
+    expect(s.cx - s.w / 2).toBeGreaterThan(header.cx - header.w / 2);
+    expect(s.cx + s.w / 2).toBeLessThan(header.cx + header.w / 2);
+    expect(s.cy - s.h / 2).toBeGreaterThan(header.cy - header.h / 2);
+    expect(s.cy + s.h / 2).toBeLessThan(header.cy + header.h / 2);
   });
 
   it("wires the Yard plaque → nav-yard", () => {
@@ -117,7 +130,9 @@ describe("field instrument objects", () => {
     expect(s.action).toBe("workshop-open-tool");
     expect(s.arg).toBe("beat-grid");
     expect(s.cx).toBeCloseTo(0.184, 2);
-    expect(s.cy).toBeCloseTo(0.635, 2);
+    // AR-016 task 5: characters grounded on the interior plate's floor line
+    // (feet settle ~1195, on the near floor in front of the car).
+    expect(s.cy).toBeCloseTo(0.733, 2);
   });
 
   it("maps each instrument to its action: drums/mic open tools, guitar/violin/piano add melody lanes", () => {

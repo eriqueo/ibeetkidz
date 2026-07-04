@@ -195,6 +195,14 @@ export const Workshop: FC = () => {
     const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });
     const onNewCar = (): void => dispatch({ type: "addCar", id: newCarId() });
     const onSurprise = (): void => surprise();
+    // SEND TO YARD: the scene runs the slide-out; we voice a two-tone train
+    // whistle when it starts (procedural — no binary audio) and travel to the
+    // Yard when the car has departed (it's already in the palette there).
+    const onSendToYard = (): void => {
+      sound.previewNote("A4", "organ");
+      sound.previewNote("C#5", "organ");
+    };
+    const onCarDeparted = (): void => dispatch({ type: "setActiveView", view: "yard" });
 
     // Grid row buttons: delete a lane, or open the piano-roll for a melody lane.
     const onLayerMuted = (layerId: string): void => dispatch({ type: "toggleLayerMuted", layerId });
@@ -402,6 +410,7 @@ export const Workshop: FC = () => {
       ["tool-closed", onToolClosed],
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
       ["nav-map", onNavMap], ["nav-yard", onNavYard],
+      ["workshop-send-to-yard", onSendToYard], ["workshop-car-departed", onCarDeparted],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
       ["workshop-layer-muted", onLayerMuted],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],

@@ -228,7 +228,8 @@ describe("spawnTiledScene", () => {
     spawnTiledScene(scene as never, spawns, { baseKey: "b" });
     const interactive = rec.rects.filter((r) => r.interactive).length;
     expect(interactive).toBe(spawns.filter((s) => s.action !== undefined).length);
-    expect(interactive).toBe(13); // 16 spawns; the 2 panels + transport LCD have no action
+    // 18 spawns; the 2 panels, transport LCD, and car-anchor have no action.
+    expect(interactive).toBe(14);
     expect(rectFor(rec, "lcd-transport").interactive).toBe(false);
   });
 

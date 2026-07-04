@@ -96,7 +96,7 @@
           "id": 4,
           "name": "btn-newcar",
           "type": "ui-button",
-          "x": 1050,
+          "x": 920,
           "y": 80,
           "width": 460,
           "height": 230,
@@ -143,9 +143,9 @@
           "name": "inst-drums",
           "type": "instrument",
           "x": 300,
-          "y": 740,
+          "y": 915,
           "width": 340,
-          "height": 350,
+          "height": 280,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -171,9 +171,9 @@
           "name": "inst-mic",
           "type": "instrument",
           "x": 720,
-          "y": 740,
+          "y": 915,
           "width": 340,
-          "height": 350,
+          "height": 280,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -199,9 +199,9 @@
           "name": "inst-guitar",
           "type": "instrument",
           "x": 1140,
-          "y": 740,
+          "y": 915,
           "width": 340,
-          "height": 350,
+          "height": 280,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -227,9 +227,9 @@
           "name": "inst-violin",
           "type": "instrument",
           "x": 1560,
-          "y": 740,
+          "y": 915,
           "width": 340,
-          "height": 350,
+          "height": 280,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -255,9 +255,9 @@
           "name": "inst-piano",
           "type": "instrument",
           "x": 1980,
-          "y": 740,
+          "y": 915,
           "width": 340,
-          "height": 350,
+          "height": 280,
           "rotation": 0,
           "visible": true,
           "properties": [
@@ -423,6 +423,40 @@
               "value": 20
             }
           ]
+        },
+        {
+          "id": 17,
+          "name": "btn-send-to-yard",
+          "type": "ui-button",
+          "x": 1440,
+          "y": 124,
+          "width": 290,
+          "height": 150,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-send-to-yard"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-send-to-yard"
+            }
+          ]
+        },
+        {
+          "id": 18,
+          "name": "car-anchor",
+          "type": "display",
+          "x": 340,
+          "y": 360,
+          "width": 1880,
+          "height": 790,
+          "rotation": 0,
+          "visible": true
         }
       ]
     }

@@ -81,6 +81,8 @@ function panelDef(id: string, content: ContentBox): UiSpriteDef {
 export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // Workshop top-bar: the New Car plaque (nav plaques are the shared set below).
   "btn-newcar": buttonDef("btn-newcar", { content: [0.098, 0.179, 0.901, 0.81] }),
+  // AR-016: sends the finished car off to the Yard (slide-out + nav).
+  "btn-send-to-yard": buttonDef("btn-send-to-yard", { content: [0.099, 0.179, 0.901, 0.811] }),
   // Car-type picker tiles (shown in the dropdown the New Car button toggles).
   "btn-picker-boxcar": pickerDef("boxcar", [0.039, 0.255, 0.961, 0.719], true),
   "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
@@ -123,7 +125,14 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
   "panel-transport-v2": panelDef("panel-transport-v2", [0.0164, 0.2066, 0.981, 0.7283]),
   "panel-yard-actions": panelDef("panel-yard-actions", [0.021, 0.325, 0.979, 0.672]),
+  // AR-016: the sequencer chalkboard mounted in the car's interior void. Placed
+  // by the WorkshopScene (anchored to the car sprite), not by a Tiled rect.
+  "sequencer-chalkboard": panelDef("sequencer-chalkboard", [0.068, 0.075, 0.931, 0.911]),
 } as const;
+
+/** The chalkboard's inner slate surface (where the note grid draws), normalized
+ *  to the sequencer-chalkboard canvas — inside the wooden frame + chalk tray. */
+export const CHALKBOARD_SLATE: ContentBox = [0.115, 0.14, 0.885, 0.82];
 
 /** Load the packed chrome multiatlas (idempotent). ONE atlas serves every
  *  scene — a handful of requests instead of ~38 per view switch, and the

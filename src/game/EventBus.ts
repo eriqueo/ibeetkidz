@@ -63,6 +63,12 @@ export interface EventMap {
   "workshop-add-melody": [instrument: SynthInstrumentId];
   // Phaser -> React (Workshop): the kid picked a (cosmetic) car type.
   "workshop-car-type-changed": [carType: CarType];
+  // Tiled button -> WorkshopScene: SEND TO YARD — the scene plays the car
+  // slide-out (+ whistle), THEN emits `workshop-car-departed` for React.
+  "workshop-send-to-yard": [];
+  // WorkshopScene -> React (Workshop): the slide-out finished; travel to the
+  // Yard (the finished car is already in the library palette there).
+  "workshop-car-departed": [];
   // Phaser -> React (Workshop): a lane row was tapped (selection highlight).
   "workshop-layer-selected": [layerId: string];
   // Phaser -> React (Workshop): painted toolbar actions (all in-canvas now).

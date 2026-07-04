@@ -29,6 +29,9 @@ export const WORKSHOP_LAYOUT_V2 = {
 // `maxLanes` rows show at once.
 export const WORKSHOP_GRID_V2 = {
   maxLanes: 6,
+  // Rows are sized as if at least this many lanes exist (lanes stack from the
+  // top): without it a single lane's cells balloon to the full slate height.
+  minRows: 4,
   // lane-label column (holds delete ✕, the instrument emoji, and a 🎹 edit
   // button on melody lanes), as a fraction of the grid width.
   labelFrac: 0.26,

@@ -24,13 +24,13 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
-import { SCENE_BG_V2 } from "../assets.ts";
-import { loadUiSprites } from "../ui-sprites.ts";
-import { WORKSHOP_LAYOUT_V2, WORKSHOP_GRID_V2 } from "../scene-layout.ts";
+import { SCENE_BG_V2, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID } from "../assets.ts";
+import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
+import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import workshopMap from "../../assets/maps/workshop.json";
 import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
 import {
@@ -69,6 +69,15 @@ const LABEL_SELECTED = "#ffd166";
 const MUTED_COLOR = "#ff6b6b";
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
+
+// ── AR-016 layered field (bg → car → chalkboard → grid → characters) ─────────
+// All four car-side sprites share one canvas + wheel baseline, so ONE content
+// box (the boxcar's) anchors placement for every type — a car-type swap is a
+// pure texture change with no reposition, like the chrome state variants.
+const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
+// Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
+const DEPTH_CAR = 0.4;
+const DEPTH_BOARD = 0.6;
 
 // LCD font shared by the SONG + TEMPO readouts. Dark plum on a cream chip drawn
 // over the transport panel (PROJECT_CHARTER: dark text on light "paper" panels).
@@ -120,26 +129,132 @@ export class WorkshopScene extends BackgroundScene {
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
   private toolModel: ToolModel | null = null;
+  // AR-016 layered field: the active car sprite + the chalkboard mounted in its
+  // standardized interior void. The note grid draws on the board's slate.
+  private car: Phaser.GameObjects.Image | undefined;
+  private board: Phaser.GameObjects.Image | undefined;
+  /** The board's slate surface in screen px — the grid's mount rect. */
+  private slateRect = { x: 0, y: 0, w: 0, h: 0 };
+  private departing = false;
 
   constructor() {
     super(WorkshopScene.KEY);
   }
 
   preload(): void {
-    this.loadBackground(SCENE_BG_V2.workshopBoxcarOpen);
+    this.loadBackground(SCENE_BG_V2.workshopInterior);
+    // All four car types preload so a picker swap is instant (they're light
+    // PNG8s after the perf pass; one texture change, no reposition).
+    for (const asset of Object.values(CAR_SIDE_SPRITES)) {
+      if (!this.textures.exists(asset.key)) this.load.image(asset.key, asset.url);
+    }
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     loadUiSprites(this); // the one packed chrome multiatlas
   }
 
   create(): void {
     this.addBackground("contain"); // never crop the top/bottom bars off-screen
+    this.buildCarLayer();
     this.buildChrome();
     this.buildCarPicker();
     this.buildGrid();
     this.buildToolPanels();
     this.layoutFixtures();
     this.bindPickerToggle();
+    this.bindSendToYard();
     this.announceReady();
+  }
+
+  // ── the layered field: car sprite + chalkboard in its void ─────────────────
+  private buildCarLayer(): void {
+    this.car = this.add
+      .image(0, 0, CAR_SIDE_SPRITES[this.model.carType].key)
+      .setDepth(DEPTH_CAR);
+    this.board = this.add
+      .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base)
+      .setDepth(DEPTH_BOARD);
+  }
+
+  /** Place the car on its Tiled anchor (wheels on the rails), then mount the
+   *  chalkboard over the standardized interior void and derive the grid's
+   *  slate rect from the board's placement. */
+  private layoutCarLayer(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0 || !this.car || !this.board) return;
+    const { width, height } = this.scale.gameSize;
+    const anchor = this.chromeSpawns.find((s) => s.id === "car-anchor");
+    if (!anchor) return;
+    const target = placeSpawn(anchor, r, { width, height });
+
+    // Contain-fit the shared content box, bottom-aligned so the wheels sit on
+    // the anchor rect's bottom edge (the painted near rail).
+    const carDef: UiSpriteDef = { states: {}, base: "", content: CAR_CONTENT, stretch: false };
+    placeUiSprite(this.car, carDef, target);
+    const s = this.car.scaleX;
+    const contentBottom = this.car.y + (CAR_CONTENT[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
+    this.car.y += target.y + target.height / 2 - contentBottom;
+
+    // The car's canvas origin in screen px → the void rect in screen px.
+    const canvasLeft = this.car.x - (CAR_SIDE_CANVAS.w / 2) * s;
+    const canvasTop = this.car.y - (CAR_SIDE_CANVAS.h / 2) * s;
+    const voidX = canvasLeft + CAR_SIDE_VOID.x * s;
+    const voidY = canvasTop + CAR_SIDE_VOID.y * s;
+    const voidW = CAR_SIDE_VOID.w * s;
+
+    // The board fills the void's width at its OWN aspect (top-aligned to the
+    // void), extending down over the car's open side — per the approved
+    // chalkboard concept (the board spans the car body, not just the slot).
+    const boardDef = UI_SPRITES["sequencer-chalkboard"]!;
+    const [bx0, by0, bx1, by1] = boardDef.content;
+    const boardTex = this.textures.get(boardDef.base)?.getSourceImage();
+    const bAspect = boardTex ? ((by1 - by0) * boardTex.height) / ((bx1 - bx0) * boardTex.width) : 0.545;
+    const boardH = voidW * bAspect;
+    placeUiSprite(this.board, boardDef, {
+      x: voidX + voidW / 2, y: voidY + boardH / 2, width: voidW, height: boardH,
+    });
+
+    // The grid mounts on the slate surface inside the board's frame.
+    const bs = this.board.scaleX;
+    const bTexW = this.board.width, bTexH = this.board.height;
+    const bLeft = this.board.x - (bTexW / 2) * bs;
+    const bTop = this.board.y - (bTexH / 2) * this.board.scaleY;
+    const [sx0, sy0, sx1, sy1] = CHALKBOARD_SLATE;
+    this.slateRect = {
+      x: bLeft + sx0 * bTexW * bs,
+      y: bTop + sy0 * bTexH * this.board.scaleY,
+      w: (sx1 - sx0) * bTexW * bs,
+      h: (sy1 - sy0) * bTexH * this.board.scaleY,
+    };
+  }
+
+  // ── SEND TO YARD: slide the car (grid and all) off right, then hand off ────
+  private bindSendToYard(): void {
+    const onSend = (): void => this.departCar();
+    EventBus.on("workshop-send-to-yard", onSend);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("workshop-send-to-yard", onSend));
+  }
+
+  private departCar(): void {
+    if (this.departing || !this.car || !this.board) return;
+    this.departing = true;
+    const targets: Phaser.GameObjects.GameObject[] = [this.car, this.board];
+    this.rows.forEach((row) => {
+      targets.push(row.band, row.label, row.del, row.mute, ...row.cells);
+      if (row.edit) targets.push(row.edit);
+    });
+    if (this.emptyText) targets.push(this.emptyText);
+    this.playhead?.setVisible(false);
+    const dx = this.scale.gameSize.width - (this.car.x - (this.car.displayWidth / 2));
+    this.tweens.add({
+      targets,
+      x: `+=${Math.ceil(dx)}`,
+      duration: 900,
+      ease: "Cubic.easeIn",
+      onComplete: () => {
+        this.departing = false;
+        EventBus.emit("workshop-car-departed");
+      },
+    });
   }
 
   // ── data-driven static chrome (panels / nav / instruments / transport) ──────
@@ -268,8 +383,12 @@ export class WorkshopScene extends BackgroundScene {
   /** React → scene: the derived sequencer model. Rebuilds the grid only when the
    *  lane SET changes; otherwise just diffs cell states + selection highlight. */
   setModel(model: WorkshopModel): void {
+    const prevCarType = this.model.carType;
     this.model = model;
     if (!this.ready) return;
+    // Car-type swap is a pure texture change — same canvas, same baseline.
+    if (model.carType !== prevCarType)
+      this.car?.setTexture(CAR_SIDE_SPRITES[model.carType].key);
     const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
     if (key !== this.structKey) {
       this.buildGrid();
@@ -457,16 +576,13 @@ export class WorkshopScene extends BackgroundScene {
 
   private layoutGrid(): void {
     const r = this.backgroundRect;
-    if (r.width === 0) return;
-    const g = WORKSHOP_LAYOUT_V2.carInterior;
-    const gx = r.x + r.width * g.x;
-    const gy = r.y + r.height * g.y;
-    const gw = r.width * g.w;
-    const gh = r.height * g.h;
+    if (r.width === 0 || this.slateRect.w === 0) return;
+    // The grid mounts on the chalkboard's slate (layoutCarLayer computed it).
+    const { x: gx, y: gy, w: gw, h: gh } = this.slateRect;
 
     if (this.emptyText) this.emptyText.setPosition(gx + gw / 2, gy + gh / 2);
 
-    const laneCount = Math.max(1, this.rows.length);
+    const laneCount = Math.max(WORKSHOP_GRID_V2.minRows, this.rows.length);
     const labelW = gw * WORKSHOP_GRID_V2.labelFrac;
     this.gridLeft = gx + labelW;
     this.gridTop = gy;
@@ -492,11 +608,13 @@ export class WorkshopScene extends BackgroundScene {
       });
     });
 
-    this.playhead?.setSize(this.cellW, this.cellH * laneCount);
+    // The playhead column spans only the REAL lanes, not the min-row padding.
+    this.playhead?.setSize(this.cellW, this.cellH * Math.max(1, this.rows.length));
   }
 
   private layoutFixtures(): void {
     this.layoutChrome();
+    this.layoutCarLayer(); // must precede the grid: it computes slateRect
     this.layoutGrid();
   }
 }
