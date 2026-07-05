@@ -20,6 +20,14 @@ interface Sched {
 class FakeSoundPort implements SoundPort {
   readonly scheduled: Sched[] = [];
   clears = 0;
+  /** Bars requested of the last captureBars call, with the schedule snapshot
+   *  visible at capture time (renderSong must schedule BEFORE capturing). */
+  captured: { bars: number; scheduledAtCapture: number } | null = null;
+
+  async captureBars(bars: number): Promise<Blob> {
+    this.captured = { bars, scheduledAtCapture: this.scheduled.length };
+    return new Blob([], { type: "audio/wav" });
+  }
 
   scheduleStep(
     clip: Clip,
@@ -187,6 +195,32 @@ describe("AudioEngine play modes", () => {
     expect(sound.scheduled).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
+  });
+
+  it("renderSong schedules the ride, captures the song's bar count, then stops", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const base = oneHitCar();
+    let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
+    project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    const blob = await engine.renderSong(project);
+    expect(blob.type).toBe("audio/wav");
+    // Both train slots were on the transport when the capture ran (a 2-bar song).
+    expect(sound.captured).toEqual({ bars: 2, scheduledAtCapture: 2 });
+    // Fully torn down afterwards: not playing, schedule cleared.
+    expect(engine.isPlaying).toBe(false);
+    expect(sound.scheduled).toHaveLength(0);
+  });
+
+  it("renderSong stops playback even when the capture fails", async () => {
+    const sound = new FakeSoundPort();
+    sound.captureBars = async () => {
+      throw new Error("boom");
+    };
+    const engine = await booted(sound);
+    await expect(engine.renderSong(oneHitCar())).rejects.toThrow("boom");
+    expect(engine.isPlaying).toBe(false);
+    expect(sound.scheduled).toHaveLength(0);
   });
 
   it("reconcile re-clears and follows the active mode on edits", async () => {

@@ -159,6 +159,27 @@ export class AudioEngine {
     this.playIn("ride", project);
   }
 
+  /** Render the whole arrangement to a shareable WAV blob by riding the song
+   *  once through while capturing the master output — the train audibly (and
+   *  visibly: mode is "ride", so the Track scene animates) records its own take.
+   *  Resolves with the file; playback is fully stopped afterwards. */
+  async renderSong(project: Project): Promise<Blob> {
+    if (!this.started) throw new Error("audio not started");
+    this.sound.stopTransport();
+    this.mode = "ride";
+    this.sound.setTempo(project.tempoBpm);
+    this.sound.clearScheduled();
+    this.scheduleArrangement(project);
+    this.playing = true;
+    try {
+      return await this.sound.captureBars(Math.max(1, liveTrain(project).length));
+    } finally {
+      this.playing = false;
+      this.sound.stopTransport();
+      this.sound.clearScheduled();
+    }
+  }
+
   /** Absolute bar index since playback started, or -1 when stopped. */
   getTransportBar(): number {
     return this.sound.getTransportBar();

@@ -30,6 +30,7 @@ import {
   type StepOptions,
   type ThereminWave,
 } from "../ports/sound-port.ts";
+import { encodeWav } from "./wav.ts";
 
 /** A melody voice. The Mono-family synths share `.frequency`, so bend/roll/
  *  stretch all work on them. `Tone.Sampler` (Voice Keys — the kid's recording
@@ -786,6 +787,44 @@ export class ToneSoundPort implements SoundPort {
   }
 
   // ── Transport ────────────────────────────────────────────────────────────
+
+  /** How long the take keeps rolling after the last bar, so per-lane echo
+   *  (FeedbackDelay) tails ring out instead of being cut mid-decay. */
+  private static readonly CAPTURE_TAIL_MS = 1200;
+
+  async captureBars(bars: number): Promise<Blob> {
+    const transport = Tone.getTransport();
+    transport.stop(); // also rewinds the playhead to bar 0
+    const recorder = new Tone.Recorder();
+    const dest = Tone.getDestination();
+    dest.connect(recorder); // tap the master, same as the visualizer's analyser
+    try {
+      await recorder.start();
+      const beatsPerBar =
+        typeof transport.timeSignature === "number" ? transport.timeSignature : 4;
+      // Stop one tick shy of the loop boundary: at exactly `bars` measures the
+      // scheduleRepeat cycle would re-trigger the song's first hit into the tail.
+      const endTicks = bars * beatsPerBar * transport.PPQ - 1;
+      const rideDone = new Promise<void>((resolve) => {
+        transport.scheduleOnce((time) => {
+          transport.stop(time);
+          resolve();
+        }, `${endTicks}i`);
+      });
+      transport.start();
+      await rideDone;
+      await new Promise((r) => setTimeout(r, ToneSoundPort.CAPTURE_TAIL_MS));
+      const raw = await recorder.stop();
+      // Re-encode the compressed take (webm/mp4, platform-dependent) as WAV so
+      // the shared file plays anywhere.
+      const decoded = await this.ctx.decodeAudioData(await raw.arrayBuffer());
+      return encodeWav(decoded);
+    } finally {
+      transport.stop();
+      dest.disconnect(recorder);
+      recorder.dispose();
+    }
+  }
 
   setTempo(bpm: number): void {
     Tone.getTransport().bpm.value = bpm;

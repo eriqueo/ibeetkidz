@@ -5,6 +5,7 @@ import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
+import { SendSong } from "./SendSong.tsx";
 
 const TRACK_SCENES = [TrackScene];
 
@@ -108,6 +109,10 @@ export const Track: FC = () => {
           chrome, and muting is tap-the-car-to-tarp-it, all over the EventBus.
           (The old HTML tarp strip drifted into the letterbox on non-16:9
           screens — HTML overlays can't track the FIT-scaled canvas.) */}
+
+      {/* Share/save the song: viewport-anchored (right edge, clear of the
+          Tiled chrome) so it doesn't need to track the FIT-scaled canvas. */}
+      <SendSong />
     </div>
   );
 };

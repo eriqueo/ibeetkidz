@@ -128,6 +128,14 @@ export interface SoundPort {
   /** Choose the theremin's oscillator shape (applies live if a voice is held). */
   setThereminWaveform(wave: ThereminWave): void;
 
+  /** Record the master output for exactly `bars` measures (plus a short ring-out
+   *  tail for echo/reverb), starting the transport from bar 0. The caller must
+   *  have already scheduled the voices to capture (clearScheduled + schedule*).
+   *  Resolves with an `audio/wav` blob of the take; the transport is stopped
+   *  when it resolves. This is how "send my song" renders the ride to a file —
+   *  the take plays audibly while it records (the train rides once). */
+  captureBars(bars: number): Promise<Blob>;
+
   setTempo(bpm: number): void;
   startTransport(): void;
   stopTransport(): void;

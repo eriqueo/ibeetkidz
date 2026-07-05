@@ -140,6 +140,18 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   const x2 = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().loco.x);
   expect(x2, "the loco must still be moving after the smoke timer fires").not.toBe(x1);
   await emit(page, "transport-stop");
+
+  // SEND: the train rides the song once while the master output records, then
+  // the modal offers Save — a real WAV download (share is platform-gated).
+  await page.getByTitle("Send your song").click();
+  await expect(page.getByTestId("send-song-modal")).toBeVisible();
+  const saveBtn = page.getByRole("button", { name: "Save it" });
+  await expect(saveBtn, "the render (1 bar + tail) must finish").toBeVisible({ timeout: 20_000 });
+  const download = page.waitForEvent("download");
+  await saveBtn.click();
+  expect((await download).suggestedFilename()).toBe("my-train-song.wav");
+  await page.getByRole("button", { name: "Done" }).click();
+  await expect(page.getByTestId("send-song-modal")).not.toBeVisible();
 });
 
 test("Map guards Track until a train exists", async ({ page }) => {
