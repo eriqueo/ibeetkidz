@@ -45,6 +45,13 @@ export interface EventMap {
   // Phaser -> React (Track): a car on the oval was tapped — toggle its tarp
   // (mute). The payload is the train slot's instanceId.
   "track-car-mute-toggled": [instanceId: string];
+  // ── Track SEND flow (share/save the rendered song) ─────────────────────────
+  // The scene owns the UI (plaque + result panel); React owns the audio render
+  // and the share/download side effects, and pushes state back into the scene.
+  "track-send": [];        // SEND plaque (or Try Again) tapped → render the song
+  "track-send-share": [];  // result panel: open the OS share sheet
+  "track-send-save": [];   // result panel: download the WAV
+  "track-send-close": [];  // dismiss the result panel
   // Tiled hit -> React (Map): travel to a destination (guarded for Track).
   "map-nav": [view: AppView];
   // Tiled button -> React (Workshop): top-bar nav plaques (Map / Send to Yard).

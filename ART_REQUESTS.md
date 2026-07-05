@@ -393,3 +393,27 @@ Prompt: "Same tile as idle, SELECTED state: gold glow border, face slightly
 brighter, label in bold gold instead of cream."
 
 **Unblocks:** the NEW CAR dropdown picker in the Workshop top bar (Phase D).
+
+---
+
+## AR-020 · SEND SONG plaque + result panel for the Track header — MEDIUM
+
+**Target files:**
+- `src/assets/sprites/buttons/btn-send-song-idle.png`
+- `src/assets/sprites/buttons/btn-send-song-pressed.png`
+
+**Context:** the Track view's SEND flow (share/save the rendered song) ships
+with an interim scene-drawn cream chip labeled "📮 SEND" in the header's empty
+centre span (Tiled object `btn-send`, 410×150 map px), plus a scene-drawn
+parchment result panel (`send-panel.ts`). Proper baked art should replace the
+chip; the panel can stay scene-drawn (charter paper-panel language) unless a
+painted frame is cheap to add.
+
+**Prompt:** "A landscape parchment plaque button matching the YARD/MAP nav
+plaques (same wood-and-brass frame family): a small red mail-flag post icon on
+the left, bold 'SEND SONG' in the same baked lettering. Pressed variant: face
+darkens slightly, bevel inverts. Transparent background (alpha 0), same canvas
+padding conventions as btn-nav-map."
+
+**Unblocks:** replacing the interim drawn chip in `TrackScene.layoutChrome`
+with a `ui-button` spawn (one manifest entry + flip the Tiled object's type).

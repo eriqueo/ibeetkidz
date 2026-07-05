@@ -14,16 +14,17 @@ import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
 import { STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
 
-const FONT = "'Press Start 2P', monospace";
+export const FONT = "'Press Start 2P', monospace";
 // Charter: light "paper" panels with dark text (the old flat near-black
 // modals read as debug UI next to the steampunk chrome). Parchment face,
 // dark-plum edge + hard offset shadow, plum body text; buttons stay dark
 // keycaps (same contrast pairing as the parchment header's plaques).
-const PANEL_BG = 0xe9d7ac;
-const PANEL_EDGE = 0x2b2440;
+// Exported: the Track's send panel speaks the same language.
+export const PANEL_BG = 0xe9d7ac;
+export const PANEL_EDGE = 0x2b2440;
 const BTN_BG = 0x2a2118;
 const TEXT = "#e8dcc8";
-const INK = "#2b2440";
+export const INK = "#2b2440";
 
 /** Dark ink on light button fills, cream on dark ones. */
 function labelColorFor(fill: number): string {
@@ -74,7 +75,7 @@ export interface ToolModel {
 interface Box { x: number; y: number; w: number; h: number }
 
 // ── reusable pixel button ────────────────────────────────────────────────────
-class PanelButton {
+export class PanelButton {
   readonly container: Phaser.GameObjects.Container;
   private bg: Phaser.GameObjects.Rectangle;
   private label: Phaser.GameObjects.Text;

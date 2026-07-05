@@ -816,15 +816,15 @@ export class ToneSoundPort implements SoundPort {
    *  deliberately avoided: absent on some WebKit builds, engine-dependent
    *  intermediate codec on the rest).
    *
-   *  Two tiers, because Tone v15 wraps every node in standardized-audio-context
-   *  and the wrapper exposes NEITHER ScriptProcessor nor (on some engines) a
-   *  working AudioWorklet:
-   *  1. The wrapper's own AudioWorkletNode, joined to Tone's graph directly.
-   *  2. Bridge the master out of the wrapped graph as a MediaStream (the
-   *     wrapper does implement MediaStreamAudioDestinationNode), then tap the
-   *     stream on the UNDERLYING NATIVE context with a ScriptProcessor or a
-   *     native worklet — native APIs the wrapper hides but every engine has.
-   *  Each tap node must stay pulled into the graph to process, so its (silent)
+   *  Tone v15 wraps every node in standardized-audio-context, and the wrapper
+   *  exposes neither ScriptProcessor nor a usable second worklet module (Tone's
+   *  addAudioWorkletModule caches a single promise, so a second URL is silently
+   *  never loaded). So the ONE path, verified on Chromium + WebKit + Firefox:
+   *  bridge the master out of the wrapped graph as a MediaStream (the wrapper
+   *  does implement MediaStreamAudioDestinationNode), then tap the stream on
+   *  the UNDERLYING NATIVE context — native worklet preferred, ScriptProcessor
+   *  as the fallback for engines predating worklets.
+   *  The tap node must stay pulled into the graph to process, so its (silent)
    *  output is wired to the destination — it adds nothing audible. */
   private async openMasterTap(): Promise<{
     start(): void;
@@ -848,44 +848,11 @@ export class ToneSoundPort implements SoundPort {
     };
     const dest = Tone.getDestination(); // same tap point as the visualizer
 
-    try {
-      // Go through Tone's context (standardized-audio-context) rather than
-      // ctx.audioWorklet — the wrapper hides the native worklet API on some
-      // engines, and its own AudioWorkletNode is the cross-engine one that
-      // can join Tone's graph.
-      const context = Tone.getContext();
-      await context.addAudioWorkletModule(this.tapModuleUrl());
-      const node = context.createAudioWorkletNode("ibk-capture-tap");
-      node.port.onmessage = (e) => {
-        if (on) chunks.push(e.data as { l: Float32Array; r: Float32Array });
-      };
-      dest.connect(node);
-      Tone.connect(node, context.destination);
-      return {
-        start: () => {
-          on = true;
-        },
-        stop: () => {
-          on = false;
-          return collect();
-        },
-        dispose: () => {
-          node.port.onmessage = null;
-          dest.disconnect(node);
-          node.disconnect();
-        },
-      };
-    } catch (err) {
-      // e.g. an engine where the wrapper's worklet support probe fails — fall
-      // through to the bridge, but say so: a silent downgrade hides breakage.
-      console.warn("capture: wrapped AudioWorklet tap unavailable, bridging", err);
-    }
-
-    // Tier 2: escape the wrapper. The bridge node lives in Tone's graph; its
-    // .stream is a real MediaStream we can tap with NATIVE nodes on the native
-    // context underneath the wrapper (`_nativeAudioContext` is pinned by the
-    // lockfile — if the lib ever renames it, we fall back to the wrapper and
-    // the ScriptProcessor probe below simply fails over to the native worklet).
+    // The bridge node lives in Tone's graph; its .stream is a real MediaStream
+    // we can tap with NATIVE nodes on the native context underneath the
+    // wrapper (`_nativeAudioContext` is pinned by the lockfile — if the lib
+    // ever renames it, we fall back to the wrapper and the worklet/SP probes
+    // below surface the failure loudly instead of recording silence).
     const bridge = this.ctx.createMediaStreamDestination();
     dest.connect(bridge as unknown as AudioNode);
     const native =
@@ -896,6 +863,36 @@ export class ToneSoundPort implements SoundPort {
       source.disconnect();
       dest.disconnect(bridge as unknown as AudioNode);
     };
+
+    if (native.audioWorklet) {
+      try {
+        await native.audioWorklet.addModule(this.tapModuleUrl());
+        const node = new AudioWorkletNode(native, "ibk-capture-tap");
+        node.port.onmessage = (e) => {
+          if (on) chunks.push(e.data as { l: Float32Array; r: Float32Array });
+        };
+        source.connect(node);
+        node.connect(native.destination);
+        return {
+          start: () => {
+            on = true;
+          },
+          stop: () => {
+            on = false;
+            return collect();
+          },
+          dispose: () => {
+            node.port.onmessage = null;
+            unbridge();
+            node.disconnect();
+          },
+        };
+      } catch (err) {
+        // e.g. an engine that rejects blob worklet modules — fall through to
+        // ScriptProcessor, but say so: a silent downgrade hides breakage.
+        console.warn("capture: native worklet tap unavailable, falling back", err);
+      }
+    }
 
     if (typeof native.createScriptProcessor === "function") {
       const sp = native.createScriptProcessor(4096, 2, 2);
@@ -924,28 +921,8 @@ export class ToneSoundPort implements SoundPort {
       };
     }
 
-    // Native worklet on the bridged stream (engines that dropped ScriptProcessor).
-    await native.audioWorklet.addModule(this.tapModuleUrl());
-    const node = new AudioWorkletNode(native, "ibk-capture-tap");
-    node.port.onmessage = (e) => {
-      if (on) chunks.push(e.data as { l: Float32Array; r: Float32Array });
-    };
-    source.connect(node);
-    node.connect(native.destination);
-    return {
-      start: () => {
-        on = true;
-      },
-      stop: () => {
-        on = false;
-        return collect();
-      },
-      dispose: () => {
-        node.port.onmessage = null;
-        unbridge();
-        node.disconnect();
-      },
-    };
+    unbridge();
+    throw new Error("no master capture available (no AudioWorklet or ScriptProcessor)");
   }
 
   async captureBars(bars: number): Promise<Blob> {

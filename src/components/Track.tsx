@@ -5,7 +5,8 @@ import { liveTrain } from "../core/project-state.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
-import { SendSong } from "./SendSong.tsx";
+
+const SONG_FILE_NAME = "my-train-song.wav";
 
 const TRACK_SCENES = [TrackScene];
 
@@ -69,6 +70,70 @@ export const Track: FC = () => {
     };
   }, [dispatch, engine]);
 
+  // SEND flow: the scene owns the plaque + result panel (in-scene, charter-
+  // styled); this side owns the audio render and the share/download side
+  // effects, pushing each outcome back into the scene so the kid always gets
+  // an explicit "Sent!"/"Saved!" — a bare download is invisible on iOS.
+  useEffect(() => {
+    let rendering = false;
+    let file: File | null = null;
+    const setUi = (s: Parameters<TrackScene["setSendState"]>[0]): void =>
+      sceneRef.current?.setSendState(s);
+
+    const onSend = async (): Promise<void> => {
+      if (rendering) return;
+      rendering = true;
+      setUi({ kind: "recording" });
+      try {
+        const blob = await engine.renderSong(projectRef.current);
+        file = new File([blob], SONG_FILE_NAME, { type: "audio/wav" });
+        const canShare =
+          typeof navigator.share === "function" &&
+          navigator.canShare?.({ files: [file] }) === true;
+        setUi({ kind: "ready", canShare });
+      } catch (err) {
+        console.error("send-song render failed", err);
+        setUi({ kind: "error" });
+      } finally {
+        rendering = false;
+      }
+    };
+    // Called synchronously from the canvas tap (EventBus emits are sync), so
+    // the OS share sheet still sees the user gesture.
+    const onShare = (): void => {
+      if (!file) return;
+      navigator
+        .share({ files: [file], title: "My train song" })
+        .then(() => setUi({ kind: "shared" }))
+        .catch(() => {
+          // The kid closed the share sheet — not an error, stay on the panel.
+        });
+    };
+    const onSave = (): void => {
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = SONG_FILE_NAME;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setUi({ kind: "saved" });
+    };
+    const onClose = (): void => setUi({ kind: "idle" });
+
+    const onSendVoid = (): void => void onSend();
+    EventBus.on("track-send", onSendVoid);
+    EventBus.on("track-send-share", onShare);
+    EventBus.on("track-send-save", onSave);
+    EventBus.on("track-send-close", onClose);
+    return () => {
+      EventBus.off("track-send", onSendVoid);
+      EventBus.off("track-send-share", onShare);
+      EventBus.off("track-send-save", onSave);
+      EventBus.off("track-send-close", onClose);
+    };
+  }, [engine]);
+
   useEffect(() => {
     let raf = 0;
     const tick = () => {
@@ -106,13 +171,10 @@ export const Track: FC = () => {
       </div>
 
       {/* The whole view lives inside TrackScene now: nav + transport are Tiled
-          chrome, and muting is tap-the-car-to-tarp-it, all over the EventBus.
-          (The old HTML tarp strip drifted into the letterbox on non-16:9
-          screens — HTML overlays can't track the FIT-scaled canvas.) */}
-
-      {/* Share/save the song: viewport-anchored (right edge, clear of the
-          Tiled chrome) so it doesn't need to track the FIT-scaled canvas. */}
-      <SendSong />
+          chrome, muting is tap-the-car-to-tarp-it, and the SEND flow (plaque +
+          result panel) is in-scene too — all over the EventBus. (The old HTML
+          tarp strip drifted into the letterbox on non-16:9 screens — HTML
+          overlays can't track the FIT-scaled canvas.) */}
     </div>
   );
 };

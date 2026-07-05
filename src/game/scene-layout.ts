@@ -40,6 +40,13 @@ export const WORKSHOP_TOOL_MODAL = {
   x: 0.07, y: 0.11, w: 0.86, h: 0.70,
 } as const;
 
+// Track SEND result panel: a compact centred card (viewport-relative, like the
+// tool modal) — big enough for a title + two rows of buttons, small enough
+// that the oval and header chrome stay readable behind the dimmed backdrop.
+export const TRACK_SEND_MODAL = {
+  x: 0.24, y: 0.28, w: 0.52, h: 0.44,
+} as const;
+
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
 // inside the oval is the assembly line the crane drops cars onto. Measured
 // from the 2026-07-02 repainted base plate (rail rows: oval top 0.289,

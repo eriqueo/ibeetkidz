@@ -28,6 +28,7 @@ import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { loadUiSprites } from "../ui-sprites.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
+import { SendSongPanel, type SendUiState } from "../send-panel.ts";
 import trackMap from "../../assets/maps/track.json";
 import type { CarType } from "../../core/types.ts";
 
@@ -70,6 +71,15 @@ export class TrackScene extends BackgroundScene {
   private tempoText?: Phaser.GameObjects.Text;
   private tempoBpm = 120;
   private lcdRect?: { width: number; height: number };
+  // SEND flow: a plaque in the header (same cream-chip treatment as the LCD,
+  // anchored to the `btn-send` Tiled display object) + the result panel. State
+  // is pushed in by React (`setSendState`); taps emit `track-send*` intents.
+  private sendChip?: Phaser.GameObjects.Graphics;
+  private sendText?: Phaser.GameObjects.Text;
+  private sendHit?: Phaser.GameObjects.Rectangle;
+  private sendPulse?: Phaser.Tweens.Tween | undefined;
+  private sendPanel?: SendSongPanel;
+  private sendState: SendUiState = { kind: "idle" };
 
   constructor() {
     super(TrackScene.KEY);
@@ -123,6 +133,68 @@ export class TrackScene extends BackgroundScene {
       })
       .setOrigin(0.5)
       .setDepth(11);
+
+    // SEND plaque: cream chip + plum text, the header's chip language. During
+    // a take it flips to a pulsing ● REC readout — the train riding the oval
+    // IS the progress indicator, so no modal covers the scene while recording.
+    this.sendChip = this.add.graphics().setDepth(9);
+    this.sendText = this.add
+      .text(0, 0, "", { fontFamily: "'Press Start 2P', monospace", color: "#2b2440", letterSpacing: 2 })
+      .setOrigin(0.5)
+      .setDepth(11);
+    this.sendHit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setDepth(12);
+    this.sendHit.setInteractive({ useHandCursor: true });
+    let armed = false;
+    this.sendHit.on("pointerdown", () => {
+      if (this.sendState.kind !== "idle") return;
+      armed = true;
+      this.sendText?.setScale(0.94);
+    });
+    const restore = (): void => this.sendText?.setScale(1) as unknown as void;
+    this.sendHit.on("pointerout", () => { armed = false; restore(); });
+    this.sendHit.on("pointerup", () => {
+      restore();
+      if (!armed) return;
+      armed = false;
+      if (this.sendState.kind === "idle") EventBus.emit("track-send");
+    });
+
+    this.sendPanel = new SendSongPanel(this);
+  }
+
+  /** React → scene: the SEND flow's current state (drives plaque + panel). */
+  setSendState(state: SendUiState): void {
+    this.sendState = state;
+    if (this.ready) this.refreshSend();
+  }
+
+  /** Exposed for the e2e bridge: what the SEND UI currently shows. */
+  get sendUiState(): SendUiState {
+    return this.sendState;
+  }
+
+  private refreshSend(): void {
+    if (!this.sendChip || !this.sendText) return;
+    const recording = this.sendState.kind === "recording";
+    // Plain caps only: the chip renders in Press Start 2P, which has no emoji
+    // glyphs (a 📮 came out as tofu boxes on some platforms).
+    this.sendText.setText(recording ? "● REC" : "SEND");
+    this.sendText.setColor(recording ? "#b03050" : "#2b2440");
+    this.sendPulse?.remove();
+    this.sendPulse = undefined;
+    this.sendText.setAlpha(1);
+    if (recording) {
+      this.sendPulse = this.tweens.add({
+        targets: this.sendText,
+        alpha: { from: 1, to: 0.35 },
+        yoyo: true,
+        repeat: -1,
+        duration: 450,
+      });
+    }
+    const { width, height } = this.scale.gameSize;
+    this.sendPanel?.setUiState(this.sendState);
+    this.sendPanel?.layout(width, height);
   }
 
   // Re-anchor the chrome sprites + the LCD (chip + text) after the bg refits.
@@ -131,6 +203,24 @@ export class TrackScene extends BackgroundScene {
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
     relayoutUiLayer(this.chrome, r, { width, height });
+
+    const send = this.chromeSpawns.find((s) => s.id === "btn-send");
+    if (send && this.sendChip && this.sendText && this.sendHit) {
+      const p = placeSpawn(send, r, { width, height });
+      const rad = Math.min(p.height * 0.28, 18);
+      this.sendChip
+        .clear()
+        .fillStyle(0xe9d7ac, 1)
+        .fillRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad)
+        .lineStyle(Math.max(2, p.height * 0.04), 0x2b2440, 1)
+        .strokeRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad);
+      this.sendText.setPosition(p.x, p.y);
+      const fs = Math.max(10, Math.round(p.height * 0.32));
+      this.sendText.setFontSize(fs);
+      this.sendHit.setPosition(p.x, p.y).setSize(p.width * 1.15, p.height * 1.3);
+      this.refreshSend();
+      this.sendPanel?.layout(width, height);
+    }
 
     const lcd = this.chromeSpawns.find((s) => s.id === "lcd-transport");
     if (lcd && this.tempoText && this.lcdChip) {

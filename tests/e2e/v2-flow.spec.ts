@@ -147,17 +147,22 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   expect(x2, "the loco must still be moving after the smoke timer fires").not.toBe(x1);
   await emit(page, "transport-stop");
 
-  // SEND: the train rides the song once while the master output records, then
-  // the modal offers Save — a real WAV download (share is platform-gated).
-  await page.getByTitle("Send your song").click();
-  await expect(page.getByTestId("send-song-modal")).toBeVisible();
-  const saveBtn = page.getByRole("button", { name: "Save it" });
-  await expect(saveBtn, "the render (1 bar + tail) must finish").toBeVisible({ timeout: 20_000 });
+  // SEND: the in-scene plaque kicks off a master-output render (the train
+  // rides the song once), the result panel offers Save, and a real WAV
+  // download must land, followed by the explicit "Saved!" confirmation.
+  const sendState = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().sendUiState?.kind);
+  expect(await sendState()).toBe("idle");
+  await emit(page, "track-send");
+  await expect
+    .poll(sendState, { timeout: 20_000, message: "the render (1 bar + tail) must finish" })
+    .toBe("ready");
   const download = page.waitForEvent("download");
-  await saveBtn.click();
+  await emit(page, "track-send-save");
   expect((await download).suggestedFilename()).toBe("my-train-song.wav");
-  await page.getByRole("button", { name: "Done" }).click();
-  await expect(page.getByTestId("send-song-modal")).not.toBeVisible();
+  await expect.poll(sendState).toBe("saved");
+  await emit(page, "track-send-close");
+  await expect.poll(sendState).toBe("idle");
 });
 
 test("Map guards Track until a train exists", async ({ page }) => {
