@@ -30,9 +30,13 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npx playwright install --with-deps chromium webkit firefox
-      # WebKit's WebAudio needs a real audio sink; a headless runner has none,
-      # so start PulseAudio — with no hardware it auto-creates a null sink.
+      # WebAudio needs a real audio sink; a headless runner has none, so start
+      # PulseAudio — with no hardware it auto-creates a null sink. Chromium
+      # additionally only pumps its audio graph when HEADED, so the suite runs
+      # headed under a virtual display (xvfb) — otherwise the audio-output
+      # spec's master-peak proof reads permanent silence.
       - run: sudo apt-get install -y pulseaudio && pulseaudio --start
-      - run: npm run test:e2e
+      - run: xvfb-run --auto-servernum npm run test:e2e
         env:
           PW_CROSS_ENGINE: "1"
+          PW_HEADED: "1"

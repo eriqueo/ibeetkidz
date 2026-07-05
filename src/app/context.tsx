@@ -52,6 +52,11 @@ interface TestBridge {
   // (read off the visualizer analyser). Lets e2e assert "samples actually
   // reached the destination", not just "the transport clock ran".
   audioDiag: () => ReturnType<ToneSoundPort["getAudioDiag"]>;
+  // Recording probes: decoded length + peak |sample| of a held buffer. The
+  // peak is how e2e proves a mic take is REAL AUDIO, not silently-empty (the
+  // iOS session-flip bug's failure mode).
+  bufferDuration: (bufferId: string) => number | null;
+  bufferPeak: (bufferId: string) => number | null;
 }
 declare global {
   interface Window {
@@ -69,6 +74,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     getScene: () => lastScene,
     dispatch: (cmd) => dispatch(cmd),
     audioDiag: () => toneSound.getAudioDiag(),
+    bufferDuration: (bufferId) => toneSound.getBufferDuration(bufferId),
+    bufferPeak: (bufferId) => toneSound.getBufferPeak(bufferId),
   };
 }
 

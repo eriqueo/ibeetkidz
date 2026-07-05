@@ -15,6 +15,10 @@ export default defineConfig({
   use: {
     baseURL: ORIGIN,
     trace: "on-first-retry",
+    // PW_HEADED=1 runs browsers headed (CI wraps this in xvfb-run): headless
+    // chromium never pumps the WebAudio graph on machines without an audio
+    // device, which zeroes the audio-output spec's master-peak proof.
+    headless: !process.env.PW_HEADED,
   },
   webServer: {
     command: `npm run dev -- --port ${PORT} --strictPort`,

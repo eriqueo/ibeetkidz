@@ -101,6 +101,39 @@ test("Workshop stations open the creative tools", async ({ page }) => {
   await expect.poll(activeTool).toBe("record-voicefx");
 });
 
+test("My Voice: hold-to-record captures real, non-silent audio (fake mic)", async ({ page }) => {
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+  await emit(page, "workshop-open-tool", "record-voicefx");
+
+  // Hold to record for a beat and a half of the fake mic's tone, then release.
+  await emit(page, "tool-voice-record", true);
+  await page.waitForTimeout(1500);
+  await emit(page, "tool-voice-record", false);
+
+  // A recording clip must land in the project…
+  const recordingClip = async () => {
+    const p = await getProject(page);
+    return (Object.values(p.clips) as any[]).find((c) => c.source?.kind === "recording");
+  };
+  await expect.poll(async () => (await recordingClip()) !== undefined).toBe(true);
+
+  // …and its decoded take must be REAL AUDIO. Duration alone can't catch the
+  // iOS-class failure where the recorder "succeeds" but captures pure silence,
+  // so assert the buffer's peak sample too (the fake mic emits a loud tone).
+  const clip = await recordingClip();
+  const probes = await page.evaluate(
+    (bufferId) => ({
+      duration: (window as any).__ibeetkidz_test__.bufferDuration(bufferId),
+      peak: (window as any).__ibeetkidz_test__.bufferPeak(bufferId),
+    }),
+    clip.source.bufferId,
+  );
+  expect(probes.duration, "take must have real length").toBeGreaterThan(0.5);
+  expect(probes.peak, "take must not be silence").toBeGreaterThan(0.05);
+});
+
 test("Yard → Track: couple a car and ride it", async ({ page }) => {
   // Surface page-side errors in the test log — the SEND flow shows a kid-safe
   // "oops" on failure, so without this a cross-engine breakage is opaque.

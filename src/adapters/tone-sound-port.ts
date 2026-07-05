@@ -32,6 +32,15 @@ import {
 } from "../ports/sound-port.ts";
 import { encodeWav } from "./wav.ts";
 
+/** A raw-sample recorder over a MediaStream (see openStreamTap): start/stop
+ *  gates collection; stop returns the gathered stereo frames at `sampleRate`. */
+interface StreamTap {
+  readonly sampleRate: number;
+  start(): void;
+  stop(): { left: Float32Array; right: Float32Array };
+  dispose(): void;
+}
+
 /** A melody voice. The Mono-family synths share `.frequency`, so bend/roll/
  *  stretch all work on them. `Tone.Sampler` (Voice Keys — the kid's recording
  *  repitched chromatically) and `Tone.PluckSynth` (the guitar — a Karplus-Strong
@@ -141,12 +150,24 @@ export class ToneSoundPort implements SoundPort {
    *  Voice Keys sampler one-shot so a note speaks immediately (a raw take has
    *  dead air before the voice starts — a short note would otherwise be silent). */
   private readonly voiceSampleCache = new Map<BufferId, Tone.ToneAudioBuffer>();
-  private mic?: Tone.UserMedia | undefined;
-  private recorder?: Tone.Recorder | undefined;
+  // Mic capture: the RAW getUserMedia stream + a MediaRecorder on it. The mic
+  // deliberately does NOT route through WebAudio: on iOS, opening the mic
+  // flips the audio session to play-and-record, which can change the hardware
+  // sample rate (44.1k → 48k) — a MediaStreamAudioSourceNode on the already-
+  // running context then delivers pure SILENCE (the recording "works" but is
+  // empty). MediaRecorder on the raw stream is immune to that mismatch.
+  private micStream?: MediaStream | undefined;
+  private micRecorder?: MediaRecorder | undefined;
+  private micChunks: Blob[] = [];
+  /** Raw-sample fallback for engines without MediaRecorder (some WebKit builds). */
+  private micTap?: StreamTap | undefined;
   /** Active while capturing a Magic Pad performance; live theremin voices
-   *  connect to it (see thereminOn) so the whole performance — gaps and all —
-   *  is recorded without needing the mic. */
-  private perfRecorder?: Tone.Recorder | undefined;
+   *  connect to this bus (see thereminOn) so the whole performance — gaps and
+   *  all — is captured without needing the mic. Tapped raw → WAV (Tone.Recorder
+   *  rode MediaRecorder, which is flaky over WebAudio streams on iOS and absent
+   *  on some WebKit builds). */
+  private perfBus?: MediaStreamAudioDestinationNode | undefined;
+  private perfTap?: StreamTap | undefined;
   private bufferSeq = 0;
   private builtinsLoaded = false;
   private keepAliveBound = false;
@@ -256,15 +277,26 @@ export class ToneSoundPort implements SoundPort {
     // play-and-record before opening the mic, and restore playback on failure.
     setAudioSession("play-and-record");
     try {
-      this.mic = new Tone.UserMedia();
-      this.recorder = new Tone.Recorder();
-      await this.mic.open(); // throws if denied / no device
-      this.mic.connect(this.recorder);
-      this.recorder.start();
+      if (!navigator.mediaDevices) throw new NoMicError();
+      // See the micStream field note: the raw stream is recorded directly —
+      // never routed through WebAudio — so the iOS session-flip sample-rate
+      // mismatch can't silence the take.
+      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (typeof MediaRecorder === "function") {
+        this.micChunks = [];
+        this.micRecorder = new MediaRecorder(this.micStream);
+        this.micRecorder.ondataavailable = (e) => {
+          if (e.data.size > 0) this.micChunks.push(e.data);
+        };
+        this.micRecorder.start();
+      } else {
+        // Engines without MediaRecorder: tap the stream with the same native
+        // worklet/ScriptProcessor used for the song capture.
+        this.micTap = await this.openStreamTap(this.micStream);
+        this.micTap.start();
+      }
     } catch (err) {
-      this.mic?.close();
-      this.mic = undefined;
-      this.recorder = undefined;
+      this.closeMic();
       setAudioSession("playback");
       if (err instanceof DOMException && err.name === "NotAllowedError") {
         throw new MicDeniedError();
@@ -274,18 +306,49 @@ export class ToneSoundPort implements SoundPort {
   }
 
   async stopRecording(): Promise<BufferId> {
-    if (!this.recorder || !this.mic) throw new NoMicError();
-    const blob = await this.recorder.stop();
-    this.mic.close();
+    if (!this.micStream) throw new NoMicError();
+    let blob: Blob;
+    if (this.micRecorder) {
+      const rec = this.micRecorder;
+      blob = await new Promise<Blob>((resolve, reject) => {
+        rec.onstop = () => resolve(new Blob(this.micChunks, { type: rec.mimeType || "audio/webm" }));
+        rec.onerror = () => reject(new NoMicError());
+        if (rec.state === "inactive") rec.onstop(new Event("stop"));
+        else rec.stop();
+      });
+    } else if (this.micTap) {
+      const tap = this.micTap;
+      const { left, right } = tap.stop();
+      blob = encodeWav({
+        numberOfChannels: 2,
+        length: left.length,
+        sampleRate: tap.sampleRate,
+        getChannelData: (c) => (c === 0 ? left : right),
+      });
+    } else {
+      throw new NoMicError();
+    }
+    this.closeMic();
     // Back to loud, silent-switch-defying playback now the mic is closed.
     setAudioSession("playback");
+    if (blob.size === 0) throw new NoMicError(); // a zero-length take (instant release)
     const audioBuf = await this.decodeRecording(blob);
     const id = `rec-${this.bufferSeq++}`;
     this.buffers.set(id, audioBuf);
     this.recordingBlobs.set(id, blob);
-    this.mic = undefined;
-    this.recorder = undefined;
     return id;
+  }
+
+  private closeMic(): void {
+    this.micTap?.dispose();
+    this.micTap = undefined;
+    if (this.micRecorder) {
+      this.micRecorder.ondataavailable = null;
+      this.micRecorder = undefined;
+    }
+    this.micStream?.getTracks().forEach((t) => t.stop());
+    this.micStream = undefined;
+    this.micChunks = [];
   }
 
   async rehydrate(bufferId: BufferId, blob: Blob): Promise<void> {
@@ -308,18 +371,28 @@ export class ToneSoundPort implements SoundPort {
   }
 
   async startPerformanceRecording(): Promise<void> {
-    this.perfRecorder = new Tone.Recorder();
-    this.perfRecorder.start();
+    // A bus the live theremin voices feed (see thereminOn), tapped raw → WAV.
     // A voice already playing won't be connected; thereminOn wires up voices
     // started after this point (the kid presses Record, then drags to play).
+    this.perfBus = this.ctx.createMediaStreamDestination();
+    this.perfTap = await this.openStreamTap(this.perfBus.stream);
+    this.perfTap.start();
   }
 
   async stopPerformanceRecording(): Promise<BufferId> {
-    const rec = this.perfRecorder;
-    this.perfRecorder = undefined;
-    if (!rec) throw new NoMicError();
-    const blob = await rec.stop();
-    rec.dispose();
+    const tap = this.perfTap;
+    const bus = this.perfBus;
+    this.perfTap = undefined;
+    this.perfBus = undefined;
+    if (!tap || !bus) throw new NoMicError();
+    const { left, right } = tap.stop();
+    tap.dispose();
+    const blob = encodeWav({
+      numberOfChannels: 2,
+      length: left.length,
+      sampleRate: tap.sampleRate,
+      getChannelData: (c) => (c === 0 ? left : right),
+    });
     const audioBuf = await this.decodeRecording(blob);
     const id = `perf-${this.bufferSeq++}`;
     this.buffers.set(id, audioBuf);
@@ -333,6 +406,20 @@ export class ToneSoundPort implements SoundPort {
 
   getBufferDuration(bufferId: BufferId): number | null {
     return this.buffers.get(bufferId)?.duration ?? null;
+  }
+
+  /** Test/diagnostic only: peak |sample| of a decoded buffer (0 = silence).
+   *  Exists because the iOS mic bug's failure mode is a take that "succeeds"
+   *  but contains nothing — duration alone can't catch it. */
+  getBufferPeak(bufferId: BufferId): number | null {
+    const buf = this.buffers.get(bufferId);
+    if (!buf) return null;
+    let peak = 0;
+    for (let c = 0; c < buf.numberOfChannels; c++) {
+      const d = buf.getChannelData(c);
+      for (let i = 0; i < d.length; i++) peak = Math.max(peak, Math.abs(d[i]!));
+    }
+    return peak;
   }
 
   // ── Effect baking (render-once) ──────────────────────────────────────────
@@ -748,8 +835,8 @@ export class ToneSoundPort implements SoundPort {
     osc.connect(filter);
     filter.connect(gain);
     // While a performance is being captured, also feed this voice to the
-    // recorder so the Magic Pad track records what you hear.
-    if (this.perfRecorder) gain.connect(this.perfRecorder);
+    // capture bus so the Magic Pad track records what you hear.
+    if (this.perfBus) gain.connect(this.perfBus as unknown as AudioNode);
     osc.start();
     gain.gain.rampTo(0.25, 0.05);
     this.theremin = { osc, filter, gain };
@@ -826,11 +913,35 @@ export class ToneSoundPort implements SoundPort {
    *  as the fallback for engines predating worklets.
    *  The tap node must stay pulled into the graph to process, so its (silent)
    *  output is wired to the destination — it adds nothing audible. */
-  private async openMasterTap(): Promise<{
-    start(): void;
-    stop(): { left: Float32Array; right: Float32Array };
-    dispose(): void;
-  }> {
+  private async openMasterTap(): Promise<StreamTap> {
+    // The bridge node lives in Tone's graph; its .stream is a real MediaStream
+    // the generic stream tap can consume.
+    const dest = Tone.getDestination(); // same tap point as the visualizer
+    const bridge = this.ctx.createMediaStreamDestination();
+    dest.connect(bridge as unknown as AudioNode);
+    const tap = await this.openStreamTap(bridge.stream).catch((err: unknown) => {
+      dest.disconnect(bridge as unknown as AudioNode);
+      throw err;
+    });
+    return {
+      sampleRate: tap.sampleRate,
+      start: tap.start,
+      stop: tap.stop,
+      dispose: () => {
+        tap.dispose();
+        dest.disconnect(bridge as unknown as AudioNode);
+      },
+    };
+  }
+
+  /** Tap any MediaStream to raw Float32 frames on the NATIVE context
+   *  underneath the wrapper (`_nativeAudioContext` is pinned by the lockfile —
+   *  if the lib ever renames it, we fall back to the wrapper and the worklet/SP
+   *  probes below surface the failure loudly instead of recording silence).
+   *  Native worklet preferred; ScriptProcessor for engines predating worklets.
+   *  The tap node must stay pulled into the graph to process, so its (silent)
+   *  output is wired to the destination — it adds nothing audible. */
+  private async openStreamTap(stream: MediaStream): Promise<StreamTap> {
     const chunks: { l: Float32Array; r: Float32Array }[] = [];
     let on = false;
     const collect = (): { left: Float32Array; right: Float32Array } => {
@@ -846,23 +957,10 @@ export class ToneSoundPort implements SoundPort {
       }
       return { left, right };
     };
-    const dest = Tone.getDestination(); // same tap point as the visualizer
-
-    // The bridge node lives in Tone's graph; its .stream is a real MediaStream
-    // we can tap with NATIVE nodes on the native context underneath the
-    // wrapper (`_nativeAudioContext` is pinned by the lockfile — if the lib
-    // ever renames it, we fall back to the wrapper and the worklet/SP probes
-    // below surface the failure loudly instead of recording silence).
-    const bridge = this.ctx.createMediaStreamDestination();
-    dest.connect(bridge as unknown as AudioNode);
     const native =
       (this.ctx as unknown as { _nativeAudioContext?: AudioContext })._nativeAudioContext ??
       this.ctx;
-    const source = native.createMediaStreamSource(bridge.stream);
-    const unbridge = (): void => {
-      source.disconnect();
-      dest.disconnect(bridge as unknown as AudioNode);
-    };
+    const source = native.createMediaStreamSource(stream);
 
     if (native.audioWorklet) {
       try {
@@ -874,6 +972,7 @@ export class ToneSoundPort implements SoundPort {
         source.connect(node);
         node.connect(native.destination);
         return {
+          sampleRate: native.sampleRate,
           start: () => {
             on = true;
           },
@@ -883,7 +982,7 @@ export class ToneSoundPort implements SoundPort {
           },
           dispose: () => {
             node.port.onmessage = null;
-            unbridge();
+            source.disconnect();
             node.disconnect();
           },
         };
@@ -906,6 +1005,7 @@ export class ToneSoundPort implements SoundPort {
       source.connect(sp);
       sp.connect(native.destination);
       return {
+        sampleRate: native.sampleRate,
         start: () => {
           on = true;
         },
@@ -915,14 +1015,14 @@ export class ToneSoundPort implements SoundPort {
         },
         dispose: () => {
           sp.onaudioprocess = null;
-          unbridge();
+          source.disconnect();
           sp.disconnect();
         },
       };
     }
 
-    unbridge();
-    throw new Error("no master capture available (no AudioWorklet or ScriptProcessor)");
+    source.disconnect();
+    throw new Error("no capture available (no AudioWorklet or ScriptProcessor)");
   }
 
   async captureBars(bars: number): Promise<Blob> {
@@ -950,7 +1050,7 @@ export class ToneSoundPort implements SoundPort {
       return encodeWav({
         numberOfChannels: 2,
         length: left.length,
-        sampleRate: this.ctx.sampleRate,
+        sampleRate: tap.sampleRate,
         getChannelData: (c) => (c === 0 ? left : right),
       });
     } finally {
