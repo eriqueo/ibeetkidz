@@ -296,6 +296,10 @@ export class ToneSoundPort implements SoundPort {
         this.micTap.start();
       }
     } catch (err) {
+      // Log the ORIGINAL failure before collapsing it into the kid-safe error
+      // types — otherwise a platform-specific getUserMedia/recorder failure is
+      // indistinguishable from "no mic" in the field.
+      console.warn("mic capture failed to open", err);
       this.closeMic();
       setAudioSession("playback");
       if (err instanceof DOMException && err.name === "NotAllowedError") {

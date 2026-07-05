@@ -290,13 +290,13 @@ export const Workshop: FC = () => {
     ) => async (start: boolean): Promise<void> => {
       const finish = async (): Promise<void> => {
         phase.current = "idle";
-        try { onFinish(await sound.stopRecording()); } catch { onError(); }
+        try { onFinish(await sound.stopRecording()); } catch (err) { console.error("mic stop failed", err); onError(); }
       };
       if (start) {
         if (phase.current !== "idle") return;
         phase.current = "opening";
         onOpening();
-        try { await sound.startRecording(); } catch { phase.current = "idle"; onError(); return; }
+        try { await sound.startRecording(); } catch (err) { console.error("mic open failed", err); phase.current = "idle"; onError(); return; }
         if ((phase.current as RecPhase) === "stopping") void finish();
         else phase.current = "recording";
       } else {

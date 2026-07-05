@@ -8,6 +8,13 @@ import { expect, test, type Page } from "@playwright/test";
 // tarp strip), never on canvas. Mic is faked via Playwright launch flags.
 
 async function boot(page: Page): Promise<void> {
+  // Surface page-side errors in the test log for EVERY spec — kid-safe UX
+  // swallows failures into friendly copy, so without this a breakage that
+  // only reproduces in CI (e.g. a runner-specific media failure) is opaque.
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") console.log("[page-error]", m.text());
+  });
+  page.on("pageerror", (e) => console.log("[page-crash]", e.message));
   await page.goto("/");
   const start = page.getByRole("button", { name: /tap to start/i });
   await expect(start).toBeVisible();
@@ -135,12 +142,6 @@ test("My Voice: hold-to-record captures real, non-silent audio (fake mic)", asyn
 });
 
 test("Yard → Track: couple a car and ride it", async ({ page }) => {
-  // Surface page-side errors in the test log — the SEND flow shows a kid-safe
-  // "oops" on failure, so without this a cross-engine breakage is opaque.
-  page.on("console", (m) => {
-    if (m.type() === "error" || m.type() === "warning") console.log("[page-error]", m.text());
-  });
-  page.on("pageerror", (e) => console.log("[page-crash]", e.message));
   await boot(page);
   await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
