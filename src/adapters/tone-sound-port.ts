@@ -792,14 +792,167 @@ export class ToneSoundPort implements SoundPort {
    *  (FeedbackDelay) tails ring out instead of being cut mid-decay. */
   private static readonly CAPTURE_TAIL_MS = 1200;
 
+  /** Blob-module URL for the capture worklet, created once per page. Inlined
+   *  so the app stays a self-contained bundle (no extra asset to serve —
+   *  matters for the offline posture). */
+  private captureTapUrl?: string | undefined;
+
+  private tapModuleUrl(): string {
+    if (!this.captureTapUrl) {
+      const src = `registerProcessor("ibk-capture-tap", class extends AudioWorkletProcessor {
+        process(inputs) {
+          const i = inputs[0];
+          if (i && i[0]) this.port.postMessage({ l: new Float32Array(i[0]), r: new Float32Array(i[1] ?? i[0]) });
+          return true;
+        }
+      });`;
+      this.captureTapUrl = URL.createObjectURL(new Blob([src], { type: "application/javascript" }));
+    }
+    return this.captureTapUrl;
+  }
+
+  /** Open a raw-sample tap on the master output. Raw Float32 frames → WAV is
+   *  one lossless path with no per-engine codec differences (MediaRecorder is
+   *  deliberately avoided: absent on some WebKit builds, engine-dependent
+   *  intermediate codec on the rest).
+   *
+   *  Two tiers, because Tone v15 wraps every node in standardized-audio-context
+   *  and the wrapper exposes NEITHER ScriptProcessor nor (on some engines) a
+   *  working AudioWorklet:
+   *  1. The wrapper's own AudioWorkletNode, joined to Tone's graph directly.
+   *  2. Bridge the master out of the wrapped graph as a MediaStream (the
+   *     wrapper does implement MediaStreamAudioDestinationNode), then tap the
+   *     stream on the UNDERLYING NATIVE context with a ScriptProcessor or a
+   *     native worklet — native APIs the wrapper hides but every engine has.
+   *  Each tap node must stay pulled into the graph to process, so its (silent)
+   *  output is wired to the destination — it adds nothing audible. */
+  private async openMasterTap(): Promise<{
+    start(): void;
+    stop(): { left: Float32Array; right: Float32Array };
+    dispose(): void;
+  }> {
+    const chunks: { l: Float32Array; r: Float32Array }[] = [];
+    let on = false;
+    const collect = (): { left: Float32Array; right: Float32Array } => {
+      let frames = 0;
+      for (const c of chunks) frames += c.l.length;
+      const left = new Float32Array(frames);
+      const right = new Float32Array(frames);
+      let o = 0;
+      for (const c of chunks) {
+        left.set(c.l, o);
+        right.set(c.r, o);
+        o += c.l.length;
+      }
+      return { left, right };
+    };
+    const dest = Tone.getDestination(); // same tap point as the visualizer
+
+    try {
+      // Go through Tone's context (standardized-audio-context) rather than
+      // ctx.audioWorklet — the wrapper hides the native worklet API on some
+      // engines, and its own AudioWorkletNode is the cross-engine one that
+      // can join Tone's graph.
+      const context = Tone.getContext();
+      await context.addAudioWorkletModule(this.tapModuleUrl());
+      const node = context.createAudioWorkletNode("ibk-capture-tap");
+      node.port.onmessage = (e) => {
+        if (on) chunks.push(e.data as { l: Float32Array; r: Float32Array });
+      };
+      dest.connect(node);
+      Tone.connect(node, context.destination);
+      return {
+        start: () => {
+          on = true;
+        },
+        stop: () => {
+          on = false;
+          return collect();
+        },
+        dispose: () => {
+          node.port.onmessage = null;
+          dest.disconnect(node);
+          node.disconnect();
+        },
+      };
+    } catch (err) {
+      // e.g. an engine where the wrapper's worklet support probe fails — fall
+      // through to the bridge, but say so: a silent downgrade hides breakage.
+      console.warn("capture: wrapped AudioWorklet tap unavailable, bridging", err);
+    }
+
+    // Tier 2: escape the wrapper. The bridge node lives in Tone's graph; its
+    // .stream is a real MediaStream we can tap with NATIVE nodes on the native
+    // context underneath the wrapper (`_nativeAudioContext` is pinned by the
+    // lockfile — if the lib ever renames it, we fall back to the wrapper and
+    // the ScriptProcessor probe below simply fails over to the native worklet).
+    const bridge = this.ctx.createMediaStreamDestination();
+    dest.connect(bridge as unknown as AudioNode);
+    const native =
+      (this.ctx as unknown as { _nativeAudioContext?: AudioContext })._nativeAudioContext ??
+      this.ctx;
+    const source = native.createMediaStreamSource(bridge.stream);
+    const unbridge = (): void => {
+      source.disconnect();
+      dest.disconnect(bridge as unknown as AudioNode);
+    };
+
+    if (typeof native.createScriptProcessor === "function") {
+      const sp = native.createScriptProcessor(4096, 2, 2);
+      sp.onaudioprocess = (e) => {
+        if (!on) return;
+        chunks.push({
+          l: new Float32Array(e.inputBuffer.getChannelData(0)),
+          r: new Float32Array(e.inputBuffer.getChannelData(1)),
+        });
+      };
+      source.connect(sp);
+      sp.connect(native.destination);
+      return {
+        start: () => {
+          on = true;
+        },
+        stop: () => {
+          on = false;
+          return collect();
+        },
+        dispose: () => {
+          sp.onaudioprocess = null;
+          unbridge();
+          sp.disconnect();
+        },
+      };
+    }
+
+    // Native worklet on the bridged stream (engines that dropped ScriptProcessor).
+    await native.audioWorklet.addModule(this.tapModuleUrl());
+    const node = new AudioWorkletNode(native, "ibk-capture-tap");
+    node.port.onmessage = (e) => {
+      if (on) chunks.push(e.data as { l: Float32Array; r: Float32Array });
+    };
+    source.connect(node);
+    node.connect(native.destination);
+    return {
+      start: () => {
+        on = true;
+      },
+      stop: () => {
+        on = false;
+        return collect();
+      },
+      dispose: () => {
+        node.port.onmessage = null;
+        unbridge();
+        node.disconnect();
+      },
+    };
+  }
+
   async captureBars(bars: number): Promise<Blob> {
     const transport = Tone.getTransport();
     transport.stop(); // also rewinds the playhead to bar 0
-    const recorder = new Tone.Recorder();
-    const dest = Tone.getDestination();
-    dest.connect(recorder); // tap the master, same as the visualizer's analyser
+    const tap = await this.openMasterTap();
     try {
-      await recorder.start();
       const beatsPerBar =
         typeof transport.timeSignature === "number" ? transport.timeSignature : 4;
       // Stop one tick shy of the loop boundary: at exactly `bars` measures the
@@ -811,18 +964,21 @@ export class ToneSoundPort implements SoundPort {
           resolve();
         }, `${endTicks}i`);
       });
+      tap.start();
       transport.start();
       await rideDone;
+      // Let the per-lane echo tails ring out before cutting the take.
       await new Promise((r) => setTimeout(r, ToneSoundPort.CAPTURE_TAIL_MS));
-      const raw = await recorder.stop();
-      // Re-encode the compressed take (webm/mp4, platform-dependent) as WAV so
-      // the shared file plays anywhere.
-      const decoded = await this.ctx.decodeAudioData(await raw.arrayBuffer());
-      return encodeWav(decoded);
+      const { left, right } = tap.stop();
+      return encodeWav({
+        numberOfChannels: 2,
+        length: left.length,
+        sampleRate: this.ctx.sampleRate,
+        getChannelData: (c) => (c === 0 ? left : right),
+      });
     } finally {
       transport.stop();
-      dest.disconnect(recorder);
-      recorder.dispose();
+      tap.dispose();
     }
   }
 

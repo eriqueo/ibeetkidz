@@ -37,5 +37,27 @@ export default defineConfig({
         },
       },
     },
+    // Cross-engine gates for the SEND flow only (opt-in via PW_CROSS_ENGINE=1;
+    // CI sets it): the master-output capture taps raw samples via AudioWorklet
+    // with a MediaStream-bridge fallback, and engines differ in which path they
+    // take — these prove capture + WAV encode + download on all three. WebKit
+    // here is the closest CI proxy for iPhone/iPad Safari. No mic faking
+    // needed: the send test builds its lane from a painted instrument.
+    // (NixOS note: webkit needs the nix-patched browser — see the GST shim in
+    // the AudioWorklet commit message — hence opt-in rather than default.)
+    ...(process.env.PW_CROSS_ENGINE
+      ? [
+          {
+            name: "webkit-send",
+            grep: /couple a car and ride it/,
+            use: { ...devices["Desktop Safari"] },
+          },
+          {
+            name: "firefox-send",
+            grep: /couple a car and ride it/,
+            use: { ...devices["Desktop Firefox"] },
+          },
+        ]
+      : []),
   ],
 });

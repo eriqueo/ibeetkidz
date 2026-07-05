@@ -27,7 +27,8 @@ export const SendSong: FC = () => {
       const blob = await engine.renderSong(project);
       const file = new File([blob], FILE_NAME, { type: "audio/wav" });
       setPhase({ kind: "ready", blob, file });
-    } catch {
+    } catch (err) {
+      console.error("send-song render failed", err);
       setPhase({ kind: "error" });
     }
   }, [engine, project]);

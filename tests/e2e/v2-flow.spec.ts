@@ -102,6 +102,12 @@ test("Workshop stations open the creative tools", async ({ page }) => {
 });
 
 test("Yard → Track: couple a car and ride it", async ({ page }) => {
+  // Surface page-side errors in the test log — the SEND flow shows a kid-safe
+  // "oops" on failure, so without this a cross-engine breakage is opaque.
+  page.on("console", (m) => {
+    if (m.type() === "error" || m.type() === "warning") console.log("[page-error]", m.text());
+  });
+  page.on("pageerror", (e) => console.log("[page-crash]", e.message));
   await boot(page);
   await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");

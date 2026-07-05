@@ -3,6 +3,8 @@ name: test
 on:
   pull_request:
     branches: [main]
+  push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
@@ -27,5 +29,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium
+      - run: npx playwright install --with-deps chromium webkit firefox
+      # WebKit's WebAudio needs a real audio sink; a headless runner has none,
+      # so start PulseAudio — with no hardware it auto-creates a null sink.
+      - run: sudo apt-get install -y pulseaudio && pulseaudio --start
       - run: npm run test:e2e
+        env:
+          PW_CROSS_ENGINE: "1"
