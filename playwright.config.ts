@@ -36,6 +36,11 @@ export default defineConfig({
           args: [
             "--use-fake-ui-for-media-stream",
             "--use-fake-device-for-media-stream",
+            // File-backed fake mic: the default synthetic tone makes CI
+            // runners' MediaRecorder emit undecodable blobs ("EncodingError:
+            // Unable to decode audio data"); a real WAV keeps the capture →
+            // encode → decode pipeline honest and deterministic everywhere.
+            "--use-file-for-fake-audio-capture=tests/e2e/fixtures/mic-tone.wav",
             "--autoplay-policy=no-user-gesture-required",
           ],
         },
