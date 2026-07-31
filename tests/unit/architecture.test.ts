@@ -34,8 +34,8 @@ const SOURCES: ReadonlyArray<readonly [string, string]> = Object.entries(RAW)
 
 // A guard that scans nothing passes everything. If the glob ever stops
 // resolving, fail at collection time rather than reporting five green checks
-// over an empty file list. (Deliberately not an `it` — the ticket's acceptance
-// is exactly four passing assertions plus one skipped.)
+// over an empty file list. (Deliberately not an `it` — S2's acceptance was
+// exactly four passing assertions plus one skipped; M1 un-skipped the fifth.)
 if (SOURCES.length < 20 || !SOURCES.some(([p]) => p === "src/adapters/tone-sound-port.ts")) {
   throw new Error(
     `architecture guards: source glob resolved ${SOURCES.length} files — pattern is broken`,
@@ -100,9 +100,10 @@ describe("architecture guards (source text over src/**)", () => {
     expect(offenders(NETWORK)).toEqual([]);
   });
 
-  // 5. React is presentation only. UNSKIP IN M1 — `src/machines/tools.tsx` is
-  // the one live violation and M1 deletes it (after `laneColor` moves to core).
-  it.skip("keeps React out of everything but App/main/components/app", () => {
+  // 5. React is presentation only. (Un-skipped by M1, which deleted the one
+  // live violation, `src/machines/tools.tsx`, after moving `laneColor` into
+  // `src/core/lane-color.ts`.)
+  it("keeps React out of everything but App/main/components/app", () => {
     const outside = under(
       "src/App.tsx",
       "src/main.tsx",

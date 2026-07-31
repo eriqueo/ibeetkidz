@@ -96,14 +96,6 @@ export default tseslint.config(
   // Adding an entry here requires naming an owner. Delete entries, don't grow
   // them.
   {
-    // `Shell.tsx` calls useState/useState/useEffect after an early return
-    // (lines ~223/225/228) — a genuine rules-of-hooks violation, and exactly
-    // the bug class A2 cited. **M1 deletes this component**; S2 is explicitly
-    // forbidden to fix it. REMOVE THIS ENTRY WITH M1.
-    files: ["src/components/Shell.tsx"],
-    rules: { "react-hooks/rules-of-hooks": "off" },
-  },
-  {
     // 4 × `let` that is never reassigned (lines ~195/199/312/322). Trivial,
     // real, and in a file **S5 owns** (`S5 · Version and parse the save
     // format` lists this exact path). REMOVE THIS ENTRY WITH S5.
