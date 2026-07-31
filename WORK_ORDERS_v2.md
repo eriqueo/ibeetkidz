@@ -300,7 +300,14 @@ earn first.
   interruption leaves the train riding silently — promote if a kid-visible report ever comes in);
   `activePartId` push into `YardScene`; per-lane FX-chain hoist.
 - **`?diag` ring buffer + persist blob-skip** (from v1 W3-03).
-- **Visualizer re-home into Phaser** (from M2).
+- **Re-home the visualizer into Phaser via the existing analyser tap** (from M2). A1 parked the
+  code; M1 then removed its last importer, so `src/visualizer/**` + `VizPanel.tsx` +
+  `renderer-port.ts` are now unreachable from the running app, not merely opt-in. The tap already
+  exists (`SoundPort.getAnalyser()`; `getAudioDiag()` already reads that same node for the e2e
+  master-output peak assertion) —
+  the work is a Phaser-side renderer in the Track view driven off it, after which `VizPanel.tsx`
+  (React/DOM canvas) can go. Until then the README says "parked, not shipped"; keep those two in
+  sync.
 - **Deep per-tool e2e through the Workshop stations nav** (W5-04) and **SoundPort transport
   contract tests** (W5-02).
 

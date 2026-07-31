@@ -43,22 +43,42 @@ export function createVisualizer(
     active.draw(ctx, frame, getProject());
   };
 
+  // Pausing while the tab is hidden is a battery/CPU optimisation, and it is
+  // only wanted while the visualizer is running — so the listener's lifetime is
+  // start()..stop() rather than "forever from construction". `RendererPort` has
+  // no dispose(), so stop() is the only teardown signal a consumer (VizPanel's
+  // unmount cleanup) can send; binding the listener to it is what keeps it
+  // balanced. `running` records intent separately from `raf` so the hidden-tab
+  // pause can drop the frame loop WITHOUT dropping the listener that resumes it.
+  let running = false;
+
   const onVisibility = () => {
-    if (document.hidden) stop();
-    else start();
+    if (document.hidden) pause();
+    else if (running) resume();
   };
 
-  function start(): void {
+  function resume(): void {
     if (raf) return;
     raf = requestAnimationFrame(loop);
   }
-  function stop(): void {
+  function pause(): void {
     if (!raf) return;
     cancelAnimationFrame(raf);
     raf = 0;
   }
 
-  document.addEventListener("visibilitychange", onVisibility);
+  function start(): void {
+    if (running) return;
+    running = true;
+    document.addEventListener("visibilitychange", onVisibility);
+    resume();
+  }
+  function stop(): void {
+    if (!running) return;
+    running = false;
+    document.removeEventListener("visibilitychange", onVisibility);
+    pause();
+  }
 
   return {
     setStyle: (id) => {
