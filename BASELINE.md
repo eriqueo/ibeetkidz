@@ -1,90 +1,102 @@
 # BASELINE
 
-Ground truth measured by ticket **T0**. Tickets compare against this file; only T0 and a
-subsequent explicit re-baseline may edit it. Never edit `WORK_ORDERS_v2.md` to carry state.
+Ground truth for this repo. Tickets compare against this file; only an explicit **re-baseline**
+may edit it. Never edit a work-order or `CLAUDE.md` to carry these numbers — this file is the
+**single producer** of that fact, and `CLAUDE.md` + `PROJECT_CHARTER.md` now point here.
 
-Measured on branch `t0-ground-truth`, immediately after fast-forwarding `main` to `origin/main`
-and removing `pnpm-lock.yaml` / `pnpm-workspace.yaml`.
+**Re-baselined 2026-07-31** at the end of the work-order swarm round (originally measured by
+ticket T0 at commit `3b7732b`, 209 unit / 15 files).
 
 ## Commit
 
 | Fact | Value |
 |---|---|
-| Baseline commit (`origin/main` tip at measurement) | `3b7732b73f3ca7bf0ce84c19cbfebc6d199e6e60` (`3b7732b`) |
-| Commit subject | `art: AR-015 loco — 16-dir × 2-frame refs (32 files)` |
-| Branch measured on | `t0-ground-truth` (branched from that commit) |
+| Baseline commit | `29c3e41f54e55886fc88a458ede8da224d4d2ecd` (`29c3e41`) |
+| Commit subject | `Merge pull request #18 from eriqueo/d2-charter-sync` |
 
-## Gate
+## Gate — all four run at this commit
 
-`npm run typecheck && npm run test` — **green**, run in this session.
-
-| Fact | Value |
-|---|---|
-| Unit tests passing | **209** |
-| Unit test files | **15** (`tests/unit/*.test.ts`) |
-| Typecheck (`tsc --noEmit`) | clean, no output |
-
-## File counts
-
-"File count" recorded under both readings so no downstream ticket has to guess:
+```
+npm run typecheck   → tsc --noEmit, clean, exit 0
+npm run lint        → eslint ., no output, exit 0
+npm run test        → Test Files 20 passed (20) / Tests 296 passed (296), 0 skipped
+npm run build       → dist/ + dist-gh/ emitted
+```
 
 | Fact | Value |
 |---|---|
-| Tracked files, whole repo (`git ls-files`) | **550** |
-| Tracked files under `src/` + `tests/` | **459** |
-| Unit test files | **15** |
-| E2E spec files | **2** (`tests/e2e/*.spec.ts`) |
-| `.git` size | 987 MB |
-| `src/assets` size | 549 MB |
+| Unit tests passing | **296** |
+| Unit test files | **20** (`tests/unit/*.test.ts`) |
+| Unit tests skipped | **0** |
 
-## Environment probe (T0 step 5)
+## E2E — measured, not inferred
 
-Both capabilities were exercised, not assumed.
+`playwright test --list` reports 9 either way, because **runtime `test.skip` is not visible to
+`--list`**. These numbers come from actual runs at this commit:
 
-| Capability | Result | Evidence |
-|---|---|---|
-| Run `npm run test:e2e` (browser present) | **YES** | `PW_PORT=5399 npx playwright test` → **7 passed** in 53.7s. Playwright 1.61.0; `~/.cache/ms-playwright` has chromium, firefox, webkit. |
-| Reach GitHub Actions (`gh` auth) | **YES** | `gh auth status` → logged in as `eriqueo`, active; token scopes include `repo` and `workflow` (enough to push a branch and read/dispatch workflow runs). |
+| Run | Result |
+|---|---|
+| Local (`PW_PORT=<free> npx playwright test`) | **9 passed** |
+| CI (`CI=1`) | **7 passed, 2 skipped** |
+| E2E spec files | **3** (`tests/e2e/*.spec.ts`) |
 
-**E2E count differs local vs CI — do not treat 7 as the CI number.** Two specs are
-`test.skip`ped when `process.env.CI` is set, by design (hardware-audio proofs, unreliable on
-shared runners):
+The two runtime skips are **deliberate hardware-audio proofs**, unreliable on shared runners:
+`tests/e2e/audio-output.spec.ts` and the last block of `tests/e2e/v2-flow.spec.ts`. Cited by
+**file, not line number** — line anchors in docs are exactly what goes stale.
 
-- `tests/e2e/audio-output.spec.ts:33`
-- `tests/e2e/v2-flow.spec.ts:117`
+**Always say which number you mean.** A bare e2e count is wrong by construction.
 
-So: **7 specs locally, 5 in CI.** A ticket asserting an e2e count must say which.
+### Two traps that cost real time this round
 
-**Always pin the port:** `PW_PORT=<free>`. `playwright.config.ts:27` sets
+1. **`npm run build:gh` before running e2e directly.** `tests/e2e/built-artifact.spec.ts` asserts
+   against the built `dist-gh/`. `npm run test:e2e` builds first; `npx playwright test` does
+   **not**. Running Playwright directly against a stale artifact produces a confident, wrong red —
+   it happened twice while measuring this baseline.
+2. **Those two audio specs are genuinely flaky locally under load.** Five separate agents saw one
+   fail in a full run and pass when re-run alone. A red there is not a regression until it has been
+   re-run in isolation.
+
+**Always pin the port:** `PW_PORT=<free>`. `playwright.config.ts` sets
 `reuseExistingServer: !process.env.CI && !process.env.PW_PORT` — unpinned, a stray Vite on 5173
 (e.g. the kidpix dev server) is silently reused and the whole suite tests the wrong app.
 
-## Consequences for the AGENT / ERIC split
+## File counts
 
-Because both probes came back YES, these `WORK_ORDERS_v2.md` fallbacks are **not** needed:
+Recorded under both readings so no ticket has to guess:
 
-- **S1** — the `gh` fallback ("ERIC, if not") does not apply; S1 must push a deliberately-failing
-  branch and cite the run ID. Section E item 5 is void.
-- **S7** — e2e mic specs are runnable here; that criterion is AGENT, not ERIC.
-- **S8** — the built-artifact spec can be authored and run locally before it reaches CI.
+| Fact | Value | vs T0 |
+|---|---|---|
+| Tracked files, whole repo (`git ls-files`) | **430** | 550 |
+| Tracked files under `src/` + `tests/` | **356** | 459 |
+| `src/assets` size | **263 MB** | 549 MB |
+| `.git` size | 988 MB | 987 MB |
+| `art/` (gitignored, repo root) | 345 MB | — (did not exist) |
 
-Genuinely-manual items (real iPad, real device saves, devtools, palette judgement) stay ERIC:
-Section E items 1–4 stand.
+`art/` holds the art *inputs* (`references/`, `sprites-v2/`, `art_gen/`) that ticket M3 moved out
+of git. It is **gitignored and not backed up by git** — 345 MB of working material that exists
+only on disk. Every file in it was verified byte-identical to the git blobs it replaced before
+those were removed, and no history rewrite was done, so the removed copies remain recoverable
+from history.
 
-## Note for S1's owner — esbuild postinstall
+`src/assets/spritesheets/ar015/` (32 loco reference PNGs) is **deliberately still tracked** — the
+in-flight loco batch. Release it after the loco pass.
 
-`npm ci` in this environment emitted:
+## Environment probe
 
-```
-npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
-npm warn allow-scripts   esbuild@0.25.12 (postinstall: node install.js)
-```
+| Capability | Result | Evidence |
+|---|---|---|
+| Run e2e (browser present) | **YES** | 9 passed locally at this commit; Playwright 1.61.0 |
+| Reach GitHub Actions (`gh`) | **YES** | `gh auth status` → `eriqueo`, scopes incl. `repo`, `workflow` |
+| Cross-engine projects (webkit/firefox) | **NO** | Host is missing `libgdk_pixbuf-2.0.so.0`, `libgio-2.0.so.0` — a NixOS limitation `playwright.config.ts` already anticipates. CI installs `--with-deps`, so it does not apply there. |
 
-Nothing failed locally — typecheck, unit, and e2e all ran green — because a usable esbuild binary
-was already present. That is not proof CI is fine. esbuild's `postinstall` is what fetches its
-platform binary; if the runner's npm blocks install scripts the same way, `vite build` fails at
-*deploy* time, not test time — which is precisely the gap S1 exists to close.
+Because the first two are YES, the ERIC fallbacks in S1/S7/S8 did not apply and **Section E item 5
+is void**. Genuinely-manual items (real iPad, real-device saves, devtools, palette) remain ERIC.
 
-**S1 must verify, not assume:** confirm the deploy job's `npm ci` either runs esbuild's postinstall
-or that the build succeeds without it. Check the job log for the same `allow-scripts` warning. If
-CI does block it, that is a second bug — write it down for Eric, do not bundle a fix into S1.
+## esbuild postinstall — resolved
+
+`npm ci` warns that esbuild's `postinstall` is not covered by `allowScripts`, locally and in CI.
+**S1 verified with a real deploy log** (`gh run view 30658528214 --log`): the same warning appears
+*and* `npm run build` succeeds — esbuild resolves its binary from per-platform
+`optionalDependencies`, not the postinstall. **Nothing to fix.** Latent risk only if npm's default
+hardens or esbuild changes resolution; the durable fix would be an explicit `allowScripts` entry
+in `package.json`.
