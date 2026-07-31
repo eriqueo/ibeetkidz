@@ -7,10 +7,12 @@ import {
   createContext,
   useContext,
   useSyncExternalStore,
+  type FC,
   type ReactNode,
 } from "react";
 import { ToneSoundPort } from "../adapters/tone-sound-port.ts";
 import { LocalStoragePort } from "../adapters/local-storage-port.ts";
+import { QuotaExceededError } from "../ports/storage-port.ts";
 import { AudioEngine } from "../core/audio-engine.ts";
 import { createRng, type RngPort } from "../core/rng.ts";
 import { generateBeat } from "../core/generative.ts";
@@ -100,14 +102,120 @@ function dispatch(cmd: Command): void {
   if (engine.isPlaying) engine.reconcile(getProject());
 }
 
+// ── "I can't save your song" channel ────────────────────────────────────────
+// `LocalStoragePort` throws `QuotaExceededError` from two places (saveProject,
+// putBlob) and nothing anywhere caught it: both persist() call sites are
+// `void persist()`, so a full device turned the rejection into an unhandled
+// promise rejection and autosave silently stopped. Saving is also simply
+// unavailable in Safari private mode. Neither is fatal — a kid should keep
+// playing — so the failure is recorded here and surfaced once, in kid words.
+
+export type StorageTrouble = "full" | "blocked";
+
+let storageTrouble: StorageTrouble | null = null;
+const troubleListeners = new Set<() => void>();
+
+function getStorageTrouble(): StorageTrouble | null {
+  return storageTrouble;
+}
+
+function emitStorageTrouble(next: StorageTrouble | null): void {
+  if (storageTrouble === next) return;
+  storageTrouble = next;
+  for (const listener of troubleListeners) listener();
+}
+
+/** Flag that saving is broken. "full" wins over "blocked" — a full device is
+ *  the more actionable message and must not be downgraded by a later probe. */
+export function reportStorageTrouble(kind: StorageTrouble): void {
+  if (storageTrouble === "full" && kind === "blocked") return;
+  emitStorageTrouble(kind);
+}
+
+/** Dismiss the notice (the kid tapped OK). */
+export function clearStorageTrouble(): void {
+  emitStorageTrouble(null);
+}
+
+function subscribeStorageTrouble(onChange: () => void): () => void {
+  troubleListeners.add(onChange);
+  return () => {
+    troubleListeners.delete(onChange);
+  };
+}
+
+export function useStorageTrouble(): StorageTrouble | null {
+  return useSyncExternalStore(
+    subscribeStorageTrouble,
+    getStorageTrouble,
+    getStorageTrouble,
+  );
+}
+
+// ── Boot-time environment probe ─────────────────────────────────────────────
+
+export interface BootProbe {
+  /** This browser can do Web Audio at all. False here is fatal to boot. */
+  readonly audio: boolean;
+  /** Saving works. False here is survivable — play on, just don't save. */
+  readonly storage: boolean;
+}
+
+const PROBE_KEY = "ibeetkidz:probe";
+
+/** Only checks that an AudioContext constructor EXISTS. We deliberately do not
+ *  construct a throwaway one: iOS caps live contexts and `ToneSoundPort` owns
+ *  the app's only one. A context that exists but refuses to start (blocked
+ *  `resume`) is caught by BootGate's try/catch around `engine.start()`. */
+function hasAudioContext(): boolean {
+  if (typeof window === "undefined") return false;
+  const w = window as unknown as {
+    AudioContext?: unknown;
+    webkitAudioContext?: unknown;
+  };
+  return (
+    typeof w.AudioContext === "function" ||
+    typeof w.webkitAudioContext === "function"
+  );
+}
+
+/** Safari private mode throws on `localStorage.setItem`, and a sandboxed frame
+ *  throws on merely touching `indexedDB` — so both are probed inside try. */
+function storageReachable(): boolean {
+  try {
+    localStorage.setItem(PROBE_KEY, "1");
+    localStorage.removeItem(PROBE_KEY);
+  } catch {
+    return false;
+  }
+  try {
+    if (!globalThis.indexedDB) return false;
+  } catch {
+    return false;
+  }
+  return true;
+}
+
+/** Called from inside the boot gesture handler ONLY — never at module load, so
+ *  the "nothing touches audio before the boot button" rule still holds. */
+export function probeEnvironment(): BootProbe {
+  return { audio: hasAudioContext(), storage: storageReachable() };
+}
+
 async function persist(): Promise<void> {
-  const project = getProject();
-  await storage.saveProject(project);
-  for (const clip of Object.values(project.clips)) {
-    if (clip.source.kind === "recording") {
-      const blob = sound.getRecordingBlob(clip.source.bufferId);
-      if (blob) await storage.putBlob(clip.source.bufferId, blob);
+  try {
+    const project = getProject();
+    await storage.saveProject(project);
+    for (const clip of Object.values(project.clips)) {
+      if (clip.source.kind === "recording") {
+        const blob = sound.getRecordingBlob(clip.source.bufferId);
+        if (blob) await storage.putBlob(clip.source.bufferId, blob);
+      }
     }
+  } catch (err) {
+    // Autosave fires on a timer; it must never take the app down. Record the
+    // failure instead so the kid finds out that saving stopped working.
+    reportStorageTrouble(err instanceof QuotaExceededError ? "full" : "blocked");
   }
 }
 
@@ -174,8 +282,41 @@ const api: AppApi = {
 
 const AppContext = createContext<AppApi>(api);
 
+// The notice rides on the provider, not on a view, because saving can break at
+// any moment in any view — autosave runs on a timer the whole session.
+const TROUBLE_COPY: Record<StorageTrouble, { title: string; body: string }> = {
+  full: {
+    title: "💾 No more room!",
+    body: "This device is full, so I can't keep your song.\nAsk a grown-up to make some space.",
+  },
+  blocked: {
+    title: "💾 I can't save here.",
+    body: "Your song won't be waiting next time — but you\ncan still play as much as you want!",
+  },
+};
+
+const StorageNotice: FC = () => {
+  const trouble = useStorageTrouble();
+  if (!trouble) return null;
+  const copy = TROUBLE_COPY[trouble];
+  return (
+    <div id="storage-notice" role="alert">
+      <p className="storage-notice-title">{copy.title}</p>
+      <p className="storage-notice-body">{copy.body}</p>
+      <button type="button" onClick={clearStorageTrouble}>
+        OK!
+      </button>
+    </div>
+  );
+};
+
 export function AppProvider({ children }: { children: ReactNode }): ReactNode {
-  return <AppContext.Provider value={api}>{children}</AppContext.Provider>;
+  return (
+    <AppContext.Provider value={api}>
+      {children}
+      <StorageNotice />
+    </AppContext.Provider>
+  );
 }
 
 export function useApp(): AppApi {
