@@ -6,15 +6,16 @@
   "description": "Kidpix for audio — a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && vite build --mode gh",
+    "build": "tsc && vite build && npm run build:gh",
+    "build:gh": "vite build --mode gh",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
     "test:unit": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:headed": "playwright test --headed"
+    "test:e2e": "npm run build:gh && playwright test",
+    "test:e2e:headed": "npm run build:gh && playwright test --headed"
   },
   "dependencies": {
     "phaser": "^4.2.0",
