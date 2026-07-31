@@ -1,0 +1,1 @@
+{"id":"proj-1785528083332","name":"My Beat","tempoBpm":100,"clips":{"workshop-kick-1785528089952":{"id":"workshop-kick-1785528089952","source":{"kind":"builtin","assetId":"kick"},"effe

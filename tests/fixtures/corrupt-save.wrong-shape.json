@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "id": "proj-broken",
+  "name": "My Beat",
+  "tempoBpm": 100,
+  "clips": {},
+  "parts": "Loop 1",
+  "train": [],
+  "activePartId": "proj-broken-part-1",
+  "scaleId": "magic",
+  "keyId": "C",
+  "swing": 0,
+  "activeMachineId": "looper-stage",
+  "activeView": "map"
+}
