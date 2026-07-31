@@ -70,3 +70,21 @@ Because both probes came back YES, these `WORK_ORDERS_v2.md` fallbacks are **not
 
 Genuinely-manual items (real iPad, real device saves, devtools, palette judgement) stay ERIC:
 Section E items 1–4 stand.
+
+## Note for S1's owner — esbuild postinstall
+
+`npm ci` in this environment emitted:
+
+```
+npm warn allow-scripts 1 package has install scripts not yet covered by allowScripts:
+npm warn allow-scripts   esbuild@0.25.12 (postinstall: node install.js)
+```
+
+Nothing failed locally — typecheck, unit, and e2e all ran green — because a usable esbuild binary
+was already present. That is not proof CI is fine. esbuild's `postinstall` is what fetches its
+platform binary; if the runner's npm blocks install scripts the same way, `vite build` fails at
+*deploy* time, not test time — which is precisely the gap S1 exists to close.
+
+**S1 must verify, not assume:** confirm the deploy job's `npm ci` either runs esbuild's postinstall
+or that the build succeeds without it. Check the job log for the same `allow-scripts` warning. If
+CI does block it, that is a second bug — write it down for Eric, do not bundle a fix into S1.
