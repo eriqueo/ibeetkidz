@@ -176,6 +176,13 @@ export class ToneSoundPort implements SoundPort {
   private scheduleGen = 0;
   /** Global snap grid for one-off triggers. Default: snap to each beat. */
   private quantizeGrid: QuantizeGrid = "beat";
+  /** The app's tempo, as last written by `setTempo` — the engine is the only
+   *  caller, so this is the single-writer value. Beat-snapping keys and renders
+   *  off THIS, never `Tone.getTransport().bpm.value`: the transport is a live
+   *  signal that can move (or be re-created at its 120 default) between the call
+   *  and the `await` inside `resolveClip`, which would key a baked buffer under
+   *  a tempo it was not rendered at. */
+  private tempoBpm = 120;
 
   // Live one-shot + scheduled players, tracked for cleanup.
   private readonly liveVoices = new Set<Tone.Player>();
@@ -481,8 +488,10 @@ export class ToneSoundPort implements SoundPort {
   }
 
   /** Resolve a clip to a playable AudioBuffer (baking effects + beat-snapping,
-   *  both cached). */
-  private async resolveClip(clip: Clip): Promise<AudioBuffer | undefined> {
+   *  both cached). `bpm` is passed in — captured synchronously by the caller —
+   *  so the beat-snap key and the buffer it names are always the same tempo,
+   *  even when the effect bake awaits across a tempo change. */
+  private async resolveClip(clip: Clip, bpm: number): Promise<AudioBuffer | undefined> {
     const base = this.resolveSource(clip.source);
     if (!base) return undefined;
 
@@ -498,16 +507,17 @@ export class ToneSoundPort implements SoundPort {
     }
 
     // Snap-to-beat: loop/trim the (possibly effected) buffer to a whole number
-    // of beats at the LIVE tempo, so it stays in the groove even after a tempo
+    // of beats at the app's tempo, so it stays in the groove even after a tempo
     // change. Keyed off the bake signature + beats@bpm so it recomputes only
-    // when something it depends on actually moves.
+    // when something it depends on actually moves — and the SAME normalized bpm
+    // both names the entry and renders it.
     if (clip.loopBeats !== undefined) {
-      const bpm = Tone.getTransport().bpm.value || 120;
-      const lkey = `${bakeKey(clip)}|loop:${clip.loopBeats}@${bpm.toFixed(2)}`;
+      const tempo = normalizeBpm(bpm);
+      const lkey = loopCacheKey(clip, tempo);
       const cached = this.loopCache.get(lkey);
       if (cached) buf = cached;
       else {
-        buf = loopToBeats(this.ctx, buf, clip.loopBeats, bpm);
+        buf = loopToBeats(this.ctx, buf, clip.loopBeats, tempo);
         this.loopCache.set(lkey, buf);
       }
     }
@@ -536,7 +546,7 @@ export class ToneSoundPort implements SoundPort {
   // ── Playback ───────────────────────────────────────────────────────────
 
   play(clip: Clip): void {
-    void this.resolveClip(clip).then((buf) => {
+    void this.resolveClip(clip, this.tempoBpm).then((buf) => {
       if (!buf) return;
       const player = new Tone.Player(buf).toDestination();
       this.liveVoices.add(player);
@@ -737,7 +747,7 @@ export class ToneSoundPort implements SoundPort {
     }
 
     const gen = this.scheduleGen;
-    void this.resolveClip(clip).then((buf) => {
+    void this.resolveClip(clip, this.tempoBpm).then((buf) => {
       if (!buf || gen !== this.scheduleGen) return;
       const player = new Tone.Player(buf).connect(
         this.scheduledDestination(opts),
@@ -1064,6 +1074,9 @@ export class ToneSoundPort implements SoundPort {
   }
 
   setTempo(bpm: number): void {
+    // The engine is the single writer of tempo; record it before handing it to
+    // the transport so beat-snapping never has to read the signal back.
+    this.tempoBpm = normalizeBpm(bpm);
     Tone.getTransport().bpm.value = bpm;
   }
   startTransport(): void {
@@ -1463,6 +1476,20 @@ function reverseBuffer(ctx: AudioContext, src: AudioBuffer): AudioBuffer {
     }
   }
   return out;
+}
+
+/** A usable tempo: anything non-finite or non-positive falls back to 120 (the
+ *  transport default), matching the old `|| 120` guard. Applied ONCE so the
+ *  cache key and the rendered length can never disagree. */
+export function normalizeBpm(bpm: number): number {
+  return Number.isFinite(bpm) && bpm > 0 ? bpm : 120;
+}
+
+/** Cache key for the beat-snapped copy of `clip` at `bpm`. Tempo is an explicit
+ *  argument — never read off the transport — so two different tempos always
+ *  name two different entries. */
+export function loopCacheKey(clip: Clip, bpm: number): string {
+  return `${bakeKey(clip)}|loop:${clip.loopBeats}@${normalizeBpm(bpm).toFixed(2)}`;
 }
 
 function bakeKey(clip: Clip): string {
