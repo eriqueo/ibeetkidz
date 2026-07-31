@@ -32,6 +32,17 @@ import {
 } from "../ports/sound-port.ts";
 import { encodeWav } from "./wav.ts";
 
+/** Longest a single hold-to-record take may run, in seconds — the ONE producer
+ *  of that fact. Recording is hold-to-record, so a finger resting on the button
+ *  (a toddler, a pocket, a forgotten tab) otherwise captures until release and
+ *  then decodes AND rms-normalizes the whole take in memory at once.
+ *
+ *  30s is roughly ten times a real take (kids record a word, a raspberry, a
+ *  "BEEEEP") and still leaves room for a whole silly sentence, while bounding
+ *  one take to a few MB of decoded audio. At the cap the take is CLOSED, not
+ *  discarded — see startRecording: the kid still gets the sound they made. */
+export const MAX_RECORD_SEC = 30;
+
 /** A raw-sample recorder over a MediaStream (see openStreamTap): start/stop
  *  gates collection; stop returns the gathered stereo frames at `sampleRate`. */
 interface StreamTap {
@@ -161,6 +172,15 @@ export class ToneSoundPort implements SoundPort {
   private micChunks: Blob[] = [];
   /** Raw-sample fallback for engines without MediaRecorder (some WebKit builds). */
   private micTap?: StreamTap | undefined;
+  /** Armed while the mic is open; fires the MAX_RECORD_SEC auto-stop. */
+  private micCapTimer?: ReturnType<typeof setTimeout> | undefined;
+  /** The single in-flight finalize of the current take. Both the cap timer and
+   *  the kid's release go through it, so the take is closed exactly ONCE and a
+   *  release after the cap resolves to the same (capped) audio. Checking
+   *  `micRecorder.state` at release instead would race: the recorder is already
+   *  "inactive" the instant the cap calls stop(), but its final chunk has not
+   *  arrived yet — a release in that window would hand back an empty blob. */
+  private micTake?: Promise<Blob> | undefined;
   /** Active while capturing a Magic Pad performance; live theremin voices
    *  connect to this bus (see thereminOn) so the whole performance — gaps and
    *  all — is captured without needing the mic. Tapped raw → WAV (Tone.Recorder
@@ -280,6 +300,8 @@ export class ToneSoundPort implements SoundPort {
   // ── Recording ──────────────────────────────────────────────────────────
 
   async startRecording(): Promise<void> {
+    // A fresh take: drop any blob the previous one left memoized.
+    this.micTake = undefined;
     // The "playback" session blocks mic capture on iOS — switch to
     // play-and-record before opening the mic, and restore playback on failure.
     setAudioSession("play-and-record");
@@ -302,6 +324,14 @@ export class ToneSoundPort implements SoundPort {
         this.micTap = await this.openStreamTap(this.micStream);
         this.micTap.start();
       }
+      // Auto-stop the held take at MAX_RECORD_SEC. This closes the take exactly
+      // as a release would — the audio is kept and the mic hardware is freed —
+      // so a kid who never lets go still gets their sound when they do.
+      this.micCapTimer = setTimeout(() => {
+        void this.finishMicTake().catch((capErr: unknown) => {
+          console.warn("recording auto-stop failed", capErr);
+        });
+      }, MAX_RECORD_SEC * 1000);
     } catch (err) {
       // Log the ORIGINAL failure before collapsing it into the kid-safe error
       // types — otherwise a platform-specific getUserMedia/recorder failure is
@@ -317,7 +347,29 @@ export class ToneSoundPort implements SoundPort {
   }
 
   async stopRecording(): Promise<BufferId> {
-    if (!this.micStream) throw new NoMicError();
+    // `micTake` set with no stream means the MAX_RECORD_SEC cap already closed
+    // this take out: the mic is gone, the kid's audio is not.
+    if (!this.micStream && !this.micTake) throw new NoMicError();
+    const blob = await this.finishMicTake();
+    this.micTake = undefined;
+    if (blob.size === 0) throw new NoMicError(); // a zero-length take (instant release)
+    const audioBuf = await this.decodeRecording(blob);
+    const id = `rec-${this.bufferSeq++}`;
+    this.buffers.set(id, audioBuf);
+    this.recordingBlobs.set(id, blob);
+    return id;
+  }
+
+  /** Close out the current take once, whoever asks first — the release gesture
+   *  or the MAX_RECORD_SEC cap. The memoized promise IS the mutual exclusion:
+   *  reserve before the side effect rather than testing recorder state after. */
+  private finishMicTake(): Promise<Blob> {
+    this.micTake ??= this.captureMicTake();
+    return this.micTake;
+  }
+
+  /** Stop the capture, collect its bytes, and release the mic. */
+  private async captureMicTake(): Promise<Blob> {
     let blob: Blob;
     if (this.micRecorder) {
       const rec = this.micRecorder;
@@ -342,15 +394,14 @@ export class ToneSoundPort implements SoundPort {
     this.closeMic();
     // Back to loud, silent-switch-defying playback now the mic is closed.
     setAudioSession("playback");
-    if (blob.size === 0) throw new NoMicError(); // a zero-length take (instant release)
-    const audioBuf = await this.decodeRecording(blob);
-    const id = `rec-${this.bufferSeq++}`;
-    this.buffers.set(id, audioBuf);
-    this.recordingBlobs.set(id, blob);
-    return id;
+    return blob;
   }
 
   private closeMic(): void {
+    if (this.micCapTimer !== undefined) {
+      clearTimeout(this.micCapTimer);
+      this.micCapTimer = undefined;
+    }
     this.micTap?.dispose();
     this.micTap = undefined;
     if (this.micRecorder) {
