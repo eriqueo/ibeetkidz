@@ -90,16 +90,17 @@ export default tseslint.config(
   },
 
   // === TECH-DEBT BASELINE (2026-07-31, ticket S2) =========================
-  // Real findings in files S2 does not own. Each entry names the ticket that
-  // deletes it. These are file-scoped and rule-scoped on purpose: the rule
-  // stays at "error" everywhere else, so no NEW instance can land.
-  // Adding an entry here requires naming an owner. Delete entries, don't grow
-  // them.
-  {
-    // 4 × `let` that is never reassigned (lines ~195/199/312/322). Trivial,
-    // real, and in a file **S5 owns** (`S5 · Version and parse the save
-    // format` lists this exact path). REMOVE THIS ENTRY WITH S5.
-    files: ["tests/unit/project-state.test.ts"],
-    rules: { "prefer-const": "off" },
-  },
+  // Real findings in files S2 does not own. Each entry named the ticket that
+  // deletes it. File-scoped and rule-scoped on purpose: the rule stays at
+  // "error" everywhere else, so no NEW instance can land. Adding an entry here
+  // requires naming an owner. Delete entries, don't grow them.
+  //
+  // EMPTY, as intended — both original entries have been paid off:
+  //   - Shell.tsx / react-hooks/rules-of-hooks  -> removed by M1 (component deleted)
+  //   - project-state.test.ts / prefer-const    -> removed here; S5 fixed the
+  //     four `let`s, verified with
+  //     `npx eslint tests/unit/project-state.test.ts --rule '{"prefer-const":"error"}'`
+  //     -> exit 0.
+  // Keep this block as the designated home for the next one, so a suppression
+  // can never be scattered into the rule config where it would go unnoticed.
 );
