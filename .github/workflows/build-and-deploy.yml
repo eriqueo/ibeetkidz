@@ -31,6 +31,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run lint
       - run: npm run test
       - run: npm run build # produces dist/ and dist-gh/
       - uses: actions/upload-pages-artifact@v3
