@@ -15,6 +15,12 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The full gate (unit + e2e) as ONE source of truth — test.yml is reusable, so
+  # the e2e setup (playwright engines, pulseaudio sink, xvfb) is defined once and
+  # not copy-pasted here. `deploy` needs it, so a red e2e cannot reach Pages.
+  tests:
+    uses: ./.github/workflows/test.yml
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -32,7 +38,7 @@ jobs:
           path: dist-gh
 
   deploy:
-    needs: build
+    needs: [build, tests]
     runs-on: ubuntu-latest
     environment:
       name: github-pages
