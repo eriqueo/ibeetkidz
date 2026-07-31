@@ -18,7 +18,7 @@ import {
   INSTRUMENTS,
   type SynthInstrumentId,
 } from "../core/instruments.ts";
-import { laneColor } from "../machines/tools.tsx";
+import { laneColor } from "../core/lane-color.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin } from "../core/sound-catalog.ts";
 import { PhaserGame } from "./PhaserGame.tsx";
 import { EventBus } from "../game/EventBus.ts";
