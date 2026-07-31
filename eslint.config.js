@@ -34,6 +34,14 @@ export default tseslint.config(
       "playwright-report/**",
       "test-results/**",
       "src/assets/**",
+      // Git worktrees live here (`git worktree add .claude/worktrees/<name>`).
+      // Each one is a FULL second checkout, so without this ESLint lints every
+      // worktree's `src/` — and its built `dist/` bundles, which the `dist/**`
+      // rule above cannot catch because that pattern is anchored to THIS root,
+      // not `.claude/worktrees/*/dist/`. CI never sees this (a clean checkout
+      // has no worktrees), so `npm run lint` would pass in Actions and fail on
+      // a developer machine — the worst shape for a check to have.
+      ".claude/**",
     ],
   },
 
