@@ -1,0 +1,21 @@
+name: asset-size
+
+# Advisory only (decision A3: re-home art, don't police it). This lives in its
+# own workflow ON PURPOSE: build-and-deploy.yml calls test.yml as a reusable
+# workflow and its `deploy` job `needs:` that call, which waits on *every* job in
+# it — so an advisory check parked in test.yml would sit in the deploy's
+# dependency chain. Nothing here may ever be able to block a release.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  asset-size:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: bash scripts/check-asset-size.sh

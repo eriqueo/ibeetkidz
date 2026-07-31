@@ -7,3 +7,12 @@ coverage/
 .DS_Store
 test-results/
 playwright-report/
+
+# Raw art inputs (decision A3: re-home, don't police). Concept references,
+# pre-pack sprite sources and generator scratch live here and are NOT committed
+# — only the packed atlases under src/assets/spritesheets/ are. scripts/pack-sprites.py
+# reads this tree; set IBK_ART_DIR to point it somewhere else.
+# TODO(eric): src/assets/spritesheets/ar015/ (~114 MB of loco reference frames)
+# is still tracked on purpose — it is the in-flight input batch for the loco
+# sprite pass. Move it into art/ and drop it from git once that pass lands.
+/art/

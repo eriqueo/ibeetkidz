@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """
 pack-sprites.py
+
+Input:
+  art/sprites-v2/*.png  (gitignored raw art tree at the repo root; override with
+                         IBK_ART_DIR — see resolve_art_dir below)
+
 Processes raw AI-generated sprites:
 1. Removes the green (#00FF00) chroma-key background
 2. Crops to content bounding box with padding
@@ -17,13 +22,64 @@ Output:
 import json
 import math
 import os
+import subprocess
 from pathlib import Path
 
 from PIL import Image
 import numpy as np
 
-SPRITES_DIR = Path(__file__).parent.parent / "src/assets/sprites-v2"
-OUT_DIR = Path(__file__).parent.parent / "src/assets/spritesheets"
+REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def resolve_art_dir() -> Path:
+    """Locate the raw-art tree that feeds this script.
+
+    Raw sprite inputs were re-homed out of `src/assets/` into `art/` at the repo
+    root, which is gitignored (decision A3: re-home, don't police). Resolution
+    order, most specific first:
+
+      1. `$IBK_ART_DIR` — explicit override.
+      2. `<repo>/art` — the normal case, a checkout with the art tree beside it.
+      3. `<main checkout>/art` — because `art/` is gitignored it exists only in
+         the primary checkout; a git worktree gets no copy. Ask git for the
+         common git dir and use its parent rather than hardcoding a path.
+         (`slice_sprites.py` died of a hardcoded `/home/ubuntu/...`; the point of
+         deriving this is to not repeat that.)
+    """
+    override = os.environ.get("IBK_ART_DIR")
+    if override:
+        return Path(override).expanduser()
+
+    local = REPO_ROOT / "art"
+    if local.is_dir():
+        return local
+
+    try:
+        common = subprocess.run(
+            ["git", "rev-parse", "--path-format=absolute", "--git-common-dir"],
+            cwd=REPO_ROOT, capture_output=True, text=True, check=True,
+        ).stdout.strip()
+        if common:
+            candidate = Path(common).parent / "art"
+            if candidate.is_dir():
+                return candidate
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+    return local
+
+
+ART_DIR = resolve_art_dir()
+SPRITES_DIR = ART_DIR / "sprites-v2"
+OUT_DIR = REPO_ROOT / "src/assets/spritesheets"
+
+if not SPRITES_DIR.is_dir():
+    raise SystemExit(
+        f"Raw sprite inputs not found: {SPRITES_DIR}\n"
+        "They live in the gitignored `art/` tree at the repo root, not in git.\n"
+        "Point IBK_ART_DIR at that tree and re-run."
+    )
+
 OUT_DIR.mkdir(parents=True, exist_ok=True)
 
 FRAME_SIZE = 128   # each frame in the final spritesheet
