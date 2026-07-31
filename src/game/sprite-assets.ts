@@ -27,6 +27,7 @@
 // throws `ReferenceError: Phaser is not defined` at runtime — inside the game
 // step, which killed the whole render loop (the "train freezes on ride" bug).
 import Phaser from "phaser";
+import { publicAssetUrl } from "./assets.ts";
 
 export const FRAME_SIZE = 128;
 
@@ -70,11 +71,16 @@ export function frameKey(type: TrainType, dir: Direction): string {
  * }
  */
 export function loadSpriteAssets(scene: Phaser.Scene): void {
-  // Phaser atlas loader: loads PNG + JSON atlas together
-  scene.load.atlas("train",  "assets/spritesheets/train.png",  "assets/spritesheets/train.json");
-  scene.load.atlas("smoke",  "assets/spritesheets/smoke.png",  "assets/spritesheets/smoke.json");
-  scene.load.atlas("signal", "assets/spritesheets/signal.png", "assets/spritesheets/signal.json");
-  scene.load.atlas("tarp",   "assets/spritesheets/tarp.png",   "assets/spritesheets/tarp.json");
+  // Phaser atlas loader: loads PNG + JSON atlas together. These four atlases
+  // ship VERBATIM in `public/assets/spritesheets/`, so their URLs must carry the
+  // deploy base — see `publicAssetUrl` in assets.ts. A bare
+  // "assets/spritesheets/train.png" is document-RELATIVE and 404s whenever the
+  // document base isn't the app directory (e.g. "/ibeetkidz" with no slash).
+  const sheet = (file: string): string => publicAssetUrl(`assets/spritesheets/${file}`);
+  scene.load.atlas("train",  sheet("train.png"),  sheet("train.json"));
+  scene.load.atlas("smoke",  sheet("smoke.png"),  sheet("smoke.json"));
+  scene.load.atlas("signal", sheet("signal.png"), sheet("signal.json"));
+  scene.load.atlas("tarp",   sheet("tarp.png"),   sheet("tarp.json"));
 }
 
 /**

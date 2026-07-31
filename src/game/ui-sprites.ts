@@ -19,6 +19,7 @@
 // STATIC `new URL(...)` literals (never a `${}` template) so Vite ships only these
 // files, not a glob of the whole directory — see the note in assets.ts.
 import type Phaser from "phaser";
+import { publicAssetUrl } from "./assets.ts";
 
 // All chrome art ships in ONE packed multiatlas (public/assets/spritesheets/
 // ui-atlas.*, rebuilt by scripts/build_ui_atlas.py). Frame names equal the
@@ -149,7 +150,17 @@ export const CHALKBOARD_SLATE: ContentBox = [0.115, 0.14, 0.885, 0.82];
  *  browser cache makes later navigations free. Call from a scene's `preload`. */
 export function loadUiSprites(scene: Phaser.Scene): void {
   if (!scene.textures.exists(UI_ATLAS_KEY)) {
-    scene.load.multiatlas(UI_ATLAS_KEY, "assets/spritesheets/ui-atlas.json", "assets/spritesheets");
+    // Both arguments are `public/` paths and BOTH must carry the deploy base.
+    // The 3rd argument is Phaser's `path`: the atlas JSON lists its pages as
+    // bare filenames ("ui-atlas-0.png"), and the loader prepends this path to
+    // each (`Loader.setPath` appends the separating "/" itself, so no trailing
+    // slash here). Left document-relative, the pages 404 whenever the document
+    // base isn't the app directory — see `publicAssetUrl` in assets.ts.
+    scene.load.multiatlas(
+      UI_ATLAS_KEY,
+      publicAssetUrl("assets/spritesheets/ui-atlas.json"),
+      publicAssetUrl("assets/spritesheets"),
+    );
   }
 }
 
