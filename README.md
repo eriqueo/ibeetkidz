@@ -1,8 +1,14 @@
 # iBeetKidz 🎤🥁✨
 
 **Kidpix, but for sound.** A browser playground where kids record their voice,
-make it crazy (backwards, robot, chipmunk, echo…), build looping beats, play a
-magic XY pad, and watch the sound come alive in a retro screensaver visualizer.
+make it crazy (backwards, robot, chipmunk, echo…), build looping beats, and play
+a magic XY pad.
+
+The retro screensaver visualizer is **parked, not shipped**: `src/visualizer/`
+still implements `RendererPort`, but its only mount point (`VizPanel`) lost its
+last importer when the v1 shell was deleted, so nothing in the running app
+renders it. Re-homing it into the Phaser Track view via the existing analyser tap
+is a backlog item.
 
 No accounts, no backend, nothing leaves the device. Touch-first, built to run
 offline on an iPad.
