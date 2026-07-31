@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { parseTiledLayer } from "../../src/game/TiledParser.ts";
+import mapMap from "../../src/assets/maps/map.json" with { type: "json" };
 
 // Ticket S8 — verify the thing kids actually touch.
 //
@@ -8,12 +10,34 @@ import { expect, test, type Page } from "@playwright/test";
 // differ in exactly one way that matters: **how a relative URL resolves**. This
 // spec is the only place that difference is under test.
 //
-// The trap it hunts, per the ticket: the base path served WITHOUT a trailing
-// slash. At `…/ibeetkidz/` the document base is the app directory, so a loader
-// URL like `assets/spritesheets/train.png` resolves inside the app. At
-// `…/ibeetkidz` the document base is the SITE ROOT, and the same URL resolves to
-// `/assets/…` — off the deployment. Any asset referenced relatively 404s, and
-// it 404s only in the built artifact, never in `npm run dev`.
+// The trap, per the ticket: the base path served WITHOUT a trailing slash. At
+// `…/ibeetkidz/` the document base is the app directory, so a document-relative
+// loader URL happens to land inside the app. At `…/ibeetkidz` the document base
+// is the SITE ROOT and the same URL resolves to `/assets/…` — off the
+// deployment. It 404s only in the built artifact, never in `npm run dev`.
+//
+// WHAT IS ASSERTED, AND WHY IT IS THIS AND NOT SOMETHING CHEAPER.
+// The first cut of this spec harvested `assets/…` string literals out of the
+// shipped bundles and probed each one. That check was wrong in a way worth
+// recording, because it looked convincing: it measured **how the URL was
+// spelled in the bundle**, not whether the URL resolved. When B1 fixed the real
+// defect it also rewrote the call sites to build the path in a template
+// literal, so the bundle no longer contains any whole path — the harvest went
+// silently blind to eight of the nine call sites it existed to guard, while
+// false-positiving on the ninth. A regression would have kept the suite green.
+//
+// So the assertion is now a RUNTIME one: serve the real artifact at the
+// no-trailing-slash base, DRIVE the app until its scenes run their real Phaser
+// loaders, and require that every request the deployment received could be
+// answered. That measures resolution, which is the thing we care about, and it
+// is immune to how any URL is spelled or constructed.
+//
+// Track is the destination on purpose: `TrackScene.preload` is the only scene
+// that runs BOTH loaders — `loadSpriteAssets` (four atlases, URL arguments) and
+// `loadUiSprites` (the multiatlas, which additionally exercises Phaser's `path`
+// argument, since the atlas JSON lists its pages as bare filenames and the
+// loader prepends that path). MapScene alone loads neither and would prove
+// nothing.
 //
 // HARNESS — why `page.route` and not a real server:
 //   * `vite preview --mode gh` cannot reproduce the trap at all: it 404s on
@@ -63,6 +87,13 @@ const MIME: Record<string, string> = {
   txt: "text/plain",
 };
 
+// The Tiled authoring canvas, derived from the map itself rather than hardcoded
+// — it is also the pixel size of the painted background art, which is the
+// contract the whole Tiled workflow rests on.
+const ART_W = mapMap.width * mapMap.tilewidth;
+const ART_H = mapMap.height * mapMap.tileheight;
+const VIEWPORT = { width: 1280, height: 720 };
+
 /** Requests the browser makes on its own that no deployment owns. */
 function isBrowserNoise(pathname: string): boolean {
   return (
@@ -70,13 +101,16 @@ function isBrowserNoise(pathname: string): boolean {
   );
 }
 
-/**
- * Mount the built `dist-gh/` under `${BASE}` for this page. The returned array
- * accumulates every request the deployment could not answer, plus any uncaught
- * page error — i.e. the ways a built artifact breaks that a dev server hides.
- */
-async function serveBuiltArtifact(page: Page, distDir: string): Promise<string[]> {
-  const failures: string[] = [];
+interface Observation {
+  /** Requests the deployment could not answer, plus any uncaught page error. */
+  failures: string[];
+  /** Every URL the page requested, in order. */
+  requests: string[];
+}
+
+/** Mount the built `dist-gh/` under `${BASE}` for this page and start recording. */
+async function serveBuiltArtifact(page: Page, distDir: string): Promise<Observation> {
+  const obs: Observation = { failures: [], requests: [] };
 
   await page.route(`${ORIGIN}/**`, async (route) => {
     const pathname = new URL(route.request().url()).pathname;
@@ -107,19 +141,20 @@ async function serveBuiltArtifact(page: Page, distDir: string): Promise<string[]
     }
   });
 
+  page.on("request", (r) => obs.requests.push(r.url()));
   page.on("response", (r) => {
     if (r.status() >= 400 && !isBrowserNoise(new URL(r.url()).pathname)) {
-      failures.push(`${r.status()} ${r.url()}`);
+      obs.failures.push(`${r.status()} ${r.url()}`);
     }
   });
   page.on("requestfailed", (r) => {
     if (!isBrowserNoise(new URL(r.url()).pathname)) {
-      failures.push(`FAILED ${r.url()} — ${r.failure()?.errorText ?? "unknown"}`);
+      obs.failures.push(`FAILED ${r.url()} — ${r.failure()?.errorText ?? "unknown"}`);
     }
   });
-  page.on("pageerror", (e) => failures.push(`PAGE CRASH — ${e.message}`));
+  page.on("pageerror", (e) => obs.failures.push(`PAGE CRASH — ${e.message}`));
 
-  return failures;
+  return obs;
 }
 
 /** Load the artifact at `url` and take it through the gesture gate. */
@@ -137,46 +172,111 @@ async function bootBuilt(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Every asset URL the SHIPPED bundles reference relatively, harvested from the
- * bundles the page actually loaded — not from a hand-maintained list, so a new
- * relative asset is covered the day it lands.
+ * Tap the Map's painted landmark for `destination`.
+ *
+ * The built artifact has no test bridge (`__ibeetkidz_test__` is gated behind
+ * `import.meta.env.DEV`), so this is a real click on the real canvas — which is
+ * also what a kid does. The point comes from the app's OWN data and parser
+ * (`map.json` + `parseTiledLayer`), never from copied coordinates, so
+ * re-authoring the map moves the click with it. The cover-fit mirrors
+ * `TiledSceneAdapter.coverRect` (unit-tested in
+ * `tests/unit/tiled-scene-adapter.test.ts`); it is four lines here rather than
+ * an import because `TiledSceneAdapter` pulls in `EventBus`, which imports
+ * Phaser and touches `window` — neither survives Playwright's Node context.
  */
-async function relativeAssetRefs(page: Page): Promise<string[]> {
-  const harvest = await page.evaluate(async () => {
-    const bundles = performance
-      .getEntriesByType("resource")
-      .map((e) => e.name)
-      .filter((n) => n.endsWith(".js"));
-    const refs = new Set<string>();
-    for (const url of bundles) {
-      const src = await (await fetch(url)).text();
-      for (const m of src.matchAll(/["'`](assets\/[\w\-./]+\.\w{2,5})["'`]/g)) refs.add(m[1]!);
-    }
-    return { bundleCount: bundles.length, refs: [...refs].sort() };
-  });
-  expect(harvest.bundleCount, "no JS bundle loaded — the harvest would be vacuous").toBeGreaterThan(0);
-  return harvest.refs;
+async function tapMapLandmark(page: Page, destination: string): Promise<void> {
+  const spawn = parseTiledLayer(mapMap, "ui-layer").find((s) => s.arg === destination);
+  expect(spawn, `map.json must still carry a nav hit-area for "${destination}"`).toBeDefined();
+
+  const scale = Math.max(VIEWPORT.width / ART_W, VIEWPORT.height / ART_H);
+  const bgW = ART_W * scale;
+  const bgH = ART_H * scale;
+  const bgX = (VIEWPORT.width - bgW) / 2;
+  const bgY = (VIEWPORT.height - bgH) / 2;
+  await page.mouse.click(bgX + spawn!.cx * bgW, bgY + spawn!.cy * bgH);
 }
 
 /**
- * Resolve each ref the way the browser resolves a loader URL (against
- * `document.baseURI`, which is exactly what Phaser's Loader relies on) and
- * fetch it. Returns the ones the deployment cannot answer.
+ * Boot the artifact at `url`, tap through to the Track, and wait until that
+ * scene's loaders have actually run. Returns the requests made after the tap.
+ *
+ * The wait keys on observed traffic rather than a fixed sleep: the multiatlas
+ * PAGES are requested only after its JSON has been fetched and parsed, so
+ * seeing a page proves both halves of the multiatlas path resolved.
  */
-async function unresolvableRefs(page: Page, refs: string[]): Promise<string[]> {
-  const results = await page.evaluate(async (paths: string[]) => {
-    const out: { ref: string; resolved: string; status: number }[] = [];
-    for (const ref of paths) {
-      const resolved = new URL(ref, document.baseURI).href;
-      try {
-        out.push({ ref, resolved, status: (await fetch(resolved)).status });
-      } catch {
-        out.push({ ref, resolved, status: -1 });
-      }
+async function driveToTrack(page: Page, url: string, obs: Observation): Promise<string[]> {
+  await page.setViewportSize(VIEWPORT);
+  await bootBuilt(page, url);
+
+  // MapScene's hit-areas are spawned in `create()`, which runs only after its
+  // own `preload` has fetched the background + handcar. Wait for the traffic to
+  // go quiet so the tap can't land on a scene that has not wired itself up yet.
+  await page.waitForLoadState("networkidle");
+  const beforeNav = obs.requests.length;
+  const sceneRequests = (): string[] => obs.requests.slice(beforeNav);
+
+  // A settled MapScene issues no further requests, so the first new request is
+  // the navigation itself. Re-tap ONLY while nothing has happened — that way a
+  // lost first tap is recovered without ever double-tapping into the next
+  // scene's controls.
+  await expect
+    .poll(
+      async () => {
+        if (sceneRequests().length === 0) await tapMapLandmark(page, "track");
+        return sceneRequests().length;
+      },
+      {
+        timeout: 15_000,
+        message:
+          "tapping the Map's Track landmark produced no request at all — the tap missed. " +
+          "Check map.json's nav hit-area and the cover-fit above.",
+      },
+    )
+    .toBeGreaterThan(0);
+
+  await expect
+    .poll(() => sceneRequests().some((u) => /\/ui-atlas-\d+\.png$/.test(u)), {
+      timeout: 20_000,
+      message:
+        "TrackScene's multiatlas pages never appeared — the tap did not reach the Track, " +
+        "so this run proves nothing.",
+    })
+    .toBe(true);
+
+  // Let anything the scene asks for after the atlases settle before judging.
+  await page.waitForTimeout(1_500);
+  return sceneRequests();
+}
+
+/**
+ * Guard against a green that means "we navigated nowhere". A runtime probe that
+ * never reached the loaders is exactly the failure mode this assertion
+ * replaced, so it must fail loudly rather than report an empty failure list.
+ *
+ * These match on BASENAMES, never on a whole path or a prefix: the prefix is
+ * the thing under test, so the guard must not assume one. If a rename ever
+ * makes them stop matching, the guard fails — the safe direction.
+ */
+function assertLoadersActuallyRan(sceneRequests: string[]): void {
+  expect(
+    sceneRequests.length,
+    "no request at all followed the Map tap — the probe navigated nowhere",
+  ).toBeGreaterThan(0);
+
+  const names = sceneRequests.map((u) => new URL(u).pathname.split("/").pop() ?? "");
+  // loadSpriteAssets: four atlases, both halves of each.
+  for (const atlas of ["train", "smoke", "signal", "tarp"]) {
+    for (const ext of ["png", "json"]) {
+      expect(names, `TrackScene must have requested ${atlas}.${ext}`).toContain(`${atlas}.${ext}`);
     }
-    return out;
-  }, refs);
-  return results.filter((r) => r.status !== 200).map((r) => `${r.status} ${r.ref} → ${r.resolved}`);
+  }
+  // loadUiSprites: the multiatlas JSON (a URL argument) AND at least one page
+  // (Phaser's `path` argument — the subtler half of the same bug class).
+  expect(names, "TrackScene must have requested the chrome multiatlas").toContain("ui-atlas.json");
+  expect(
+    names.filter((n) => /^ui-atlas-\d+\.png$/.test(n)).length,
+    "the multiatlas pages must have been requested (they exercise Phaser's `path` argument)",
+  ).toBeGreaterThan(0);
 }
 
 /**
@@ -188,45 +288,33 @@ const distDirOf = (configFile: string | undefined): string =>
   `${(configFile ?? "").slice(0, (configFile ?? "").lastIndexOf("/"))}/dist-gh`;
 
 test.describe("built GitHub Pages artifact (dist-gh/)", () => {
-  test("boots at its base path served without a trailing slash", async ({ page }, testInfo) => {
-    const failures = await serveBuiltArtifact(page, distDirOf(testInfo.config.configFile));
-    await bootBuilt(page, NO_TRAILING_SLASH);
-    // Give the boot scene's loaders a beat to finish before judging the tally.
-    await page.waitForTimeout(2_000);
-    expect(failures, `requests the deployment could not answer at ${NO_TRAILING_SLASH}`).toEqual([]);
-  });
-
-  test("every asset the bundles reference resolves without a trailing slash", async ({
+  test("serves every scene asset at a base path with NO trailing slash", async ({
     page,
   }, testInfo) => {
-    await serveBuiltArtifact(page, distDirOf(testInfo.config.configFile));
-    await bootBuilt(page, NO_TRAILING_SLASH);
+    const obs = await serveBuiltArtifact(page, distDirOf(testInfo.config.configFile));
+    const sceneRequests = await driveToTrack(page, NO_TRAILING_SLASH, obs);
 
-    const refs = await relativeAssetRefs(page);
-    expect(refs.length, "harvested no asset references — the check would be vacuous").toBeGreaterThan(
-      0,
-    );
+    assertLoadersActuallyRan(sceneRequests);
     expect(
-      await unresolvableRefs(page, refs),
-      `these asset URLs resolve off the deployment when the base path carries no trailing slash ` +
-        `(document base = ${NO_TRAILING_SLASH}). The fix is to build them from ` +
-        `import.meta.env.BASE_URL instead of a document-relative literal.`,
+      obs.failures,
+      `the deployment could not answer these requests with the document base at ` +
+        `${NO_TRAILING_SLASH}. A document-relative asset URL resolves to the SITE ROOT here — ` +
+        `build it from import.meta.env.BASE_URL (see publicAssetUrl in src/game/assets.ts).`,
     ).toEqual([]);
   });
 
-  // Control: the SAME assertion at the URL GitHub Pages actually redirects to.
-  // If this one is green while the one above is red, the built bytes are fine
-  // and relative URL resolution is the defect — the failure localises itself.
-  test("every asset resolves at the canonical trailing-slash URL", async ({ page }, testInfo) => {
-    await serveBuiltArtifact(page, distDirOf(testInfo.config.configFile));
-    await bootBuilt(page, CANONICAL);
+  // Control: the same drive at the URL GitHub Pages actually redirects to. If
+  // this is green while the one above is red, the built bytes are fine and URL
+  // resolution is the defect — the failure localises itself.
+  test("serves every scene asset at the canonical trailing-slash URL", async ({
+    page,
+  }, testInfo) => {
+    const obs = await serveBuiltArtifact(page, distDirOf(testInfo.config.configFile));
+    const sceneRequests = await driveToTrack(page, CANONICAL, obs);
 
-    const refs = await relativeAssetRefs(page);
-    expect(refs.length, "harvested no asset references — the check would be vacuous").toBeGreaterThan(
-      0,
-    );
+    assertLoadersActuallyRan(sceneRequests);
     expect(
-      await unresolvableRefs(page, refs),
+      obs.failures,
       `the built artifact is broken at its own canonical URL (${CANONICAL})`,
     ).toEqual([]);
   });
