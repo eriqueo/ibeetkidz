@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 99,
+  "id": "proj-from-the-future",
+  "name": "Rocket Song",
+  "tempoBpm": 128,
+  "clips": {},
+  "parts": [],
+  "train": [],
+  "activePartId": "whatever",
+  "scaleId": "magic",
+  "keyId": "C",
+  "swing": 0,
+  "activeMachineId": "looper-stage",
+  "activeView": "map",
+  "somethingWeHaveNotInventedYet": { "hyperdrive": true }
+}

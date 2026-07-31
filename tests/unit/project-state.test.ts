@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   deserialize,
+  migrate,
+  parseSave,
   serialize,
   dispatch,
   activeLayers,
@@ -16,14 +18,30 @@ import {
   undo,
 } from "../../src/core/project-state.ts";
 import {
+  parseProject,
+  SaveParseError,
+  type ParseError,
+  type ParseResult,
+} from "../../src/core/project-schema.ts";
+import {
   MAX_BPM,
   MAX_CARS,
   MAX_LAYERS,
   MIN_BPM,
+  SCHEMA_VERSION,
   STEP_COUNT,
   type Clip,
   type Layer,
+  type Project,
 } from "../../src/core/types.ts";
+
+// The save fixtures are imported as RAW TEXT, not as parsed JSON: what crosses
+// the persistence boundary is a string, and the truncated one is not valid JSON
+// at all. (Same `?raw` idiom the architecture guards use for source files.)
+import CAPTURED_LOCALSTORAGE from "../fixtures/pre-v2-localstorage.captured.json?raw";
+import TRUNCATED_SAVE from "../fixtures/corrupt-save.truncated.txt?raw";
+import WRONG_SHAPE_SAVE from "../fixtures/corrupt-save.wrong-shape.json?raw";
+import FUTURE_SAVE from "../fixtures/future-save.v99.json?raw";
 
 const clip = (id: string): Clip => ({
   id,
@@ -192,11 +210,11 @@ describe("reduce", () => {
 
 describe("note model (length + roll)", () => {
   const drumLane = (): ReturnType<typeof reduce> => {
-    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    const s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     return reduce(s, { type: "addLayer", layer: layer("d1", "c1") });
   };
   const melodyLane = (): ReturnType<typeof reduce> => {
-    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    const s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     return reduce(s, {
       type: "addLayer",
       layer: makeLayer({ id: "m1", clipId: "c1", kind: "melody" }),
@@ -309,7 +327,7 @@ describe("note model (length + roll)", () => {
     s = reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 12, length: 2 });
     expect(reduce(s, { type: "tuneDrum", layerId: "d1", index: 0, pitch: 12 })).toBe(s);
     // No-op on a melody lane.
-    let m = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
+    const m = reduce(melodyLane(), { type: "toggleNote", layerId: "m1", index: 0, row: 0 });
     expect(reduce(m, { type: "tuneDrum", layerId: "m1", index: 0, pitch: 3 })).toBe(m);
   });
 
@@ -319,7 +337,7 @@ describe("note model (length + roll)", () => {
     s = reduce(s, { type: "clearPins", layerId: "m1", index: 0, row: 2 });
     expect(activeLayers(s)[0]?.notes[0]?.[0]).toEqual({ row: 2, length: 1 });
 
-    let d = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
+    const d = reduce(drumLane(), { type: "toggleStep", layerId: "d1", index: 0 });
     expect(reduce(d, { type: "addPin", layerId: "d1", index: 0, row: 0, t: 1, toRow: 3 })).toBe(d);
   });
 });
@@ -956,5 +974,328 @@ describe("numbered pattern slots", () => {
     expect(l.patternIndex).toBe(1);
     expect(l.steps[8]).toEqual({ row: 0, length: 1 });
     expect(l.variations?.[0]?.steps[8]).toBeNull();
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Ticket S5 — the save format is versioned, and everything crossing the
+// persistence boundary is PARSED there rather than cast.
+//
+// The tests above this line all reach the migration through `deserialize` with
+// hand-typed JSON: they prove the migration handles the shape the author
+// REMEMBERED. The block below adds (a) the version + Result contract, (b) a
+// save captured out of a real browser running the real pre-v2 code, and (c) the
+// corrupt/refused paths that used to be a crash or a silently-blank project.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("save format: version, parse, refuse (S5)", () => {
+  const expectOk = <T,>(result: ParseResult<T>): T => {
+    if (!result.ok) {
+      throw new Error(
+        `expected a parsed save, got ${result.error.code} at "${result.error.path}": ${result.error.detail}`,
+      );
+    }
+    return result.value;
+  };
+
+  const expectFail = <T,>(result: ParseResult<T>): ParseError => {
+    if (result.ok) throw new Error("expected a parse failure, got a Project");
+    return result.error;
+  };
+
+  /** A project with something of every persisted shape in it, so a round-trip
+   *  that drops a field has somewhere to show up. */
+  const richProject = (): Project => {
+    let s = reduce(emptyProject("rich"), { type: "addClip", clip: clip("d1") });
+    s = reduce(s, { type: "addClip", clip: clip("m1") });
+    s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "d1", clipId: "d1" }) });
+    s = reduce(s, {
+      type: "addLayer",
+      layer: makeLayer({ id: "m1", clipId: "m1", kind: "melody" }),
+    });
+    s = reduce(s, { type: "toggleStep", layerId: "d1", index: 0 });
+    s = reduce(s, { type: "setRoll", layerId: "d1", index: 0, row: 0, roll: 4 });
+    s = reduce(s, { type: "resizeNote", layerId: "d1", index: 0, row: 0, length: 3 });
+    s = reduce(s, { type: "addPattern", layerId: "d1" });
+    s = reduce(s, { type: "toggleNote", layerId: "m1", index: 2, row: 3 });
+    s = reduce(s, { type: "addPin", layerId: "m1", index: 2, row: 3, t: 1, toRow: 5 });
+    s = reduce(s, { type: "setLayerInstrument", layerId: "m1", instrument: "bells" });
+    s = reduce(s, { type: "setLayerWobble", layerId: "m1", wobble: 0.4 });
+    s = reduce(s, { type: "setLayerCrunch", layerId: "m1", crunch: 0.2 });
+    s = reduce(s, { type: "setLayerSwing", layerId: "m1", swing: 0.3 });
+    s = reduce(s, { type: "setClipLoop", clipId: "d1", loopBeats: 2 });
+    s = reduce(s, { type: "addCar", id: "car-2" });
+    s = reduce(s, { type: "setCarType", partId: "car-2", carType: "tanker" });
+    s = reduce(s, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
+    s = reduce(s, { type: "muteCar", instanceId: "i2", muted: true });
+    s = reduce(s, { type: "setScale", scaleId: "rainbow" });
+    s = reduce(s, { type: "setKey", keyId: "G" });
+    s = reduce(s, { type: "setActiveView", view: "yard" });
+    return s;
+  };
+
+  describe("versioning", () => {
+    it("stamps the current schema version on every Project it mints", () => {
+      expect(emptyProject("p").schemaVersion).toBe(SCHEMA_VERSION);
+      expect(richProject().schemaVersion).toBe(SCHEMA_VERSION);
+      // …and on anything it migrates forward out of an older save.
+      expect(deserialize(JSON.stringify({ id: "old", name: "Old" })).schemaVersion).toBe(
+        SCHEMA_VERSION,
+      );
+    });
+
+    it("history snapshots inherit the project's version (F1-3)", () => {
+      // Undo snapshots ARE Projects and serialize to the same shape, so they
+      // carry the same version rather than a parallel one of their own.
+      let h = initHistory(emptyProject("h"));
+      h = dispatch(h, { type: "setTempo", bpm: 140 });
+      h = dispatch(h, { type: "setSwing", swing: 0.5 });
+      h = undo(h);
+      const every = [...h.past, h.present, ...h.future];
+      expect(every.length).toBeGreaterThan(2);
+      for (const snapshot of every) expect(snapshot.schemaVersion).toBe(SCHEMA_VERSION);
+      // A snapshot survives the boundary exactly like the live project does.
+      const first = h.past[0] as Project;
+      expect(expectOk(parseSave(serialize(first)))).toEqual(first);
+    });
+
+    it("a version-1 save is parsed, not migrated — `migrate` is the identity", () => {
+      const project = richProject();
+      const parsed = parseProject(JSON.parse(serialize(project)) as unknown);
+      const save = expectOk(parsed);
+      expect(save.version).toBe(1);
+      expect(migrate(save)).toEqual(project);
+    });
+
+    it("a save with no version field is version 0 and goes through the frozen migrator", () => {
+      const save = expectOk(
+        parseProject({ id: "old", name: "Old Jam", layers: [], activeMachineId: "looper-stage" }),
+      );
+      expect(save.version).toBe(0);
+    });
+  });
+
+  describe("round-trip", () => {
+    it("a v1 save round-trips through serialize → parseSave with every field intact", () => {
+      const project = richProject();
+      expect(expectOk(parseSave(serialize(project)))).toEqual(project);
+    });
+
+    // The COMPILE-TIME half of this property lives in `project-schema.ts`
+    // (`SchemaProducesProject` / `SchemaAddsNoFields`): add a field to `Project`
+    // without teaching the schema about it and `npm run typecheck` fails. This
+    // is the runtime half — it catches a schema that type-checks but silently
+    // drops a key at runtime (e.g. a `.strip()` that outran its shape).
+    it("the parser's key set stays in lockstep with Project's", () => {
+      const project = richProject();
+      const parsed = expectOk(parseSave(serialize(project)));
+      expect(Object.keys(parsed).sort()).toEqual(Object.keys(project).sort());
+      const part = parsed.parts[0] as Project["parts"][number];
+      expect(Object.keys(part).sort()).toEqual(
+        Object.keys(project.parts[0] as object).sort(),
+      );
+      const lane = part.layers[1];
+      expect(Object.keys(lane as object).sort()).toEqual(
+        Object.keys(project.parts[0]!.layers[1] as object).sort(),
+      );
+    });
+  });
+
+  // ── The real save ─────────────────────────────────────────────────────────
+  // Captured out of Chromium's localStorage while running the app at commit
+  // d047d61 — the LAST commit whose running app persisted the pre-v2
+  // `arrangement` shape. See `tests/fixtures/pre-v2-save.provenance.json`.
+  describe("a real pre-v2 save, captured from a browser", () => {
+    interface StoredEntry {
+      readonly name: string;
+      readonly savedAt: number;
+      readonly json: string;
+    }
+    const envelope = JSON.parse(CAPTURED_LOCALSTORAGE) as Record<string, StoredEntry>;
+    const entry = Object.values(envelope)[0] as StoredEntry;
+
+    it("is the raw localStorage envelope the pre-v2 app actually wrote", () => {
+      // Guard the fixture itself: if someone "tidies" it into today's shape the
+      // migration stops being tested at all.
+      expect(Object.keys(envelope)).toHaveLength(1);
+      expect(entry.json).toBeTypeOf("string");
+      const raw = JSON.parse(entry.json) as Record<string, unknown>;
+      expect(raw.schemaVersion).toBeUndefined(); // predates versioning
+      expect(raw.train).toBeUndefined(); // predates the flat train
+      expect(raw.arrangement).toBeDefined(); // …and carries what it replaced
+      const firstPart = (raw.parts as Record<string, unknown>[])[0] as Record<string, unknown>;
+      expect(firstPart.carType).toBeUndefined(); // predates car sprites
+    });
+
+    it("loads with the child's work intact", () => {
+      const project = expectOk(parseSave(entry.json));
+
+      expect(project.schemaVersion).toBe(SCHEMA_VERSION);
+      expect(project.name).toBe("My Beat");
+      expect(project.tempoBpm).toBe(100);
+
+      // Three cars were built in the Yard; all three survive, in order.
+      expect(project.parts.map((p) => p.name)).toEqual(["Loop 1", "Loop 3", "Loop 2"]);
+      // `arrangement` (3 × repeats:1) expands into three one-bar train slots.
+      expect(project.train).toHaveLength(3);
+      expect(project.train.map((c) => c.partId)).toEqual(project.parts.map((p) => p.id));
+      expect(project.train.every((c) => c.muted === false)).toBe(true);
+      expect(new Set(project.train.map((c) => c.instanceId)).size).toBe(3);
+
+      // The lanes: kick + snare (drum) and a melody lane, with their real hits.
+      const car = project.parts[0]!;
+      expect(car.layers.map((l) => l.kind)).toEqual(["drum", "drum", "melody"]);
+      expect(car.layers[0]!.steps.map((c) => (c ? 1 : 0))).toEqual([
+        1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0,
+      ]);
+      expect(car.layers[1]!.steps.map((c) => (c ? 1 : 0))).toEqual([
+        0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0,
+      ]);
+      expect(car.layers[2]!.notes[0]).toEqual([{ row: 4, length: 1 }]);
+      expect(car.layers[2]!.notes[6]).toEqual([{ row: 2, length: 1 }]);
+      expect(car.layers[2]!.notes[10]).toEqual([{ row: 4, length: 1 }]);
+
+      // Every sound the lanes point at came across, with its source intact.
+      expect(Object.keys(project.clips)).toHaveLength(3);
+      for (const layer of car.layers) expect(project.clips[layer.clipId]).toBeDefined();
+
+      // `carType` predates this save, so it is derived: drum + melody = boxcar.
+      expect(car.carType).toBe("boxcar");
+      // The view the kid left the app on is preserved, not reset to the map.
+      expect(project.activeView).toBe("track");
+    });
+
+    it("re-saving the migrated project writes a v1 save that round-trips", () => {
+      const migrated = expectOk(parseSave(entry.json));
+      const resaved = serialize(migrated);
+      expect((JSON.parse(resaved) as Project).schemaVersion).toBe(SCHEMA_VERSION);
+      expect(expectOk(parseSave(resaved))).toEqual(migrated);
+    });
+  });
+
+  // ── Failure, as a value ───────────────────────────────────────────────────
+  describe("corrupt and future saves fail as typed values", () => {
+    it("a truncated save (a torn write) is `not-json`, with copy a kid can read", () => {
+      const error = expectFail(parseSave(TRUNCATED_SAVE));
+      expect(error.code).toBe("not-json");
+      expect(error.kidMessage.title).toBe("🚂 I can't read this song.");
+      expect(error.kidMessage.body).toContain("it'll save just fine!");
+      // The operator detail is separate from what the child sees.
+      expect(error.detail).not.toBe("");
+    });
+
+    it("a v1 save with the wrong shape is `unreadable`, and says where", () => {
+      const error = expectFail(parseSave(WRONG_SHAPE_SAVE));
+      expect(error.code).toBe("unreadable");
+      expect(error.path).toBe("parts");
+      expect(error.kidMessage.title).toBe("🚂 I can't read this song.");
+    });
+
+    it("valid JSON that isn't an object is `not-an-object` (it used to load as blank)", () => {
+      // Before S5 each of these reached `normalizeProject` and produced a
+      // pristine empty project — the child's song replaced by silence, silently.
+      for (const junk of ["null", "5", "[]", '"hello"', "true"]) {
+        expect(expectFail(parseSave(junk)).code).toBe("not-an-object");
+      }
+    });
+
+    it("REFUSES a save from a newer version rather than guessing (F1-1)", () => {
+      const error = expectFail(parseSave(FUTURE_SAVE));
+      expect(error.code).toBe("too-new");
+      expect(error.path).toBe("schemaVersion");
+      expect(error.detail).toContain("version 99");
+      expect(error.kidMessage).toEqual({
+        title: "🚂 This song is too new for me!",
+        body:
+          "It was made with a newer ibeetkidz.\nAsk a grown-up to update this one, then your\nsong will be right here waiting.",
+      });
+    });
+
+    it("a nonsense version is unreadable, not a silent version 0", () => {
+      for (const bad of ['"1"', "1.5", "-1", "null"]) {
+        const error = expectFail(parseSave(`{"schemaVersion":${bad},"id":"x"}`));
+        // `null` is a present-but-junk version, not an absent one.
+        expect(error.code).toBe("unreadable");
+        expect(error.path).toBe("schemaVersion");
+      }
+    });
+
+    it("the deprecated `deserialize` shim throws the typed error, not a SyntaxError", () => {
+      expect(() => deserialize(TRUNCATED_SAVE)).toThrow(SaveParseError);
+      try {
+        deserialize(FUTURE_SAVE);
+        throw new Error("expected a throw");
+      } catch (err) {
+        expect(err).toBeInstanceOf(SaveParseError);
+        expect((err as SaveParseError).error.code).toBe("too-new");
+      }
+    });
+  });
+
+  // ── The specific holes F1 named ───────────────────────────────────────────
+  describe("fields that used to enter unvalidated", () => {
+    it("parses `clips` per entry and drops only the broken one", () => {
+      // `context.tsx` switches on `clip.source.kind` over data that was never
+      // shown to HAVE a source; a clip with no source is unplayable anyway, so
+      // it is dropped rather than allowed to crash the load or the app.
+      const project = expectOk(
+        parseSave(
+          JSON.stringify({
+            id: "cl",
+            clips: {
+              good: clip("good"),
+              headless: { id: "headless", effects: [], color: "#fff", label: "?" },
+              wrongKind: { ...clip("wrongKind"), source: { kind: "telepathy" } },
+            },
+          }),
+        ),
+      );
+      expect(Object.keys(project.clips)).toEqual(["good"]);
+      expect(project.clips.good?.source).toEqual({
+        kind: "recording",
+        bufferId: "buf-good",
+      });
+    });
+
+    it("coerces an out-of-union `activeView` instead of routing nowhere", () => {
+      // An unknown view fell past all four `Shell` returns and rendered nothing.
+      const legacy = expectOk(parseSave(JSON.stringify({ id: "v", activeView: "atlantis" })));
+      expect(legacy.activeView).toBe("map");
+      const current = expectOk(
+        parseSave(serialize({ ...richProject(), activeView: "atlantis" } as unknown as Project)),
+      );
+      expect(current.activeView).toBe("map");
+    });
+
+    it("tolerates a retired tool id in `activeMachineId` rather than rejecting the save", () => {
+      // The v1 tool ids are gone; a save still naming one must still load.
+      const project = expectOk(
+        parseSave(JSON.stringify({ id: "t", activeMachineId: "record-voicefx" })),
+      );
+      expect(project.activeMachineId).toBe("record-voicefx");
+    });
+
+    it("drops a junk entry inside `parts` instead of throwing on it", () => {
+      // Pre-S5 a `null` in `parts` reached `normalizePart` and threw on
+      // `raw.name` — an unrecoverable boot, from one bad array slot.
+      const project = expectOk(
+        parseSave(
+          JSON.stringify({
+            id: "j",
+            parts: [null, { id: "a", name: "Verse", color: "#fff", layers: [] }, 7],
+            activePartId: "a",
+          }),
+        ),
+      );
+      expect(project.parts.map((p) => p.id)).toEqual(["a"]);
+    });
+
+    it("refuses a v1 save with no cars at all (the reducers can never produce one)", () => {
+      const error = expectFail(
+        parseSave(serialize({ ...richProject(), parts: [] } as unknown as Project)),
+      );
+      expect(error.code).toBe("unreadable");
+      expect(error.path).toBe("parts");
+    });
   });
 });

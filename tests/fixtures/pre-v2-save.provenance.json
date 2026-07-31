@@ -1,0 +1,30 @@
+{
+  "what": "A REAL pre-v2 iBeetKidz save, captured out of a browser's localStorage. Not hand-typed.",
+  "why": "Every other migration fixture in tests/unit/project-state.test.ts is written from memory, so it proves normalizeProject handles the shape the author REMEMBERED. This one is the shape the app actually wrote.",
+  "capturedFile": "pre-v2-localstorage.captured.json",
+  "sha256": "d12dc08362da5f68a3c947f988eda16e81c36adaff690234135639eb4f1db3f0",
+  "bytes": 4346,
+  "localStorageKey": "ibeetkidz:projects",
+  "howCaptured": {
+    "appCommit": "d047d61",
+    "appCommitSubject": "docs: add comprehensive Claude Code CLI agent prompt for v2 rebuild",
+    "whyThatCommit": "d047d61 is the parent of 72f7d30 (\"feat(core): replace arrangement with flat TrainCar model (v2 Phase 1)\") — i.e. the LAST commit whose running app persisted the pre-v2 `arrangement` shape.",
+    "method": "git worktree of d047d61 + `npx vite` + headless Chromium (Playwright) driving the real UI, then `localStorage.getItem('ibeetkidz:projects')`.",
+    "userActions": [
+      "TAP TO START",
+      "Map -> Workshop",
+      "Add Kick, Add Snare, Add Synth",
+      "toggled kick hits on steps 0/4/8/12, snare on 4/12",
+      "placed melody notes at rows 2/4 on steps 0/6/10",
+      "Map -> Yard -> Duplicate x2 (three cars in the library and the arrangement)",
+      "Send to Track (so activeView is persisted as \"track\", not the default)"
+    ],
+    "capturedAtEpochMs": 1785528083332
+  },
+  "shapeNotes": [
+    "Top-level keys: activeMachineId, activePartId, activeView, arrangement, clips, id, keyId, name, parts, scaleId, swing, tempoBpm — NO `schemaVersion`, NO `train`.",
+    "Part keys: color, id, layers, name — NO `carType`, so normalizeProject must derive it (drum+melody car -> boxcar).",
+    "`arrangement` entries all carry `repeats: 1`.",
+    "FINDING: no ibeetkidz UI ever shipped a control that sets `repeats` to 2 or 4 (`git grep repeats` over src/components + src/machines across the pre-v2 history hits only READERS). The 2|4 expansion branch in normalizeProject is therefore dead in the wild — real saves only ever exercise repeats: 1. The hand-typed test above it still covers 2|4, and it stays: the field is in the persisted shape, so a save could carry it."
+  ]
+}
