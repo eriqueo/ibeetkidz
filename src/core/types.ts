@@ -180,7 +180,28 @@ export interface TrainCar {
 /** The serializable source of truth. Save/load round-trips this exactly. */
 export type AppView = "map" | "workshop" | "yard" | "track";
 
+/**
+ * Persistence format version, stamped on every `Project`.
+ *
+ * A save WITHOUT this field is version 0 — the shape that shipped before the
+ * format was versioned at all. It is migrated by the frozen `normalizeProject`
+ * branch. A save carrying a version HIGHER than this build understands is
+ * refused outright (`ParseError` code `"too-new"`), never guessed at: a kid's
+ * song written by a newer app is not something an older app should half-read
+ * and then overwrite. Every future format change gets a new numbered case in
+ * `migrate`, never another structural sniff in the version-0 branch.
+ *
+ * Bumping this literal is deliberately load-bearing: `Project.schemaVersion` is
+ * typed as the literal, so a bump breaks every place that mints a Project until
+ * the migration for the new version exists.
+ */
+export const SCHEMA_VERSION = 1;
+
 export interface Project {
+  /** The format this Project is written in. Always `SCHEMA_VERSION` in memory;
+   *  older values only ever exist inside a save file, on the way through
+   *  `migrate`. */
+  readonly schemaVersion: typeof SCHEMA_VERSION;
   readonly id: string;
   readonly name: string;
   readonly tempoBpm: number;

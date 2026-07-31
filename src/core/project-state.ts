@@ -22,8 +22,18 @@ import {
   MAX_LAYERS,
   MAX_PATTERNS,
   MIN_BPM,
+  SCHEMA_VERSION,
   STEP_COUNT,
 } from "./types.ts";
+import {
+  parseProject,
+  fail,
+  SaveParseError,
+  type LegacyRawPart,
+  type LegacyRawProject,
+  type ParseResult,
+  type VersionedSave,
+} from "./project-schema.ts";
 import { MELODY_ROWS, type ScaleId, type KeyId } from "./scale.ts";
 import type { PitchPin } from "./types.ts";
 
@@ -131,6 +141,7 @@ export function makePart(
 export function emptyProject(id: string, name = "My Beat"): Project {
   const partId = `${id}-part-1`;
   return {
+    schemaVersion: SCHEMA_VERSION,
     id,
     name,
     tempoBpm: 100,
@@ -990,9 +1001,59 @@ export function serialize(project: Project): string {
   return JSON.stringify(project);
 }
 
+/**
+ * Turn an already-validated save into today's `Project`.
+ *
+ * This is domain logic over TRUSTED input — it never sees raw JSON, and it never
+ * validates. The switch has no `default`: adding a version 2 to `VersionedSave`
+ * without writing its migration fails to compile.
+ */
+export function migrate(save: VersionedSave): Project {
+  switch (save.version) {
+    case 0:
+      return normalizeProject(save.data);
+    case 1:
+      // The current shape. `ProjectV1Schema` already produced a `Project`, so
+      // there is nothing to migrate — this is the identity, by construction.
+      return save.data;
+  }
+}
+
+/**
+ * THE load path. `string → parse → VersionedSave → migrate → Project`, with the
+ * failure in the return type (Principle 19) rather than thrown past the caller.
+ *
+ * S4's `StorageTrouble` channel in `src/app/context.tsx` is what renders it:
+ * `error.kidMessage` has the same `{ title, body }` shape as that module's
+ * `TROUBLE_COPY` entries, so the existing notice can show it unchanged.
+ */
+export function parseSave(json: string): ParseResult<Project> {
+  let raw: unknown;
+  try {
+    raw = JSON.parse(json) as unknown;
+  } catch (err) {
+    return fail(
+      "not-json",
+      "",
+      err instanceof Error ? err.message : "JSON.parse failed",
+    );
+  }
+  const parsed = parseProject(raw);
+  if (!parsed.ok) return parsed;
+  return { ok: true, value: migrate(parsed.value) };
+}
+
+/**
+ * @deprecated Call `parseSave` and handle the failure. This shim exists only so
+ * the one remaining call site (`LocalStoragePort.loadProject`) keeps compiling;
+ * ticket S6 owns `src/adapters/local-storage-port.ts` and rewires it. Throwing
+ * matches what this function already did for unreadable text (`JSON.parse`
+ * threw), but now the throw carries the typed error instead of a `SyntaxError`.
+ */
 export function deserialize(json: string): Project {
-  // Trusts our own serialized shape; a hardened validator is a Phase-3 TODO.
-  return normalizeProject(JSON.parse(json) as Partial<Project>);
+  const result = parseSave(json);
+  if (!result.ok) throw new SaveParseError(result.error);
+  return result.value;
 }
 
 const SCALE_SET = new Set<ScaleId>(["magic", "rainbow"]);
@@ -1000,7 +1061,7 @@ const KEY_SET = new Set<KeyId>(["C", "D", "F", "G", "A"]);
 
 /** Normalize a raw car (Part): complete its lanes through makeLayer and pin a
  *  sprite (pre-v2 saves predate `carType` → derive from the lanes). */
-function normalizePart(raw: Partial<Part>, fallbackColor: string, index: number): Part {
+function normalizePart(raw: LegacyRawPart, fallbackColor: string, index: number): Part {
   const name =
     typeof raw.name === "string" && raw.name.trim() ? raw.name : `Loop ${index + 1}`;
   const color = typeof raw.color === "string" ? raw.color : fallbackColor;
@@ -1014,17 +1075,18 @@ function normalizePart(raw: Partial<Part>, fallbackColor: string, index: number)
 
 /** Back-fill fields that older saves predate so any past jam still loads and
  *  plays. Handles the pre-Song-Train shape (flat `layers`) by wrapping it in a
- *  single car, and validates parts/arrangement/activePartId of newer saves. */
-/** Legacy save fields predating the train model: a flat `layers` (pre-Song-Train)
- *  and an `arrangement` of `{ partId, repeats }` (pre-v2). Migrated forward. */
-interface LegacyFields {
-  readonly layers?: readonly Layer[];
-  readonly arrangement?: readonly { readonly partId: string; readonly repeats?: number }[];
-}
-
-export function normalizeProject(
-  raw: Partial<Project> & LegacyFields,
-): Project {
+ *  single car, and validates parts/arrangement/activePartId of newer saves.
+ *
+ *  ─── FROZEN (ticket S5) ────────────────────────────────────────────────────
+ *  This is the **version-0 branch** of the save format: the six-way structural
+ *  sniffing below is the accumulated knowledge of every shape that shipped
+ *  before the format carried a version, and it is now closed. NO NEW SNIFF IS
+ *  EVER ADDED HERE. A future format change is a new numbered case in `migrate`.
+ *  Its input arrives already validated by `LegacyProjectSchema`, so the
+ *  defensive `typeof` checks that remain are the DEFAULTS for absent fields,
+ *  not validation. (`LegacyFields` moved to `project-schema.ts`; the body is
+ *  otherwise untouched apart from stamping the version on the way out.) */
+export function normalizeProject(raw: LegacyRawProject): Project {
   const id = raw.id ?? "proj";
   const base = emptyProject(id, raw.name ?? "My Beat");
   const scaleId =
@@ -1033,7 +1095,7 @@ export function normalizeProject(
 
   // Parts: a Song-Train save carries `parts`; a legacy save carries flat
   // `layers` → wrap into one car (with the default car's id, so it stays stable).
-  const rawParts: readonly Partial<Part>[] =
+  const rawParts: readonly LegacyRawPart[] =
     Array.isArray(raw.parts) && raw.parts.length > 0
       ? raw.parts
       : [{ id: base.parts[0]!.id, name: "Loop 1", color: CAR_COLORS[0], layers: raw.layers ?? [] }];
@@ -1090,6 +1152,8 @@ export function normalizeProject(
       : (parts[0] as Part).id;
 
   return {
+    // A migrated save is, by definition, now written in today's format.
+    schemaVersion: SCHEMA_VERSION,
     id,
     name: raw.name ?? base.name,
     scaleId,
