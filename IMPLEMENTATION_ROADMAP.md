@@ -65,8 +65,9 @@ With the Workshop and tools complete, the Yard and Track must be fully implement
 
 1.  **Yard Assembly Line:** Implement the visual holding area for `CarDefs` and the assembly line track for the `Train`.
 2.  **Crane Animation:** Implement the gantry crane animation that picks up cars from the holding area and drops them onto the assembly line.
-3.  **Track Playback Sync:** Rewrite the audio engine integration so the physical position of the train passing the crossing signal dictates which car's loop plays, rather than the audio engine driving the train.
-4.  **Live Track Controls:** Implement the visual tarping (muting) of cars on the moving train, and wire the speed and direction controls to the audio engine and train animation.
+3.  **Live Track Controls:** Implement the visual tarping (muting) of cars on the moving train, and wire the speed and direction controls to the train animation. Speed and direction are **cosmetic over the audio transport** — see `PROJECT_CHARTER.md` §2.5; they must not become a second source of timing truth.
+
+> **Removed:** this phase previously carried a fourth item, "Track Playback Sync," proposing that the train's physical position at the crossing signal dictate which car's loop plays rather than the audio engine driving the train. That inverts the shipped, gapless architecture and makes musical timing a function of frame delivery. Decision A4 settled it the other way: **the transport is the clock.** The rationale now lives in `PROJECT_CHARTER.md` §2.5. Do not reopen it here.
 
 ---
 

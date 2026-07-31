@@ -51,6 +51,36 @@ Every scene (except Map) follows a strict three-zone layout, defined in Tiled:
 *   **Mutations via Command + Reduce.** Reducers are pure. Undo/redo is free.
 *   **Errors as Values.** Fail loud at boundaries, recover silently in core.
 
+### 2.5 The Transport Is The Clock (decided — do not re-litigate)
+
+**The audio transport drives the train. The train never drives the audio.**
+
+This is the settled architecture, not an open question. `AudioEngine.scheduleArrangement`
+lays the whole train out on Tone.js's transport ahead of time; the Phaser train and the
+crossing signal in `TrackScene` are **rendered from** the transport's position — car `i`
+reaches the crossing signal exactly when bar `i` sounds because the visual reads the clock,
+never the reverse. Playback is gapless and jitter-free as a result.
+
+**Why the inverse was rejected.** The alternative — the train's physical position on the
+oval triggering each car's loop as it passes the signal — makes audio onsets a function of
+the render loop. That couples musical timing to frame delivery: a dropped frame, a
+backgrounded tab, or a slow device becomes an audible timing error, and no amount of
+tuning fixes it, because a rAF callback is not a clock. Scheduling ahead on the transport
+is the only way to stay sample-accurate. Frame-driven audio triggering is a known timing
+hazard and is out of scope permanently.
+
+**Consequences for anyone working in `TrackScene` or `AudioEngine`:**
+*   Direction and speed controls on the Track are **cosmetic over the same clock** — they
+    change tempo and the drawn direction, and must stay signal-consistent. They are not a
+    second source of timing truth.
+*   Never introduce a second writer of playback position. If a visual needs sub-bar
+    smoothness, read it (`SoundPort.getTransportStep`), don't compute it.
+*   A visual that disagrees with the audio is a rendering bug, to be fixed on the visual
+    side.
+
+*(Decision A4 of `WORK_ORDERS_v2.md` §A. It retired `IMPLEMENTATION_ROADMAP.md` Phase E
+item 3, which had proposed the inverse; that item is deleted, not deferred.)*
+
 ---
 
 ## 3. Scene Definitions
@@ -77,7 +107,7 @@ These are Phaser-native panels that open over the Workshop when an instrument is
 1.  **Chesterton's Fence:** Understand why code exists before changing it.
 2.  **Minimum Viable Fix:** Fix the exact bug and stop.
 3.  **Visual Verification:** Do not guess coordinates or colors. Measure from the PNGs using PIL/ImageMagick.
-4.  **Gate Checks:** Every commit must pass `npm run typecheck` and `npm run test` (168+ tests).
+4.  **Gate Checks:** Every commit must pass `npm run typecheck`, `npm run test`, and `npm run lint`. **Do not quote a test count from this document or from `CLAUDE.md`** — `BASELINE.md` at the repo root is the single producer of that fact, and hardcoded counts here have gone stale repeatedly. Read `BASELINE.md`, or run the gate.
 
 ## References
 [1] R. C. Martin, *Clean Architecture: A Craftsman's Guide to Software Structure and Design*. Prentice Hall, 2017.
