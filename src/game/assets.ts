@@ -15,6 +15,48 @@ export interface ImageAsset {
   readonly url: string;
 }
 
+// ── Two asset idioms, and they are NOT interchangeable ──────────────────────
+//
+// 1. BUNDLED assets live under `src/assets/`. Vite hashes and rewrites them, so
+//    they must be referenced with `new URL("../assets/…", import.meta.url)` —
+//    the manifests below. Never a plain string; there is no stable filename.
+//
+// 2. VERBATIM assets live under `public/` (today: `public/assets/spritesheets/`,
+//    the train/smoke/signal/tarp atlases + the packed ui-atlas). Vite copies
+//    `public/` to the output ROOT untouched — no hash, no rewrite — so
+//    `import.meta.url` would be wrong for them (it resolves against the hashed
+//    bundle, not the copied file). They need the DEPLOY BASE prefixed instead.
+//
+// Idiom 2 was originally written as bare document-relative strings
+// ("assets/spritesheets/train.png"). That only resolves when the document base
+// happens to be the app directory: at `/ibeetkidz/` it works, at `/ibeetkidz`
+// (no trailing slash) the base is the site root and all of them 404. Ticket B1
+// routed every such reference through the one producer below.
+
+/** Pure join of a deploy base and a public-dir path. Exported separately from
+ *  `publicAssetUrl` so the "exactly one slash" contract is testable without a
+ *  build (Vite's `BASE_URL` already ends in "/" — do not add a second one). */
+export function joinPublicBase(base: string, path: string): string {
+  const prefix = base.endsWith("/") ? base : `${base}/`;
+  return prefix + path.replace(/^\/+/, "");
+}
+
+/**
+ * Resolve a file that ships VERBATIM in `public/` to a URL that is correct
+ * regardless of the document base. `import.meta.env.BASE_URL` is Vite's deploy
+ * base — "/" for `vite build`, "/ibeetkidz/" for `vite build --mode gh` — so
+ * the result is always root-absolute and never document-relative.
+ *
+ * ONE producer for this fact: every `public/` reference in the game goes
+ * through here. Do not inline `import.meta.env.BASE_URL` at a call site.
+ *
+ * @param path public-dir path WITHOUT a leading slash, e.g.
+ *             "assets/spritesheets/train.png".
+ */
+export function publicAssetUrl(path: string): string {
+  return joinPublicBase(import.meta.env.BASE_URL, path);
+}
+
 const v2 = (file: string): string =>
   new URL(`../assets/scenes-v2/${file}`, import.meta.url).href;
 
