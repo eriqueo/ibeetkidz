@@ -3,8 +3,10 @@ name: test
 on:
   pull_request:
     branches: [main]
-  push:
-    branches: [main]
+  # No `push: [main]` trigger: build-and-deploy.yml CALLS this workflow on every
+  # push to main (workflow_call, below) so that `deploy` can `needs:` the e2e job.
+  # Keeping a push trigger here too would run the whole suite twice per merge.
+  workflow_call:
   workflow_dispatch:
 
 jobs:
