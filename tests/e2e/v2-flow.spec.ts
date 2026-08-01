@@ -180,7 +180,21 @@ test("My Voice: hold-to-record captures real, non-silent audio (fake mic)", asyn
     }),
     clip.source.bufferId,
   );
-  expect(probes.duration, "take must have real length").toBeGreaterThan(0.5);
+  // NOT `> 0.5`. That threshold sat in the middle of what this pipeline actually
+  // delivers — measured 0.12, 0.24, 0.3, 0.48 and pass, from a fixed 1500 ms
+  // hold — so it flaked for five separate sessions and cost each of them a
+  // false "did I break the recorder?" investigation.
+  //
+  // The hold length is not a property MediaRecorder guarantees to reproduce:
+  // with no timeslice it emits one blob at stop, and how much of the stream
+  // that blob carries depends on the fake-capture device and machine load.
+  // Asserting ~the hold duration was testing the harness, not the app.
+  //
+  // What this test is actually for is the iOS-class failure where the recorder
+  // "succeeds" and captures nothing. Two assertions cover that honestly: the
+  // take is non-degenerate, and it is not silence. The PEAK carries the real
+  // proof — the fake mic emits a loud tone, so silence would fail it.
+  expect(probes.duration, "take must not be empty").toBeGreaterThan(0.05);
   expect(probes.peak, "take must not be silence").toBeGreaterThan(0.05);
 });
 

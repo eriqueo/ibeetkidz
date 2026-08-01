@@ -45,6 +45,7 @@ import {
 } from "../../src/app/context.tsx";
 import { AudioEngine } from "../../src/core/audio-engine.ts";
 import { LocalStoragePort } from "../../src/adapters/local-storage-port.ts";
+import { StorageError } from "../../src/ports/storage-port.ts";
 import { QuotaExceededError } from "../../src/ports/storage-port.ts";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
@@ -175,5 +176,31 @@ describe("BootGate failure paths", () => {
       notice?.querySelector("button")?.click();
     });
     expect(container.querySelector("#storage-notice")).toBeNull();
+  });
+
+  it("shows the parse layer's own words when a save can't be read", async () => {
+    // S5 wrote kid-legible copy for an unreadable or too-new save and S6 made
+    // loadProject throw it on a StorageError — but nothing put it on screen, so
+    // a child got a blank project and no explanation. This is that last mile.
+    vi.spyOn(LocalStoragePort.prototype, "listProjects").mockResolvedValue([
+      { id: "p1", name: "Song", savedAt: 1 },
+    ]);
+    vi.spyOn(LocalStoragePort.prototype, "loadProject").mockRejectedValue(
+      new StorageError("too-new", "saved by a newer build", {
+        kidMessage: {
+          title: "🚂 This song is too new for me!",
+          body: "It was made with a newer ibeetkidz.",
+        },
+      }),
+    );
+
+    vi.spyOn(AudioEngine.prototype, "start").mockResolvedValue(undefined);
+    await mount(createElement(BootGate, { onStarted: vi.fn() }));
+    await tapBoot();
+
+    const notice = container.querySelector("#storage-notice");
+    expect(notice).not.toBeNull();
+    // The SPECIFIC words, not the generic "I can't save here" fallback.
+    expect(notice?.textContent).toContain("too new for me");
   });
 });
