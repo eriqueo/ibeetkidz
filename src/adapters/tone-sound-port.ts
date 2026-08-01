@@ -1401,50 +1401,103 @@ function expandCrazy(amount: number): EffectDescriptor[] {
   return out;
 }
 
-/** Make a recording LOUD in place. Peak-normalizing alone left takes quiet: one
- *  stray click sets the peak while the voice's average energy — what we actually
- *  hear as loudness — stays low. Instead, normalize toward a target RMS measured
- *  over the *active* signal (samples above a small absolute floor, so silence
- *  doesn't deflate the estimate and — unlike a peak-relative floor — a single
- *  click can't exclude the real, quieter voice), then soft-clip every sample
- *  through `tanh` so the boost saturates gently instead of clipping harshly.
- *  Near-silent buffers are left alone so we never amplify pure noise into a roar. */
-function normalizeBuffer(buf: AudioBuffer, targetRms = 0.25): void {
-  let peak = 0;
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) {
-      const a = Math.abs(data[i] as number);
-      if (a > peak) peak = a;
-    }
-  }
-  if (peak < 1e-4) return; // effectively silent — nothing worth lifting
-  // Absolute floor: counts real (even quiet) signal, skips digital silence, and
-  // isn't thrown off by a lone transient the way a 5%-of-peak floor would be.
-  const floor = 0.003;
-  let sumSq = 0;
-  let n = 0;
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) {
-      const x = data[i] as number;
-      if (Math.abs(x) >= floor) {
+/** The slice of `AudioBuffer` {@link normalizeBuffer} needs. `AudioBuffer`
+ *  satisfies it structurally; declaring it separately is what lets the loudness
+ *  maths be unit-tested without a WebAudio context. */
+export interface NormalizableBuffer {
+  readonly numberOfChannels: number;
+  readonly sampleRate: number;
+  getChannelData(channel: number): Float32Array;
+}
+
+/** ~-18 dBFS RMS. Loud enough to hear on a tablet speaker, quiet enough to
+ *  still be a waveform. The previous 0.25 (-12 dBFS) is hotter than broadcast
+ *  speech mastering and is already a limited master before any boost. */
+const TARGET_RMS = 0.12;
+/** +21.6 dB. Enough to rescue a genuinely quiet take; NOT enough to lift a
+ *  silent room to full scale. The previous cap was 60 (+35.6 dB). */
+const MAX_NORMALIZE_GAIN = 12;
+/** Below the knee the signal passes through untouched — this is the whole
+ *  point. Only peaks above it are shaped, so the bulk of the waveform keeps
+ *  its shape instead of being flattened. */
+const LIMIT_KNEE = 0.7;
+const LIMIT_CEIL = 0.98;
+/** Loudness is measured over 20 ms blocks, not per sample: that is roughly the
+ *  timescale the ear integrates over, and it is what makes a lone click one
+ *  block among hundreds instead of a term in a global sum. */
+const LOUDNESS_BLOCK_SEC = 0.02;
+/** Take the 90th-percentile block, i.e. "how loud is this when it is actually
+ *  saying something". Robust from both ends: leading/trailing silence sits in
+ *  the discarded low blocks, and a single click cannot drag a percentile. */
+const LOUDNESS_PERCENTILE = 0.9;
+
+/** Transparent below {@link LIMIT_KNEE}, smoothly limited above it, never past
+ *  {@link LIMIT_CEIL}. Replaces a bare `Math.tanh(gain * x)` applied to EVERY
+ *  sample — at drive 5 that is already 94 % of the way to a square wave
+ *  (measured output crest factor 1.07; a square wave is 1.00), which is what
+ *  turned quiet takes into static. */
+function softLimit(y: number): number {
+  const a = Math.abs(y);
+  if (a <= LIMIT_KNEE) return y;
+  const span = LIMIT_CEIL - LIMIT_KNEE;
+  const shaped = LIMIT_KNEE + span * Math.tanh((a - LIMIT_KNEE) / span);
+  return y < 0 ? -shaped : shaped;
+}
+
+/** Make a recording audible in place, without making it static.
+ *
+ *  The intent inherited from `f0d0996` is right and is kept: peak-normalizing
+ *  alone left takes quiet, because one stray click sets the peak while the
+ *  voice's average energy — what we hear as loudness — stays low. So loudness,
+ *  not peak, drives the gain.
+ *
+ *  What changed is HOW loudness is measured. The old version averaged every
+ *  sample above an absolute 0.003 floor. That floor excludes digital silence
+ *  but *includes room tone, fan noise and mic hiss*, so on a quiet laptop take
+ *  the estimate was the ROOM's level, not the voice's — and the gain went to
+ *  ~50, lifting the hiss to a constant roar and slamming the words through a
+ *  `tanh` that squares them off. That was the "just static" bug.
+ *
+ *  Measuring the 90th-percentile 20 ms block instead answers the question we
+ *  actually meant to ask — how loud is this while someone is talking — and is
+ *  robust to silence at both ends and to a lone transient.
+ *
+ *  Only lifts, never attenuates: a take that is already loud is left alone. */
+export function normalizeBuffer(buf: NormalizableBuffer, targetRms = TARGET_RMS): void {
+  const channels: Float32Array[] = [];
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) channels.push(buf.getChannelData(ch));
+  const len = channels[0]?.length ?? 0;
+  if (len === 0) return;
+
+  const block = Math.max(1, Math.round(buf.sampleRate * LOUDNESS_BLOCK_SEC));
+  const blockRms: number[] = [];
+  for (let start = 0; start < len; start += block) {
+    const end = Math.min(len, start + block);
+    let sumSq = 0;
+    let n = 0;
+    for (const data of channels) {
+      for (let i = start; i < end; i++) {
+        const x = data[i] as number;
         sumSq += x * x;
         n++;
       }
     }
+    if (n > 0) blockRms.push(Math.sqrt(sumSq / n));
   }
-  if (n === 0) return;
-  const rms = Math.sqrt(sumSq / n);
-  if (rms < 1e-5) return;
-  // Cap the gain so a whisper-quiet take isn't blown up to pure saturation.
-  const gain = Math.min(60, Math.max(1, targetRms / rms));
-  if (gain <= 1.0001) return; // already loud enough — leave it
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
-    const data = buf.getChannelData(ch);
-    for (let i = 0; i < data.length; i++) {
-      data[i] = Math.tanh(gain * (data[i] as number));
-    }
+  if (blockRms.length === 0) return;
+
+  blockRms.sort((a, b) => a - b);
+  const idx = Math.min(blockRms.length - 1, Math.floor(blockRms.length * LOUDNESS_PERCENTILE));
+  const loudness = blockRms[idx] as number;
+  // Effectively silent — a room with nothing in it. Leave it alone rather than
+  // amplifying noise, which is exactly the failure this guard exists to stop.
+  if (loudness < 1e-4) return;
+
+  const gain = Math.min(MAX_NORMALIZE_GAIN, targetRms / loudness);
+  if (gain <= 1.0001) return; // already loud enough — never attenuate
+
+  for (const data of channels) {
+    for (let i = 0; i < len; i++) data[i] = softLimit((data[i] as number) * gain);
   }
 }
 
