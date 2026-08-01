@@ -456,10 +456,32 @@ Passive = at rest; hover = same pose slightly brighter; active = drawn LARGER
 within the SAME canvas (the pop is a texture swap with no reposition).
 Transparent background, true alpha 0."
 
-**Canvas size:** match the shipped `inst-*` sprites exactly (they draw at
-roughly 0.42–0.65 of source, i.e. about 2× linear oversample; the row slot is
-340×280 map px). Deliver at the same dimensions as `inst-piano` so the existing
-`content` box convention holds.
+**Canvas size: `576 × 768`.** Not `inst-piano`'s dimensions — measured, that is
+the one outlier in the family (`768×768`) and copying it would ship art ~50 %
+larger than it can ever be drawn. Five of the six shipped instruments are
+`576×768`; that is the standard.
+
+Why that number, so it can be re-derived rather than trusted:
+
+| | source content | drawn on screen | oversample |
+|---|---|---|---|
+| `inst-drums` (576×768) | 524 × 373 | 340 × 242 | **1.54×** |
+| `inst-piano` (768×768) | 707 × 660 | 300 × 280 | 2.36× |
+
+The row slot is **340 × 280** design px. `placeUiSprite` contain-fits the
+*content box* — not the canvas — into that slot, so what matters is how much of
+the canvas the art actually occupies. `576×768` lands a little under the 2×
+retina target, which is the right side to err on.
+
+**Keep the art tight to the canvas** — a small uniform transparent margin, no
+large empty bands. `inst-drums` currently wastes half its canvas height
+(content box `[0.05, 0.285, 0.959, 0.77]`), which is why its effective
+oversample is the lowest in the set despite a full-size canvas.
+
+**Engineering follow-up when these land:** measure the alpha bounding box of each
+new sprite and add an `instrumentDef(key, [x0, y0, x1, y1])` entry to
+`src/game/ui-sprites.ts`. Without it the sprite renders at the wrong size, and
+its tap target will be wrong too (see the hit-area fix in this same release).
 
 **Unblocks:** two objects in `workshop.json` (no code) — the Sound Pads and
 Magic Pad tools become reachable by tapping a character, like every other tool.
@@ -490,3 +512,53 @@ rail line. Chunky pixels, 1px dark-plum outline, hard drop shadow."
 
 **Unblocks:** nothing in code — it is a legibility fix for the first screen a
 kid sees.
+
+---
+
+## AR-023 · Workshop interior: push the background BACK — HIGH
+
+**Target:** `src/assets/scenes-v2/workshop-interior-clean.png` (2560×1440), replacing
+the current plate.
+
+**Context — this is a direct play-test complaint, in Eric's words:**
+
+> "there is little to no separation between the noisy background and the cars"
+
+The Workshop is where a kid spends nearly all their time, and it is the one
+screen where foreground and background compete. The plate is beautiful and
+detailed — brick, tool boards, shelving, crates, gears, warning signs, a full
+locomotive with red wheels — and it is rendered at the *same* contrast, saturation
+and outline weight as the things a kid is meant to touch. So the six instrument
+characters, the sequencer slate and the transport bar all have to fight it.
+
+The characters and the chalkboard are already correct. **Do not restyle them.**
+The fix is entirely in the plate.
+
+**What to change:**
+- **Drop contrast and saturation** across the whole plate — keep the same 16-colour
+  palette, but bias to its darker/duller half. Background should read as *shadowed
+  interior*, not as spotlit hero art.
+- **Thin or drop the 1px dark-plum outline on background objects.** Outlines are the
+  house style for interactive things; using them everywhere is what flattens the
+  depth. Reserve full-weight outlines for the foreground.
+- **Reduce fine detail** in the wall zone especially: fewer distinct small objects,
+  larger flat areas. Detail directly behind the sequencer slate (roughly the middle
+  60 % of the frame) should be quietest of all.
+- **Keep the structure.** Same room, same layout, same boxcar interior and floor
+  line the instrument row stands on — the map places sprites against this geometry,
+  so the composition must not move.
+
+**Prompt:** "The same 16-bit steampunk workshop interior, unchanged in layout and
+composition, but re-rendered as a *background*: lower contrast and desaturated
+toward the darker half of the warm 16-colour Nintendo palette, fine wall detail
+simplified into larger flat shapes, and outlines on background objects thinned or
+removed so nothing competes with the characters standing in front of it. The
+central area behind the sequencer board should be the calmest part of the frame.
+Chunky pixels, no gradients, no glow. 2560×1440."
+
+**Also a perf win:** flatter, less detailed art at the same dimensions compresses
+substantially better, and this plate is one of the four backgrounds that ship.
+
+**Unblocks:** nothing in code — but it is the difference between the Workshop
+reading as a toy and reading as noise, and it was the second thing Eric flagged
+on the deployed build.
