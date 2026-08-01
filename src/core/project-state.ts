@@ -1044,11 +1044,12 @@ export function parseSave(json: string): ParseResult<Project> {
 }
 
 /**
- * @deprecated Call `parseSave` and handle the failure. This shim exists only so
- * the one remaining call site (`LocalStoragePort.loadProject`) keeps compiling;
- * ticket S6 owns `src/adapters/local-storage-port.ts` and rewires it. Throwing
- * matches what this function already did for unreadable text (`JSON.parse`
- * threw), but now the throw carries the typed error instead of a `SyntaxError`.
+ * @deprecated Call `parseSave` and handle the failure. S6 rewired the last
+ * production caller (`LocalStoragePort.loadProject`), so this shim is now
+ * reached only from `tests/unit/project-state.test.ts`, where it is a
+ * convenience for round-trip assertions that do not care about the failure
+ * type. Nothing in `src/` calls it. Delete it when those tests move to
+ * `parseSave`; do not add a new caller.
  */
 export function deserialize(json: string): Project {
   const result = parseSave(json);
