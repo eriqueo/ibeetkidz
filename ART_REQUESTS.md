@@ -641,14 +641,23 @@ keyboard), and it was left untouched, so it is now the only character still in
 the old style. `inst-xylophone` is effectively a redraw of it with the keyboard
 swapped for a xylophone, and it is wired to nothing.
 
-There are 27 sprites in the folder, not 24. Pick one:
-- **Keep `inst-keys`** — semantically the better match, since the tool it opens
-  (`voice-keys`) plays your recorded voice *chromatically*, like a keyboard.
-  Then `inst-keys` needs the same redraw+re-export as the others, and
-  `inst-xylophone` is deleted.
-- **Adopt `inst-xylophone`** — repoint `workshop.json` at it, delete
-  `inst-keys`. A xylophone is still a pitched keyboard-family instrument, and
-  this is the option with no further art.
+There are 27 sprites in the folder, not 24.
+
+**Art director decision (2026-08-01): Keep `inst-keys`. Delete `inst-xylophone`.**
+
+Rationale: `voice-keys` plays your recorded voice chromatically — it is a keyboard
+tool, not a percussion tool. The keyboard instrument is the correct icon. The
+xylophone is a mallet-percussion instrument and would mislead a kid about what
+the tool does. The bear character is identical between the two sprites; only the
+instrument changes. Keeping `inst-keys` means:
+
+- `inst-xylophone-{passive,hover,active}.png` → **delete all three**.
+- `inst-keys-{passive,hover,active}.png` → **include in the re-export batch**.
+  The old `inst-keys` is palette/type-3 with a white background (not true alpha 0);
+  it needs the same RGBA re-export as the other 24 files. The drawing is the old
+  smooth-illustrated style and should be redrawn in the same chunky-pixel pass as
+  the others — same purple bear + propeller beanie, same toy keyboard, new style.
+  This makes the total re-export batch **27 files** (24 new + 3 inst-keys states).
 
 **Unblocks:** two `workshop.json` objects (Sound Pads + Magic Pad), the content
 boxes for all nine characters, and the atlas rebuild.
