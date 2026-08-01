@@ -19,21 +19,41 @@
 
 ---
 
-## PRIORITY ORDER (2026-07-04)
+## PRIORITY ORDER (2026-08-01)
 
-1. **AR-016 item 4 — instrument character redraws** (the last Workshop Revamp
-   piece; the old smooth-illustrated characters now clash with the pixel
-   interior around them).
-2. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring
-   is Tiled-only).
-3. **AR-015 remainder — 16-dir × 2-frame refs** for loco/tanker/flatcar
-   (supersedes the AR-012 gaps for those types).
-4. **AR-021 — `inst-pads` + `inst-magic` characters** (two built tool panels are
-   reachable by event but have no instrument to tap).
-5. **AR-022 — Map building labels** (the three destinations are unlabelled).
-4. **AR-018 — satellite tool panel plate** (engine parchment interim shipped).
-5. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
-   AR-019 (yard readability polish).
+Re-ordered after Eric play-tested the deployed build. AR-015 is complete and has
+left the queue; the previous list also had duplicate numbering.
+
+1. **AR-016 item 4 + AR-021 together — ALL EIGHT instrument characters.**
+   **Do these as ONE job, not two.** Item 4 redraws the six existing characters
+   (the smooth-illustrated originals clash with the pixel interior); AR-021 adds
+   `inst-pads` and `inst-magic`. Doing AR-021 first means drawing two new
+   characters to match a style that is about to be retired, then redrawing them.
+   One consistent set of eight, one pass. **This is the single highest-value art
+   in the queue** — it finishes the Workshop Revamp *and* unlocks two fully-built
+   tools (Sound Pads, Magic Pad) that a kid currently has no way to reach.
+2. **AR-023 — Workshop interior plate, pushed BACK.** Eric's own words on the
+   deployed build: *"little to no separation between the noisy background and the
+   cars."* The Workshop is where a kid spends nearly all their time, and it is the
+   one screen where background and foreground compete. Foreground is already
+   correct; the fix is entirely in the plate.
+3. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring is
+   Tiled-only).
+4. **AR-022 — Map building labels** (the boot screen names none of its three
+   destinations). Prefer baking into the plate — see the entry for why the plaque
+   route needs code first.
+5. **AR-020 — SEND SONG plaque + result panel**, **AR-018 — satellite tool panel
+   plate** (engine parchment interim shipped for both).
+6. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
+   AR-009 / AR-017 (semi-opaque wash cleanups), AR-019 (yard readability).
+
+**Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
+not at generation resolution. `placeUiSprite` contain-fits a sprite's *content
+box* into a fixed slot, so native resolution changes nothing on screen — it only
+costs GPU memory. Where an entry pins a canvas size, that number is derived from
+the slot; do not round it up "for safety". (Measured: the live atlas is 61 frames
+/ 34.1 Mpx, plus 28 dead frames / 13.8 Mpx that engineering is deleting
+separately — the live art is correctly sized and does not need re-delivery.)
 
 ---
 
@@ -428,6 +448,14 @@ with a `ui-button` spawn (one manifest entry + flip the Tiled object's type).
 ---
 
 ## AR-021 · `inst-pads` + `inst-magic` instrument characters — HIGH
+
+> **⚠ Do this together with AR-016 item 4, as one job.** Item 4 redraws the six
+> existing instrument characters, because the smooth-illustrated originals clash
+> with the pixel interior. This entry says "match the existing family" — but that
+> family is being replaced. Drawing these two first means matching a retiring
+> style and then redrawing them. **Deliver all eight characters in one consistent
+> pass**, and treat the style notes in AR-016 item 4 / design doc §4 as
+> authoritative where they differ from the prompt below.
 
 **Target files** (one shared canvas per instrument, three states each, matching
 the existing `inst-*` family):
