@@ -7,7 +7,7 @@
 // All cross-boundary traffic still goes through the EventBus; `onSceneReady` is
 // only an escape hatch for imperative wiring, and React never mutates Phaser
 // display objects directly.
-import { useEffect, useLayoutEffect, type CSSProperties } from "react";
+import { useLayoutEffect, useRef, type CSSProperties } from "react";
 import type Phaser from "phaser";
 import { showScene } from "../game/game-host.ts";
 import type { SceneClass } from "../game/scene-switch.ts";
@@ -41,24 +41,41 @@ interface PhaserSceneProps {
 }
 
 export function PhaserScene({ scene, onSceneReady }: PhaserSceneProps): null {
-  // Layout effect so the swap is requested in the same commit that mounted the
-  // view, before paint.
-  useLayoutEffect(() => {
-    showScene(scene);
-  }, [scene]);
+  // Read through a ref so the effect below can depend on `[scene]` alone. If it
+  // depended on the callback's identity, a parent re-render that produced a new
+  // callback would re-run the effect and RESTART the scene mid-view.
+  const readyRef = useRef(onSceneReady);
+  readyRef.current = onSceneReady;
 
-  useEffect(() => {
+  // SUBSCRIBE FIRST, THEN SHOW — the order is the whole point, and getting it
+  // backwards shipped a real bug.
+  //
+  // Sharing one game means a revisited scene finds every texture already in the
+  // cache, so its `preload` queues nothing and Phaser runs `create()` — and
+  // therefore `announceReady()` — SYNCHRONOUSLY inside `showScene`. With the
+  // subscription in a separate `useEffect` (which React runs after every layout
+  // effect) the handshake fired into an empty bus on exactly those revisits.
+  //
+  // It failed silently and in a way no existing test could see: `getScene()` in
+  // the dev bridge has its own module-level subscription that never unsubscribes,
+  // so e2e still observed the scene while the VIEW never got its callback —
+  // leaving `sceneRef.current` pointed at the previous, destroyed instance and
+  // every later `setModel`/`setCars` writing into a dead object.
+  //
+  // A first visit hid it: nothing is cached yet, the loader runs, `create()`
+  // lands a frame later, and by then the old ordering happened to work.
+  useLayoutEffect(() => {
     const handleReady = (ready: Phaser.Scene): void => {
-      // The game is shared now, so this bus carries other views' handshakes
-      // too. Only answer for the scene this view asked for.
+      // The bus carries every view's handshake now; answer only for ours.
       if (ready.scene.key !== scene.KEY) return;
-      onSceneReady?.(ready);
+      readyRef.current?.(ready);
     };
     EventBus.on("current-scene-ready", handleReady);
+    showScene(scene);
     return () => {
       EventBus.off("current-scene-ready", handleReady);
     };
-  }, [scene, onSceneReady]);
+  }, [scene]);
 
   return null;
 }

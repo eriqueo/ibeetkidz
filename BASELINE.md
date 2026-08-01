@@ -255,6 +255,32 @@ and passed on a re-run alone — exactly the load-sensitivity this file has warn
 about since the first re-baseline. Recorded rather than quietly re-run, because
 "19 passed" without that sentence would be a nicer number than the truth.
 
+---
+
+## Re-baseline — 2026-08-01, revisit-handshake bug found and fixed
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 392 / 26 files, 0 skipped | unchanged |
+| E2E local | **20 passed** | 19 |
+| E2E under `CI=1` | **16 passed, 4 skipped** | 15 + 4 |
+| E2E spec files | **6** | 5 |
+
+`tests/e2e/revisit.spec.ts` — a view's `onSceneReady` must fire on EVERY visit.
+The single-Phaser-game change shipped a bug where it fired only on the first:
+a revisited scene finds every texture cached, so `preload` queues nothing and
+`create()`/`announceReady()` run SYNCHRONOUSLY inside `showScene`, before the
+subscription in `PhaserScene`'s separate `useEffect` existed.
+
+**Why no existing test saw it:** the dev bridge's `getScene()` has its own
+module-level subscription that never unsubscribes, so `waitForScene` kept passing
+while the VIEW never got its callback. Anything asserting through the bridge was
+blind to it by construction. The new spec asserts on per-view state that only
+`onSceneReady` can establish.
+
+Found by adversarially testing my own work rather than by the suite. Seeded:
+reversing the two lines in `PhaserScene`'s layout effect fails it.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint
