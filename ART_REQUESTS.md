@@ -353,13 +353,12 @@ assets are ever regenerated, in which case: "fully transparent background
 
 ---
 
-## AR-016 · Workshop Revamp production exports — items 1–3 + 5 ✅ WIRED IN; item 4 (characters) still needed
+## ✅ DONE — AR-016 · Workshop Revamp production exports — ALL items complete
 
 Items 1 (interior plate), 2 (four car-side sprites + standardized void),
 3 (chalkboard), 5 (editor panel + knob/fader/toggle + edit-vs-new modal +
 send-to-yard button) landed and are LIVE in the layered Workshop.
-**Still needed: item 4 — the instrument character redraws** (passive/hover/
-active each, grounded, chunky-pixel style, 3-eyed alien fix, per design doc §4).
+**Item 4 complete (2026-08-01):** all six instrument characters redrawn at 576×768 in the new chunky-pixel style. See commit `6bc1680`.
 
 Original brief:
 
@@ -447,7 +446,9 @@ with a `ui-button` spawn (one manifest entry + flip the Tiled object's type).
 
 ---
 
-## AR-021 · `inst-pads` + `inst-magic` instrument characters — HIGH
+## ✅ DONE — AR-021 · `inst-pads` + `inst-magic` instrument characters
+
+> Delivered together with AR-016 item 4 as one consistent 8-character pass (2026-08-01).
 
 > **⚠ Do this together with AR-016 item 4, as one job.** Item 4 redraws the six
 > existing instrument characters, because the smooth-illustrated originals clash
@@ -543,7 +544,13 @@ kid sees.
 
 ---
 
-## AR-023 · Workshop interior: push the background BACK — HIGH
+## ✅ DONE — AR-023 · Workshop interior: push the background BACK
+
+**Delivered 2026-08-01.** Same layout, same geometry. Re-rendered at lower contrast and desaturated toward the darker half of the warm 16-color palette. Central wall area (behind sequencer board) is the calmest zone. Outlines on background objects thinned/removed. Floor and rail line readable. See commit `80dd61c`.
+
+---
+
+## AR-023 · Workshop interior: push the background BACK — HIGH (ORIGINAL SPEC)
 
 **Target:** `src/assets/scenes-v2/workshop-interior-clean.png` (2560×1440), replacing
 the current plate.
