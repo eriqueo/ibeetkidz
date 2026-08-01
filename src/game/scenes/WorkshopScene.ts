@@ -108,6 +108,10 @@ const PICKER_CAPTIONS: Record<CarType, string> = {
 // box (the boxcar's) anchors placement for every type — a car-type swap is a
 // pure texture change with no reposition, like the chrome state variants.
 const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
+/** The one car texture that preloads. Matches `project-state.ts`'s seed car, so
+ *  the common case never waits, and it is what `buildCarLayer` constructs on
+ *  before `showCar` corrects it. */
+const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
 const DEPTH_CAR = 0.4;
 const DEPTH_BOARD = 0.6;
@@ -183,11 +187,15 @@ export class WorkshopScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.workshopInterior);
-    // All four car types preload so a picker swap is instant (they're light
-    // PNG8s after the perf pass; one texture change, no reposition).
-    for (const asset of Object.values(CAR_SIDE_SPRITES)) {
-      if (!this.textures.exists(asset.key)) this.load.image(asset.key, asset.url);
-    }
+    // Only the DEFAULT car type preloads. All four used to, "so a picker swap is
+    // instant" — but each is a 2560x1440 PNG that decodes to ~15 MB of GPU
+    // texture, so three types nobody is looking at cost ~44 MB of VRAM and
+    // ~690 KB of transfer on a scene that shows exactly one car. The others load
+    // on first use via `showCar`; the swap is one texture change with no
+    // reposition (they share a canvas and a baseline), so a late arrival is
+    // dimensionally safe.
+    const boot = CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE];
+    if (!this.textures.exists(boot.key)) this.load.image(boot.key, boot.url);
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     loadUiSprites(this); // the one packed chrome multiatlas
   }
@@ -206,11 +214,37 @@ export class WorkshopScene extends BackgroundScene {
     this.announceReady();
   }
 
+  /** Put `type`'s art on the car, fetching the texture first if this is the
+   *  first time this session has shown it. See `preload` for why only one type
+   *  is resident up front.
+   *
+   *  The `carType` re-check in the callback matters: two quick swaps would
+   *  otherwise race, and the slower load would win and stomp the newer choice. */
+  private showCar(type: CarType): void {
+    const asset = CAR_SIDE_SPRITES[type];
+    if (this.textures.exists(asset.key)) {
+      this.car?.setTexture(asset.key);
+      return;
+    }
+    this.load.image(asset.key, asset.url);
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      // The scene can be torn down mid-flight (every nav destroys the game).
+      if (!this.car?.scene || this.model.carType !== type) return;
+      if (!this.textures.exists(asset.key)) return;
+      this.car.setTexture(asset.key);
+      this.layoutFixtures();
+    });
+    this.load.start();
+  }
+
   // ── the layered field: car sprite + chalkboard in its void ─────────────────
   private buildCarLayer(): void {
+    // Always constructed on the preloaded default, then corrected by `showCar`:
+    // the real car type arrives from React and may not be resident yet.
     this.car = this.add
-      .image(0, 0, CAR_SIDE_SPRITES[this.model.carType].key)
+      .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
+    this.showCar(this.model.carType);
     this.board = this.add
       .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base)
       .setDepth(DEPTH_BOARD);
@@ -527,8 +561,7 @@ export class WorkshopScene extends BackgroundScene {
     this.model = model;
     if (!this.ready) return;
     // Car-type swap is a pure texture change — same canvas, same baseline.
-    if (model.carType !== prevCarType)
-      this.car?.setTexture(CAR_SIDE_SPRITES[model.carType].key);
+    if (model.carType !== prevCarType) this.showCar(model.carType);
     const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
     if (key !== this.structKey) {
       this.buildGrid();
