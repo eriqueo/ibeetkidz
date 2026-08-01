@@ -364,6 +364,40 @@ test("the undo offer withdraws once the kid does something else", async ({ page 
   await expect.poll(async () => (await offer()).offering).toBe(false);
 });
 
+test("an empty car offers a surprise, and the surprise makes a real beat", async ({ page }) => {
+  // Third of the same kind: `generateBeat` has been implemented, pure and
+  // unit-tested since v1, `workshop-surprise` is in the EventBus vocabulary and
+  // React subscribes to it — and no map object ever emitted it. The affordance
+  // lives in the empty-car prompt now, so this drives the whole path.
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  const laneCount = async (): Promise<number> => {
+    const p = await getProject(page);
+    const part = p.parts.find((x: any) => x.id === p.activePartId) ?? p.parts[0];
+    return part.layers.length;
+  };
+  const promptShown = () =>
+    page.evaluate(() => !!(window as any).__ibeetkidz_test__.getScene().emptyPromptVisible);
+
+  expect(await laneCount(), "a fresh car is empty").toBe(0);
+  expect(await promptShown(), "…so the offer is there").toBe(true);
+
+  await emit(page, "workshop-surprise");
+  // A real groove: kick + snare + hihat always, plus seeded extras.
+  await expect.poll(laneCount).toBeGreaterThanOrEqual(3);
+  const p = await getProject(page);
+  const part = p.parts.find((x: any) => x.id === p.activePartId) ?? p.parts[0];
+  expect(
+    part.layers.some((l: any) => l.steps.some((s: any) => s != null)),
+    "a surprise with no notes in it is not a beat",
+  ).toBe(true);
+
+  // …and the offer goes away, because the car is no longer empty.
+  await expect.poll(promptShown).toBe(false);
+});
+
 test("Map guards Track until a train exists", async ({ page }) => {
   await boot(page);
   // `emptyProject` seeds one car on the train so the app is rideable on boot,

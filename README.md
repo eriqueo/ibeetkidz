@@ -95,13 +95,13 @@ Downloads folder, never to us.
 cold load still needs the network and the app can't be installed to the home
 screen. That work is planned, not built.
 
-**Some finished pieces have no button yet.** Voice Keys, Sound Pads, and Magic
-Pad exist as Phaser panels and are registered in `WorkshopScene`, but nothing in
-the Workshop currently opens them — only the mic (My Voice) and drums (Beat
-Maker) stations are wired up in `assets/maps/workshop.json`. The seeded
-"Surprise me" generator (`src/core/generative.ts`) is likewise fully implemented
-and listened for, with nothing emitting it. Giving all of these their stations
-back is a to-do.
+**Every finished piece has a way in now.** This paragraph used to list three
+tool panels and the "Surprise me" generator as built-but-unreachable. All eight
+instrument characters open their tool in `assets/maps/workshop.json`, and
+**Surprise me** lives in the empty-car prompt — tap `SURPRISE ME!` on the
+chalkboard and the car fills with a seeded groove (`src/core/generative.ts`,
+same seed → same beat). It offers itself only while the car is empty, which is
+when it is worth offering; tapping it again re-rolls rather than stacking.
 
 **"See the sound" ships in the Track view.** A jumbotron stands in the middle of
 the oval and shows the song as it rides: three styles — Bars, Lava, Retro Scope —

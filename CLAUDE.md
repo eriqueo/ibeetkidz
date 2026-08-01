@@ -181,6 +181,16 @@ inversion). **This is a decided architecture, not an accident — see
   Pages serves from `/ibeetkidz/`, so a bare `/assets/...` 404s there and only
   there — invisible in `npm run dev`. `tests/unit/public-asset-url.test.ts` guards
   it.
+- **"Surprise me" is reachable now** (it was not). `generateBeat`
+  (`src/core/generative.ts`) has been pure, seeded and unit-tested since v1;
+  `workshop-surprise` is in the EventBus vocabulary and `Workshop.tsx`
+  subscribes — and **no Tiled object ever emitted it**. The affordance is a
+  `SURPRISE ME!` chip inside `WorkshopScene`'s **empty-car prompt**, so it
+  offers itself exactly while the car is empty and vanishes once it isn't.
+  Tapping again RE-ROLLS (`generateBeat` clears the layers it made first).
+  Caveat: a surprise is ~15 commands, so undoing one is ~15 taps — re-rolling is
+  the intended way back, not undo. The Workshop LCD reads **SPEED**, matching
+  the Track; it read `TEMP`, a truncation of TEMPO.
 - **Undo is reachable now** (it was not). The `UndoStack`, `store.undo()` and
   `AppApi.undo()` have existed since v1 with **zero callers**, so "Forgiving UX.
   Undo everywhere" was prose only and ✕ on a lane was final. The affordance is a

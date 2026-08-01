@@ -146,7 +146,10 @@ export class WorkshopScene extends BackgroundScene {
   private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
-  private emptyText: Phaser.GameObjects.Text | undefined;
+  /** The empty-car prompt (hint + the SURPRISE ME chip), or undefined when
+   *  the car has lanes. A Container so the departure tween and the layout
+   *  each still address one object. */
+  private emptyText: Phaser.GameObjects.Container | undefined;
   private playhead: Phaser.GameObjects.Rectangle | undefined;
   private playStep = -1;
   private cellW = 0;
@@ -235,6 +238,12 @@ export class WorkshopScene extends BackgroundScene {
     // knowledge of WHICH commands destroy anything.
     this.undoToast = attachUndoToast(this);
     this.announceReady();
+  }
+
+  /** Exposed for the e2e bridge: is the empty-car prompt (and with it the only
+   *  route to "Surprise me") on screen? */
+  get emptyPromptVisible(): boolean {
+    return this.emptyText !== undefined;
   }
 
   /** Exposed for the e2e bridge: is the undo offer on screen, and for what. */
@@ -436,7 +445,7 @@ export class WorkshopScene extends BackgroundScene {
     // SONG + TEMPO LCD: dark-plum text on a cream chip drawn over the panel.
     this.lcdChip = this.add.graphics().setDepth(9);
     this.songText = this.add.text(0, 0, "SONG 001", LCD_STYLE).setOrigin(0.5).setDepth(11);
-    this.tempoText = this.add.text(0, 0, "TEMP 120", LCD_STYLE).setOrigin(0.5).setDepth(11);
+    this.tempoText = this.add.text(0, 0, "SPEED 120", LCD_STYLE).setOrigin(0.5).setDepth(11);
   }
 
   // Re-anchor chrome sprites + LCD (chip + text) after a resize.
@@ -605,7 +614,9 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   private refreshLcd(): void {
-    this.tempoText?.setText(`TEMP ${Math.round(this.model.tempoBpm)}`);
+    // "SPEED", matching the Track's LCD — this read "TEMP", a truncation of
+    // TEMPO that fit the chip but is not a word. Eric asked for SPEED here.
+    this.tempoText?.setText(`SPEED ${Math.round(this.model.tempoBpm)}`);
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
@@ -671,16 +682,7 @@ export class WorkshopScene extends BackgroundScene {
     this.structKey = lanes.map((l) => l.id).join("|");
 
     if (lanes.length === 0) {
-      this.emptyText = this.add
-        .text(0, 0, "Empty car —\ntap an instrument below", {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "12px",
-          color: LABEL_COLOR,
-          align: "center",
-          lineSpacing: 8,
-        })
-        .setOrigin(0.5)
-        .setDepth(6);
+      this.emptyText = this.makeEmptyPrompt();
       this.layoutGrid();
       return;
     }
@@ -793,13 +795,87 @@ export class WorkshopScene extends BackgroundScene {
     });
   }
 
+  /**
+   * The empty-car prompt: the hint, plus the ONLY way a kid can reach
+   * "Surprise me".
+   *
+   * `generateBeat` has been implemented, pure and unit-tested since v1;
+   * `workshop-surprise` is in the EventBus vocabulary and `Workshop.tsx`
+   * subscribes to it — and NOTHING has ever emitted it, because the Tiled
+   * toolbar never got a button. The authored chrome has no free keycap slot
+   * (see `undo-toast.ts` for the same constraint), and an empty car is exactly
+   * the moment "make me something" is worth offering, so the affordance lives
+   * in the empty state and disappears the instant the car has anything in it.
+   *
+   * Caveat worth knowing: a surprise is ~15 commands, so undoing one is ~15
+   * taps. The intended way back is to tap it again — `generateBeat` clears the
+   * layers it made before laying down a new groove, so it re-rolls rather than
+   * stacking.
+   */
+  private makeEmptyPrompt(): Phaser.GameObjects.Container {
+    const style = {
+      fontFamily: "'Press Start 2P', monospace",
+      fontSize: "12px",
+      color: LABEL_COLOR,
+      align: "center",
+      lineSpacing: 8,
+    } as const;
+    const hint = this.add.text(0, 0, "Empty car —\ntap an instrument below", style).setOrigin(0.5);
+    const chip = this.add.graphics();
+    // Plain caps: Press Start 2P carries no emoji glyphs (a ✨ renders as tofu).
+    const label = this.add
+      .text(0, 0, "SURPRISE ME!", { ...style, color: "#2b2440" })
+      .setOrigin(0.5);
+    const hit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0);
+    hit.setInteractive({ useHandCursor: true });
+    let armed = false;
+    hit.on("pointerdown", () => { armed = true; label.setScale(0.94); });
+    hit.on("pointerout", () => { armed = false; label.setScale(1); });
+    hit.on("pointerup", () => {
+      label.setScale(1);
+      if (!armed) return;
+      armed = false;
+      EventBus.emit("workshop-surprise");
+    });
+    return this.add.container(0, 0, [hint, chip, label, hit]).setDepth(6);
+  }
+
+  /** Centre the empty prompt on the slate and size its chip to it. */
+  private layoutEmptyPrompt(cx: number, cy: number, gw: number, gh: number): void {
+    const c = this.emptyText;
+    if (!c) return;
+    const [hint, chip, label, hit] = c.list as [
+      Phaser.GameObjects.Text,
+      Phaser.GameObjects.Graphics,
+      Phaser.GameObjects.Text,
+      Phaser.GameObjects.Rectangle,
+    ];
+    c.setPosition(cx, cy);
+    const fs = Math.max(10, Math.round(gh * 0.055));
+    hint.setFontSize(fs).setPosition(0, -gh * 0.12);
+    label.setFontSize(Math.round(fs * 1.15));
+
+    const w = Math.min(gw * 0.5, label.width + gh * 0.14);
+    const h = Math.max(fs * 3, gh * 0.14);
+    const y = gh * 0.14;
+    const rad = Math.min(h * 0.3, 18);
+    chip
+      .clear()
+      .fillStyle(0xe9d7ac, 1)
+      .fillRoundedRect(-w / 2, y - h / 2, w, h, rad)
+      .lineStyle(Math.max(2, h * 0.06), 0x2b2440, 1)
+      .strokeRoundedRect(-w / 2, y - h / 2, w, h, rad);
+    label.setPosition(0, y);
+    hit.setPosition(0, y).setSize(w * 1.1, h * 1.2);
+  }
+
   private layoutGrid(): void {
     const r = this.backgroundRect;
     if (r.width === 0 || this.slateRect.w === 0) return;
     // The grid mounts on the chalkboard's slate (layoutCarLayer computed it).
     const { x: gx, y: gy, w: gw, h: gh } = this.slateRect;
 
-    if (this.emptyText) this.emptyText.setPosition(gx + gw / 2, gy + gh / 2);
+    if (this.emptyText) this.layoutEmptyPrompt(gx + gw / 2, gy + gh / 2, gw, gh);
 
     const laneCount = Math.max(WORKSHOP_GRID_V2.minRows, this.rows.length);
     const labelW = gw * WORKSHOP_GRID_V2.labelFrac;

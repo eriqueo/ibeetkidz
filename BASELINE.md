@@ -178,6 +178,22 @@ on the `viz-screen` placement.
 New: `tests/unit/undoable.test.ts` (4) plus two e2e specs covering the "put it
 back" offer and its withdrawal. No new runtime skips.
 
+---
+
+## Re-baseline — 2026-08-01, "Surprise me" made reachable
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 386 / 26 files, 0 skipped | unchanged |
+| E2E local | **14 passed** | 13 |
+| E2E under `CI=1` | **11 passed, 3 skipped** | 10 + 3 |
+
+Third of the same kind this session (after the visualizer and undo): a feature
+built, pure and unit-tested since v1, with nothing in the shipped UI able to
+reach it. `generateBeat` now has its affordance in the Workshop's empty-car
+prompt. The Workshop LCD also reads **SPEED**, matching the Track — it read
+`TEMP`, a truncation of TEMPO that fit the chip but is not a word.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint
