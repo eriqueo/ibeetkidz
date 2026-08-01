@@ -46,6 +46,20 @@ export class MapScene extends BackgroundScene {
     this.chromeHits = hits;
     this.handcar = this.add.image(0, 0, SPRITES.handcar.key).setOrigin(0.5).setDepth(5);
     this.layoutChrome();
+    // Dev-only seam for the scene editor (`?edit`). `editorHandle` is typed
+    // `unknown` on BackgroundScene, so this scene still imports nothing from
+    // `src/editor/` — the dependency arrow points one way only, and the whole
+    // branch is compile-time dead in a production build.
+    if (import.meta.env.DEV) {
+      this.editorHandle = {
+        mapName: "map",
+        layerName: "ui-layer",
+        spawns: this.chromeSpawns,
+        relayout: () => this.layoutChrome(),
+        backgroundRect: () => this.backgroundRect,
+        cameraSize: () => this.scale.gameSize,
+      };
+    }
     this.announceReady();
   }
 

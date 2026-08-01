@@ -114,4 +114,31 @@ describe("architecture guards (source text over src/**)", () => {
       offenders(/(from|import)\s*\(?\s*["']react(-dom)?(\/[^"']*)?["']/, outside),
     ).toEqual([]);
   });
+
+  // 6. The dev-only scene editor is reachable ONLY through a dynamic import.
+  //
+  // Not one of CLAUDE.md's original five — this one guards a NEW seam. The
+  // editor (`src/editor/`, `?edit`) may read the game freely, but the game must
+  // never name it, or Rollup pulls the whole chunk into the production graph
+  // and kids ship a level editor. `scripts/check-no-editor-in-dist.sh` catches
+  // that in the OUTPUT (verified to fail on a real leak, not just to pass on a
+  // clean tree); this catches it in the SOURCE, where the diff is legible.
+  it("lets nothing outside src/editor reach it except one dynamic import", () => {
+    const outside = SOURCES.filter(([p]) => !p.startsWith("src/editor/"));
+    const STATIC = /(?:^|\n)\s*import\s[^\n]*from\s*["'][^"']*editor\/[^"']*["']/;
+    expect(offenders(STATIC, outside)).toEqual([]);
+
+    // …and exactly one dynamic reference, so a second entry point cannot be
+    // added without this line turning red and asking why.
+    const DYNAMIC = /import\s*\(\s*["'][^"']*editor\/[^"']*["']\s*\)/;
+    const dynamic = offenders(DYNAMIC, outside).map((hit) => hit.split(":")[0]);
+    expect(dynamic).toEqual(["src/app/context.tsx"]);
+  });
+
+  // The editor is only worth guarding if it is actually there.
+  it("has an editor to guard", () => {
+    const files = SOURCES.filter(([p]) => p.startsWith("src/editor/")).map(([p]) => p);
+    expect(files).toContain("src/editor/boot.ts");
+    expect(files.length).toBeGreaterThan(3);
+  });
 });

@@ -15,9 +15,19 @@ import { EventBus } from "../EventBus.ts";
 import type { ImageAsset } from "../assets.ts";
 
 /**
- * "cover" fills the canvas and crops overflow (full-bleed scenery — Track/Yard).
- * "contain" fits the whole image with letterbox bars (predictable coordinate
- * space so React overlays can register to painted regions — Workshop/Map).
+ * "cover" fills the canvas and crops overflow (full-bleed scenery).
+ * "contain" fits the whole image with letterbox bars, giving a predictable
+ * coordinate space for anything that must register to a painted region.
+ *
+ * As shipped: Map is the only "cover" scene; Workshop, Yard and Track are all
+ * "contain" — they carry Tiled-placed chrome that must never be cropped off the
+ * edge. (This comment used to say the reverse for three of the four.)
+ *
+ * Note that with today's art the distinction has no visible effect: every base
+ * plate is 2560x1440 and the game runs `Phaser.Scale.FIT` at 2560x1440, so both
+ * branches of `fitBackground` compute the same scale. Do not take that as
+ * licence to hardcode it — the moment one plate has a different aspect, or the
+ * scale mode changes, they diverge.
  */
 export type BackgroundFit = "cover" | "contain";
 
@@ -59,11 +69,24 @@ export abstract class BackgroundScene extends Phaser.Scene {
     return this.bg;
   }
 
-  /** The on-screen rectangle the background image currently occupies. */
-  protected get backgroundRect(): Phaser.Geom.Rectangle {
+  /** The on-screen rectangle the background image currently occupies.
+   *
+   *  PUBLIC because the dev-only scene editor (`src/editor/`, loaded behind
+   *  `?edit` in a DEV build) has to invert `placeSpawn` to turn a drag back into
+   *  Tiled coordinates, and every anchor's math is relative to this rect.
+   *  Reading it from the live scene is deliberate: it keeps the editor from
+   *  holding any opinion about cover-vs-contain, which is exactly the kind of
+   *  duplicated assumption that would silently drift. */
+  get backgroundRect(): Phaser.Geom.Rectangle {
     if (!this.bg) return new Phaser.Geom.Rectangle(0, 0, 0, 0);
     return this.bg.getBounds();
   }
+
+  /** Dev-only editor attachment point. Typed `unknown` on purpose: the game must
+   *  never import from `src/editor/`, so the dependency arrow stays
+   *  one-directional and the editor is fully tree-shakeable out of a production
+   *  build. The editor casts this to its own interface. */
+  editorHandle?: unknown;
 
   private fitBackground(): void {
     if (!this.bg) return;

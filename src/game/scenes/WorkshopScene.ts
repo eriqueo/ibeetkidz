@@ -211,6 +211,20 @@ export class WorkshopScene extends BackgroundScene {
     this.layoutFixtures();
     this.bindPickerToggle();
     this.bindSendToYard();
+    // Dev-only seam for the scene editor (`?edit`). `editorHandle` is typed
+    // `unknown` on BackgroundScene, so this scene still imports nothing from
+    // `src/editor/` — the dependency arrow points one way only, and the whole
+    // branch is compile-time dead in a production build.
+    if (import.meta.env.DEV) {
+      this.editorHandle = {
+        mapName: "workshop",
+        layerName: "ui-layer",
+        spawns: this.chromeSpawns,
+        relayout: () => this.layoutChrome(),
+        backgroundRect: () => this.backgroundRect,
+        cameraSize: () => this.scale.gameSize,
+      };
+    }
     this.announceReady();
   }
 
