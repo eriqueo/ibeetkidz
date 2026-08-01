@@ -1,12 +1,10 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { PhaserGame } from "./PhaserGame.tsx";
+import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { YardScene, type YardCar, type YardTrainCar } from "../game/scenes/YardScene.ts";
 import { liveTrain } from "../core/project-state.ts";
 import { AppView } from "../core/types.ts";
 import { EventBus } from "../game/EventBus.ts";
-
-const YARD_SCENES = [YardScene];
 
 let instSeq = 0;
 const newInstanceId = (): string => `inst-${Date.now().toString(36)}-${instSeq++}`;
@@ -87,12 +85,10 @@ export const Yard: FC = () => {
   }, [dispatch]);
 
   return (
-    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
-      <div style={{ position: "absolute", inset: 0 }}>
-        {/* Phaser owns selection, the crane/Send buttons, AND the nav chrome now,
-            so the canvas takes pointer events (global default is none for overlays). */}
-        <PhaserGame scenes={YARD_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
-      </div>
+    <div style={VIEW_OVERLAY}>
+      {/* Phaser owns selection, the crane/Send buttons AND the nav chrome, so
+          everything here is just the toast floating over the shared canvas. */}
+      <PhaserScene scene={YardScene} onSceneReady={handleSceneReady} />
 
       {/* "Build a train first" toast (same treatment as the Map's Track guard) */}
       {toast && (

@@ -1,12 +1,11 @@
-// Phaser game bootstrap. One game per mounted React view (see PhaserGame.tsx):
-// the view passes the scene(s) it wants and we spin up a canvas sized to its
-// container. The config here is the shared house style for every space.
+// Phaser game bootstrap. Exactly ONE game exists per page and it is created by
+// `game-host.ts`, which then swaps scenes in and out of it as the kid moves
+// between spaces; this function is just the config, the shared house style for
+// every space. It deliberately starts with no scenes — the SceneManager is
+// driven entirely by `SceneSwitch`.
 import Phaser from "phaser";
 
-export function startGame(
-  parent: HTMLElement,
-  scenes: Phaser.Types.Scenes.SceneType | Phaser.Types.Scenes.SceneType[],
-): Phaser.Game {
+export function startGame(parent: HTMLElement): Phaser.Game {
   return new Phaser.Game({
     type: Phaser.AUTO,
     parent,
@@ -27,6 +26,6 @@ export function startGame(
       width: 2560,
       height: 1440,
     },
-    scene: scenes,
+    scene: [],
   });
 }

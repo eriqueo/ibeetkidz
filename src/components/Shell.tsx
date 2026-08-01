@@ -13,6 +13,7 @@
 import type { FC } from "react";
 import { useProject } from "../app/context.tsx";
 import type { AppView } from "../core/types.ts";
+import { GameCanvas } from "./GameCanvas.tsx";
 import { Workshop } from "./Workshop.tsx";
 import { Yard } from "./Yard.tsx";
 import { Track } from "./Track.tsx";
@@ -30,6 +31,11 @@ export const Shell: FC = () => {
   return (
     <div id="app">
       <div className="shell-root">
+        {/* The shared Phaser canvas sits OUTSIDE the view swap on purpose: it
+            is what keeps one WebGL context and one TextureManager alive across
+            navigation (design/PERF_SINGLE_PHASER_GAME.md). Views render only
+            the HTML that floats above it, and must stay transparent. */}
+        <GameCanvas />
         <View />
       </div>
     </div>

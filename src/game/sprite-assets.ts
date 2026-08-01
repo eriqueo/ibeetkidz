@@ -77,10 +77,19 @@ export function loadSpriteAssets(scene: Phaser.Scene): void {
   // "assets/spritesheets/train.png" is document-RELATIVE and 404s whenever the
   // document base isn't the app directory (e.g. "/ibeetkidz" with no slash).
   const sheet = (file: string): string => publicAssetUrl(`assets/spritesheets/${file}`);
-  scene.load.atlas("train",  sheet("train.png"),  sheet("train.json"));
-  scene.load.atlas("smoke",  sheet("smoke.png"),  sheet("smoke.json"));
-  scene.load.atlas("signal", sheet("signal.png"), sheet("signal.json"));
-  scene.load.atlas("tarp",   sheet("tarp.png"),   sheet("tarp.json"));
+  // Idempotent, matching `loadUiAtlas` and `BackgroundScene.loadBackground`.
+  // This matters now that one game (one TextureManager) serves every scene:
+  // re-entering the Yard would otherwise re-queue four atlases whose PNGs the
+  // loader skips as cache conflicts while their JSONs are still fetched, so
+  // each Phaser MultiFile sits at 1-of-2 and never reaches `addToCache`.
+  const atlas = (key: string): void => {
+    if (scene.textures.exists(key)) return;
+    scene.load.atlas(key, sheet(`${key}.png`), sheet(`${key}.json`));
+  };
+  atlas("train");
+  atlas("smoke");
+  atlas("signal");
+  atlas("tarp");
 }
 
 /**
