@@ -76,9 +76,13 @@ export const TRACK_LAYOUT_V2 = {
   // geometry-layer (64 arc-uniform vertices traced over the painted
   // centreline, clockwise from the right apex). Repaint the plate → retrace
   // the polygon in Tiled; no code here.
-  // Where the loco head sits at progress 0 (train parked). The traced path
-  // starts at the right apex and runs clockwise, so 0.25 is EXACTLY the
-  // bottom-centre straight — right at the crossing signal.
+  // Where CAR 0 sits at progress 0 — i.e. parked on the crossing signal, which
+  // is what makes "car i is at the signal when bar i sounds" true (the loco
+  // couples on just ahead of it). The traced path starts at the right apex and
+  // runs clockwise, so 0.25 is EXACTLY the bottom-centre straight — right at
+  // the crossing signal. Verified against the polygon: t=0.25 lands at
+  // normalized (0.5000, 0.6340), and its 64 segments are arc-uniform to within
+  // 0.5% (63.50–63.80 px of a 4076 px perimeter).
   parkAngle: 0.25,
   // The crossing signal sprite anchor (bottom-centre of the oval, over the
   // plate's painted signal) + display width as a fraction of the scene.

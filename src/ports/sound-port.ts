@@ -76,8 +76,10 @@ export interface SoundPort {
 
   /** Audition a single melody note now (used when a kid taps a note cell), so
    *  the grid gives instant feedback without waiting for Play. Voiced with the
-   *  lane's `instrument` so the preview matches what Play will sound like. */
-  previewNote(noteName: string, instrument: InstrumentId): void;
+   *  lane's `instrument` so the preview matches what Play will sound like.
+   *  `volume` (0..1, default 1) matches the lane's own level, so a LEVEL fader
+   *  can answer a drag with a note that is actually that loud. */
+  previewNote(noteName: string, instrument: InstrumentId, volume?: number): void;
 
   /** Schedule looping playback of a drum clip on the transport at the given
    *  step. Swing leans the off-beats late; echo adds a per-lane delay tail.

@@ -366,28 +366,39 @@ export class TrackScene extends BackgroundScene {
   private placeTrain(): void {
     if (!this.path || !this.loco) return;
     const dir = this.direction;
-    // Coupled train: the loco leads at `parkAngle + progress`; each car trails
-    // BUMPER-TO-BUMPER — its distance from the previous vehicle is half of each
-    // of their on-screen coupled lengths. Lengths come from the tokens' live
-    // display size (which the perspective depth-scale already shrinks toward
-    // the far side), so spacing adapts to car size AND perspective with no
-    // hardcoded arc. Each token's ~8% transparent frame padding is the coupler.
-    const len = this.path.getLength() || 1;
-    const headU = TRACK_LAYOUT_V2.parkAngle + dir * this.progress;
-    this.placeOnPath(this.loco, headU, -1);
-    this.faceAlongPath(this.loco, headU, dir, "loco");
-    let prevU = headU;
-    let prevLen = this.coupledLen(this.loco);
+    // Signal-sync spacing. The train rides exactly ONE lap per song, so one bar
+    // IS one 1/n of the oval: car i must sit 1/n of the path behind car i-1, or
+    // it cannot be at the crossing signal on its own bar. Car 0 is the phase
+    // reference — at progress 0 (bar 0) it is parked ON the signal.
+    //
+    // This replaces bumper-to-bumper coupling for the cars, which read better as
+    // a train but is geometrically incompatible with the invariant: a car body
+    // is ~0.05 of the perimeter, so a 4-bar song's consist crossed the signal
+    // inside its first bar (measured: bars 0.30 / 0.49 / 0.71 / 0.90 instead of
+    // 0 / 1 / 2 / 3, with nothing at the crossing for the other 3 bars while the
+    // signal kept flashing). Spacing and sync cannot both be free — the clock
+    // wins, PROJECT_CHARTER.md §2.5.
+    const n = Math.max(1, this.cars.length);
     this.cars.forEach((car, i) => {
       const token = this.carTokens[i];
       if (!token) return;
-      const du = (prevLen / 2 + this.coupledLen(token) / 2) / len;
-      const u = prevU - dir * du;
+      const u = TRACK_LAYOUT_V2.parkAngle + dir * (this.progress - i / n);
       this.placeOnPath(token, u, i);
       this.faceAlongPath(token, u, dir, car.carType);
-      prevU = u;
-      prevLen = this.coupledLen(token); // re-read: placement updated its depth scale
     });
+    // The loco couples onto the head car BUMPER-TO-BUMPER — the one gap that
+    // still can, because the loco sounds no bar of its own. Its distance from
+    // car 0 is half of each of their on-screen coupled lengths, read from the
+    // tokens' live display size (which the perspective depth-scale already
+    // shrank toward the far side), so the coupling adapts to car size AND
+    // perspective with no hardcoded arc; the ~8% transparent frame padding is
+    // the coupler.
+    const len = this.path.getLength() || 1;
+    const head = this.carTokens[0];
+    const gap = head ? (this.coupledLen(this.loco) / 2 + this.coupledLen(head) / 2) / len : 0;
+    const headU = TRACK_LAYOUT_V2.parkAngle + dir * (this.progress + gap);
+    this.placeOnPath(this.loco, headU, -1);
+    this.faceAlongPath(this.loco, headU, dir, "loco");
 
     // Flash the crossing signal as the train passes the bottom-centre each bar.
     if (this.moving) {

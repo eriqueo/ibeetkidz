@@ -666,9 +666,12 @@ export class ToneSoundPort implements SoundPort {
     return sample ? sample.duration : null;
   }
 
-  previewNote(noteName: string, instrument: InstrumentId): void {
+  previewNote(noteName: string, instrument: InstrumentId, volume = 1): void {
     // Audition with the lane's real instrument so the tap matches Play.
     const synth = this.buildMelodyVoice(instrument).toDestination();
+    // …at the lane's own level, so a LEVEL fader's answer is audibly quieter or
+    // louder. Same gain→dB conversion the scheduler uses for lane volume.
+    synth.volume.value = Tone.gainToDb(Math.max(0.0001, volume));
     // A sampled voice rings for its whole recorded length (clamped) so the tap
     // plays the full "aaah" instead of cutting it short; synths stay snappy.
     const voiceDur = this.voiceSampleDuration(instrument);
@@ -1164,21 +1167,37 @@ export class ToneSoundPort implements SoundPort {
     this.quantizeGrid = grid;
   }
 
-  getTransportStep(totalSteps: number): number {
+  /** Transport position at the AUDIBLE now, in ticks (-1 when stopped).
+   *
+   *  NOT `Transport.ticks`: Tone evaluates that at `context.now()`, which is
+   *  `currentTime` PLUS the scheduling `lookAhead`. Reading it put every
+   *  transport-driven visual that lead ahead of the sound — measured +98 ms on
+   *  the Track ride, so the train reached the crossing signal before the bar
+   *  it belongs to was audible. `immediate()` is the same clock without the
+   *  lead, which is the position a viewer is actually hearing. */
+  private audibleTicks(): number {
     const t = Tone.getTransport();
     if (t.state !== "started") return -1;
+    return Math.max(0, t.getTicksAtTime(Tone.getContext().immediate()));
+  }
+
+  private get ticksPerBar(): number {
+    const t = Tone.getTransport();
     const beatsPerBar = typeof t.timeSignature === "number" ? t.timeSignature : 4;
-    const ticksPerBar = t.PPQ * beatsPerBar;
-    const progress = (t.ticks % ticksPerBar) / ticksPerBar;
+    return t.PPQ * beatsPerBar;
+  }
+
+  getTransportStep(totalSteps: number): number {
+    const ticks = this.audibleTicks();
+    if (ticks < 0) return -1;
+    const progress = (ticks % this.ticksPerBar) / this.ticksPerBar;
     return stepIndexFromProgress(progress, totalSteps);
   }
 
   getTransportBar(): number {
-    const t = Tone.getTransport();
-    if (t.state !== "started") return -1;
-    const beatsPerBar = typeof t.timeSignature === "number" ? t.timeSignature : 4;
-    const ticksPerBar = t.PPQ * beatsPerBar;
-    return Math.floor(t.ticks / ticksPerBar);
+    const ticks = this.audibleTicks();
+    if (ticks < 0) return -1;
+    return Math.floor(ticks / this.ticksPerBar);
   }
 
   getAnalyser(): AnalyserNode {
