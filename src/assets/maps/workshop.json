@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 41,
+  "nextobjectid": 43,
   "layers": [
     {
       "id": 2,
@@ -135,174 +135,6 @@
               "name": "action",
               "type": "string",
               "value": "nav-yard"
-            }
-          ]
-        },
-        {
-          "id": 6,
-          "name": "inst-drums",
-          "type": "instrument",
-          "x": 180.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-drums"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-open-tool"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "beat-grid"
-            }
-          ]
-        },
-        {
-          "id": 7,
-          "name": "inst-mic",
-          "type": "instrument",
-          "x": 552.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-mic"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-open-tool"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "record-voicefx"
-            }
-          ]
-        },
-        {
-          "id": 40,
-          "name": "inst-keys",
-          "type": "instrument",
-          "x": 924.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-keys"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-open-tool"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "voice-keys"
-            }
-          ]
-        },
-        {
-          "id": 8,
-          "name": "inst-guitar",
-          "type": "instrument",
-          "x": 1296.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-guitar"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-add-melody"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "guitar"
-            }
-          ]
-        },
-        {
-          "id": 9,
-          "name": "inst-violin",
-          "type": "instrument",
-          "x": 1668.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-violin"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-add-melody"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "pluck"
-            }
-          ]
-        },
-        {
-          "id": 10,
-          "name": "inst-piano",
-          "type": "instrument",
-          "x": 2040.0,
-          "y": 915,
-          "width": 340,
-          "height": 280,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "inst-piano"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "workshop-add-melody"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "piano"
             }
           ]
         },
@@ -480,6 +312,230 @@
           "height": 680,
           "rotation": 0,
           "visible": true
+        },
+        {
+          "id": 6,
+          "name": "inst-drums",
+          "type": "instrument",
+          "x": 94.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-drums"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "beat-grid"
+            }
+          ]
+        },
+        {
+          "id": 7,
+          "name": "inst-mic",
+          "type": "instrument",
+          "x": 394.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-mic"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "record-voicefx"
+            }
+          ]
+        },
+        {
+          "id": 40,
+          "name": "inst-keys",
+          "type": "instrument",
+          "x": 694.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-keys"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "voice-keys"
+            }
+          ]
+        },
+        {
+          "id": 41,
+          "name": "inst-pads",
+          "rotation": 0,
+          "type": "instrument",
+          "visible": true,
+          "width": 272,
+          "height": 224,
+          "x": 994.0,
+          "y": 915,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "sound-pads"
+            },
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-pads"
+            }
+          ]
+        },
+        {
+          "id": 42,
+          "name": "inst-magic",
+          "rotation": 0,
+          "type": "instrument",
+          "visible": true,
+          "width": 272,
+          "height": 224,
+          "x": 1294.0,
+          "y": 915,
+          "properties": [
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "theremin-xy"
+            },
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-magic"
+            }
+          ]
+        },
+        {
+          "id": 8,
+          "name": "inst-guitar",
+          "type": "instrument",
+          "x": 1594.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-guitar"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "guitar"
+            }
+          ]
+        },
+        {
+          "id": 9,
+          "name": "inst-violin",
+          "type": "instrument",
+          "x": 1894.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-violin"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "pluck"
+            }
+          ]
+        },
+        {
+          "id": 10,
+          "name": "inst-piano",
+          "type": "instrument",
+          "x": 2194.0,
+          "y": 915,
+          "width": 272,
+          "height": 224,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-piano"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-add-melody"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "piano"
+            }
+          ]
         }
       ]
     }

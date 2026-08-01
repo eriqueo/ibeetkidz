@@ -46,11 +46,11 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 19 descriptors", () => {
+  it("projects the ui-layer into 21 descriptors", () => {
     // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display,
-    // + `inst-keys` (its art and its `voice-keys` tool panel both already
-    // shipped; only the map object was missing).
-    expect(spawns).toHaveLength(19);
+    // + `inst-keys`, + `inst-pads` and `inst-magic` once AR-024 landed their
+    // art (both tool panels were already built and reachable only by event).
+    expect(spawns).toHaveLength(21);
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");
@@ -131,13 +131,14 @@ describe("field instrument objects", () => {
     expect(s.sprite).toBe("inst-drums");
     expect(s.action).toBe("workshop-open-tool");
     expect(s.arg).toBe("beat-grid");
-    // Re-spaced when `inst-keys` joined the row: six 340px sprites do not fit at
-    // the old 420px pitch (the last would have ended past the 2560px edge), so
-    // the row is now 180px margins with even gaps.
-    expect(s.cx).toBeCloseTo(0.137, 2);
-    // AR-016 task 5: characters grounded on the interior plate's floor line
-    // (feet settle ~1195, on the near floor in front of the car).
-    expect(s.cy).toBeCloseTo(0.733, 2);
+    // Re-spaced again when `inst-pads` and `inst-magic` joined: EIGHT sprites do
+    // not fit at 340px wide, so the row is now 272x224 on a 300px pitch from
+    // x=94. Shorter sprites also lift the row clear of the transport panel at
+    // y=1150, which the 280px-tall version overlapped.
+    expect(s.cx).toBeCloseTo(0.09, 2);
+    // Characters stay grounded on the interior plate's floor line; the row's TOP
+    // is unchanged at y=915, so the feet sit slightly higher than before.
+    expect(s.cy).toBeCloseTo(0.713, 2);
   });
 
   it("maps each instrument to its action: drums/mic/keys open tools, guitar/violin/piano add melody lanes", () => {

@@ -112,13 +112,24 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-nav-workshop": buttonDef("btn-nav-workshop", { pressed: false, content: [0.044, 0.254, 0.965, 0.703] }),
   "btn-nav-yard": buttonDef("btn-nav-yard", { pressed: false, content: [0.049, 0.225, 0.951, 0.733] }),
   "btn-nav-track": buttonDef("btn-nav-track", { pressed: false, content: [0.067, 0.255, 0.948, 0.734] }),
-  // Field instruments (content boxes measured from the passive PNGs' opaque bbox).
-  "inst-drums": instrumentDef("inst-drums", [0.05, 0.285, 0.959, 0.77]),
-  "inst-guitar": instrumentDef("inst-guitar", [0.053, 0.109, 0.956, 0.865]),
-  "inst-keys": instrumentDef("inst-keys", [0.085, 0.131, 0.953, 0.98]),
-  "inst-mic": instrumentDef("inst-mic", [0.094, 0.14, 0.88, 0.853]),
-  "inst-violin": instrumentDef("inst-violin", [0.169, 0.101, 0.815, 0.881]),
-  "inst-piano": instrumentDef("inst-piano", [0.04, 0.072, 0.96, 0.931]),
+  // Field instruments. Boxes measured from each PASSIVE PNG's alpha bbox above a
+  // threshold of 40 — the raw bbox is inflated by two or three stray chroma-key
+  // pixels (alpha 1-33, magenta and green) that AR-024 left in the bottom row of
+  // several files. Thresholding excludes those without touching real
+  // anti-aliasing; measuring raw would push the box to the canvas edge and draw
+  // every one of these sprites too small.
+  //
+  // Passive is the reference for all three states on purpose: `active` is drawn
+  // deliberately LARGER inside the same canvas, so sharing the passive box is
+  // what produces the pop on press. Do not re-measure per state.
+  "inst-drums": instrumentDef("inst-drums", [0.054, 0.286, 0.96, 0.776]),
+  "inst-guitar": instrumentDef("inst-guitar", [0.085, 0.251, 0.875, 0.868]),
+  "inst-keys": instrumentDef("inst-keys", [0.064, 0.336, 0.934, 0.913]),
+  "inst-magic": instrumentDef("inst-magic", [0.038, 0.34, 0.972, 0.97]),
+  "inst-mic": instrumentDef("inst-mic", [0.094, 0.285, 0.866, 0.902]),
+  "inst-pads": instrumentDef("inst-pads", [0.04, 0.257, 0.958, 0.876]),
+  "inst-violin": instrumentDef("inst-violin", [0.092, 0.26, 0.858, 0.898]),
+  "inst-piano": instrumentDef("inst-piano", [0.031, 0.23, 0.939, 0.794]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
   // panel-header/transport PNGs are pre-trimmed (whole canvas = content); the
   // yard actions plate carries transparent margins, so it passes a measured box.
