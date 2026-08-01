@@ -667,3 +667,34 @@ instrument changes. Keeping `inst-keys` means:
 
 **Unblocks:** two `workshop.json` objects (Sound Pads + Magic Pad), the content
 boxes for all nine characters, and the atlas rebuild.
+
+---
+
+## Standing rule: a desaturation or tone pass must be RE-RENDERED, not filtered
+
+Added 2026-08-01 after AR-023.
+
+AR-023 asked for the Workshop plate to be pushed back, and the delivery **did
+exactly that** — composition identical, properly desaturated. But the effect was
+achieved by applying a global filter over the existing image rather than
+re-rendering in the palette, and that shows up in the file:
+
+| | colours | size |
+|---|---|---|
+| old plate | 223 | 605 KB |
+| AR-023 delivery | **19,263** | **3287 KB** |
+| after engineering re-quantized it | 256 | 422 KB |
+
+A filter creates thousands of intermediate values between the palette entries,
+so a PNG that should have got *smaller* shipped **5× larger**. Engineering
+quantized it back (max channel delta 14/255, visually indistinguishable), but
+that is a rescue, not a workflow.
+
+**The rule:** any change to an existing plate — desaturate, darken, warm, cool,
+flatten — is a re-render using the 16-colour palette, not a filter pass over the
+previous export. If the palette does not contain the darker shade you need, the
+palette entry is the thing to add.
+
+**Self-check before delivering a plate:** it should have on the order of a few
+hundred distinct colours, not tens of thousands, and it should be a palette PNG.
+The other three scene plates are 223, and all are palette-encoded.
