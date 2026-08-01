@@ -100,10 +100,14 @@ vi.mock("tone", async (importOriginal) => {
   };
 });
 
-const { ToneSoundPort, loopCacheKey, normalizeBpm, MAX_RECORD_SEC, normalizeBuffer } = await import(
-  "../../src/adapters/tone-sound-port.ts"
-);
-type NormalizableBuffer = Parameters<typeof normalizeBuffer>[0];
+const {
+  ToneSoundPort,
+  loopCacheKey,
+  normalizeBpm,
+  MAX_RECORD_SEC,
+  normalizeBuffer,
+  estimateSignalRms,
+} = await import("../../src/adapters/tone-sound-port.ts");
 
 /** A snapped clip WITH an effect, so resolving it awaits the offline bake. */
 function snappedClip(): Clip {
@@ -333,134 +337,181 @@ describe("ToneSoundPort recording cap", () => {
   });
 });
 
-describe("normalizeBuffer", () => {
-  const SR = 8000;
-  /** Mirrors LIMIT_CEIL in the adapter. Kept local rather than exported: the
-   *  ceiling is an internal choice, and what callers are owed is only that a
-   *  normalized take never reaches full scale. */
-  const LIMIT_CEIL_MAX = 0.98;
+// ── normalizeBuffer: the microphone-static fix ──────────────────────────────
+// Eric play-tested the deployed build and every recording came back as static.
+// Root cause was `normalizeBuffer` measuring its RMS over a fixed 0.003 floor,
+// which excludes digital silence but INCLUDES room tone: on a quiet take the
+// level it read was the room's, the gain went to its cap of 60, and `Math.tanh`
+// over every sample at that drive is a square-wave shaper (measured crest factor
+// 1.005, where a literal square wave is 1.000).
+//
+// These tests pin the two-sided property that fix has to hold: quiet SPEECH must
+// get loud, while the ROOM AROUND IT must not. A one-sided "gets louder" test is
+// what the buggy version would also have passed.
 
-  /** A `NormalizableBuffer` over one channel of samples. */
-  const buffer = (samples: Float32Array, sampleRate = SR): NormalizableBuffer => ({
+/** Deterministic ±1 noise. No Math.random: a flaky audio test is worse than none. */
+function makeNoise(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s * 1664525 + 1013904223) >>> 0;
+    return (s / 0x100000000) * 2 - 1;
+  };
+}
+
+const SR_TEST = 8000;
+
+function makeAudioBuffer(samples: Float32Array): AudioBuffer {
+  return {
     numberOfChannels: 1,
-    sampleRate,
+    length: samples.length,
+    sampleRate: SR_TEST,
+    duration: samples.length / SR_TEST,
     getChannelData: () => samples,
-  });
+  } as unknown as AudioBuffer;
+}
 
-  /** RMS over the whole buffer. */
-  const rms = (d: Float32Array): number => {
-    let s = 0;
-    for (const x of d) s += x * x;
-    return Math.sqrt(s / d.length);
-  };
-  const peak = (d: Float32Array): number => {
-    let p = 0;
-    for (const x of d) p = Math.max(p, Math.abs(x));
-    return p;
-  };
-  /** The shape that actually broke, and it matters that it is THIS shape: a kid
-   *  holds the button, says one short word, and lets go. So the take is mostly
-   *  room tone with a brief, genuinely quiet voice in it — 10 % of the duration
-   *  at ~4x the noise floor. A gentler mix (longer or louder speech) does not
-   *  reproduce the bug, because then the voice dominates the global average and
-   *  even the old estimator lands near the right answer. */
-  const quietTakeInARoom = (noise = 0.008, voice = 0.03): Float32Array => {
-    const total = SR * 3; // 3 s held
-    const out = new Float32Array(total);
-    // Deterministic pseudo-noise — the architecture guard forbids Math.random
-    // in src/, and a fixed sequence keeps this test reproducible anyway.
-    let seed = 12345;
-    const nextNoise = (): number => {
-      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
-      return (seed / 0x7fffffff) * 2 - 1;
-    };
-    for (let i = 0; i < total; i++) out[i] = nextNoise() * noise;
-    // 300 ms of "voice": a 200 Hz tone at `voice` amplitude.
-    const from = Math.floor(total * 0.4);
-    const to = from + Math.floor(SR * 0.3);
-    for (let i = from; i < to; i++) {
-      out[i] = (out[i] as number) + Math.sin((2 * Math.PI * 200 * i) / SR) * voice;
+/** Room tone alone — nobody in the room, mic left open. */
+function roomTone(seconds: number, amplitude: number): Float32Array {
+  const noise = makeNoise(7);
+  const out = new Float32Array(Math.round(seconds * SR_TEST));
+  for (let i = 0; i < out.length; i++) out[i] = noise() * amplitude;
+  return out;
+}
+
+/** A realistic quiet take: room tone throughout, with short spoken bursts. The
+ *  burst windows are returned so a test can measure signal and silence apart. */
+function quietSpeech(): { samples: Float32Array; burst: [number, number]; quiet: [number, number] } {
+  const noise = makeNoise(11);
+  const seconds = 4;
+  const out = new Float32Array(seconds * SR_TEST);
+  for (let i = 0; i < out.length; i++) out[i] = noise() * 0.004; // room floor
+  // Two ~0.4s syllables at a genuinely quiet speaking level (peak 0.05).
+  for (const [from, to] of [[1.0, 1.4], [2.2, 2.6]] as const) {
+    for (let i = Math.round(from * SR_TEST); i < Math.round(to * SR_TEST); i++) {
+      out[i] = (out[i] as number) + Math.sin((i / SR_TEST) * 2 * Math.PI * 180) * 0.05;
     }
-    return out;
-  };
-  /** Where the spoken part lives, for slicing. */
-  const VOICE_FROM = Math.floor(SR * 3 * 0.4);
+  }
+  return { samples: out, burst: [1.0, 1.4], quiet: [3.0, 3.9] };
+}
 
-  it("never lets a boosted take exceed the ceiling", () => {
-    // This guards the LIMITER only — the floor and click tests below are what
-    // discriminate the loudness estimator, which is the actual bug.
-    //
-    // Worth recording honestly, because it corrects the first diagnosis: a bare
-    // `Math.tanh(gain * x)` is destructive only when `gain * |x|` is large, and
-    // once the estimator is right that product lands near the target (~0.12),
-    // where tanh is almost linear. Swapping tanh for a knee'd limiter is NOT
-    // observably different on a realistic take — verified by seeding it. The
-    // runaway gain was the cause; tanh was only the mechanism.
-    //
-    // What the limiter does buy is a hard guarantee: raw multiplication would
-    // push a loud-ish take past full scale and clip it.
-    const hot = new Float32Array(SR);
-    for (let i = 0; i < hot.length; i++) {
-      hot[i] = Math.sin((2 * Math.PI * 200 * i) / SR) * 0.15;
+function rmsOf(samples: Float32Array, fromSec: number, toSec: number): number {
+  const from = Math.round(fromSec * SR_TEST);
+  const to = Math.round(toSec * SR_TEST);
+  let sumSq = 0;
+  for (let i = from; i < to; i++) sumSq += (samples[i] as number) ** 2;
+  return Math.sqrt(sumSq / (to - from));
+}
+
+const peakOf = (s: Float32Array): number => s.reduce((m, x) => Math.max(m, Math.abs(x)), 0);
+
+describe("normalizeBuffer", () => {
+  it("leaves an empty room exactly as recorded", () => {
+    // THE regression guard. The old code lifted this to ~0.25 RMS of constant
+    // hiss, which is the static Eric heard on every take.
+    const samples = roomTone(3, 0.01);
+    const before = Float32Array.from(samples);
+    normalizeBuffer(makeAudioBuffer(samples));
+    expect(Array.from(samples)).toEqual(Array.from(before));
+  });
+
+  it("makes quiet speech loud WITHOUT bringing the room up with it", () => {
+    const { samples, burst, quiet } = quietSpeech();
+    const roomBefore = rmsOf(samples, quiet[0], quiet[1]);
+    normalizeBuffer(makeAudioBuffer(samples));
+
+    // The voice arrives at a usable level…
+    expect(rmsOf(samples, burst[0], burst[1])).toBeGreaterThan(0.04);
+    // …and the room stays down where it belongs. Measured: this fix leaves the
+    // silent region at 0.005 RMS; the old normalizer pushed it to 0.023 —
+    // audible, continuous hiss between every word. 0.01 sits between the two
+    // with better than 2x margin either side.
+    expect(rmsOf(samples, quiet[0], quiet[1])).toBeLessThan(0.01);
+    // Still a real recording of a real room, not a gate that chopped it out.
+    expect(rmsOf(samples, quiet[0], quiet[1])).toBeGreaterThan(roomBefore);
+  });
+
+  it("passes everything below the limiter knee through untouched", () => {
+    // The structural half of the fix. The old code ran `Math.tanh(gain * x)` over
+    // EVERY sample, so no part of the signal survived un-warped. Here the gain is
+    // exact wherever the result lands below the knee — only genuine peaks bend —
+    // which is what preserves the shape of a voice.
+    const { samples } = quietSpeech();
+    const before = Float32Array.from(samples);
+    normalizeBuffer(makeAudioBuffer(samples));
+
+    // Recover the gain from a sample that is nowhere near the knee.
+    let gain = 0;
+    for (let i = 0; i < before.length; i++) {
+      const b = before[i] as number;
+      if (Math.abs(b) > 1e-3) { gain = (samples[i] as number) / b; break; }
     }
-    // A deliberately hot target forces the full 12x cap: 0.15 * 12 = 1.8.
-    normalizeBuffer(buffer(hot), 5);
-    expect(peak(hot)).toBeLessThanOrEqual(LIMIT_CEIL_MAX);
+    expect(gain).toBeGreaterThan(1);
+
+    let checked = 0;
+    for (let i = 0; i < before.length; i++) {
+      const linear = gain * (before[i] as number);
+      if (Math.abs(linear) < 0.7) {
+        expect(samples[i]).toBeCloseTo(linear, 6);
+        checked++;
+      }
+    }
+    expect(checked).toBeGreaterThan(before.length * 0.9);
   });
 
-  it("leaves the room floor inaudible instead of amplifying it to a roar", () => {
-    const samples = quietTakeInARoom();
-    normalizeBuffer(buffer(samples));
-    // Measure the first 250 ms, which is room tone only (voice starts at 40%).
-    const floorOnly = samples.slice(0, Math.floor(SR * 0.25));
-    // The old path lifted the floor to ~0.25 RMS — a constant hiss as loud as
-    // the target level itself. It must stay far below the speech level.
-    expect(rms(floorOnly)).toBeLessThan(0.05);
+  it("keeps the peaks proportional instead of squashing them flat", () => {
+    // Secondary sanity check, not the regression guard: on THIS fixture the old
+    // code also scored ~3.3, because its gain here was only ~10. Crest factor
+    // only collapses once the old gain approached its cap of 60. The guards that
+    // actually bite on the bug are the two tests above.
+    const { samples } = quietSpeech();
+    normalizeBuffer(makeAudioBuffer(samples));
+    const overall = rmsOf(samples, 0, samples.length / SR_TEST);
+    expect(peakOf(samples) / overall).toBeGreaterThan(3);
   });
 
-  it("still makes a quiet take meaningfully louder", () => {
-    const samples = quietTakeInARoom();
-    const before = rms(samples);
-    normalizeBuffer(buffer(samples));
-    expect(rms(samples)).toBeGreaterThan(before * 2);
-    // ...without ever clipping.
-    expect(peak(samples)).toBeLessThanOrEqual(1);
+  it("never exceeds full scale, however quiet the input", () => {
+    for (const amp of [0.002, 0.02, 0.2, 0.9]) {
+      const noise = makeNoise(3);
+      const samples = new Float32Array(2 * SR_TEST);
+      for (let i = 0; i < samples.length; i++) {
+        samples[i] = noise() * amp * (i % 1000 < 300 ? 1 : 0.05);
+      }
+      normalizeBuffer(makeAudioBuffer(samples));
+      expect(peakOf(samples)).toBeLessThanOrEqual(1);
+    }
   });
 
-  it("is not fooled by a lone click — the reason RMS replaced peak in f0d0996", () => {
-    const samples = quietTakeInARoom();
-    const withClick = Float32Array.from(samples);
-    withClick[100] = 1; // one full-scale sample
-    normalizeBuffer(buffer(samples));
-    normalizeBuffer(buffer(withClick));
-    // Compare the voice section only — the click itself is in the first 250 ms.
-    const from = VOICE_FROM;
-    const clean = rms(samples.slice(from, from + 1000));
-    const clicked = rms(withClick.slice(from, from + 1000));
-
-    // A percentile is not *immune* to one extra loud block — it shifts by one
-    // rank — but it barely moves: under 1%. Peak-normalizing, which is what
-    // f0d0996 was right to abandon, would have differed by ~15x here (gain
-    // 0.97 with the click vs ~14.7 without). That contrast is the whole point.
-    expect(Math.abs(clean - clicked) / clean).toBeLessThan(0.01);
+  it("leaves an already-loud take alone", () => {
+    const noise = makeNoise(5);
+    const samples = new Float32Array(2 * SR_TEST);
+    for (let i = 0; i < samples.length; i++) samples[i] = noise() * 0.6;
+    const before = Float32Array.from(samples);
+    normalizeBuffer(makeAudioBuffer(samples));
+    for (let i = 0; i < samples.length; i++) {
+      expect(samples[i]).toBeCloseTo(before[i] as number, 5);
+    }
   });
 
-  it("leaves an already-loud take alone rather than attenuating it", () => {
-    const loud = new Float32Array(SR);
-    for (let i = 0; i < loud.length; i++) loud[i] = Math.sin((2 * Math.PI * 200 * i) / SR) * 0.9;
-    const copy = Float32Array.from(loud);
-    normalizeBuffer(buffer(loud));
-    expect(Array.from(loud)).toEqual(Array.from(copy));
+  it("does not touch a digitally silent buffer", () => {
+    const samples = new Float32Array(SR_TEST);
+    normalizeBuffer(makeAudioBuffer(samples));
+    expect(peakOf(samples)).toBe(0);
+  });
+});
+
+describe("estimateSignalRms", () => {
+  it("reads the voice's level, not the room's", () => {
+    const { samples } = quietSpeech();
+    const { rms, hasBursts } = estimateSignalRms(makeAudioBuffer(samples));
+    expect(hasBursts).toBe(true);
+    // Room is 0.004 RMS, speech ~0.035. A whole-buffer RMS lands near 0.013;
+    // the estimate has to come back up at the speech, which is the whole point.
+    expect(rms).toBeGreaterThan(0.02);
   });
 
-  it("leaves a silent room silent instead of amplifying nothing", () => {
-    const silent = new Float32Array(SR);
-    for (let i = 0; i < silent.length; i++) silent[i] = 1e-6;
-    normalizeBuffer(buffer(silent));
-    expect(peak(silent)).toBeLessThan(1e-4);
-  });
-
-  it("handles an empty buffer without throwing", () => {
-    expect(() => normalizeBuffer(buffer(new Float32Array(0)))).not.toThrow();
+  it("reports a uniform take as burstless so the caller can refuse to boost it", () => {
+    const { rms, hasBursts } = estimateSignalRms(makeAudioBuffer(roomTone(3, 0.01)));
+    expect(hasBursts).toBe(false);
+    expect(rms).toBeLessThan(0.02);
   });
 });

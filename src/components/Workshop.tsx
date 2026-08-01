@@ -295,6 +295,12 @@ export const Workshop: FC = () => {
       if (start) {
         if (phase.current !== "idle") return;
         phase.current = "opening";
+        // Stop the loop before opening the mic. On a laptop there is no headset:
+        // whatever is playing goes out the speakers, straight back into the mic,
+        // and then gets multiplied by the normalizer. Playback policy belongs
+        // here rather than in the port — React already owns `engine` (see
+        // `onStop` above), and the port stays free of opinions about transport.
+        engine.stop();
         onOpening();
         try { await sound.startRecording(); } catch (err) { console.error("mic open failed", err); phase.current = "idle"; onError(); return; }
         if ((phase.current as RecPhase) === "stopping") void finish();
