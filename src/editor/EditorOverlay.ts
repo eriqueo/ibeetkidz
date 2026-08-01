@@ -42,6 +42,12 @@ export class EditorOverlay {
     this.build();
     this.bindKeys();
     this.layout();
+    // Paint the HUD immediately. `build()` creates it empty and every other
+    // caller of `refreshHud` is a selection or a keypress, so arriving in the
+    // editor used to show outlines and a blank chip — the one place that says
+    // which map you are editing and which keys do anything stayed invisible
+    // until you happened to click an outline.
+    this.refreshHud();
   }
 
   private build(): void {
