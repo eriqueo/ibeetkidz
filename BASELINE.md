@@ -319,3 +319,48 @@ gone red on CI, since its own assertions are all `masterPeak > 0`.
 
 `audio-output.spec.ts` passed in the full local run this time. The standing
 "re-run it alone before calling a red a regression" guidance is unchanged.
+
+---
+
+## Re-baseline — 2026-08-01, one lane cap + a harness that can see a dead button
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **399** / 26 files, 0 skipped | 398 / 26 |
+| E2E local | **29 passed** | 27 |
+| E2E under `CI=1` | 25 passed, 4 skipped | 23 + 4 |
+| E2E spec files | **8** | 7 |
+
+Two fixes, both measured.
+
+**`MAX_LAYERS` is 6, not 8, and `addLayer` refuses instead of evicting.** There
+were TWO producers of "how many lanes a car holds" — `MAX_LAYERS` (8) in core and
+`WORKSHOP_GRID_V2.maxLanes` (6) in the scene — and the gap between them was a
+reachable illegal state: lanes 7 and 8 existed, were scheduled and AUDIBLE
+(`scheduleLayers` walks `part.layers`, not the grid's sliced view), but had no row
+and therefore no ✕. Past 8 the reducer stole the oldest lane outright, with no
+warning and no undo offer (`addLayer` is not classified destructive). `maxLanes`
+now derives from `MAX_LAYERS`; the reducer refuses at the cap and returns the SAME
+state object, which the dispatch funnel already reads as "nothing happened". The
+unit test that asserted eviction is replaced — it had encoded the data loss as
+expected behaviour.
+
+**`tests/e2e/chrome-reachable.spec.ts` (2 tests, both CI-safe)** closes the
+harness gap this session measured: neutering `fire()` in `ui-scene.ts` — which
+kills every Tiled-authored button and instrument in the Workshop, Yard and Track —
+scored **20/20 passed** on the suite as it stood. Every other spec drives the app
+by `emit()`ing on the EventBus rather than tapping, so it proves handlers work and
+says nothing about whether any button reaches them. The new spec taps real screen
+pixels via `page.mouse.click` and asserts real outcomes.
+
+It also found that there are **TWO chrome pipelines**, not one:
+`ui-scene.spawnUiLayer` (Workshop/Yard/Track, all through `fire()`) and
+`TiledSceneAdapter.spawnTiledScene` (Map only), which carries its OWN duplicated
+arm/press/emit block. That is why the original mutation left the Map working, and
+why the earlier "all four scenes dead" claim was wrong — it was three of four, 31
+of the 34 action-bearing spawns. The duplication is **not fixed** (it is a
+refactor, not this fix) but the spec now walks both pipelines.
+
+**Both seeded, each failing on its own assertion:** killing `ui-scene.fire()` →
+"tapping the Workshop's YARD plaque did nothing"; killing
+`TiledSceneAdapter`'s emit → "tapping the Map's WORKSHOP sign did nothing".
