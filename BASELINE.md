@@ -289,3 +289,33 @@ bash scripts/check-sprite-alpha.sh      # sprite alpha export rule (CI: asset-si
 `scripts/check_sprite_alpha.py` is a stricter pixel-level diagnostic (corners
 truly transparent, no semi-opaque wash). **Not wired to CI** — it currently fails
 on shipped button art, which is a pre-existing issue nobody has decided about.
+
+---
+
+## Re-baseline — 2026-08-01, Sound Pads given a state outcome
+
+**Measured mid-swarm.** Other agents were editing this tree at the same time
+(`tests/e2e/track-timing.spec.ts` and a throwaway `tests/e2e/_melody-probe.spec.ts`
+were both present and passing during this run), so the TOTALS below are the
+tree's, not one ticket's. The attributable delta is called out separately.
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **398** / 26 files, 0 skipped | 392 / 26 |
+| E2E local, whole tree as found | **27 passed** | 20 |
+| E2E spec files present | 7 + 1 throwaway probe | 6 |
+
+**This ticket's delta:** +6 unit tests (`nextRecordingLabel` in
+`project-state.test.ts`) and +2 e2e in `tool-panels.spec.ts`. **Both new e2e run
+on CI** — verified directly (`CI=1 npx playwright test tests/e2e/tool-panels.spec.ts`
+→ 8 passed, 1 skipped).
+
+**The count of runtime skips is still FOUR.** The pads block of
+`tool-panels.spec.ts` was skipped because "a pad tap has no state outcome"; a pad
+tap now lands a lane, so the state half was extracted into two CI-safe tests and
+the block kept its skip for the half that is still only audible (the sample and
+the theremin reaching the master output). Un-skipping it wholesale would have
+gone red on CI, since its own assertions are all `masterPeak > 0`.
+
+`audio-output.spec.ts` passed in the full local run this time. The standing
+"re-run it alone before calling a red a regression" guidance is unchanged.

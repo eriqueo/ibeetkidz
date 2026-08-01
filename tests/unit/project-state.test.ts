@@ -14,6 +14,7 @@ import {
   initHistory,
   dispatchAll,
   makeLayer,
+  nextRecordingLabel,
   redo,
   reduce,
   undo,
@@ -1366,5 +1367,55 @@ describe("dispatchAll", () => {
   it("an empty batch changes nothing", () => {
     const h0 = start();
     expect(dispatchAll(h0, [])).toBe(h0);
+  });
+});
+
+// The Sound Pads panel lists every recording a child has ever made, so two of
+// them called "My Voice 1" is a genuine dead end — there is nothing else on the
+// pad to tell them apart. Naming used to come from module-level counters in
+// `Workshop.tsx`, which reset to 0 on every page load while the clips they named
+// were autosaved and reloaded, so the collision was guaranteed on the second
+// session rather than merely possible.
+describe("nextRecordingLabel", () => {
+  const named = (...labels: string[]): Project => {
+    let s = emptyProject("p");
+    labels.forEach((label, i) => {
+      s = reduce(s, { type: "addClip", clip: { ...clip(`c${i}`), label } });
+    });
+    return s;
+  };
+
+  it("starts at 1 in an empty project", () => {
+    expect(nextRecordingLabel(emptyProject("p"), "My Voice")).toBe("My Voice 1");
+  });
+
+  it("continues from the highest number ALREADY in the project", () => {
+    // The bug in one line: a reloaded project holds "My Voice 1" and the next
+    // recording must not be called "My Voice 1" again.
+    expect(nextRecordingLabel(named("My Voice 1"), "My Voice")).toBe("My Voice 2");
+    expect(nextRecordingLabel(named("My Voice 1", "My Voice 2", "My Voice 3"), "My Voice")).toBe("My Voice 4");
+  });
+
+  it("fills past a gap rather than reusing a freed number", () => {
+    // Deleting "My Voice 2" must not make the next take a second "My Voice 3".
+    expect(nextRecordingLabel(named("My Voice 1", "My Voice 3"), "My Voice")).toBe("My Voice 4");
+  });
+
+  it("counts only its own prefix", () => {
+    const s = named("My Voice 1", "My Voice 2", "Voice Keys 1", "Magic Pad 7");
+    expect(nextRecordingLabel(s, "Voice Keys")).toBe("Voice Keys 2");
+    expect(nextRecordingLabel(s, "Magic Pad")).toBe("Magic Pad 8");
+    expect(nextRecordingLabel(s, "My Voice")).toBe("My Voice 3");
+  });
+
+  it("ignores labels that merely start with the prefix", () => {
+    // "My Voice" (no number) and "My Voice 2 copy" are not slot 2.
+    const s = named("My Voice", "My Voice 2 copy", "My Voicebox 9");
+    expect(nextRecordingLabel(s, "My Voice")).toBe("My Voice 1");
+  });
+
+  it("treats the prefix as a literal, not a pattern", () => {
+    // A regex metacharacter in the prefix must not match anything it shouldn't.
+    expect(nextRecordingLabel(named("Ax 4"), "A.")).toBe("A. 1");
   });
 });

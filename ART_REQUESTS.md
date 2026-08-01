@@ -32,14 +32,19 @@
    cars."* The Workshop is where a kid spends nearly all their time, and it is the
    one screen where background and foreground compete. Foreground is already
    correct; the fix is entirely in the plate.
-3. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring is
+3. **AR-026 — ×2 lever ON state + picture captions for the deck.** The only
+   entry in this queue where the shipped art says something FALSE: the switch
+   has one frame, so an armed ×2 still reads "OFF". Engineering can move the
+   lever (it does now) but cannot repaint a plaque. Small job, wrong-information
+   payoff.
+4. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring is
    Tiled-only).
-4. **AR-022 — Map building labels** (the boot screen names none of its three
+5. **AR-022 — Map building labels** (the boot screen names none of its three
    destinations). Prefer baking into the plate — see the entry for why the plaque
    route needs code first.
-5. **AR-020 — SEND SONG plaque + result panel**, **AR-018 — satellite tool panel
+6. **AR-020 — SEND SONG plaque + result panel**, **AR-018 — satellite tool panel
    plate** (engine parchment interim shipped for both).
-6. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
+7. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
    AR-009 / AR-017 (semi-opaque wash cleanups), AR-019 (yard readability).
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
@@ -72,6 +77,104 @@ engine draws it)."
 
 **Unblocks:** BaseToolPanel swaps its engine rectangle for the plate (one
 manifest entry + a placeUiSprite call, no per-tool changes).
+
+---
+
+## AR-026 · ×2 lever ON state + deck labels a non-reader can read — HIGH
+
+**Target files:** `src/assets/sprites/panels/toggle-double.png` (needs a SECOND
+state) and `panel-editor.png` (four baked captions).
+
+**Why (2026-08-01, Eric on the Melody Editor):** *"the x2 lever doesnt have any
+animation, it just gets highlighted and the switch doesnt move. also dont know
+what its supposed to do. also dont know what 'level' does either."*
+
+Two separate gaps, both in the art:
+
+**1. The switch ships as ONE frame.** `toggle-double` is a single 512² canvas
+with the lever baked pointing DOWN and an **"OFF" plaque baked in**, so there
+was no second state to swap to and the control could only tint. Engineering's
+interim: the frame's own lever column (`x 216..296, y 175..437` of the canvas)
+is drawn a second time over the base, mirrored about `y = 306`, which throws the
+ball from below the housing to the top of it — a real, animated throw out of the
+one frame we have. **What it CANNOT do is the plaque: an armed switch still
+reads "OFF".** That is the part only art can fix.
+
+**Prompt:** "Second state for the existing brass toggle switch
+`toggle-double.png`, same 512x512 canvas, same plate, same position — the ONLY
+differences: the lever thrown UP (ball at the top of the brass housing, stalk
+running down into it) and the small brass plaque reading **ON** instead of OFF.
+Deliver as `toggle-double-on.png` alongside the existing file renamed
+`toggle-double-idle.png`. Warm 16-color palette, 1px dark-plum outline,
+transparent outside the plate, RGBA with true alpha 0."
+
+**2. WOBBLE / CRUNCH / LEVEL / ×2 are baked into `panel-editor.png`** — four
+words and a maths symbol on a panel whose users are four to six and cannot read.
+WOBBLE and CRUNCH survive because a knob is self-evidently a thing you turn;
+LEVEL and ×2 do not, because neither a fader nor a switch says what quantity it
+moves. Engineering has added what it can WITHOUT art — the fader now fills its
+track gold as it rises, and the ×2 lever answers a throw with the sound it makes
+(one hit vs two) plus a ghost "split" preview on every note it could divide —
+but the captions themselves are pixels in the plate.
+
+**Prompt:** "Re-render `panel-editor.png` with the four control captions
+replaced by PICTURES, same slots, same size, same plate: (a) WOBBLE → a small
+wavy line; (b) CRUNCH → a jagged/broken line; (c) LEVEL → a small speaker with
+one arc on the left of the slot and three arcs on the right, i.e. quiet→loud
+along the fader's travel; (d) ×2 → two identical small notes side by side
+(NOT the characters '×2'). Keep the words underneath at half height if they
+fit — a reading adult should still get the name. Re-RENDER in the 16-colour
+palette, do not filter the existing plate (see the standing rule at the foot of
+this file)."
+
+**Unblocks:** (1) `UI_SPRITES["toggle-double"]` becomes an ordinary two-state
+`buttonDef`-shaped entry and `MelodyEditorPanel.renderToggle`'s mirrored column
+collapses to a one-line `setFrame` — the mirror trick exists only because the
+second state does not. (2) The last two controls in the app whose meaning is
+carried by a word.
+
+---
+
+## AR-025 · Sound Pads keycap — MEDIUM
+
+**Target files:** `src/assets/sprites/buttons/pad-key-idle.png` and
+`pad-key-seated.png` (ONE pair, shared by all ~34 pads — see "one shape, many
+tints" below).
+
+**Why (2026-08-01, Eric on the deployed build — "sound pad thing is old art"):**
+the Sound Pads panel drew every pad as a flat `Phaser.Rectangle` with a 3px
+stroke, and rendered the whole label — emoji included — in Press Start 2P at
+~12px, which turns each sound's picture into an invisible speck. It read as CSS
+buttons next to the Workshop's authored knobs, plaques and levers.
+
+The pads are now engine-drawn keycaps in the established chip language (rounded,
+cream/plum, hard offset shadow, gold rim + tick when the sound is in the car —
+the same treatment `undo-toast.ts` and the LCD chips use), with the glyph in the
+system font at pad scale. **That is the honest interim, not the target.** Painted
+art would put them in the same family as the transport keycaps.
+
+**Prompt:** "A blank square-ish pixel-art keycap for a kids' train-workshop
+music game, in the family of the existing `btn-transport-*` keys: chunky bevel,
+1px dark-plum outline, hard 3px drop shadow, flat fill, NO baked icon or text
+(the engine draws the sound's picture and name on the face), warm 16-color
+palette. Deliver TWO states on one shared canvas — `idle` (raised, shadow
+visible) and `seated` (pressed down into its socket, shadow gone, thin gold rim
+all round, small gold tick badge in the top-right corner). 512x512, transparent
+outside the key, RGBA with true alpha 0."
+
+**One shape, many tints — read this before drawing 34 keys.** Every pad carries
+its OWN colour from `src/core/sound-catalog.ts`, so the art must be a NEUTRAL
+light-grey key that the engine tints per sound (`setTint`). Do not deliver a
+coloured key, and do not deliver one per sound.
+
+**Unblocks:** `PadKey` in `src/game/tool-panels.ts` swaps its `Graphics` calls
+for two `placeUiSprite` calls plus a tint; the layout, hit area and in-car state
+machine are already built and need no change.
+
+**Also wanted, LOW, separate:** the ten drums and six tones currently show system
+emoji (🥁 🪘 🎩 …) as their pictures. Per-sound pixel icons in the house style
+would finish the job, but they are 16 small drawings and the keycap is worth more
+first.
 
 ---
 

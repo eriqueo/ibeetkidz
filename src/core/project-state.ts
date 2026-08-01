@@ -211,6 +211,32 @@ export function partForCar(state: Project, car: TrainCar): Part | undefined {
   return state.parts.find((p) => p.id === car.partId);
 }
 
+/**
+ * The next free `"<prefix> N"` name for a recording, derived from the clips the
+ * project ALREADY holds.
+ *
+ * Why this is not a counter: `Workshop.tsx` used module-level `voiceCount` /
+ * `keysCount` / `magicCount`, which live for the life of the JS module and
+ * therefore reset to 0 on every page load — while the clips they named are
+ * autosaved and reloaded. So the second session named its first recording "My
+ * Voice 1" again, on top of the "My Voice 1" already in the save, and the Sound
+ * Pads panel (the one place every past recording is listed) showed five pads
+ * called "My Voice 1" that a child has no way to tell apart. The name has to
+ * come from the same place the clips do.
+ *
+ * Only names of the exact shape `"<prefix> <digits>"` count toward the maximum,
+ * so a clip renamed to something else can never push the numbering.
+ */
+export function nextRecordingLabel(state: Project, prefix: string): string {
+  const pattern = new RegExp(`^${prefix.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")} (\\d+)$`);
+  let max = 0;
+  for (const clip of Object.values(state.clips)) {
+    const n = Number(pattern.exec(clip.label)?.[1]);
+    if (Number.isFinite(n) && n > max) max = n;
+  }
+  return `${prefix} ${max + 1}`;
+}
+
 /** Rewrite the active car's lanes via `fn`; identity-stable (no-op `fn` →
  *  same Project, so undo history stays clean). All layer reducers go through
  *  this, so they operate on the car Home is focused on. */

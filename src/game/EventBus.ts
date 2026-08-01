@@ -98,10 +98,19 @@ export interface EventMap {
   "tool-melody-toggle": [stepIndex: number, row: number];
   // Instrument editor (AR-016): toggle an existing note's ×2 double-beat roll.
   "tool-melody-double": [stepIndex: number, row: number];
+  // Instrument editor: the ×2 lever was thrown. React answers with an AUDIBLE
+  // demonstration — one hit when it goes off, two when it comes on. "×2" is a
+  // maths symbol on a switch aimed at four-year-olds; the only label that
+  // works is the sound the switch makes.
+  "tool-melody-twice-mode": [armed: boolean];
   // Instrument editor control deck → the lane being edited (0..1 values).
   "tool-lane-wobble": [value: number];
   "tool-lane-crunch": [value: number];
   "tool-lane-volume": [value: number];
+  // …and the fader RELEASED, which is when the lane plays one note at its new
+  // loudness. Separate from the streaming `tool-lane-volume` on purpose: a note
+  // per drag sample would be a machine-gun.
+  "tool-lane-volume-done": [value: number];
 
   // ── Undo ("Forgiving UX. Undo everywhere") ─────────────────────────────────
   // React -> every scene: something was just taken away; offer to put it back.

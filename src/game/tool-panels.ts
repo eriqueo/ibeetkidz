@@ -55,7 +55,22 @@ const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
 export interface ToolModel {
   readonly voice: { hasClip: boolean; status: string; appliedFx: number; onHome: boolean };
   readonly keys: { hasClip: boolean; status: string; keyLabels: readonly string[]; onHome: boolean };
-  readonly pads: readonly { id: string; label: string; emoji: string; color: string }[];
+  readonly pads: readonly {
+    id: string;
+    label: string;
+    emoji: string;
+    color: string;
+    /** Instrument family — the shelf this pad sits on. Matches `LaneGroup`. */
+    group: "drum" | "tone" | "voice";
+    /** Big numeral shown INSTEAD of the emoji, for pads whose emoji is identical
+     *  across the whole shelf (every recording is a 🎤). Empty = use the emoji. */
+    badge: string;
+    /** Is this sound already a lane in the active car? */
+    inCar: boolean;
+  }[];
+  /** The car has as many lanes as the chalkboard can show — a further pad tap
+   *  auditions but cannot land. The panel says so rather than going quiet. */
+  readonly padsFull: boolean;
   readonly beat: readonly { id: string; emoji: string; cells: readonly boolean[] }[];
   readonly magic: { recording: boolean; hasClip: boolean; onHome: boolean; status: string };
   // Instrument editor for the selected melody lane (MELODY_ROWS × STEP_COUNT).
@@ -281,39 +296,267 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
 }
 
 // ── Sound Pads ────────────────────────────────────────────────────────────────
+//
+// The sound LIBRARY: every built-in sound plus every recording the child has
+// made. Tapping a pad hears it AND puts it in the car (see `onPadsPlay` in
+// Workshop.tsx for why that is the tool's job).
+//
+// Three things this panel has to do that the old flat grid did not:
+//
+//   1. GROUP. ~34 undifferentiated pads is not a menu a four-year-old can read,
+//      and the built-in pack's per-sound colours collide across families (Do is
+//      the same blue as Ding, Mi the same pink as Snap). `core/lane-color.ts`
+//      already states the rule — the mix reads by colour = KIND — so the pads
+//      are shelved by family, each shelf headed by the character sprite that
+//      owns it, and the shelf is where the family colour lives.
+//   2. SHOW THE OUTCOME. The panel covers the chalkboard, so a lane landing
+//      behind it is invisible. Each pad shows whether its sound is in the car.
+//   3. BE PRESSABLE. The old pads were flat `Rectangle`s whose whole label —
+//      emoji included — was rendered in Press Start 2P at ~12px, which makes the
+//      emoji an unreadable speck and the pixel font the only thing carrying the
+//      sound's identity. The glyph is now drawn in the system font at pad scale
+//      (the same thing `BeatToolPanel` does for its row icons) with the word
+//      kept underneath, so a pre-reader has a picture and a reader has a name.
+//
+// Drawn with Graphics in the scene's established chip language — cream/plum,
+// rounded, hard offset shadow, no gradients — the same treatment `undo-toast.ts`
+// and the LCD chips use. Painted keycap art is requested as AR-025; this is the
+// honest interim, not a permanent choice.
+
+/** Pads per row, on every shelf. Six makes the tone shelf exactly one row —
+ *  Do·Re·Mi·Sol·La·Do! reads as the scale it is — and splits the ten drums into
+ *  a full row and a part row. */
+const PAD_COLS = 6;
+/** Most recordings shown on the YOUR SOUNDS shelf. Past this the pads would
+ *  shrink below a thumb; the clips are still in the project, just not all on the
+ *  shelf at once. */
+const PADS_PER_SHELF = 12;
+
+/** The shelves, in draw order. Built-ins first so the layout a kid learns does
+ *  not reshuffle every time they record something. */
+const PAD_SHELVES: readonly {
+  group: "drum" | "tone" | "voice";
+  title: string;
+  sprite: string;
+  empty: string;
+}[] = [
+  { group: "drum", title: "DRUMS", sprite: "inst-drums", empty: "" },
+  { group: "tone", title: "NOTES", sprite: "inst-piano", empty: "" },
+  { group: "voice", title: "YOUR SOUNDS", sprite: "inst-mic", empty: "Record one with the mic or the magic pad!" },
+];
+
+const PAD_GOLD = 0xffd166;
+
+/** One sound, as a pressable keycap. Deliberately NOT a `PanelButton`: that
+ *  class is shared with My Voice / Voice Keys / Magic Pad, and restyling it
+ *  would restyle them too. */
+class PadKey {
+  readonly container: Phaser.GameObjects.Container;
+  private readonly chip: Phaser.GameObjects.Graphics;
+  private readonly glyph: Phaser.GameObjects.Text;
+  private readonly caption: Phaser.GameObjects.Text;
+  private readonly tick: Phaser.GameObjects.Text;
+  private readonly hit: Phaser.GameObjects.Rectangle;
+  private box: Box = { x: 0, y: 0, w: 0, h: 0 };
+  private inCar = false;
+
+  constructor(scene: Phaser.Scene, private readonly fill: number, glyph: string, label: string, onPress: () => void) {
+    this.chip = scene.add.graphics();
+    // No fontFamily: Press Start 2P carries no emoji glyphs, so an emoji set in
+    // it renders as tofu or a speck. The system font is what `BeatToolPanel`
+    // already uses for exactly this reason.
+    this.glyph = scene.add.text(0, 0, glyph, { fontSize: "24px", align: "center" }).setOrigin(0.5);
+    this.caption = scene.add
+      .text(0, 0, label, { fontFamily: FONT, fontSize: "9px", color: labelColorFor(fill), align: "center" })
+      .setOrigin(0.5);
+    this.tick = scene.add.text(0, 0, "✓", { fontFamily: FONT, fontSize: "10px", color: "#2b2440" }).setOrigin(0.5).setVisible(false);
+    this.hit = scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setInteractive({ useHandCursor: true });
+    // Fire on PRESS, matching `PanelButton`: a pad is a drum head, and a sound
+    // that waits for the release feels broken. A press cannot leak in from
+    // elsewhere the way a release can, so this needs no arming.
+    this.hit.on("pointerdown", () => { this.container.setScale(0.94); onPress(); });
+    this.hit.on("pointerup", () => this.container.setScale(1));
+    this.hit.on("pointerout", () => this.container.setScale(1));
+    this.container = scene.add.container(0, 0, [this.chip, this.glyph, this.caption, this.tick, this.hit]);
+  }
+
+  /** Is this sound already a lane in the car? Seats the keycap and lights it. */
+  setInCar(v: boolean): void {
+    if (v === this.inCar) return;
+    this.inCar = v;
+    this.redraw();
+  }
+
+  place(b: Box): void {
+    this.box = b;
+    this.container.setPosition(b.x + b.w / 2, b.y + b.h / 2);
+    // Off the SHORT side, so a wide slot gives a big glyph rather than a wide
+    // one — these are picture-first controls for a child who cannot read.
+    const glyphPx = Math.max(14, Math.round(Math.min(b.w * 0.46, b.h * 0.46)));
+    this.glyph.setFontSize(glyphPx);
+    // Long names ("Voice Keys 1") wrap to two lines, so the caption is sized to
+    // keep two lines clear of the glyph rather than to fill one.
+    this.caption
+      .setFontSize(Math.max(7, Math.round(Math.min(b.w * 0.11, b.h * 0.15))))
+      .setWordWrapWidth(b.w - 8);
+    this.tick.setFontSize(Math.max(9, Math.round(b.h * 0.2)));
+    this.hit.setSize(b.w, b.h);
+    this.redraw();
+  }
+
+  private redraw(): void {
+    const { w, h } = this.box;
+    if (w <= 0) return;
+    const rad = Math.min(h * 0.24, 14);
+    const drop = Math.max(3, Math.round(h * 0.09));
+    // Seated pads shift onto where their shadow was, so the content moves with
+    // the face rather than floating over it.
+    const dx = this.inCar ? drop / 2 : 0;
+    const g = this.chip.clear();
+    if (this.inCar) {
+      // In the car: the keycap is pressed down into its socket, rimmed in gold,
+      // and wears a tick on a gold badge. Three cues, because this is the only
+      // place the outcome of a tap is visible — the panel covers the chalkboard
+      // where the lane actually lands.
+      const fx = -w / 2 + drop, fy = -h / 2 + drop, fw = w - drop, fh = h - drop;
+      g.fillStyle(PANEL_EDGE, 0.55).fillRoundedRect(-w / 2, -h / 2, w, h, rad);
+      g.fillStyle(this.fill, 1).fillRoundedRect(fx, fy, fw, fh, rad);
+      g.lineStyle(Math.max(3, h * 0.07), PAD_GOLD, 1).strokeRoundedRect(fx, fy, fw, fh, rad);
+      // Gold badge behind the tick: a plum tick straight on a pink or gold pad
+      // is nearly invisible, and this cue has to survive a glance.
+      const bs = Math.max(14, h * 0.3);
+      g.fillStyle(PAD_GOLD, 1).fillRoundedRect(fx + fw - bs * 0.9, fy - bs * 0.1, bs, bs, bs * 0.3);
+      g.lineStyle(2, PANEL_EDGE, 1).strokeRoundedRect(fx + fw - bs * 0.9, fy - bs * 0.1, bs, bs, bs * 0.3);
+      this.tick.setVisible(true).setPosition(fx + fw - bs * 0.4, fy + bs * 0.4);
+    } else {
+      g.fillStyle(PANEL_EDGE, 0.45).fillRoundedRect(-w / 2 + drop, -h / 2 + drop, w, h, rad);
+      g.fillStyle(this.fill, 1).fillRoundedRect(-w / 2, -h / 2, w, h, rad);
+      g.lineStyle(Math.max(2, h * 0.045), PANEL_EDGE, 1).strokeRoundedRect(-w / 2, -h / 2, w, h, rad);
+      this.tick.setVisible(false);
+    }
+    this.glyph.setPosition(dx, -h * 0.21 + dx);
+    this.caption.setPosition(dx, h * 0.28 + dx);
+  }
+
+  destroy(): void { this.container.destroy(); }
+}
+
 export class PadsToolPanel extends BaseToolPanel {
-  private pads: { id: string; btn: PanelButton }[] = [];
+  private pads: { id: string; group: string; key: PadKey }[] = [];
+  private shelves: {
+    group: string;
+    icon: Phaser.GameObjects.Image;
+    title: Phaser.GameObjects.Text;
+    empty: Phaser.GameObjects.Text;
+  }[] = [];
+  private footer!: Phaser.GameObjects.Text;
+  /** STRUCTURAL signature only — which pads exist, not what state they are in.
+   *  In-car state changes on every tap and is applied in place; folding it in
+   *  here would destroy and rebuild all ~34 pads on each press, including the
+   *  one under the child's finger. */
   private signature = "";
 
   constructor(scene: Phaser.Scene) { super(scene, "🥁 Sound Pads"); }
 
-  protected buildContent(): void { /* pads built lazily in apply() */ }
+  protected buildContent(): void {
+    this.shelves = PAD_SHELVES.map((s) => {
+      const def = UI_SPRITES[s.sprite]!;
+      const icon = this.scene.add.image(0, 0, UI_ATLAS_KEY, def.base);
+      const title = this.scene.add.text(0, 0, s.title, { fontFamily: FONT, fontSize: "11px", color: INK }).setOrigin(0, 0.5);
+      const empty = this.scene.add
+        .text(0, 0, s.empty, { fontFamily: FONT, fontSize: "9px", color: "#5b5470", align: "center" })
+        .setOrigin(0.5)
+        .setVisible(false);
+      this.add([icon, title, empty]);
+      return { group: s.group, icon, title, empty };
+    });
+    // Says what the tool is for. The panel previously carried no instruction at
+    // all, and "tap a pad to hear a noise" was the only thing it could have said.
+    this.footer = this.scene.add
+      .text(0, 0, "", { fontFamily: FONT, fontSize: "9px", color: INK, align: "center" })
+      .setOrigin(0.5);
+    this.add(this.footer);
+  }
 
   protected layoutContent(): void {
     const i = this.inner;
-    const n = Math.max(1, this.pads.length);
-    const cols = Math.ceil(Math.sqrt(n));
-    const rows = Math.ceil(n / cols);
-    const gap = i.w * 0.02;
-    const cw = (i.w - gap * (cols - 1)) / cols;
-    const ch = (i.h - gap * (rows - 1)) / rows;
-    this.pads.forEach(({ btn }, k) => {
-      const c = k % cols, r = Math.floor(k / cols);
-      btn.place({ x: i.x + c * (cw + gap), y: i.y + r * (ch + gap), w: cw, h: ch }, Math.max(9, ch * 0.14));
-    });
+    if (this.shelves.length === 0) return;
+    const footerH = i.h * 0.1;
+    this.footer.setPosition(i.x + i.w / 2, i.y + i.h - footerH / 2).setFontSize(Math.max(8, i.h * 0.033));
+
+    const body = i.h - footerH;
+    const headerH = body * 0.11;
+    const gap = i.w * 0.014;
+    const cw = (i.w - gap * (PAD_COLS - 1)) / PAD_COLS;
+
+    // Every shelf pays for one header; the pad rows share what is left, so a
+    // kid with no recordings gets bigger drums rather than a hole.
+    const rowsFor = (group: string): number => {
+      const n = this.pads.filter((p) => p.group === group).length;
+      return n === 0 ? 1 : Math.ceil(n / PAD_COLS);
+    };
+    const totalRows = PAD_SHELVES.reduce((a, s) => a + rowsFor(s.group), 0);
+    const rowH = (body - headerH * PAD_SHELVES.length - gap * totalRows) / Math.max(1, totalRows);
+    // Keycaps, not letterboxes. A full-width column on a wide panel makes a pad
+    // ~3:1, which wastes the space the glyph should be using; cap the width and
+    // centre the row instead.
+    const padW = Math.min(cw, rowH * 1.9);
+    const rowW = padW * PAD_COLS + gap * (PAD_COLS - 1);
+    const x0 = i.x + (i.w - rowW) / 2;
+
+    let y = i.y;
+    for (const shelf of this.shelves) {
+      const iconDef = UI_SPRITES[PAD_SHELVES.find((s) => s.group === shelf.group)!.sprite]!;
+      const iconW = headerH * 0.9;
+      placeUiSprite(shelf.icon, iconDef, { x: x0 + iconW / 2, y: y + headerH / 2, width: iconW, height: headerH * 0.95 });
+      shelf.title.setPosition(x0 + iconW * 1.35, y + headerH / 2).setFontSize(Math.max(9, headerH * 0.4));
+      y += headerH;
+
+      const mine = this.pads.filter((p) => p.group === shelf.group);
+      const rows = rowsFor(shelf.group);
+      if (mine.length === 0) {
+        shelf.empty.setVisible(true).setPosition(i.x + i.w / 2, y + rowH / 2).setFontSize(Math.max(8, rowH * 0.16));
+      } else {
+        shelf.empty.setVisible(false);
+        mine.forEach(({ key }, k) => {
+          const c = k % PAD_COLS, r = Math.floor(k / PAD_COLS);
+          key.place({ x: x0 + c * (padW + gap), y: y + r * (rowH + gap), w: padW, h: rowH });
+        });
+      }
+      y += rows * (rowH + gap);
+    }
   }
 
   apply(model: ToolModel): void {
-    const sig = model.pads.map((p) => p.id).join("|");
-    if (sig === this.signature) return; // pad set unchanged
-    this.signature = sig;
-    this.pads.forEach(({ btn }) => btn.container.destroy());
-    this.pads = model.pads.map((p) => {
-      const btn = new PanelButton(this.scene, `${p.emoji}\n${p.label}`, () => EventBus.emit("tool-pads-play", p.id), Phaser.Display.Color.HexStringToColor(p.color).color);
-      this.add(btn.container);
-      return { id: p.id, btn };
+    const shown = PAD_SHELVES.flatMap((s) => {
+      const mine = model.pads.filter((p) => p.group === s.group);
+      // Newest wins the shelf when a kid has recorded more than it holds.
+      return mine.length > PADS_PER_SHELF ? mine.slice(-PADS_PER_SHELF) : mine;
     });
-    this.layoutContent();
+    const sig = shown.map((p) => p.id).join("|");
+    if (sig !== this.signature) {
+      this.signature = sig;
+      this.pads.forEach(({ key }) => key.destroy());
+      this.pads = shown.map((p) => {
+        const key = new PadKey(
+          this.scene,
+          Phaser.Display.Color.HexStringToColor(p.color).color,
+          p.badge || p.emoji,
+          p.label,
+          () => EventBus.emit("tool-pads-play", p.id),
+        );
+        this.add(key.container);
+        return { id: p.id, group: p.group, key };
+      });
+      this.layoutContent();
+    }
+    // Cheap per-pad state pass — no rebuild.
+    shown.forEach((p, k) => this.pads[k]?.key.setInCar(p.inCar));
+    this.footer.setText(
+      model.padsFull
+        ? "CAR IS FULL — TAKE ONE OUT TO ADD MORE"
+        : "TAP A SOUND TO PUT IT IN YOUR CAR",
+    );
   }
 }
 
@@ -443,10 +686,53 @@ export class MagicToolPanel extends BaseToolPanel {
 // ── Melody piano-roll editor ──────────────────────────────────────────────────
 // A BeepBox-style grid: MELODY_ROWS pitch rows (high at top) × STEP_COUNT steps.
 // Tapping a cell toggles a note at that (degree, step); React updates the lane.
+
+/**
+ * The instrument editor gets its OWN modal region rather than the shared
+ * `WORKSHOP_TOOL_MODAL`. That constant is tuned for the five ENGINE-DRAWN
+ * landscape parchment panels; this panel's art is PORTRAIT (1152×1536), and
+ * `placeUiSprite` contain-fits it, so the region's 0.70 height was the only
+ * binding axis and the panel used barely two-thirds of the canvas. Eric:
+ * "i also think the whole thing should be a little bigger".
+ *
+ * Phaser runs a FIXED 2560×1440 design space under `Scale.FIT` (see
+ * `game/main.ts`), so this is orientation-invariant: portrait and landscape get
+ * the identical layout, letterboxed differently by the browser. The art is
+ * height-bound at every viewport, so height is the number that matters.
+ */
+const MELODY_MODAL = { x: 0.02, y: 0.03, w: 0.96, h: 0.94 } as const;
+
+/** Fraction of the region reserved ABOVE the art for the title + ✕. They hang
+ *  off the art's top edge, so growing the art into the whole region pushed the
+ *  close button off the top of the canvas. */
+const MELODY_HEADER_FRAC = 0.09;
+
+/**
+ * The ×2 lever's own column inside `toggle-double`'s 512² canvas.
+ *
+ * The atlas ships ONE frame for this switch (verified: `toggle-double` is the
+ * only matching frame in `ui-atlas.json`) with the lever baked pointing DOWN
+ * and an "OFF" plaque — so there is no on/off pair to swap and the control
+ * could only ever tint. Measured off the PNG: the brass housing spans y
+ * 200..370 and the ball hangs BELOW it at y 372..416. Drawing this column a
+ * second time, mirrored about y = `axis`, throws the ball from under the
+ * housing to the top of it — a real lever throw out of the one frame we have.
+ *
+ * The column is opaque plate from edge to edge, so the mirrored copy always
+ * fully covers the baked lever underneath; there is never a hole. AR-026 asks
+ * for the proper ON art (lever up + "ON" plaque), which turns this into a
+ * plain frame swap.
+ */
+const LEVER_COLUMN = { x: 216, y: 175, w: 80, h: 262, axis: 306 } as const;
+/** `toggle-double`'s canvas is square; the mirror maths needs its centre. */
+const TOGGLE_TEX = 512;
+
 export class MelodyEditorPanel extends BaseToolPanel {
   private rowLabels: Phaser.GameObjects.Text[] = [];
   // cells[r] is the visual row from the TOP (r=0 = highest degree).
   private cells: Phaser.GameObjects.Rectangle[][] = [];
+  /** The slot drawn THROUGH a doubled cell, so the note reads as two blocks. */
+  private cellSplits: Phaser.GameObjects.Rectangle[][] = [];
   private cellOn: boolean[][] = [];
 
   private cellDouble: boolean[][] = [];
@@ -455,7 +741,21 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private knobWobble!: Phaser.GameObjects.Image;
   private knobCrunch!: Phaser.GameObjects.Image;
   private fader!: Phaser.GameObjects.Image;
+  /** How full the LEVEL fader is, drawn UP the baked track behind the handle.
+   *  "LEVEL" is a word a five-year-old cannot read; a gold column that grows is
+   *  a quantity they can. */
+  private levelFill!: Phaser.GameObjects.Rectangle;
+  private levelFillW = 2;
   private toggle!: Phaser.GameObjects.Image;
+  /** The mirrored lever column drawn over `toggle` — see `LEVER_COLUMN`. */
+  private toggleLever!: Phaser.GameObjects.Image;
+  /** 0 = at rest, 1 = fully compressed. Drives the throw's squash-and-spring;
+   *  Back.easeOut carries it slightly negative, which stretches. */
+  private toggleSquash = 0;
+  private toggleTween?: Phaser.Tweens.Tween;
+  /** The base toggle's rest transform, captured by `layoutContent` so the throw
+   *  animation can be replayed without re-running the placement maths. */
+  private toggleRest = { x: 0, y: 0, scale: 1 };
   private values = { wobble: 0, crunch: 0, volume: 1 };
   private draggingKnob: string | null = null;
   /** ×2 mode: while armed, tapping an existing note toggles its double-beat
@@ -474,7 +774,10 @@ export class MelodyEditorPanel extends BaseToolPanel {
     knobWobble: { cx: 0.1665, cy: 0.76, w: 0.185 },
     knobCrunch: { cx: 0.399, cy: 0.76, w: 0.185 },
     fader: { x: 0.5985, y0: 0.695, y1: 0.838, w: 0.1 },
-    toggle: { cx: 0.82, cy: 0.775, w: 0.12 },
+    // 0.12 left the switch adrift in a recess 0.22 wide — half the visual
+    // weight of the two knobs beside it, on the one control that has to read
+    // as a THING YOU THROW.
+    toggle: { cx: 0.82, cy: 0.775, w: 0.16 },
   } as const;
 
   protected buildContent(): void {
@@ -492,6 +795,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
       this.add(label);
       this.rowLabels.push(label);
       const rowCells: Phaser.GameObjects.Rectangle[] = [];
+      const rowSplits: Phaser.GameObjects.Rectangle[] = [];
       const rowOn: boolean[] = [];
       const rowDouble: boolean[] = [];
       for (let s = 0; s < STEP_COUNT; s++) {
@@ -510,11 +814,20 @@ export class MelodyEditorPanel extends BaseToolPanel {
         cell.on("pointerup", () => cell.setScale(1));
         cell.on("pointerout", () => cell.setScale(1));
         this.add(cell);
+        // The ×2 cue. A doubled note is one step that SOUNDS TWICE, so it is
+        // drawn as two blocks with a slot cut between them — the picture IS the
+        // effect. (It used to be a gold ring, which a comment claimed "reads as
+        // ×2 at kid size"; a ring is a decoration, not a count.) Non-interactive
+        // so it never steals the cell's tap.
+        const split = this.scene.add.rectangle(0, 0, 2, 10, 0x1b3c24, 1).setVisible(false);
+        this.add(split);
         rowCells.push(cell);
+        rowSplits.push(split);
         rowOn.push(false);
         rowDouble.push(false);
       }
       this.cells.push(rowCells);
+      this.cellSplits.push(rowSplits);
       this.cellOn.push(rowOn);
       this.cellDouble.push(rowDouble);
     }
@@ -522,19 +835,89 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // Control deck: the movable sprites over the baked recesses.
     this.knobWobble = this.makeKnob("knob-wobble", "wobble", (v) => EventBus.emit("tool-lane-wobble", v));
     this.knobCrunch = this.makeKnob("knob-crunch", "crunch", (v) => EventBus.emit("tool-lane-crunch", v));
+    // Added BEFORE the handle so the fill reads as liquid in the track and the
+    // handle rides on top of it.
+    this.levelFill = this.scene.add.rectangle(0, 0, 2, 2, 0xffd166, 1).setOrigin(0.5, 1);
     this.fader = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["fader-handle"]!.base).setInteractive({ useHandCursor: true });
-    this.bindVerticalDrag(this.fader, "volume", (v) => {
-      EventBus.emit("tool-lane-volume", v);
-      this.placeFader();
-    });
+    this.bindVerticalDrag(
+      this.fader,
+      "volume",
+      (v) => {
+        EventBus.emit("tool-lane-volume", v);
+        this.placeFader();
+      },
+      // On RELEASE the lane speaks at its new loudness. A fader whose only
+      // feedback is a word nobody can read teaches nothing; one note at the new
+      // level teaches it in one gesture.
+      (v) => EventBus.emit("tool-lane-volume-done", v),
+    );
     this.toggle = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base).setInteractive({ useHandCursor: true });
+    // The moving lever. Same frame, cropped to the switch's own column, drawn
+    // over the base — mirrored when armed. NOT interactive: the base takes the
+    // tap, so this cannot swallow it. Acting on pointerDOWN (rather than the
+    // scenes' armed press/release pair) is deliberate and unchanged: a pointerup
+    // that began somewhere else can never reach a down-handler.
+    this.toggleLever = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base);
+    this.toggleLever.setCrop(LEVER_COLUMN.x, LEVER_COLUMN.y, LEVER_COLUMN.w, LEVER_COLUMN.h);
     this.toggle.on("pointerdown", () => {
       this.doubleMode = !this.doubleMode;
       this.toggle.setTint(this.doubleMode ? 0xffd166 : 0xffffff);
-      this.toggle.setScale(this.toggle.scaleX * (this.doubleMode ? 1 : 1)); // tint is the state cue
+      this.toggleLever.setTint(this.doubleMode ? 0xffd166 : 0xffffff);
+      this.kickToggle();
+      this.refreshSplits();
+      EventBus.emit("tool-melody-twice-mode", this.doubleMode);
     });
-    this.add([this.knobWobble, this.knobCrunch, this.fader, this.toggle]);
+    this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle, this.toggleLever]);
     this.bringToTop(this.closeBtn.container);
+  }
+
+  /** Throw the lever: it snaps to its other pose immediately and the switch
+   *  compresses then springs back, which is what sells it as mechanical. The
+   *  pose itself is `renderToggle`; this only drives the squash. */
+  private kickToggle(): void {
+    this.toggleTween?.remove();
+    // Tween a plain object and read the property back — the same shape
+    // `undo-toast.ts` and `TrackScene` use. (`tweens.addCounter` + `getValue()`
+    // works too; this just matches the dialect.) Note when measuring this: a
+    // headless Playwright run renders at roughly 9 fps, so a 240 ms tween gets
+    // about two onUpdate calls there and looks like it is not animating at all.
+    const state = { v: 1 };
+    this.toggleTween = this.scene.tweens.add({
+      targets: state,
+      v: 0,
+      duration: 240,
+      ease: "Back.easeOut",
+      onUpdate: () => {
+        this.toggleSquash = state.v;
+        this.renderToggle();
+      },
+      onComplete: () => {
+        this.toggleSquash = 0;
+        this.renderToggle();
+      },
+    });
+  }
+
+  /**
+   * Pose both halves of the ×2 switch from `doubleMode` + `toggleSquash`.
+   *
+   * The lever half is the SAME texture, cropped to `LEVER_COLUMN` and drawn with
+   * a NEGATIVE scaleY when armed. Negative scale is a plain transform (unlike
+   * `setFlipY`, which also rewrites the crop's UVs), so it mirrors the drawn
+   * quad about the frame's centre — which moves the column by
+   * `2·scale·(axis − texCentre)`. Adding that back keeps the column exactly over
+   * the base's, mirrored in place: the ball travels from below the housing to
+   * the top of it, and the opaque plate underneath is never exposed.
+   */
+  private renderToggle(): void {
+    if (!this.toggle) return;
+    const squash = 1 - this.toggleSquash * 0.22;
+    const sy = this.toggleRest.scale * squash;
+    this.toggle.setScale(this.toggleRest.scale, sy).setPosition(this.toggleRest.x, this.toggleRest.y);
+    const mirror = this.doubleMode ? 2 * sy * (LEVER_COLUMN.axis - TOGGLE_TEX / 2) : 0;
+    this.toggleLever
+      .setScale(this.toggleRest.scale, this.doubleMode ? -sy : sy)
+      .setPosition(this.toggleRest.x, this.toggleRest.y + mirror);
   }
 
   private makeKnob(frame: string, key: "wobble" | "crunch", emit: (v: number) => void): Phaser.GameObjects.Image {
@@ -547,11 +930,14 @@ export class MelodyEditorPanel extends BaseToolPanel {
   }
 
   /** Drag up = value towards 1, down = towards 0 (kid-simple, works for knobs
-   *  and the fader alike). Emits only on real change while the drag lives. */
+   *  and the fader alike). Emits only on real change while the drag lives;
+   *  `onRelease` fires once when the finger lifts, for controls that answer
+   *  with a sound rather than a continuous stream of them. */
   private bindVerticalDrag(
     img: Phaser.GameObjects.Image,
     key: "wobble" | "crunch" | "volume",
     onChange: (v: number) => void,
+    onRelease?: (v: number) => void,
   ): void {
     img.on("pointerdown", (p: Phaser.Input.Pointer) => {
       const startY = p.y;
@@ -568,6 +954,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
         this.draggingKnob = null;
         this.scene.input.off("pointermove", move);
         this.scene.input.off("pointerup", up);
+        onRelease?.(this.values[key]);
       };
       this.scene.input.on("pointermove", move);
       this.scene.input.on("pointerup", up);
@@ -587,15 +974,23 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private placeFader(): void {
     const t = this.faderTrack;
     this.fader.setPosition(t.x, t.y1 + (t.y0 - t.y1) * this.values.volume);
+    // …and fill the track underneath it, so "how loud" is a height a
+    // pre-reader can compare rather than a five-letter word.
+    this.levelFill.setPosition(t.x, t.y1).setSize(this.levelFillW, Math.max(1, t.y1 - this.fader.y));
   }
 
   protected layoutContent(): void {
-    // Contain-fit the framed art into the modal region (it's portrait).
-    const m = WORKSHOP_TOOL_MODAL;
+    // Contain-fit the framed art into the modal region (it's portrait), with a
+    // band reserved at the top for the title + ✕, which hang off the art.
+    const m = MELODY_MODAL;
     const { width: sw, height: sh } = this.scene.scale.gameSize;
     const region = { x: sw * m.x, y: sh * m.y, w: sw * m.w, h: sh * m.h };
+    const headerH = region.h * MELODY_HEADER_FRAC;
     placeUiSprite(this.panelImg, UI_SPRITES["panel-editor"]!, {
-      x: region.x + region.w / 2, y: region.y + region.h / 2, width: region.w, height: region.h,
+      x: region.x + region.w / 2,
+      y: region.y + headerH + (region.h - headerH) / 2,
+      width: region.w,
+      height: region.h - headerH,
     });
     const art = this.artRect();
     const A = MelodyEditorPanel.ART;
@@ -621,7 +1016,9 @@ export class MelodyEditorPanel extends BaseToolPanel {
       const cy = i.y + (r + 0.5) * rowH;
       this.rowLabels[r]?.setPosition(i.x + labelW / 2, cy).setFontSize(Math.max(8, rowH * 0.32));
       for (let s = 0; s < STEP_COUNT; s++) {
-        this.cells[r]?.[s]?.setPosition(i.x + labelW + (s + 0.5) * cellW, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+        const cx = i.x + labelW + (s + 0.5) * cellW;
+        this.cells[r]?.[s]?.setPosition(cx, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+        this.cellSplits[r]?.[s]?.setPosition(cx, cy).setSize(Math.max(2, cellW * 0.14), Math.max(2, rowH - pad));
       }
     }
 
@@ -633,6 +1030,9 @@ export class MelodyEditorPanel extends BaseToolPanel {
     this.knobCrunch.setRotation((this.values.crunch - 0.5) * 4.2);
     const toggleW = art.w * A.toggle.w;
     placeUiSprite(this.toggle, UI_SPRITES["toggle-double"]!, { x: art.x + art.w * A.toggle.cx, y: art.y + art.h * A.toggle.cy, width: toggleW, height: toggleW * 1.6 });
+    // The lever half re-derives its whole transform from the base's rest pose.
+    this.toggleRest = { x: this.toggle.x, y: this.toggle.y, scale: this.toggle.scaleX };
+    this.renderToggle();
     const faderW = art.w * A.fader.w;
     const fDef = UI_SPRITES["fader-handle"]!;
     const [fx0, fy0, fx1, fy1] = fDef.content;
@@ -643,6 +1043,9 @@ export class MelodyEditorPanel extends BaseToolPanel {
       y0: art.y + art.h * A.fader.y0,
       y1: art.y + art.h * A.fader.y1,
     };
+    // Match the baked slot's width so the fill reads as the track filling up
+    // rather than as a bar painted over it.
+    this.levelFillW = Math.max(2, art.w * 0.014);
     this.placeFader();
   }
 
@@ -660,8 +1063,8 @@ export class MelodyEditorPanel extends BaseToolPanel {
           this.cellDouble[r]![s] = isDouble;
           const cell = this.cells[r]?.[s];
           cell?.setFillStyle(isOn ? 0x06d6a0 : 0xf6efdc, isOn ? 1 : 0.06);
-          // A doubled note wears a gold ring (reads as "×2" at kid size).
           cell?.setStrokeStyle(isDouble ? 3 : 1, isDouble ? 0xffd166 : 0x000000, isDouble ? 1 : 0.4);
+          this.refreshSplit(r, s);
         }
       }
     }
@@ -677,6 +1080,34 @@ export class MelodyEditorPanel extends BaseToolPanel {
     if (this.draggingKnob !== "volume") {
       this.values.volume = m.volume;
       if (this.fader) this.placeFader();
+    }
+  }
+
+  /**
+   * The ×2 cue for one cell.
+   *
+   * A doubled note shows the slot solid — the block is visibly TWO blocks. While
+   * the lever is armed, every note that is NOT yet doubled shows it as a ghost:
+   * that is the whole lesson, offered before the child commits to it, because
+   * arming a mode that changes nothing until the next tap is exactly why nobody
+   * could tell what this switch did.
+   */
+  private refreshSplit(r: number, s: number): void {
+    const split = this.cellSplits[r]?.[s];
+    if (!split) return;
+    const on = this.cellOn[r]?.[s] ?? false;
+    const doubled = this.cellDouble[r]?.[s] ?? false;
+    // The ghost is deliberately thinner AND fainter than the real slot: at equal
+    // width and 0.35 alpha the offer was indistinguishable from the outcome, so
+    // every note looked already-doubled the moment the lever came on.
+    if (on && doubled) split.setVisible(true).setAlpha(1).setScale(1);
+    else if (on && this.doubleMode) split.setVisible(true).setAlpha(0.22).setScale(0.5, 1);
+    else split.setVisible(false);
+  }
+
+  private refreshSplits(): void {
+    for (let r = 0; r < MELODY_ROWS; r++) {
+      for (let s = 0; s < STEP_COUNT; s++) this.refreshSplit(r, s);
     }
   }
 }

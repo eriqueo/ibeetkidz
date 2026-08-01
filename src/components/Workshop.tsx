@@ -1,6 +1,6 @@
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
-import { activeLayers, activePart, makeLayer } from "../core/project-state.ts";
+import { activeLayers, activePart, makeLayer, nextRecordingLabel } from "../core/project-state.ts";
 import {
   STEP_COUNT,
   type CarType,
@@ -8,6 +8,7 @@ import {
   type EffectId,
   type ThereminWave,
   type Clip,
+  type Command,
   type AppView,
 } from "../core/types.ts";
 import { MELODY_ROWS, degreeToNote } from "../core/scale.ts";
@@ -17,11 +18,13 @@ import {
   isVoiceInstrument,
   INSTRUMENTS,
   type SynthInstrumentId,
+  type InstrumentId,
 } from "../core/instruments.ts";
-import { laneColor } from "../core/lane-color.ts";
-import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin } from "../core/sound-catalog.ts";
+import { laneColor, laneGroup } from "../core/lane-color.ts";
+import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
+import { WORKSHOP_GRID_V2 } from "../game/scene-layout.ts";
 import { WorkshopScene, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
 import { type ToolModel } from "../game/tool-panels.ts";
 
@@ -29,12 +32,36 @@ type RecPhase = "idle" | "opening" | "recording" | "stopping";
 
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
-let voiceCount = 0;
-let keysCount = 0;
-let magicCount = 0;
+
+/** How many lanes a car can hold and still SHOW them all. `addLayer` accepts
+ *  `MAX_LAYERS` (8) and silently evicts the oldest past that, but the Workshop's
+ *  chalkboard only draws `maxLanes` (6) — so a 7th lane added from a tool panel
+ *  is a change the kid cannot see, which is the exact bug the Sound Pads had in
+ *  the first place. Tools that add a lane refuse at the VISIBLE cap. */
+const VISIBLE_LANE_CAP = WORKSHOP_GRID_V2.maxLanes;
+
+/**
+ * The clip/lane id a built-in sound occupies inside a car.
+ *
+ * Drums deliberately reuse the Beat Maker's `beat-<assetId>` id: the two tools
+ * are two doors into the same lane, so tapping "Boom" on the pads and then
+ * opening the Beat Maker shows the Boom row with the hit already on it, rather
+ * than two lanes playing the same drum. Tones have no Beat Maker row, so they
+ * get their own namespace.
+ */
+const builtinLaneId = (s: BuiltinSound): string =>
+  s.recipe.kind === "drum" ? `beat-${s.assetId}` : `pad-${s.assetId}`;
+
+/** A drum lane that sounds once at the top of the bar — i.e. one that LOOPS.
+ *  Same starter shape `onVoiceSend` / `onMagicSend` use. */
+function firstStepOnly(): boolean[] {
+  const steps = new Array<boolean>(STEP_COUNT).fill(false);
+  steps[0] = true;
+  return steps;
+}
 
 export const Workshop: FC = () => {
-  const { dispatch, engine, sound, rng, getProject, surprise } = useApp();
+  const { dispatch, dispatchAll, engine, sound, rng, getProject, surprise } = useApp();
   const project = useProject();
   const part = activePart(project);
   const layers = activeLayers(project);
@@ -86,7 +113,10 @@ export const Workshop: FC = () => {
       } else if (clip?.source.kind === "builtin") {
         const assetId = clip.source.assetId;
         label = BUILTIN_SOUNDS.find((s) => s.assetId === assetId)?.emoji ?? "🎵";
-        icon = "inst-drums";
+        // A pitched blip (Do/Re/Mi) is not percussion — showing it the drum kit
+        // character contradicts the lane's own colour, which `laneColor` already
+        // paints blue for the tone family.
+        icon = laneGroup(layer.kind, clip) === "tone" ? "inst-piano" : "inst-drums";
       } else if (clip?.source.kind === "recording") {
         label = "🎤";
         icon = "inst-mic";
@@ -106,10 +136,46 @@ export const Workshop: FC = () => {
   const toolModel = useMemo<ToolModel>(() => {
     const onHome = (id: string | null): boolean => (id ? layers.some((l) => l.id === id) : false);
     const has = (id: string | null): boolean => !!(id && project.clips[id]);
+    // Sound Pads: the sound LIBRARY. Every built-in sound plus every recording
+    // the child has ever made — this panel is the only place a past recording is
+    // reachable at all, which is why it survives into v2 (the tools that made
+    // them only ever offer the take you just recorded).
+    //
+    // `inCar` is what makes a pad tap legible: the pad shows whether that sound
+    // is already a lane in THIS car, so the outcome is visible on the control the
+    // kid pressed, not only on the chalkboard the panel is covering.
+    const inCar = new Set(layers.map((l) => l.clipId));
     const recordings = Object.values(project.clips).filter((c) => c.source.kind === "recording");
     const pads = [
-      ...BUILTIN_SOUNDS.map((s) => ({ id: `builtin:${s.assetId}`, label: s.label, emoji: s.emoji, color: s.color })),
-      ...recordings.map((c) => ({ id: `clip:${c.id}`, label: c.label || "My Sound", emoji: "🎤", color: c.color })),
+      ...BUILTIN_SOUNDS.map((s) => {
+        const laneId = builtinLaneId(s);
+        return {
+          id: `builtin:${s.assetId}`,
+          label: s.label,
+          emoji: s.emoji,
+          color: s.color,
+          group: s.recipe.kind === "drum" ? ("drum" as const) : ("tone" as const),
+          badge: "",
+          inCar: inCar.has(laneId),
+        };
+      }),
+      // Newest last, matching insertion order — a kid looks for the thing they
+      // just made at the end of their own shelf. `PADS_PER_SHELF` in the panel
+      // is what stops an enthusiastic session from shrinking every pad to a
+      // speck; the clips themselves are never dropped.
+      ...recordings.map((c, i) => ({
+        id: `clip:${c.id}`,
+        label: c.label || "My Sound",
+        emoji: "🎤",
+        color: c.color,
+        group: "voice" as const,
+        // Recordings all share the voice family's gold, per `lane-color.ts`
+        // ("colour = kind, never a random per-clip swatch"), so the thing that
+        // tells one of a kid's five takes from another is a big numeral —
+        // numbers being legible to a child well before words are.
+        badge: String(i + 1),
+        inCar: inCar.has(c.id),
+      })),
     ];
     const beat = DRUM_SOUNDS.map((d) => {
       const layer = layers.find((l) => l.id === `beat-${d.assetId}`);
@@ -125,6 +191,7 @@ export const Workshop: FC = () => {
       voice: { hasClip: has(voiceClipId), status: voiceStatus, appliedFx: voiceClipId ? (project.clips[voiceClipId]?.effects.length ?? 0) : 0, onHome: onHome(voiceClipId) },
       keys: { hasClip: has(keysClipId), status: keysStatus, keyLabels, onHome: onHome(keysClipId) },
       pads,
+      padsFull: layers.length >= VISIBLE_LANE_CAP,
       beat,
       magic: { recording: magicRecording, hasClip: has(magicClipId), onHome: onHome(magicClipId), status: magicStatus },
       melody: {
@@ -284,6 +351,35 @@ export const Workshop: FC = () => {
       const id = editMelodyRef.current;
       if (id) dispatch({ type: "setLayerVolume", layerId: id, volume: value });
     };
+    /** The lane's own voice + note, for the deck's audible answers. */
+    const editVoice = (): { note: string; instrument: InstrumentId; volume: number } | null => {
+      const id = editMelodyRef.current;
+      if (!id) return null;
+      const p = getProject();
+      const layer = activeLayers(p).find((l) => l.id === id);
+      if (!layer) return null;
+      // Mid-scale: high enough to hear the instrument, low enough not to shriek.
+      return {
+        note: degreeToNote(p.scaleId, p.keyId, Math.floor(MELODY_ROWS / 2)),
+        instrument: resolveInstrument(layer.instrument, layer.wave),
+        volume: layer.volume ?? 1,
+      };
+    };
+    // The LEVEL fader answers on RELEASE with one note at its new loudness —
+    // "LEVEL" is unreadable at four; a note that is quieter is not.
+    const onLaneVolumeDone = (value: number): void => {
+      const v = editVoice();
+      if (v) sound.previewNote(v.note, v.instrument, value);
+    };
+    // The ×2 lever answers by DOING it: one hit when it goes off, two when it
+    // comes on. Nothing about "×2" is legible to a pre-reader, and until this
+    // the switch changed nothing at all until some later tap on a note.
+    const onTwiceMode = (armed: boolean): void => {
+      const v = editVoice();
+      if (!v) return;
+      sound.previewNote(v.note, v.instrument, v.volume);
+      if (armed) window.setTimeout(() => sound.previewNote(v.note, v.instrument, v.volume), 160);
+    };
 
     // Generic hold-to-record state machine (mic), reused by Voice + Keys. The
     // phase ref survives the mic-open await so a quick release never sticks open.
@@ -322,7 +418,7 @@ export const Workshop: FC = () => {
       () => setVoiceStatus("Recording… let go to stop!"),
       () => setVoiceStatus("No mic? No problem — try the Sound Pads! 🥁"),
       (bufferId) => {
-        const clip: Clip = { id: `clip-voice-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#ff5d8f", label: `My Voice ${++voiceCount}` };
+        const clip: Clip = { id: `clip-voice-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#ff5d8f", label: nextRecordingLabel(getProject(), "My Voice") };
         dispatch({ type: "addClip", clip });
         setVoiceClipId(clip.id);
         sound.play(clip);
@@ -363,7 +459,7 @@ export const Workshop: FC = () => {
       () => setKeysStatus("Singing… let go to stop! (try one long 'aaah')"),
       () => setKeysStatus("No mic? Try the Magic Pad! ✨"),
       (bufferId) => {
-        const clip: Clip = { id: `clip-keys-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#ffd166", label: `Voice Keys ${++keysCount}` };
+        const clip: Clip = { id: `clip-keys-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#ffd166", label: nextRecordingLabel(getProject(), "Voice Keys") };
         dispatch({ type: "addClip", clip });
         setKeysClipId(clip.id);
         sound.previewNote("C4", voiceInstrumentId(bufferId));
@@ -391,14 +487,52 @@ export const Workshop: FC = () => {
     };
 
     // Sound Pads ───────────────────────────────────────────
+    // A pad tap HEARS the sound and PUTS IT IN THE CAR, as one looping lane
+    // with a hit on the first step.
+    //
+    // It used to only make a noise: `sound.play` and nothing else, no command,
+    // no state. That made Sound Pads the only one of the Workshop's instrument
+    // characters whose panel could not put anything in the car — every other one
+    // (Beat Maker, My Voice, Voice Keys, Magic Pad, and the three melody
+    // characters) leaves a lane behind — so a kid who found a sound they liked
+    // had no way to keep it, and nothing they tapped ever looped.
+    //
+    // Landing the lane is a COMPOUND action (the clip, then the lane) and goes
+    // through `dispatchAll` so it is ONE undo step rather than two.
+    const landSound = (clipId: string, clip: Clip, alreadyHasClip: boolean): void => {
+      const existing = activeLayers(getProject());
+      // Already on the board: the tap is an audition, not a second copy.
+      if (existing.some((l) => l.clipId === clipId)) return;
+      // Refuse rather than add a lane the chalkboard cannot show. The kid is
+      // told why by the panel (`padsFull`), the same way the New Car picker says
+      // "TRAIN YARD FULL" instead of silently doing nothing.
+      if (existing.length >= VISIBLE_LANE_CAP) return;
+      const cmds: Command[] = [];
+      if (!alreadyHasClip) cmds.push({ type: "addClip", clip });
+      cmds.push({
+        type: "addLayer",
+        layer: makeLayer({ id: clipId, clipId, kind: "drum", steps: firstStepOnly() }),
+      });
+      dispatchAll(cmds);
+    };
     const onPadsPlay = (padId: string): void => {
+      const p = getProject();
       if (padId.startsWith("builtin:")) {
         const assetId = padId.slice("builtin:".length);
         const s = getBuiltin(assetId);
-        if (s) sound.play({ id: `pad-${assetId}`, source: { kind: "builtin", assetId }, effects: [], color: s.color, label: s.label });
+        if (!s) return;
+        const laneId = builtinLaneId(s);
+        const clip: Clip = { id: laneId, source: { kind: "builtin", assetId }, effects: [], color: s.color, label: s.label };
+        sound.play(clip);
+        landSound(laneId, clip, !!p.clips[laneId]);
       } else if (padId.startsWith("clip:")) {
-        const clip = getProject().clips[padId.slice("clip:".length)];
-        if (clip) sound.play(clip);
+        const clipId = padId.slice("clip:".length);
+        const clip = p.clips[clipId];
+        if (!clip) return;
+        sound.play(clip);
+        // A recording is already a clip — only the lane is missing. Its lane id
+        // IS the clip id, matching `onVoiceSend` / `onKeysSend` / `onMagicSend`.
+        landSound(clipId, clip, true);
       }
     };
 
@@ -434,7 +568,7 @@ export const Workshop: FC = () => {
       sound.thereminOff();
       try {
         const bufferId = await sound.stopPerformanceRecording();
-        const clip: Clip = { id: `clip-magic-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#8338ec", label: `Magic Pad ${++magicCount}` };
+        const clip: Clip = { id: `clip-magic-${Date.now()}`, source: { kind: "recording", bufferId }, effects: [], color: "#8338ec", label: nextRecordingLabel(getProject(), "Magic Pad") };
         dispatch({ type: "addClip", clip });
         setMagicClipId(clip.id);
         sound.play(clip);
@@ -467,8 +601,9 @@ export const Workshop: FC = () => {
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
       ["workshop-add-melody", onAddMelody],
       ["tool-melody-toggle", onMelodyToggle], ["tool-melody-double", onMelodyDouble],
+      ["tool-melody-twice-mode", onTwiceMode],
       ["tool-lane-wobble", onLaneWobble], ["tool-lane-crunch", onLaneCrunch],
-      ["tool-lane-volume", onLaneVolume],
+      ["tool-lane-volume", onLaneVolume], ["tool-lane-volume-done", onLaneVolumeDone],
       ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],
       ["tool-pads-play", onPadsPlay], ["tool-beat-toggle", onBeatToggle],
@@ -481,7 +616,7 @@ export const Workshop: FC = () => {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       subs.forEach(([ev, fn]) => EventBus.off(ev as never, fn as any));
     };
-  }, [dispatch, engine, sound, rng, getProject, surprise]);
+  }, [dispatch, dispatchAll, engine, sound, rng, getProject, surprise]);
 
   // Everything — nav, tools, transport, grid — is painted in Phaser now. The
   // whole Workshop view is the shared canvas with no HTML chrome at all.

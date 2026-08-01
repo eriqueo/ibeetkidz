@@ -128,6 +128,33 @@ function dispatch(cmd: Command): void {
   else EventBus.emit("undo-withdrawn");
 }
 
+/**
+ * The BATCH arm of the same funnel: many commands, ONE history entry.
+ *
+ * Reach for this whenever a kid experiences something as a single action —
+ * "Surprise me" is ~15 commands, and putting a sound in the car from the Sound
+ * Pads is two (the clip, then the lane). Dispatched one at a time, undoing them
+ * is one tap per command, which is not undo.
+ *
+ * `offer` is the words the "put it back" chip should show, for the rare
+ * ADDITIVE batch that still deserves the offer because it rewrote the whole car
+ * in one tap. Omit it and the batch behaves like every other non-destructive
+ * command: it WITHDRAWS any standing offer, because a chip left up after an
+ * unrelated edit would undo the wrong thing (`store.undo()` pops the last
+ * entry, not the one the chip is talking about).
+ */
+function dispatchAll(cmds: readonly Command[], offer?: string): void {
+  if (cmds.length === 0) return;
+  const before = store.getSnapshot();
+  store.dispatchAll(cmds);
+  if (engine.isPlaying) engine.reconcile(getProject());
+  // Same rule as the single-command arm: ask the STORE whether anything moved,
+  // not the commands what they intended. A batch can be entirely refused.
+  if (store.getSnapshot() === before) return;
+  if (offer) EventBus.emit("undo-offered", offer);
+  else EventBus.emit("undo-withdrawn");
+}
+
 // ── "I can't save your song" channel ────────────────────────────────────────
 // `LocalStoragePort` throws `QuotaExceededError` from two places (saveProject,
 // putBlob) and nothing anywhere caught it: both persist() call sites are
@@ -319,6 +346,9 @@ export interface AppApi {
   readonly engine: AudioEngine;
   readonly store: Store;
   dispatch(cmd: Command): void;
+  /** Many commands as ONE undo step. `offer` = the "put it back" chip's words,
+   *  for an additive batch that still earns the offer (see the funnel). */
+  dispatchAll(cmds: readonly Command[], offer?: string): void;
   undo(): void;
   redo(): void;
   save(): void;
@@ -332,6 +362,7 @@ const api: AppApi = {
   engine,
   store,
   dispatch,
+  dispatchAll,
   // Moving through history retires any standing offer. The chip hides itself
   // when TAPPED, but that is not the only way here — and a chip left standing
   // after an undo is worse than no chip: the history has already moved, so the
@@ -350,16 +381,13 @@ const api: AppApi = {
   // ONE undo step, not fifteen. A surprise is ~15 commands and used to dispatch
   // them one at a time, so a kid who wanted their car back had to tap undo
   // fifteen times — which is not undo. It is the kid's single action, so it is
-  // one history entry, and it gets the same "put it back" offer a deletion does.
+  // one history entry, and it gets the same "put it back" offer a deletion does
+  // (the rare additive batch that earns one: it rewrites the whole car).
   surprise: () => {
-    const before = store.getSnapshot();
-    store.dispatchAll([
-      ...generateBeat(rng),
-      { type: "setActiveMachine", machineId: "looper-stage" },
-    ]);
-    if (engine.isPlaying) engine.reconcile(getProject());
-    // Same rule as the dispatch funnel: ask the STORE whether anything moved.
-    if (store.getSnapshot() !== before) EventBus.emit("undo-offered", "New beat");
+    dispatchAll(
+      [...generateBeat(rng), { type: "setActiveMachine", machineId: "looper-stage" }],
+      "New beat",
+    );
   },
   getProject,
 };
