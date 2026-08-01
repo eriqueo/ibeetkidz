@@ -39,8 +39,10 @@ decides — scaffold assumes npm). Node 24. GitHub Pages auto-deploy.
 - **Forgiving UX.** Undo everywhere; mic-denied must leave the app fully usable.
 
 These are not just prose: `tests/unit/architecture.test.ts` (ticket S2) asserts
-five of them as source-text guards over `src/**`, so breaking one fails the gate.
-Prose does not fail a build; that file does.
+five of the rules above as source-text guards over `src/**`, plus two that guard
+seams not in that list — the dev-only scene editor stays behind one dynamic
+import, and every Phaser loader call is wrapped in a cache check. Breaking any of
+the seven fails the gate. Prose does not fail a build; that file does.
 
 ## Commands
 
@@ -66,14 +68,19 @@ from prose.
 
 ### Two e2e traps that have bitten repeatedly
 
-1. **The e2e count differs local vs CI, by design.** Two hardware-audio proofs
-   `test.skip` when `process.env.CI` is set — `tests/e2e/audio-output.spec.ts`
-   and the last block of `tests/e2e/v2-flow.spec.ts`. So a local run and a CI run
+1. **The e2e count differs local vs CI, by design.** **Four** blocks `test.skip`
+   when `process.env.CI` is set, all of them hardware-audio proofs, all cited by
+   FILE (line anchors go stale): `tests/e2e/audio-output.spec.ts`; the mic-record
+   and jumbotron blocks of `tests/e2e/v2-flow.spec.ts`; and the pads/Magic-Pad
+   block of `tests/e2e/tool-panels.spec.ts`. So a local run and a CI run
    legitimately report different totals. State *which* you mean whenever you cite
-   an e2e number.
-2. **Those same two specs are genuinely flaky locally under load** (real audio
-   capture on a busy machine). A red run there is not a regression until you have
-   re-run that spec **alone**. Do that before concluding anything.
+   an e2e number. **`tests/e2e/mic-denied.spec.ts` is NOT one of them** — it
+   needs `getUserMedia` to FAIL, which a runner with no capture device does
+   anyway, so it runs everywhere.
+2. **Those audio specs are genuinely flaky locally under load** (real capture on
+   a busy machine). A red run there is not a regression until you have re-run
+   that spec **alone**. Do that before concluding anything — it happened again
+   this session, and re-running alone was green.
 
 Always pin the port: `PW_PORT=<free> npm run test:e2e`. `playwright.config.ts`
 sets `reuseExistingServer: !process.env.CI && !process.env.PW_PORT` — unpinned, a
