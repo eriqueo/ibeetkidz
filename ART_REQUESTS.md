@@ -19,19 +19,14 @@
 
 ---
 
-## PRIORITY ORDER (2026-08-01)
+## PRIORITY ORDER (2026-08-01, rev 2)
 
-Re-ordered after Eric play-tested the deployed build. AR-015 is complete and has
-left the queue; the previous list also had duplicate numbering.
-
-1. **AR-016 item 4 + AR-021 together — ALL EIGHT instrument characters.**
-   **Do these as ONE job, not two.** Item 4 redraws the six existing characters
-   (the smooth-illustrated originals clash with the pixel interior); AR-021 adds
-   `inst-pads` and `inst-magic`. Doing AR-021 first means drawing two new
-   characters to match a style that is about to be retired, then redrawing them.
-   One consistent set of eight, one pass. **This is the single highest-value art
-   in the queue** — it finishes the Workshop Revamp *and* unlocks two fully-built
-   tools (Sound Pads, Magic Pad) that a kid currently has no way to reach.
+1. **AR-024 — RE-EXPORT the 24 instrument PNGs with an alpha channel. BLOCKING.**
+   The AR-016/AR-021 art itself is good and is *not* being rejected — but all 24
+   files shipped as PNG colour-type 2 (RGB, **no alpha channel at all**) on a
+   solid near-white background. None of it can be wired until it is re-exported.
+   See AR-024 below for exactly what to change. **Nothing else in this queue
+   matters until this is fixed** — it is holding two finished tools hostage.
 2. **AR-023 — Workshop interior plate, pushed BACK.** Eric's own words on the
    deployed build: *"little to no separation between the noisy background and the
    cars."* The Workshop is where a kid spends nearly all their time, and it is the
@@ -597,3 +592,63 @@ substantially better, and this plate is one of the four backgrounds that ship.
 **Unblocks:** nothing in code — but it is the difference between the Workshop
 reading as a toy and reading as noise, and it was the second thing Eric flagged
 on the deployed build.
+
+---
+
+## AR-024 · RE-EXPORT the 24 instrument PNGs with an alpha channel — BLOCKING
+
+**The art is good. Do not redraw it.** This is an export-settings fix only.
+
+**What's wrong:** all 24 files from the AR-016 item 4 / AR-021 drop shipped as
+**PNG colour-type 2 — RGB, with no alpha channel at all** — on a solid
+near-white background (corner pixel `(242,243,243,255)`). Not the semi-opaque
+wash the standing export rule anticipates: there is simply no transparency.
+
+Verified across the whole tree: of 110 tracked sprite PNGs, the 82 palette and
+4 RGBA files are clean, and **exactly these 24 fail**.
+
+```
+inst-{drums,guitar,magic,mic,pads,piano,violin,xylophone}-{passive,hover,active}.png
+```
+
+**Why it blocks everything.** `placeUiSprite` fits a sprite's *content box* —
+its alpha bounding box — into a fixed slot. With no transparency the content box
+is the entire canvas, so each character would (a) render at the wrong size, (b)
+paint an opaque white rectangle over the Workshop, and (c) get a tap target
+covering the whole frame — the exact hit-area bug that was just fixed.
+
+**The fix:** re-export the same images with **RGBA (colour-type 6)** and true
+alpha 0 outside the art. Nothing about the drawing changes. If the tool offers
+"flatten", "matte", or "background colour" on export, turn it off.
+
+**Not auto-keyed on our side, deliberately.** Edge flood-fill was tested on
+`inst-pads-passive` and does extract most of the character — but it cannot reach
+enclosed regions, leaving white pockets between the raccoon's legs and under the
+pad stand. Shipping subtly-holed art is worse than refusing it. (`pack-sprites.py`
+keys green/grey for the TRAIN sprites because those are authored against a known
+backdrop; that does not apply here.)
+
+**Now mechanically enforced:** `scripts/check-sprite-alpha.sh` reads each PNG's
+IHDR colour type and fails on 0/2, and on palette PNGs with no `tRNS` chunk. It
+goes into CI in the same PR that lands the corrected files — the rule has been
+violated four times while it lived only in prose.
+
+### Also needs deciding: `inst-keys` vs `inst-xylophone`
+
+The drop treated "bear + xylophone" as one of the six *existing* characters. It
+wasn't — the existing sprite is **`inst-keys`** (the same purple bear, at a toy
+keyboard), and it was left untouched, so it is now the only character still in
+the old style. `inst-xylophone` is effectively a redraw of it with the keyboard
+swapped for a xylophone, and it is wired to nothing.
+
+There are 27 sprites in the folder, not 24. Pick one:
+- **Keep `inst-keys`** — semantically the better match, since the tool it opens
+  (`voice-keys`) plays your recorded voice *chromatically*, like a keyboard.
+  Then `inst-keys` needs the same redraw+re-export as the others, and
+  `inst-xylophone` is deleted.
+- **Adopt `inst-xylophone`** — repoint `workshop.json` at it, delete
+  `inst-keys`. A xylophone is still a pitched keyboard-family instrument, and
+  this is the option with no further art.
+
+**Unblocks:** two `workshop.json` objects (Sound Pads + Magic Pad), the content
+boxes for all nine characters, and the atlas rebuild.
