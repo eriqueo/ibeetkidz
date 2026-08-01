@@ -135,6 +135,55 @@ describe("architecture guards (source text over src/**)", () => {
     expect(dynamic).toEqual(["src/app/context.tsx"]);
   });
 
+  // 7. Every loader call is guarded by a cache check.
+  //
+  // Also not one of CLAUDE.md's original five. It became load-bearing when one
+  // `Phaser.Game` started serving all four scenes: with a shared TextureManager,
+  // re-entering a space re-queues assets it already holds, and `load.atlas` fails
+  // SILENTLY on the second call — the PNG is skipped as a cache conflict while
+  // the JSON is refetched, so Phaser's MultiFile sits at 1-of-2 and never
+  // reaches `addToCache`. `loadSpriteAssets` shipped unguarded for exactly that
+  // reason and nobody noticed, because with a game per view it could not bite.
+  //
+  // The check: every asset-queuing call must have a `.exists(` cache check
+  // within the preceding few CODE lines (blank/comment-only lines don't count
+  // against the budget, so a comment block between the guard and the call is
+  // fine). Deliberately shape-based rather than semantic — it matches the
+  // dialect all six existing call sites already use, and a new site that wants
+  // to be different has to come argue with this test.
+  it("guards every Phaser loader call with a cache check", () => {
+    // `once`/`start`/`reset` don't queue anything; only these four do.
+    const QUEUES = /\.load\.(image|atlas|multiatlas|spritesheet|audio|json|binary)\s*\(/;
+    const GUARD = /\.exists\s*\(/;
+    const WINDOW = 8;
+    const offenders: string[] = [];
+    for (const [path, text] of SOURCES) {
+      // Code lines only, keeping their real line numbers for the message.
+      const code = text
+        .split("\n")
+        .map((line, i) => [i + 1, line.trim()] as const)
+        .filter(([, line]) => line.length > 0);
+      code.forEach(([lineNo, line], i) => {
+        if (!QUEUES.test(line)) return;
+        const back = code.slice(Math.max(0, i - WINDOW), i + 1);
+        if (!back.some(([, prev]) => GUARD.test(prev))) {
+          offenders.push(`${path}:${lineNo}  ${line}`);
+        }
+      });
+    }
+    expect(offenders).toEqual([]);
+  });
+
+  // …and the guard above is worthless if it is scanning nothing. Loader calls
+  // only ever live in the game layer; if that stops being true the count check
+  // fails rather than the rule quietly passing over zero call sites.
+  it("has loader calls to guard", () => {
+    const QUEUES = /\.load\.(image|atlas|multiatlas|spritesheet|audio|json|binary)\s*\(/;
+    const sites = offenders(QUEUES);
+    expect(sites.length).toBeGreaterThanOrEqual(6);
+    expect(sites.every((hit) => hit.startsWith("src/game/"))).toBe(true);
+  });
+
   // The editor is only worth guarding if it is actually there.
   it("has an editor to guard", () => {
     const files = SOURCES.filter(([p]) => p.startsWith("src/editor/")).map(([p]) => p);

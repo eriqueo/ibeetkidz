@@ -127,6 +127,25 @@ flaked for five sessions. It now asserts non-degenerate + non-silent, which is w
 the test is actually for. **The "re-run it alone before concluding" guidance above
 still applies to `audio-output.spec.ts`**, which remains load-sensitive.
 
+---
+
+## Re-baseline — 2026-08-01, single-Phaser-game landing
+
+Only the unit counts moved; e2e, file counts and the environment probe above still hold.
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **359** / 23 files, 0 skipped | 352 / 22 |
+| E2E | 10 local, 8 + 2 skipped under CI | unchanged |
+| Peak resident texture memory | **253 MB** (union of all four scenes) | ~222 MB (largest single scene) |
+| Full lap of the four spaces | **~1.23 s** | ~7.8 s |
+
+The new file is `tests/unit/scene-switch.test.ts` (5 tests); `architecture.test.ts`
+gained two guards (rule 7: every Phaser loader call needs a cache check) and is now 9. The lap timing and the
+VRAM figures were measured with a scratch Playwright spec run against `main` and the
+branch on the same machine — method and full tables in
+`design/PERF_SINGLE_PHASER_GAME.md`.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint

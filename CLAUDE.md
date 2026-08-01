@@ -94,10 +94,26 @@ annotating it.
 
 The app is a **Phaser sprite game** with four views (`Project.activeView`):
 **Map** (the boot default — `activeView: "map"` in `project-state.ts`) →
-**Workshop** → **Yard** → **Track**. Each view is a React component whose whole
-body is a `<PhaserGame>` canvas; **none of the four has any HTML chrome left**.
-`Shell.tsx` is a four-way `Record<AppView, FC>` switch, so adding a view is a
-compile error until it has a component. The data model dropped
+**Workshop** → **Yard** → **Track**. **There is exactly ONE `Phaser.Game` for the
+life of the page**, created by `src/game/game-host.ts` into a persistent host div
+(`GameCanvas`) that `Shell.tsx` renders *outside* the view swap. A view is a React
+component that renders `<PhaserScene scene={XScene} …/>` — which draws nothing and
+just claims the shared canvas — plus whatever HTML floats above it, wrapped in the
+shared `VIEW_OVERLAY` style (transparent + `pointer-events: none`, because the
+canvas is now a sibling BEHIND the view, not a child). **None of the four views has
+any HTML chrome left** beyond two toasts. `Shell.tsx` is a four-way
+`Record<AppView, FC>` switch, so adding a view is a compile error until it has a
+component.
+
+`src/game/scene-switch.ts` owns the swap policy and four ordering rules that are
+each a real, reproduced failure — **read it before touching scene lifecycle**
+(`design/PERF_SINGLE_PHASER_GAME.md` has the full write-up and the measurements:
+a lap of the four spaces went 7.8 s → 1.23 s, peak VRAM 222 → 253 MB). Shortest
+form: nothing before Phaser's READY; `stop()` before `remove()` (remove does NOT
+fire SHUTDOWN, which is where scenes drop their EventBus subs); remove-and-re-add
+rather than `start()`, so every visit gets a fresh scene instance; and every
+`load.*` call must be guarded by `textures.exists` now that one TextureManager
+serves all four scenes. `PhaserGame.tsx` is deleted — it does not exist. The data model dropped
 `arrangement: ArrangeCar[]` (+ the BeepBox loop-bar) for a **flat `train:
 TrainCar[]`** — each slot is one bar; a car appears in N slots for N repeats;
 muted slots (`muted`) are the "tarp". `Part` gained `carType` (boxcar/tanker/

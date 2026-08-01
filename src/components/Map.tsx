@@ -2,11 +2,9 @@ import { FC, useCallback, useEffect, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { liveTrain } from "../core/project-state.ts";
 import { AppView } from "../core/types.ts";
-import { PhaserGame } from "./PhaserGame.tsx";
+import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { MapScene } from "../game/scenes/MapScene.ts";
 import { EventBus } from "../game/EventBus.ts";
-
-const MAP_SCENES = [MapScene];
 
 // The handcar marks where the kid currently "is". The Map itself has no landmark,
 // so remember the last destination they travelled to (default: the Workshop, the
@@ -47,10 +45,10 @@ export const Map: FC = () => {
   }, [dispatch]);
 
   return (
-    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
+    <div style={VIEW_OVERLAY}>
       {/* Painted world map + the destination hit-areas + the handcar marker all
-          live in MapScene now, so the canvas takes pointer events. */}
-      <PhaserGame scenes={MAP_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
+          live in MapScene, which claims the shared canvas while this view is up. */}
+      <PhaserScene scene={MapScene} onSceneReady={handleSceneReady} />
 
       {/* "Build a train first" toast */}
       {toast && (

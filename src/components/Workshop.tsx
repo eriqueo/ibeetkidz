@@ -20,12 +20,10 @@ import {
 } from "../core/instruments.ts";
 import { laneColor } from "../core/lane-color.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin } from "../core/sound-catalog.ts";
-import { PhaserGame } from "./PhaserGame.tsx";
+import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { WorkshopScene, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
 import { type ToolModel } from "../game/tool-panels.ts";
-
-const WORKSHOP_SCENES = [WorkshopScene];
 
 type RecPhase = "idle" | "opening" | "recording" | "stopping";
 
@@ -486,10 +484,10 @@ export const Workshop: FC = () => {
   }, [dispatch, engine, sound, rng, getProject, surprise]);
 
   // Everything — nav, tools, transport, grid — is painted in Phaser now. The
-  // whole Workshop view is a single canvas with no HTML chrome.
+  // whole Workshop view is the shared canvas with no HTML chrome at all.
   return (
-    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
-      <PhaserGame scenes={WORKSHOP_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
+    <div style={VIEW_OVERLAY}>
+      <PhaserScene scene={WorkshopScene} onSceneReady={handleSceneReady} />
     </div>
   );
 };

@@ -2,13 +2,11 @@ import { FC, useCallback, useEffect, useMemo, useRef } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { AppView } from "../core/types.ts";
 import { liveTrain } from "../core/project-state.ts";
-import { PhaserGame } from "./PhaserGame.tsx";
+import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
-
-const TRACK_SCENES = [TrackScene];
 
 export const Track: FC = () => {
   const { dispatch, engine, sound } = useApp();
@@ -163,12 +161,8 @@ export const Track: FC = () => {
   }, [engine, sound]);
 
   return (
-    <div style={{ position: "relative", height: "100dvh", overflow: "hidden", background: "#000" }}>
-      <div style={{ position: "absolute", inset: 0 }}>
-        {/* Transport buttons live in TrackScene now, so the canvas must take
-            pointer events (the global default is none for React-overlay views). */}
-        <PhaserGame scenes={TRACK_SCENES} onSceneReady={handleSceneReady} style={{ pointerEvents: "auto" }} />
-      </div>
+    <div style={VIEW_OVERLAY}>
+      <PhaserScene scene={TrackScene} onSceneReady={handleSceneReady} />
 
       {/* The whole view lives inside TrackScene now: nav + transport are Tiled
           chrome, muting is tap-the-car-to-tarp-it, and the SEND flow (plaque +
