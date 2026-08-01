@@ -17,7 +17,7 @@
       "id": 2,
       "name": "base-plate",
       "type": "imagelayer",
-      "image": "workshop-boxcar-open.png",
+      "image": "../scenes-v2/workshop-interior-clean.png",
       "opacity": 1,
       "visible": true,
       "x": 0,

@@ -17,7 +17,7 @@
       "id": 2,
       "name": "base-plate",
       "type": "imagelayer",
-      "image": "yard-base.png",
+      "image": "../scenes-v2/yard-scene-clean-v2.png",
       "opacity": 1,
       "visible": true,
       "x": 0,

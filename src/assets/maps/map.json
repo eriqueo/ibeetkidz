@@ -10,14 +10,14 @@
   "tileheight": 32,
   "width": 80,
   "height": 45,
-  "nextlayerid": 3,
-  "nextobjectid": 4,
+  "nextlayerid": 4,
+  "nextobjectid": 13,
   "layers": [
     {
       "id": 2,
       "name": "base-plate",
       "type": "imagelayer",
-      "image": "map-base.png",
+      "image": "../scenes-v2/map-scene-clean.png",
       "opacity": 1,
       "visible": true,
       "x": 0,
@@ -101,6 +101,51 @@
               "value": "track"
             }
           ]
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "fixtures-layer",
+      "type": "objectgroup",
+      "draworder": "topdown",
+      "opacity": 1,
+      "visible": true,
+      "x": 0,
+      "y": 0,
+      "objects": [
+        {
+          "id": 10,
+          "name": "handcar-workshop",
+          "type": "fixture",
+          "x": 600.32,
+          "y": 589.12,
+          "width": 140.8,
+          "height": 140.8,
+          "rotation": 0,
+          "visible": true
+        },
+        {
+          "id": 11,
+          "name": "handcar-yard",
+          "type": "fixture",
+          "x": 1286.4,
+          "y": 724.48,
+          "width": 140.8,
+          "height": 140.8,
+          "rotation": 0,
+          "visible": true
+        },
+        {
+          "id": 12,
+          "name": "handcar-track",
+          "type": "fixture",
+          "x": 1957.12,
+          "y": 502.72,
+          "width": 140.8,
+          "height": 140.8,
+          "rotation": 0,
+          "visible": true
         }
       ]
     }

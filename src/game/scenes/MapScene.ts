@@ -7,19 +7,28 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { SCENE_BG_V2, SPRITES } from "../assets.ts";
-import { MAP_HANDCAR } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { spawnTiledScene, relayoutSpawns } from "../TiledSceneAdapter.ts";
 import mapMap from "../../assets/maps/map.json";
+import { placeSpawn } from "../TiledSceneAdapter.ts";
 import type { AppView } from "../../core/types.ts";
 
-type LandmarkView = keyof typeof MAP_HANDCAR;
+/** The three destinations the handcar marker can sit at. Derived from `AppView`
+ *  rather than from a coordinate table, so adding a view is a compile error in
+ *  one place instead of a silently-missing marker. */
+type LandmarkView = Exclude<AppView, "map">;
+const LANDMARKS: readonly LandmarkView[] = ["workshop", "yard", "track"];
 
 export class MapScene extends BackgroundScene {
   static readonly KEY = "MapScene";
 
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chromeHits: Phaser.GameObjects.Rectangle[] = [];
+  /** Where the handcar sits for each destination, authored in `map.json`'s
+   *  `fixtures-layer` and DRAGGED into place with the scene editor — not
+   *  hand-guessed in TypeScript, which is how the old `MAP_HANDCAR` constant
+   *  ended up putting the marker on the cabin roof. */
+  private handcarSpawns: readonly TiledSpawn[] = [];
   private handcar?: Phaser.GameObjects.Image;
   private location: LandmarkView = "workshop";
 
@@ -39,6 +48,7 @@ export class MapScene extends BackgroundScene {
     // painted landmarks (and crop with them) via the "bg" anchor.
     this.addBackground("cover");
     this.chromeSpawns = parseTiledLayer(mapMap, "ui-layer");
+    this.handcarSpawns = parseTiledLayer(mapMap, "fixtures-layer");
     const { hits } = spawnTiledScene(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
       hitDepth: 10,
@@ -65,7 +75,7 @@ export class MapScene extends BackgroundScene {
 
   /** React → scene: position the handcar marker over the kid's current location. */
   setLocation(view: AppView): void {
-    if (view in MAP_HANDCAR) this.location = view as LandmarkView;
+    if ((LANDMARKS as readonly string[]).includes(view)) this.location = view as LandmarkView;
     this.layoutHandcar();
   }
 
@@ -79,9 +89,11 @@ export class MapScene extends BackgroundScene {
   private layoutHandcar(): void {
     const r = this.backgroundRect;
     if (r.width === 0 || !this.handcar) return;
-    const h = MAP_HANDCAR[this.location];
-    this.handcar.setPosition(r.x + r.width * h.cx, r.y + r.height * h.cy);
-    if (this.handcar.width > 0) this.handcar.setScale((r.width * h.w) / this.handcar.width);
+    const spawn = this.handcarSpawns.find((s) => s.id === `handcar-${this.location}`);
+    if (!spawn) return;
+    const p = placeSpawn(spawn, r, this.scale.gameSize);
+    this.handcar.setPosition(p.x, p.y);
+    if (this.handcar.width > 0) this.handcar.setScale(p.width / this.handcar.width);
   }
 
   protected onResize(): void {
