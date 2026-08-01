@@ -196,6 +196,12 @@ export const Workshop: FC = () => {
     const onCarType = (carType: CarType): void => dispatch({ type: "setCarType", partId: activePart(projectRef.current).id, carType });
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
     const onPlay = (): void => engine.playLoop(projectRef.current);
+    // LOOP hears the car you are working on, alone. `playCarLoop` has existed in
+    // the engine since the v2 data model landed and had no caller at all — the
+    // Tiled LOOP button was authored to emit `transport-play("loop")`, i.e. the
+    // exact same event as PLAY, so the two buttons were the same button.
+    const onLoopCar = (): void =>
+      engine.playCarLoop(activePart(projectRef.current).id, projectRef.current);
     const onStop = (): void => engine.stop();
     const onTempo = (delta: number): void => {
       const bpm = Math.max(40, Math.min(220, projectRef.current.tempoBpm + delta));
@@ -453,6 +459,7 @@ export const Workshop: FC = () => {
       ["workshop-cell-toggled", onCell], ["workshop-instrument-added", onInstrument],
       ["workshop-car-type-changed", onCarType], ["workshop-layer-selected", onSelect],
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
+      ["workshop-loop-car", onLoopCar],
       ["tool-closed", onToolClosed],
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
       ["nav-map", onNavMap], ["nav-yard", onNavYard],

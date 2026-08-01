@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 16,
+  "nextobjectid": 41,
   "layers": [
     {
       "id": 2,
@@ -142,7 +142,7 @@
           "id": 6,
           "name": "inst-drums",
           "type": "instrument",
-          "x": 300,
+          "x": 180.0,
           "y": 915,
           "width": 340,
           "height": 280,
@@ -170,7 +170,7 @@
           "id": 7,
           "name": "inst-mic",
           "type": "instrument",
-          "x": 720,
+          "x": 552.0,
           "y": 915,
           "width": 340,
           "height": 280,
@@ -195,10 +195,38 @@
           ]
         },
         {
+          "id": 40,
+          "name": "inst-keys",
+          "type": "instrument",
+          "x": 924.0,
+          "y": 915,
+          "width": 340,
+          "height": 280,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "inst-keys"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "workshop-open-tool"
+            },
+            {
+              "name": "arg",
+              "type": "string",
+              "value": "voice-keys"
+            }
+          ]
+        },
+        {
           "id": 8,
           "name": "inst-guitar",
           "type": "instrument",
-          "x": 1140,
+          "x": 1296.0,
           "y": 915,
           "width": 340,
           "height": 280,
@@ -226,7 +254,7 @@
           "id": 9,
           "name": "inst-violin",
           "type": "instrument",
-          "x": 1560,
+          "x": 1668.0,
           "y": 915,
           "width": 340,
           "height": 280,
@@ -246,7 +274,7 @@
             {
               "name": "arg",
               "type": "string",
-              "value": "violin"
+              "value": "pluck"
             }
           ]
         },
@@ -254,7 +282,7 @@
           "id": 10,
           "name": "inst-piano",
           "type": "instrument",
-          "x": 1980,
+          "x": 2040.0,
           "y": 915,
           "width": 340,
           "height": 280,
@@ -359,12 +387,7 @@
             {
               "name": "action",
               "type": "string",
-              "value": "transport-play"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "loop"
+              "value": "workshop-loop-car"
             }
           ]
         },

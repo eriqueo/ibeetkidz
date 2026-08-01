@@ -46,9 +46,11 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
     expect(() => TiledMapSchema.parse(WORKSHOP)).not.toThrow();
   });
 
-  it("projects the ui-layer into 18 descriptors", () => {
-    // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display.
-    expect(spawns).toHaveLength(18);
+  it("projects the ui-layer into 19 descriptors", () => {
+    // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display,
+    // + `inst-keys` (its art and its `voice-keys` tool panel both already
+    // shipped; only the map object was missing).
+    expect(spawns).toHaveLength(19);
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");
@@ -129,17 +131,28 @@ describe("field instrument objects", () => {
     expect(s.sprite).toBe("inst-drums");
     expect(s.action).toBe("workshop-open-tool");
     expect(s.arg).toBe("beat-grid");
-    expect(s.cx).toBeCloseTo(0.184, 2);
+    // Re-spaced when `inst-keys` joined the row: six 340px sprites do not fit at
+    // the old 420px pitch (the last would have ended past the 2560px edge), so
+    // the row is now 180px margins with even gaps.
+    expect(s.cx).toBeCloseTo(0.137, 2);
     // AR-016 task 5: characters grounded on the interior plate's floor line
     // (feet settle ~1195, on the near floor in front of the car).
     expect(s.cy).toBeCloseTo(0.733, 2);
   });
 
-  it("maps each instrument to its action: drums/mic open tools, guitar/violin/piano add melody lanes", () => {
+  it("maps each instrument to its action: drums/mic/keys open tools, guitar/violin/piano add melody lanes", () => {
     expect(need("inst-mic").arg).toBe("record-voicefx");
+    expect(need("inst-keys").action).toBe("workshop-open-tool");
+    expect(need("inst-keys").arg).toBe("voice-keys");
     expect(need("inst-guitar").action).toBe("workshop-add-melody");
     expect(need("inst-guitar").arg).toBe("guitar");
-    expect(need("inst-violin").arg).toBe("violin");
+    // The violin SPRITE has no matching sound: there is no bowed-string voice in
+    // INSTRUMENTS. It used to emit "violin", which is not a SynthInstrumentId at
+    // all, so `resolveInstrument` fell through to the default synth and the lane
+    // was labelled "Melody" — a wrong sound with no error anywhere.
+    // `pluck` at least keeps the sprite and the sound in the string family
+    // (pizzicato). Swapping it for a real bowed voice is an art/audio call.
+    expect(need("inst-violin").arg).toBe("pluck");
     expect(need("inst-piano").action).toBe("workshop-add-melody");
     expect(need("inst-piano").arg).toBe("piano");
   });

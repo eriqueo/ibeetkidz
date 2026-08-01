@@ -4,15 +4,26 @@ import { UI_SPRITES } from "../../src/game/ui-sprites.ts";
 // The real on-disk Tiled fixtures the scenes interpret verbatim.
 import YARD from "../../src/assets/maps/yard.json";
 import TRACK from "../../src/assets/maps/track.json";
+import WORKSHOP from "../../src/assets/maps/workshop.json";
+import MAP from "../../src/assets/maps/map.json";
+import { INSTRUMENTS } from "../../src/core/instruments.ts";
 
-// The Yard/Track Three-Zone maps (UI_REFACTOR_DELEGATION Phase 2). These are
-// the contracts the generic ui-scene engine relies on: every `sprite` key must
-// resolve in the UI_SPRITES manifest (the scenes preload ONLY the keys their
-// map references), every interactive object must carry a real EventBus action,
-// and icon-only buttons must carry a caption.
+// The Three-Zone maps (UI_REFACTOR_DELEGATION Phase 2). These are the contracts
+// the generic ui-scene engine relies on: every `sprite` key must resolve in the
+// UI_SPRITES manifest (the scenes preload ONLY the keys their map references),
+// every interactive object must carry a real EventBus action, and icon-only
+// buttons must carry a caption.
+//
+// This file used to cover TWO of the four maps. `workshop.json` was seen only by
+// the parser suite (which does not check sprite resolution or idle art), and
+// `map.json` was imported by no unit test at all. That gap is part of why a
+// play-test found bugs the suite did not — so all four are covered below, plus
+// two cross-map invariants that are red on the tree as authored.
 
 const yard = parseTiledLayer(YARD, "ui-layer");
 const track = parseTiledLayer(TRACK, "ui-layer");
+const workshop = parseTiledLayer(WORKSHOP, "ui-layer");
+const mapNav = parseTiledLayer(MAP, "ui-layer");
 
 function need(spawns: readonly TiledSpawn[], id: string): TiledSpawn {
   const s = spawns.find((x) => x.id === id);
@@ -23,6 +34,8 @@ function need(spawns: readonly TiledSpawn[], id: string): TiledSpawn {
 describe.each([
   ["yard.json", YARD, yard],
   ["track.json", TRACK, track],
+  ["workshop.json", WORKSHOP, workshop],
+  ["map.json", MAP, mapNav],
 ])("%s (Three-Zone v3)", (_name, map, spawns) => {
   it("validates against the Tiled schema", () => {
     expect(() => TiledMapSchema.parse(map)).not.toThrow();
@@ -50,8 +63,13 @@ describe.each([
   it("gives every interactive object real art or a caption (nothing anonymous)", () => {
     // Buttons with baked-in labels (nav plaques, yard keycaps, RIDE) need no
     // Tiled caption; icon-only keycaps (SLOW/STOP/FAST) author one.
+    //
+    // `nav` is the deliberate exemption, not a loosened predicate: map.json's
+    // three landmark hits are INVISIBLE regions over painted scenery (the cabin,
+    // the shed, the oval ARE the affordance), so art or a caption would draw a
+    // second control on top of the thing it represents.
     for (const s of spawns) {
-      if (s.action !== undefined) {
+      if (s.action !== undefined && s.klass !== "nav") {
         expect(
           s.sprite !== undefined || s.label !== undefined,
           `${s.id} needs a sprite or a label`,
@@ -66,6 +84,106 @@ describe.each([
       expect(UI_SPRITES[s.sprite]!.states["idle"], `${s.id} idle`).toBeTypeOf("string");
     }
   });
+
+  it("never authors the same action+arg twice in one map", () => {
+    // Two controls that emit an identical event with an identical payload are
+    // the same button drawn twice — one of them is a typo, and types cannot
+    // catch it because both sides are just strings in a JSON file.
+    const seen = new Map<string, string>();
+    for (const s of spawns) {
+      if (s.action === undefined) continue;
+      const key = `${s.action}(${s.arg ?? ""})`;
+      const first = seen.get(key);
+      expect(first, `${s.id} duplicates ${first ?? ""} — both emit ${key}`).toBeUndefined();
+      seen.set(key, s.id);
+    }
+  });
+
+  it("emits only instruments the catalog actually has", () => {
+    // `workshop-add-melody` takes a `SynthInstrumentId`. A Tiled `arg` is an
+    // untyped string, so an id that is not in INSTRUMENTS silently falls back to
+    // the default synth and the lane is labelled "Melody" — no error anywhere.
+    const ids = new Set(INSTRUMENTS.map((i) => i.id as string));
+    for (const s of spawns) {
+      if (s.action !== "workshop-add-melody") continue;
+      expect(ids.has(String(s.arg)), `${s.id} names instrument "${String(s.arg)}"`).toBe(true);
+    }
+  });
+});
+
+describe("map.json landmark navigation", () => {
+  it("sends each landmark to its own destination", () => {
+    const dests = mapNav.filter((s) => s.action === "map-nav").map((s) => s.arg);
+    expect(dests.sort()).toEqual(["track", "workshop", "yard"]);
+  });
+
+  it("keeps the landmark hits big enough to tap and clear of each other", () => {
+    // `built-artifact.spec.ts` derives its click point from these rects, but it
+    // clicks the CENTRE — so a shrunk hit still passes there while becoming
+    // untappable for a kid, and two overlapping hits send you to the wrong room.
+    for (const s of mapNav) {
+      expect(s.w, `${s.id} width`).toBeGreaterThan(0.05);
+      expect(s.h, `${s.id} height`).toBeGreaterThan(0.05);
+    }
+    for (let i = 0; i < mapNav.length; i++) {
+      for (let j = i + 1; j < mapNav.length; j++) {
+        const a = mapNav[i]!;
+        const b = mapNav[j]!;
+        const overlaps =
+          Math.abs(a.cx - b.cx) < (a.w + b.w) / 2 && Math.abs(a.cy - b.cy) < (a.h + b.h) / 2;
+        expect(overlaps, `${a.id} overlaps ${b.id}`).toBe(false);
+      }
+    }
+  });
+
+  it("parks a handcar fixture on every destination", () => {
+    // These replaced the hardcoded MAP_HANDCAR, which put the marker on the
+    // cabin roof. MapScene looks them up BY NAME, so a rename is a silent
+    // missing marker rather than a crash.
+    const fixtures = parseTiledLayer(MAP, "fixtures-layer");
+    expect(fixtures.map((s) => s.id).sort()).toEqual([
+      "handcar-track",
+      "handcar-workshop",
+      "handcar-yard",
+    ]);
+    for (const f of fixtures) {
+      expect(f.action, `${f.id} is a marker, not a button`).toBeUndefined();
+      expect(f.cx).toBeGreaterThan(0);
+      expect(f.cx).toBeLessThan(1);
+      expect(f.cy).toBeGreaterThan(0);
+      expect(f.cy).toBeLessThan(1);
+    }
+  });
+});
+
+describe("every map's base plate", () => {
+  it("names an image the repo actually has", () => {
+    // Inert at runtime (nothing reads imagelayers), but a wrong name means
+    // opening the map in Tiled shows no backdrop — which breaks the visual
+    // authoring workflow the whole data-driven design depends on. Three of the
+    // four used to name files that exist nowhere in the tree.
+    const PLATES = new Set([
+      "../scenes-v2/map-scene-clean.png",
+      "../scenes-v2/workshop-interior-clean.png",
+      "../scenes-v2/yard-scene-clean-v2.png",
+      "../scenes-v2/track-scene-clean-v2.png",
+    ]);
+    for (const [name, map] of [
+      ["yard", YARD],
+      ["track", TRACK],
+      ["workshop", WORKSHOP],
+      ["map", MAP],
+    ] as const) {
+      const plates = (map.layers as { type: string; image?: string }[])
+        .filter((l) => l.type === "imagelayer")
+        .map((l) => l.image);
+      expect(plates.length, `${name} has a base plate`).toBeGreaterThan(0);
+      for (const image of plates) {
+        expect(PLATES.has(image ?? ""), `${name} names "${image}"`).toBe(true);
+      }
+    }
+  });
+
 });
 
 describe("yard.json wiring", () => {
