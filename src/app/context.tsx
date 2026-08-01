@@ -255,6 +255,16 @@ async function persist(): Promise<void> {
 // flurry of edits collapses into one write.
 let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
 store.subscribe(() => {
+  // Don't re-arm against a sink we already know is full. Without this the
+  // debounce keeps firing every 800ms of editing, forever, retrying a write
+  // that cannot succeed — an unbounded retry against a known-dead sink. The
+  // notice is already on screen; dismissing it (clearStorageTrouble) is what
+  // says "I made space", and that resumes autosave.
+  //
+  // Only "full" latches. "blocked" (private mode) is a property of the browser
+  // session rather than something the kid can fix, and a cheap failed write
+  // there costs nothing, so it keeps trying in case permission is granted.
+  if (storageTrouble?.kind === "full") return;
   if (autosaveTimer) clearTimeout(autosaveTimer);
   autosaveTimer = setTimeout(() => void persist(), 800);
 });

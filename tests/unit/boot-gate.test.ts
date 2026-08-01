@@ -178,6 +178,30 @@ describe("BootGate failure paths", () => {
     expect(container.querySelector("#storage-notice")).toBeNull();
   });
 
+  it("stops re-arming autosave against a device it knows is full", async () => {
+    // The debounce used to re-arm on every edit forever, retrying a write that
+    // cannot succeed. Unbounded retry against a known-dead sink.
+    const save = vi
+      .spyOn(LocalStoragePort.prototype, "saveProject")
+      .mockRejectedValue(new QuotaExceededError());
+    await mount(createElement("span", null));
+    expect(api).not.toBeNull();
+
+    await act(async () => {
+      api?.save();
+    });
+    expect(container.querySelector("#storage-notice")?.textContent).toContain("No more room!");
+    const afterNotice = save.mock.calls.length;
+
+    // Further edits must NOT queue more writes while the notice stands. The
+    // debounce is 800ms of real time; wait past it.
+    await act(async () => {
+      api?.dispatch({ type: "setTempo", bpm: 128 });
+      await new Promise((r) => setTimeout(r, 1200));
+    });
+    expect(save.mock.calls.length).toBe(afterNotice);
+  });
+
   it("shows the parse layer's own words when a save can't be read", async () => {
     // S5 wrote kid-legible copy for an unreadable or too-new save and S6 made
     // loadProject throw it on a StorageError — but nothing put it on screen, so

@@ -169,7 +169,7 @@ let dbPromise: Promise<IDBDatabase> | null = null;
 
 function openDb(): Promise<IDBDatabase> {
   if (dbPromise) return dbPromise;
-  dbPromise = new Promise<IDBDatabase>((resolve, reject) => {
+  const pending = new Promise<IDBDatabase>((resolve, reject) => {
     const req = indexedDB.open(DB_NAME, 1);
     req.onupgradeneeded = () => {
       const db = req.result;
@@ -180,7 +180,16 @@ function openDb(): Promise<IDBDatabase> {
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error ?? new Error("IndexedDB open failed"));
   });
-  return dbPromise;
+  // Cache the handle, but NOT a rejection. Memoizing the failure poisoned the
+  // blob store for the whole page load: one transient open error (a tab
+  // opening during an upgrade, a storage prompt the kid dismissed) and every
+  // later recording failed with the same stale error, with no way back short
+  // of a reload. Clearing on rejection makes the next putBlob/getBlob retry.
+  dbPromise = pending;
+  void pending.catch(() => {
+    if (dbPromise === pending) dbPromise = null;
+  });
+  return pending;
 }
 
 function tx<T>(
