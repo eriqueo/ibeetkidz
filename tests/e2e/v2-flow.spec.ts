@@ -108,6 +108,43 @@ test("Workshop stations open the creative tools", async ({ page }) => {
   await expect.poll(activeTool).toBe("record-voicefx");
 });
 
+test("Workshop chrome hit-tests its art, not its transparent padding", async ({ page }) => {
+  // Eric play-tested the deployed build and could not tap the lower sequencer
+  // lanes. The instrument characters are authored on canvases roughly 2x their
+  // visible art, they draw above the grid, and Phaser's DEFAULT input rect is
+  // the whole frame — so the padding was eating the taps. `ui-scene.ts` now
+  // installs a hit area from `UI_SPRITES[*].content`.
+  //
+  // The unit suite proves the geometry; this proves Phaser actually ACCEPTED
+  // the custom shape at runtime, which no pure test can reach.
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  const areas = await page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    return (scene.children?.list ?? [])
+      .filter((o: any) => o.input?.hitArea && typeof o.width === "number" && o.frame)
+      .map((o: any) => ({
+        frame: o.frame.name as string,
+        texW: o.width as number,
+        texH: o.height as number,
+        hitW: o.input.hitArea.width as number,
+        hitH: o.input.hitArea.height as number,
+      }));
+  });
+
+  const instruments = areas.filter((a: { frame: string }) => a.frame.startsWith("inst-"));
+  expect(instruments.length).toBeGreaterThan(0);
+  for (const a of instruments) {
+    // Strictly inside the frame on at least one axis — i.e. the padding is no
+    // longer live. A full-frame rect would make both ratios exactly 1.
+    expect(a.hitW / a.texW + a.hitH / a.texH, `${a.frame} still hit-tests its full canvas`).toBeLessThan(2);
+    expect(a.hitW).toBeLessThanOrEqual(a.texW);
+    expect(a.hitH).toBeLessThanOrEqual(a.texH);
+  }
+});
+
 test("My Voice: hold-to-record captures real, non-silent audio (fake mic)", async ({ page }) => {
   // Real-audio fidelity proof (mic edition): on GitHub runners chromium's
   // MediaRecorder emits blobs its own decodeAudioData rejects

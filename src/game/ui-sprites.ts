@@ -173,6 +173,41 @@ export interface PlacedRect {
 }
 
 /**
+ * The sprite's opaque CONTENT box, in unscaled texture pixels — the rect Phaser
+ * should hit-test against.
+ *
+ * Phaser's default input rect for an Image is its whole frame. These canvases
+ * carry a lot of transparent padding (the instrument characters run to roughly
+ * 2x their content box), and at the depth chrome sits, that padding sat over the
+ * Workshop's sequencer grid and swallowed taps meant for the cells underneath.
+ * `placeUiSprite` only ever contain-fits the CONTENT, so the content box is what
+ * the player sees and therefore what they should be able to hit.
+ *
+ * Deliberately derived from the BASE state, matching `placeUiSprite`: the
+ * hover/active variants draw larger within the shared canvas, and that pop is
+ * feedback, not a bigger target.
+ *
+ * Coordinates are unscaled because Phaser applies the game object's own
+ * scale/position transform to its hit area — so this needs no update on relayout.
+ */
+export function contentHitRect(def: UiSpriteDef, texW: number, texH: number): PlacedRect {
+  const [x0, y0, x1, y1] = def.content;
+  return {
+    x: x0 * texW,
+    y: y0 * texH,
+    width: Math.max(1e-6, (x1 - x0) * texW),
+    height: Math.max(1e-6, (y1 - y0) * texH),
+  };
+}
+
+/** `contains` for the plain rect `contentHitRect` returns. Phaser accepts any
+ *  shape plus a matching callback, which lets this module stay Phaser-free
+ *  (`import type` only) instead of pulling in `Phaser.Geom.Rectangle`. */
+export function hitRectContains(rect: PlacedRect, x: number, y: number): boolean {
+  return x >= rect.x && x < rect.x + rect.width && y >= rect.y && y < rect.y + rect.height;
+}
+
+/**
  * Scale + position `img` so its BASE content box lands on `target`.
  *
  * - `stretch` (panels): the content box maps to the full target rect on BOTH axes

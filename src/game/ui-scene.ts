@@ -20,7 +20,14 @@ import type Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import type { TiledSpawn } from "./TiledParser.ts";
 import { placeSpawn, type Rect, type CameraSize } from "./TiledSceneAdapter.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef } from "./ui-sprites.ts";
+import {
+  UI_ATLAS_KEY,
+  UI_SPRITES,
+  contentHitRect,
+  hitRectContains,
+  placeUiSprite,
+  type UiSpriteDef,
+} from "./ui-sprites.ts";
 
 const PRESS_SCALE = 0.94;
 const PRESS_MS = 80;
@@ -62,6 +69,24 @@ function defFor(spawn: TiledSpawn): UiSpriteDef | undefined {
   return UI_SPRITES[key];
 }
 
+/** Make a chrome sprite interactive over its ART, not its whole padded canvas.
+ *
+ *  Without this every chrome sprite hit-tests as its full frame. The Workshop's
+ *  instrument characters are drawn with roughly 2x transparent padding, they sit
+ *  at `hitDepth` (10) while the sequencer grid draws at 3-7, and Phaser
+ *  hit-tests top-down — so the padding was eating taps on the bottom lanes.
+ *  Measured before the fix: `inst-mic`'s input rect reached 98px into the grid
+ *  slate, `inst-guitar` 83px, `inst-violin` 79px. `WORKSHOP_GRID_V2.minRows`
+ *  pins the grid's bottom edge regardless of lane count, so at 6 lanes the whole
+ *  bottom row sat inside that band. */
+function setContentInteractive(img: Phaser.GameObjects.Image, def: UiSpriteDef): void {
+  img.setInteractive({
+    hitArea: contentHitRect(def, img.width || 1, img.height || 1),
+    hitAreaCallback: hitRectContains,
+    useHandCursor: true,
+  });
+}
+
 // Phaser delivers `pointerup` to whatever sits under the pointer at release,
 // even when the press began elsewhere. A modal that hides itself on
 // pointerdown (e.g. a tool panel's ✕) would therefore leak its release into
@@ -74,7 +99,7 @@ function wireButton(scene: Phaser.Scene, img: Phaser.GameObjects.Image, def: UiS
   const idle = def.states["idle"] ?? def.base;
   const pressed = def.states["pressed"];
   let armed = false;
-  img.setInteractive({ useHandCursor: true });
+  setContentInteractive(img, def);
   const down = (): void => {
     armed = true;
     if (pressed) img.setFrame(pressed);
@@ -96,7 +121,7 @@ function wireInstrument(img: Phaser.GameObjects.Image, def: UiSpriteDef, spawn: 
   const hover = def.states["hover"] ?? passive;
   const active = def.states["active"] ?? passive;
   let armed = false;
-  img.setInteractive({ useHandCursor: true });
+  setContentInteractive(img, def);
   img.on("pointerover", () => img.setFrame(hover));
   img.on("pointerout", () => { armed = false; img.setFrame(passive); });
   img.on("pointerdown", () => { armed = true; img.setFrame(active); });
