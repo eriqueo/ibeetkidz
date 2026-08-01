@@ -60,7 +60,9 @@ torn-down display list. Always `stop()` then `remove()`.
 harmless when each scene had its own TextureManager. Sharing one, re-entering the
 Yard re-queues four atlases whose PNGs the loader skips as cache conflicts while
 their JSONs are still fetched — so each Phaser `MultiFile` sits at 1-of-2 and
-never reaches `addToCache`. It is now guarded, matching the existing dialect.
+never reaches `addToCache`. It is now guarded, matching the existing dialect — and `architecture.test.ts`
+rule 7 fails the build on any future unguarded loader call. That check was seeded
+with this exact violation and confirmed to fail on it.
 
 ## Why remove-and-re-add rather than `scene.start()`
 
@@ -115,7 +117,7 @@ makes, and it is the good side of it.
 
 ## Gate at the time of landing
 
-`npm run typecheck` clean, `npm run lint` exit 0, **357 unit tests / 23 files**,
+`npm run typecheck` clean, `npm run lint` exit 0, **359 unit tests / 23 files**,
 **10 e2e passed locally** (`PW_PORT=5199 npm run test:e2e`, includes the
 built-artifact specs). The v2 flow passed on the first run of the new code.
 
