@@ -100,9 +100,10 @@ vi.mock("tone", async (importOriginal) => {
   };
 });
 
-const { ToneSoundPort, loopCacheKey, normalizeBpm, MAX_RECORD_SEC } = await import(
+const { ToneSoundPort, loopCacheKey, normalizeBpm, MAX_RECORD_SEC, normalizeBuffer } = await import(
   "../../src/adapters/tone-sound-port.ts"
 );
+type NormalizableBuffer = Parameters<typeof normalizeBuffer>[0];
 
 /** A snapped clip WITH an effect, so resolving it awaits the offline bake. */
 function snappedClip(): Clip {
@@ -329,5 +330,137 @@ describe("ToneSoundPort recording cap", () => {
     expect(vi.getTimerCount()).toBe(0);
     await vi.advanceTimersByTimeAsync(MAX_RECORD_SEC * 1000);
     expect(FakeMediaRecorder.instances).toHaveLength(1);
+  });
+});
+
+describe("normalizeBuffer", () => {
+  const SR = 8000;
+  /** Mirrors LIMIT_CEIL in the adapter. Kept local rather than exported: the
+   *  ceiling is an internal choice, and what callers are owed is only that a
+   *  normalized take never reaches full scale. */
+  const LIMIT_CEIL_MAX = 0.98;
+
+  /** A `NormalizableBuffer` over one channel of samples. */
+  const buffer = (samples: Float32Array, sampleRate = SR): NormalizableBuffer => ({
+    numberOfChannels: 1,
+    sampleRate,
+    getChannelData: () => samples,
+  });
+
+  /** RMS over the whole buffer. */
+  const rms = (d: Float32Array): number => {
+    let s = 0;
+    for (const x of d) s += x * x;
+    return Math.sqrt(s / d.length);
+  };
+  const peak = (d: Float32Array): number => {
+    let p = 0;
+    for (const x of d) p = Math.max(p, Math.abs(x));
+    return p;
+  };
+  /** The shape that actually broke, and it matters that it is THIS shape: a kid
+   *  holds the button, says one short word, and lets go. So the take is mostly
+   *  room tone with a brief, genuinely quiet voice in it — 10 % of the duration
+   *  at ~4x the noise floor. A gentler mix (longer or louder speech) does not
+   *  reproduce the bug, because then the voice dominates the global average and
+   *  even the old estimator lands near the right answer. */
+  const quietTakeInARoom = (noise = 0.008, voice = 0.03): Float32Array => {
+    const total = SR * 3; // 3 s held
+    const out = new Float32Array(total);
+    // Deterministic pseudo-noise — the architecture guard forbids Math.random
+    // in src/, and a fixed sequence keeps this test reproducible anyway.
+    let seed = 12345;
+    const nextNoise = (): number => {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      return (seed / 0x7fffffff) * 2 - 1;
+    };
+    for (let i = 0; i < total; i++) out[i] = nextNoise() * noise;
+    // 300 ms of "voice": a 200 Hz tone at `voice` amplitude.
+    const from = Math.floor(total * 0.4);
+    const to = from + Math.floor(SR * 0.3);
+    for (let i = from; i < to; i++) {
+      out[i] = (out[i] as number) + Math.sin((2 * Math.PI * 200 * i) / SR) * voice;
+    }
+    return out;
+  };
+  /** Where the spoken part lives, for slicing. */
+  const VOICE_FROM = Math.floor(SR * 3 * 0.4);
+
+  it("never lets a boosted take exceed the ceiling", () => {
+    // This guards the LIMITER only — the floor and click tests below are what
+    // discriminate the loudness estimator, which is the actual bug.
+    //
+    // Worth recording honestly, because it corrects the first diagnosis: a bare
+    // `Math.tanh(gain * x)` is destructive only when `gain * |x|` is large, and
+    // once the estimator is right that product lands near the target (~0.12),
+    // where tanh is almost linear. Swapping tanh for a knee'd limiter is NOT
+    // observably different on a realistic take — verified by seeding it. The
+    // runaway gain was the cause; tanh was only the mechanism.
+    //
+    // What the limiter does buy is a hard guarantee: raw multiplication would
+    // push a loud-ish take past full scale and clip it.
+    const hot = new Float32Array(SR);
+    for (let i = 0; i < hot.length; i++) {
+      hot[i] = Math.sin((2 * Math.PI * 200 * i) / SR) * 0.15;
+    }
+    // A deliberately hot target forces the full 12x cap: 0.15 * 12 = 1.8.
+    normalizeBuffer(buffer(hot), 5);
+    expect(peak(hot)).toBeLessThanOrEqual(LIMIT_CEIL_MAX);
+  });
+
+  it("leaves the room floor inaudible instead of amplifying it to a roar", () => {
+    const samples = quietTakeInARoom();
+    normalizeBuffer(buffer(samples));
+    // Measure the first 250 ms, which is room tone only (voice starts at 40%).
+    const floorOnly = samples.slice(0, Math.floor(SR * 0.25));
+    // The old path lifted the floor to ~0.25 RMS — a constant hiss as loud as
+    // the target level itself. It must stay far below the speech level.
+    expect(rms(floorOnly)).toBeLessThan(0.05);
+  });
+
+  it("still makes a quiet take meaningfully louder", () => {
+    const samples = quietTakeInARoom();
+    const before = rms(samples);
+    normalizeBuffer(buffer(samples));
+    expect(rms(samples)).toBeGreaterThan(before * 2);
+    // ...without ever clipping.
+    expect(peak(samples)).toBeLessThanOrEqual(1);
+  });
+
+  it("is not fooled by a lone click — the reason RMS replaced peak in f0d0996", () => {
+    const samples = quietTakeInARoom();
+    const withClick = Float32Array.from(samples);
+    withClick[100] = 1; // one full-scale sample
+    normalizeBuffer(buffer(samples));
+    normalizeBuffer(buffer(withClick));
+    // Compare the voice section only — the click itself is in the first 250 ms.
+    const from = VOICE_FROM;
+    const clean = rms(samples.slice(from, from + 1000));
+    const clicked = rms(withClick.slice(from, from + 1000));
+
+    // A percentile is not *immune* to one extra loud block — it shifts by one
+    // rank — but it barely moves: under 1%. Peak-normalizing, which is what
+    // f0d0996 was right to abandon, would have differed by ~15x here (gain
+    // 0.97 with the click vs ~14.7 without). That contrast is the whole point.
+    expect(Math.abs(clean - clicked) / clean).toBeLessThan(0.01);
+  });
+
+  it("leaves an already-loud take alone rather than attenuating it", () => {
+    const loud = new Float32Array(SR);
+    for (let i = 0; i < loud.length; i++) loud[i] = Math.sin((2 * Math.PI * 200 * i) / SR) * 0.9;
+    const copy = Float32Array.from(loud);
+    normalizeBuffer(buffer(loud));
+    expect(Array.from(loud)).toEqual(Array.from(copy));
+  });
+
+  it("leaves a silent room silent instead of amplifying nothing", () => {
+    const silent = new Float32Array(SR);
+    for (let i = 0; i < silent.length; i++) silent[i] = 1e-6;
+    normalizeBuffer(buffer(silent));
+    expect(peak(silent)).toBeLessThan(1e-4);
+  });
+
+  it("handles an empty buffer without throwing", () => {
+    expect(() => normalizeBuffer(buffer(new Float32Array(0)))).not.toThrow();
   });
 });
