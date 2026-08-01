@@ -396,6 +396,19 @@ test("an empty car offers a surprise, and the surprise makes a real beat", async
 
   // …and the offer goes away, because the car is no longer empty.
   await expect.poll(promptShown).toBe(false);
+
+  // ONE tap puts it back, not fifteen. A surprise is ~15 commands; dispatching
+  // them individually made undoing it ~15 taps, which is not undo. It goes
+  // through `store.dispatchAll` now, so it is one history entry — and it earns
+  // the same "put it back" chip a deletion does.
+  const offer = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer);
+  await expect.poll(async () => (await offer()).offering).toBe(true);
+  expect((await offer()).lost).toMatch(/NEW BEAT/i);
+
+  await emit(page, "undo-requested");
+  await expect.poll(laneCount, { message: "one undo must clear the whole beat" }).toBe(0);
+  await expect.poll(promptShown, { message: "…and the empty-car offer returns" }).toBe(true);
 });
 
 test("Map guards Track until a train exists", async ({ page }) => {

@@ -975,6 +975,28 @@ export function dispatch(history: HistoryState, cmd: Command): HistoryState {
   return { past, present: next, future: [] };
 }
 
+/**
+ * Apply several commands as ONE history entry.
+ *
+ * Undo is a child's undo: one tap should put back one thing they did. A
+ * compound action dispatched command-by-command does not behave that way —
+ * "Surprise me" is ~15 commands, so undoing it was ~15 taps, which is not undo,
+ * it is a chore. Anything the kid experiences as a single action belongs here.
+ *
+ * Same no-op rule as `dispatch`: if the whole batch leaves state identical,
+ * nothing is pushed. That is per-BATCH, not per-command — a batch whose first
+ * commands are no-ops and whose last one is not still records exactly one entry.
+ */
+export function dispatchAll(
+  history: HistoryState,
+  cmds: readonly Command[],
+): HistoryState {
+  const present = cmds.reduce(reduce, history.present);
+  if (present === history.present) return history;
+  const past = [...history.past, history.present].slice(-HISTORY_LIMIT);
+  return { past, present, future: [] };
+}
+
 export function undo(history: HistoryState): HistoryState {
   if (history.past.length === 0) return history;
   const previous = history.past[history.past.length - 1] as Project;

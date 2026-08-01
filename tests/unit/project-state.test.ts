@@ -12,6 +12,7 @@ import {
   songBars,
   emptyProject,
   initHistory,
+  dispatchAll,
   makeLayer,
   redo,
   reduce,
@@ -1297,5 +1298,73 @@ describe("save format: version, parse, refuse (S5)", () => {
       expect(error.code).toBe("unreadable");
       expect(error.path).toBe("parts");
     });
+  });
+});
+
+// ── dispatchAll: a compound action is ONE undo step ──────────────────────────
+// Undo is a child's undo — one tap puts back one thing they did. "Surprise me"
+// is ~15 commands and dispatching them one at a time made undoing it ~15 taps,
+// which is not undo, it is a chore.
+describe("dispatchAll", () => {
+  const start = (): ReturnType<typeof initHistory> => initHistory(emptyProject("p1"));
+
+  it("records ONE history entry for many commands", () => {
+    const h = dispatchAll(start(), [
+      { type: "setTempo", bpm: 130 },
+      { type: "setKey", keyId: "D" },
+      { type: "setScale", scaleId: "rainbow" },
+    ]);
+    expect(h.past.length).toBe(1);
+    expect(h.present.tempoBpm).toBe(130);
+    expect(h.present.scaleId).toBe("rainbow");
+    expect(h.present.keyId).toBe("D");
+    // …so ONE undo puts all of it back.
+    const back = undo(h);
+    expect(back.past.length).toBe(0);
+    expect(back.present.tempoBpm).toBe(start().present.tempoBpm);
+    expect(back.present.keyId).toBe(start().present.keyId);
+  });
+
+  it("applies the commands in order, so later ones win", () => {
+    const h = dispatchAll(start(), [
+      { type: "setTempo", bpm: 100 },
+      { type: "setTempo", bpm: 155 },
+    ]);
+    expect(h.present.tempoBpm).toBe(155);
+    expect(h.past.length).toBe(1);
+  });
+
+  it("pushes nothing when the WHOLE batch is a no-op", () => {
+    // A genuinely-refused command, i.e. one whose reducer returns the SAME
+    // state object: `removeCar` declines to delete the last car. (`setTempo`
+    // with an unchanged bpm is NOT one — it rebuilds the object either way,
+    // which is why the funnel compares store identity rather than intent.)
+    const h0 = start();
+    const h = dispatchAll(h0, [{ type: "removeCar", partId: h0.present.parts[0]!.id }]);
+    expect(h).toBe(h0);
+  });
+
+  it("still records one entry when only the LAST command changes anything", () => {
+    // The no-op rule is per-BATCH, not per-command — this is exactly the shape
+    // `generateBeat` produces (it clears layers that usually do not exist yet,
+    // then lays down the groove).
+    const h0 = start();
+    const h = dispatchAll(h0, [
+      { type: "removeLayer", layerId: "not-there" },
+      { type: "setTempo", bpm: 141 },
+    ]);
+    expect(h.past.length).toBe(1);
+    expect(h.present.tempoBpm).toBe(141);
+  });
+
+  it("clears the redo future, like any other new edit", () => {
+    const h = undo(dispatchAll(start(), [{ type: "setTempo", bpm: 130 }]));
+    expect(h.future.length).toBe(1);
+    expect(dispatchAll(h, [{ type: "setTempo", bpm: 111 }]).future).toEqual([]);
+  });
+
+  it("an empty batch changes nothing", () => {
+    const h0 = start();
+    expect(dispatchAll(h0, [])).toBe(h0);
   });
 });

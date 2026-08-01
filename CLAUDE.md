@@ -187,10 +187,12 @@ inversion). **This is a decided architecture, not an accident — see
   subscribes — and **no Tiled object ever emitted it**. The affordance is a
   `SURPRISE ME!` chip inside `WorkshopScene`'s **empty-car prompt**, so it
   offers itself exactly while the car is empty and vanishes once it isn't.
-  Tapping again RE-ROLLS (`generateBeat` clears the layers it made first).
-  Caveat: a surprise is ~15 commands, so undoing one is ~15 taps — re-rolling is
-  the intended way back, not undo. The Workshop LCD reads **SPEED**, matching
-  the Track; it read `TEMP`, a truncation of TEMPO.
+  Tapping again RE-ROLLS (`generateBeat` clears the layers it made first), and
+  **one undo puts the whole thing back** — it goes through `store.dispatchAll`,
+  which applies many commands as ONE history entry. Reach for `dispatchAll` for
+  anything a kid experiences as a single action; a compound action dispatched
+  command-by-command makes undo a chore (this was ~15 taps). The Workshop LCD
+  reads **SPEED**, matching the Track; it read `TEMP`, a truncation of TEMPO.
 - **Undo is reachable now** (it was not). The `UndoStack`, `store.undo()` and
   `AppApi.undo()` have existed since v1 with **zero callers**, so "Forgiving UX.
   Undo everywhere" was prose only and ✕ on a lane was final. The affordance is a

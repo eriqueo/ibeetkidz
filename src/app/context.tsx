@@ -347,9 +347,19 @@ const api: AppApi = {
     if (engine.isPlaying) engine.reconcile(getProject());
   },
   save: () => void persist(),
+  // ONE undo step, not fifteen. A surprise is ~15 commands and used to dispatch
+  // them one at a time, so a kid who wanted their car back had to tap undo
+  // fifteen times — which is not undo. It is the kid's single action, so it is
+  // one history entry, and it gets the same "put it back" offer a deletion does.
   surprise: () => {
-    for (const cmd of generateBeat(rng)) dispatch(cmd);
-    dispatch({ type: "setActiveMachine", machineId: "looper-stage" });
+    const before = store.getSnapshot();
+    store.dispatchAll([
+      ...generateBeat(rng),
+      { type: "setActiveMachine", machineId: "looper-stage" },
+    ]);
+    if (engine.isPlaying) engine.reconcile(getProject());
+    // Same rule as the dispatch funnel: ask the STORE whether anything moved.
+    if (store.getSnapshot() !== before) EventBus.emit("undo-offered", "New beat");
   },
   getProject,
 };

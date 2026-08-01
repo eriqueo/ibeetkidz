@@ -3,6 +3,7 @@
 
 import {
   dispatch as histDispatch,
+  dispatchAll as histDispatchAll,
   redo as histRedo,
   undo as histUndo,
   type HistoryState,
@@ -13,6 +14,9 @@ export interface Store {
   getSnapshot(): HistoryState;
   subscribe(listener: () => void): () => void;
   dispatch(cmd: Command): void;
+  /** Apply many commands as ONE undo step — for anything the kid experiences as
+   *  a single action. See `dispatchAll` in project-state.ts. */
+  dispatchAll(cmds: readonly Command[]): void;
   undo(): void;
   redo(): void;
   replace(next: HistoryState): void;
@@ -38,6 +42,7 @@ export function createStore(initial: HistoryState): Store {
       };
     },
     dispatch: (cmd) => set(histDispatch(state, cmd)),
+    dispatchAll: (cmds) => set(histDispatchAll(state, cmds)),
     undo: () => set(histUndo(state)),
     redo: () => set(histRedo(state)),
     replace: (next) => set(next),

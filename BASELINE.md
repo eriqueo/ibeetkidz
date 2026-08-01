@@ -236,6 +236,25 @@ master output, which needs real capture.
 and the pads/Magic-Pad block of `tool-panels.spec.ts`. `mic-denied.spec.ts` is
 NOT one — it needs capture to fail, not to work.
 
+---
+
+## Re-baseline — 2026-08-01, compound actions are one undo step
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **392** / 26 files, 0 skipped | 386 / 26 |
+| E2E local | **19 passed** | 19 |
+| E2E under `CI=1` | 15 passed, 4 skipped | unchanged |
+
+`dispatchAll` (core) + `store.dispatchAll` apply many commands as ONE history
+entry. "Surprise me" used it first: undoing a surprise was ~15 taps and is now
+one, and it earns the same "put it back" chip a deletion does.
+
+**A note on the run:** in the full local suite `audio-output.spec.ts` went red
+and passed on a re-run alone — exactly the load-sensitivity this file has warned
+about since the first re-baseline. Recorded rather than quietly re-run, because
+"19 passed" without that sentence would be a nicer number than the truth.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint
