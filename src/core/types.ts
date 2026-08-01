@@ -313,8 +313,23 @@ export type Command =
 export const MIN_BPM = 40;
 export const MAX_BPM = 220;
 export const STEP_COUNT = 16;
-/** CPU ceiling for cheap tablets: cap simultaneous layers (oldest gets stolen). */
-export const MAX_LAYERS = 8;
+/**
+ * How many lanes one car may hold. THE SINGLE PRODUCER of that fact — the
+ * Workshop grid derives `WORKSHOP_GRID_V2.maxLanes` from this rather than
+ * restating it.
+ *
+ * It used to be 8 while the chalkboard drew 6, which is two producers of one
+ * number, and the gap between them was reachable: lanes 7 and 8 existed in the
+ * model, were SCHEDULED and audible (`AudioEngine.scheduleLayers` walks
+ * `part.layers`, not the grid's sliced view), but had no row and therefore no ✕
+ * — a kid heard a sound they could neither see nor delete. Past 8 the reducer
+ * then stole the oldest lane outright.
+ *
+ * 6 is the real constraint: it is what the slate can show at a tappable cell
+ * size. Adding a 7th is now REFUSED, not absorbed, so a lane the UI cannot
+ * represent is unconstructible rather than merely discouraged.
+ */
+export const MAX_LAYERS = 6;
 /** Numbered pattern slots a single lane can hold (BeepBox-style 1-9). */
 export const MAX_PATTERNS = 9;
 /** Cap on Song-Train cars (loops). Keeps the strip + loop track a sane width. */

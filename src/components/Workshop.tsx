@@ -33,11 +33,10 @@ type RecPhase = "idle" | "opening" | "recording" | "stopping";
 let carSeq = 0;
 const newCarId = (): string => `car-${Date.now().toString(36)}-${carSeq++}`;
 
-/** How many lanes a car can hold and still SHOW them all. `addLayer` accepts
- *  `MAX_LAYERS` (8) and silently evicts the oldest past that, but the Workshop's
- *  chalkboard only draws `maxLanes` (6) — so a 7th lane added from a tool panel
- *  is a change the kid cannot see, which is the exact bug the Sound Pads had in
- *  the first place. Tools that add a lane refuse at the VISIBLE cap. */
+/** How many lanes a car holds — one number now, derived twice over from
+ *  `MAX_LAYERS`. The reducer REFUSES past it, so this is no longer a guard that
+ *  has to be remembered at each of the ten `addLayer` call sites; it is here
+ *  only so a panel can TELL the kid the car is full before they tap. */
 const VISIBLE_LANE_CAP = WORKSHOP_GRID_V2.maxLanes;
 
 /**

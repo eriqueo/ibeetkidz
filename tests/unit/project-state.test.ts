@@ -133,13 +133,29 @@ describe("reduce", () => {
     expect(activeLayers(s)[0]?.steps).toHaveLength(STEP_COUNT);
   });
 
-  it("steals the oldest layer when at MAX_LAYERS", () => {
+  // This used to assert the OPPOSITE — that the oldest lane is stolen at the
+  // cap — which is how silent data loss survived as "tested behaviour". A kid's
+  // first lane vanishing to make room for one they never asked for is not a
+  // capacity policy, it is losing their work.
+  it("REFUSES a lane past MAX_LAYERS instead of stealing the oldest", () => {
     let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     for (let i = 0; i < MAX_LAYERS + 3; i++) {
       s = reduce(s, { type: "addLayer", layer: layer(`l${i}`, "c1") });
     }
     expect(activeLayers(s)).toHaveLength(MAX_LAYERS);
-    expect(activeLayers(s)[0]?.id).toBe(`l${3}`); // first three stolen
+    expect(activeLayers(s)[0]?.id, "the kid's FIRST lane must survive").toBe("l0");
+    expect(activeLayers(s).at(-1)?.id).toBe(`l${MAX_LAYERS - 1}`);
+  });
+
+  it("returns the SAME state when it refuses, so the funnel sees a no-op", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    for (let i = 0; i < MAX_LAYERS; i++) {
+      s = reduce(s, { type: "addLayer", layer: layer(`l${i}`, "c1") });
+    }
+    // Referential equality is the contract `dispatch` in app/context.tsx reads
+    // to decide whether anything happened; a fresh-but-equal object would make
+    // a refused add look like a change and offer a bogus undo.
+    expect(reduce(s, { type: "addLayer", layer: layer("overflow", "c1") })).toBe(s);
   });
 
   it("reorders lanes within the car (moveLayer up/down, edges are no-ops)", () => {

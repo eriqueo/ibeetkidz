@@ -203,10 +203,14 @@ test("Sound Pads: a pad tap puts that sound in the car, as ONE undo step", async
 });
 
 test("Sound Pads: refuses to add a lane the chalkboard cannot show", async ({ page }) => {
-  // `addLayer` accepts MAX_LAYERS (8) and silently evicts the OLDEST lane past
-  // that, while the Workshop grid only draws 6 — so an unguarded pad panel would
+  // `addLayer` used to accept MAX_LAYERS (8) and silently evict the OLDEST lane
+  // past that, while the Workshop grid drew only 6 — so an unguarded pad panel
   // let a kid tap away, see nothing happen, and lose their first lane to make
-  // room for one they cannot see.
+  // room for one they could not see. Both numbers are now one producer
+  // (`MAX_LAYERS` = 6, which `WORKSHOP_GRID_V2.maxLanes` derives from) and the
+  // reducer REFUSES rather than evicting. This panel still checks the cap
+  // itself, not to enforce it — the reducer does that for all ten `addLayer`
+  // call sites — but so the kid is TOLD the car is full before they tap.
   const crashes = await openWorkshop(page);
   await emit(page, "workshop-open-tool", "sound-pads");
   await expect.poll(() => activeTool(page)).toBe("sound-pads");

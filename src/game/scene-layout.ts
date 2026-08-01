@@ -4,6 +4,7 @@
 // a visual tuning pass against the running app; keep them here so tuning is a
 // one-file edit shared by both the Phaser scene and the React overlay.
 import type { NormRegion } from "../app/use-overlay-rect.ts";
+import { MAX_LAYERS } from "../core/types.ts";
 
 // ── v2 redesign layouts (clean backgrounds) ─────────────────────────────────
 // Fractions of the 16:9 scene-v2 art, eyeballed from the renders. STARTING
@@ -23,7 +24,11 @@ import type { NormRegion } from "../app/use-overlay-rect.ts";
 // slate; a left column holds the lane labels and the remaining width is split
 // into STEP_COUNT cells. No scrolling: at most `maxLanes` rows show at once.
 export const WORKSHOP_GRID_V2 = {
-  maxLanes: 6,
+  // DERIVED, not restated. This used to read `6` while `MAX_LAYERS` read `8`,
+  // and the gap between the two numbers was a reachable illegal state — see the
+  // comment on `MAX_LAYERS`. The core owns "how many lanes a car may have"
+  // because the reducer is what has to enforce it; the grid just draws them.
+  maxLanes: MAX_LAYERS,
   // Rows are sized as if at least this many lanes exist (lanes stack from the
   // top): without it a single lane's cells balloon to the full slate height.
   minRows: 4,

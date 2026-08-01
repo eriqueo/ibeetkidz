@@ -557,11 +557,14 @@ export function reduce(state: Project, cmd: Command): Project {
     case "addLayer": {
       if (!state.clips[cmd.layer.clipId]) return state; // can't layer an unknown clip
       const layer = makeLayer({ ...cmd.layer, volume: clamp(cmd.layer.volume, 0, 1) });
-      return editActivePart(state, (layers) => {
-        // Enforce the CPU ceiling per car: steal the oldest layer at capacity.
-        const base = layers.length >= MAX_LAYERS ? layers.slice(1) : layers;
-        return [...base, layer];
-      });
+      // REFUSE at the cap, never steal. Ten call sites dispatch `addLayer`
+      // (`rg -n 'type: "addLayer"' src/components/`) and only one of them
+      // checked a cap, so enforcing here is what makes the rule hold for the
+      // eleventh — the same reason `undoable.ts` classifies in core rather than
+      // at each ✕. Refusing returns the SAME state object, which the dispatch
+      // funnel already reads as "nothing happened".
+      if (activeLayers(state).length >= MAX_LAYERS) return state;
+      return editActivePart(state, (layers) => [...layers, layer]);
     }
 
     case "removeLayer":
@@ -912,7 +915,8 @@ export function reduce(state: Project, cmd: Command): Project {
 
     // Send a lane to another car (copy). The source lane lives on the active
     // car; the copy lands on the target with `newLayerId`. Enforces the per-car
-    // lane cap by stealing the oldest (same rule as addLayer).
+    // lane cap by REFUSING (same rule as addLayer) — a car the kid cannot see
+    // into is exactly where a silent theft would go unnoticed longest.
     case "copyLayerToCar": {
       const src = activePart(state);
       const layer = src.layers.find((l) => l.id === cmd.layerId);
@@ -920,15 +924,13 @@ export function reduce(state: Project, cmd: Command): Project {
       const target = state.parts.find((p) => p.id === cmd.targetPartId);
       if (!target || target.id === src.id) return state; // unknown / same car
       if (target.layers.some((l) => l.id === cmd.newLayerId)) return state; // already there
+      if (target.layers.length >= MAX_LAYERS) return state; // target car is full
       const copy: Layer = { ...layer, id: cmd.newLayerId };
       return {
         ...state,
-        parts: state.parts.map((p) => {
-          if (p.id !== target.id) return p;
-          const base =
-            p.layers.length >= MAX_LAYERS ? p.layers.slice(1) : p.layers;
-          return { ...p, layers: [...base, copy] };
-        }),
+        parts: state.parts.map((p) =>
+          p.id === target.id ? { ...p, layers: [...p.layers, copy] } : p,
+        ),
       };
     }
 
