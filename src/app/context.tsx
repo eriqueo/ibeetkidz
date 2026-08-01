@@ -12,7 +12,7 @@ import {
 } from "react";
 import { ToneSoundPort } from "../adapters/tone-sound-port.ts";
 import { LocalStoragePort } from "../adapters/local-storage-port.ts";
-import { QuotaExceededError } from "../ports/storage-port.ts";
+import { QuotaExceededError, StorageError } from "../ports/storage-port.ts";
 import { AudioEngine } from "../core/audio-engine.ts";
 import { createRng, type RngPort } from "../core/rng.ts";
 import { generateBeat } from "../core/generative.ts";
@@ -21,6 +21,7 @@ import {
   initHistory,
 } from "../core/project-state.ts";
 import type { Command, Project } from "../core/types.ts";
+import type { KidMessage } from "../core/project-schema.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
 import { EventBus } from "../game/EventBus.ts";
@@ -122,15 +123,28 @@ function dispatch(cmd: Command): void {
 
 export type StorageTrouble = "full" | "blocked";
 
-let storageTrouble: StorageTrouble | null = null;
+/** What the notice is about, and the exact words to show.
+ *
+ *  The words travel WITH the reason rather than being looked up from the kind,
+ *  because not every reason has copy this file can own: an unreadable or
+ *  too-new save is described by the parse layer (`project-schema.ts`), which is
+ *  the only place that knows *why* it could not be read. Carrying a
+ *  `KidMessage` is what lets that copy reach a child instead of being flattened
+ *  into a generic "I can't save here". */
+interface Notice {
+  readonly kind: StorageTrouble | "save";
+  readonly copy: KidMessage;
+}
+
+let storageTrouble: Notice | null = null;
 const troubleListeners = new Set<() => void>();
 
-function getStorageTrouble(): StorageTrouble | null {
+function getStorageTrouble(): Notice | null {
   return storageTrouble;
 }
 
-function emitStorageTrouble(next: StorageTrouble | null): void {
-  if (storageTrouble === next) return;
+function emitStorageTrouble(next: Notice | null): void {
+  if (storageTrouble?.kind === next?.kind) return;
   storageTrouble = next;
   for (const listener of troubleListeners) listener();
 }
@@ -138,8 +152,15 @@ function emitStorageTrouble(next: StorageTrouble | null): void {
 /** Flag that saving is broken. "full" wins over "blocked" — a full device is
  *  the more actionable message and must not be downgraded by a later probe. */
 export function reportStorageTrouble(kind: StorageTrouble): void {
-  if (storageTrouble === "full" && kind === "blocked") return;
-  emitStorageTrouble(kind);
+  if (storageTrouble?.kind === "full" && kind === "blocked") return;
+  emitStorageTrouble({ kind, copy: TROUBLE_COPY[kind] });
+}
+
+/** Show the parse layer's own words for a save that could not be read — a
+ *  corrupted one, or one written by a newer ibeetkidz. `StorageError` carries
+ *  the `KidMessage`; this is the only thing that puts it on screen. */
+export function reportSaveTrouble(copy: KidMessage): void {
+  emitStorageTrouble({ kind: "save", copy });
 }
 
 /** Dismiss the notice (the kid tapped OK). */
@@ -154,7 +175,7 @@ function subscribeStorageTrouble(onChange: () => void): () => void {
   };
 }
 
-export function useStorageTrouble(): StorageTrouble | null {
+export function useStorageTrouble(): Notice | null {
   return useSyncExternalStore(
     subscribeStorageTrouble,
     getStorageTrouble,
@@ -244,7 +265,19 @@ export async function loadLast(): Promise<void> {
   if (metas.length === 0) return;
   const latest = [...metas].sort((a, b) => b.savedAt - a.savedAt)[0];
   if (!latest) return;
-  const project = await storage.loadProject(latest.id);
+  // An unreadable or too-new save throws a StorageError carrying the parse
+  // layer's own kid-legible words (S5/S6). Without this catch the child gets a
+  // blank project and no explanation — the failure is typed and tested, but
+  // never reaches a screen.
+  let project: Project | null;
+  try {
+    project = await storage.loadProject(latest.id);
+  } catch (err) {
+    const copy = err instanceof StorageError ? err.kidMessage : undefined;
+    if (copy) reportSaveTrouble(copy);
+    else console.warn("could not load the last project", err);
+    return;
+  }
   if (!project) return;
   for (const clip of Object.values(project.clips)) {
     if (clip.source.kind === "recording") {
@@ -308,7 +341,7 @@ const TROUBLE_COPY: Record<StorageTrouble, { title: string; body: string }> = {
 const StorageNotice: FC = () => {
   const trouble = useStorageTrouble();
   if (!trouble) return null;
-  const copy = TROUBLE_COPY[trouble];
+  const copy = trouble.copy;
   return (
     <div id="storage-notice" role="alert">
       <p className="storage-notice-title">{copy.title}</p>
