@@ -282,12 +282,16 @@ from live on-screen sizes, so it adapts to the new perspective automatically.
 
 ---
 
-## AR-015 · Train animation upgrade: 16 directions + wheel motion — MEDIUM (PARTIAL)
+## ✅ DONE — AR-015 · Train animation upgrade: 16 directions + wheel motion
 
-**Completed:** boxcar (32/32), hopper (32/32) — files in `src/assets/spritesheets/ar015/`.
-**Still needed:** loco, tanker, flatcar (0/32 each — credit limit hit mid-run).
+**Completed:** all 5 vehicle types × 32 files = 160 total refs in `src/assets/spritesheets/ar015/`.
+- boxcar: 32/32 ✅
+- hopper: 32/32 ✅
+- loco: 32/32 ✅ (committed 2026-07-31)
+- tanker: 32/32 ✅ (committed 2026-07-31)
+- flatcar: 32/32 ✅ (committed 2026-07-31)
 
-**Resume prompt:** Re-run the AR-015 generation for loco, tanker, and flatcar only. Same style rules, same output path `src/assets/spritesheets/ar015/<type>-ref-<DIR>-f1/f2.png`.
+**Engineering next step:** extend `scripts/build_train_atlas.py` and `sprite-assets.ts` to the 16-direction × 2-frame atlas format. All ref files are in `src/assets/spritesheets/ar015/` and ready.
 
 **Target files:** `src/assets/spritesheets/<type>-ref-<dir>-f1.png` +
 `-f2.png` — 16 compass directions (E, ENE, NE, NNE, N, … all 16) × 2 wheel
