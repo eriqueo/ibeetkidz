@@ -310,8 +310,13 @@ earn first.
   by tests: gating on raw RMS made the screen strobe once per note (rests are not silence — it
   uses a peak-hold envelope), and a linear FFT sweep put a kid's whole melody in the first two
   bars (`src/visualizer/spectrum.ts` does log-spaced bands, peak per band).
-- **Deep per-tool e2e through the Workshop stations nav** (W5-04) and **SoundPort transport
-  contract tests** (W5-02).
+- ~~**Deep per-tool e2e through the Workshop stations nav** (W5-04).~~ **DONE 2026-08-01** —
+  `tests/e2e/tool-panels.spec.ts`. Until then the only assertion on any panel was that it OPENS,
+  which is how eight instrument characters shipped two sessions ago with their actual work
+  unexercised. Beat Maker, the Melody Editor (notes, ×2 roll, deck knobs) and the open/close walk
+  run on CI; pads + Magic Pad are a hardware-audio skip, because a pad tap has no state outcome —
+  its whole job is to make a noise.
+- **SoundPort transport contract tests** (W5-02).
 
 ---
 

@@ -213,6 +213,29 @@ anyway. It is the mirror of the two hardware-audio specs, not a fourth one.
 It passed on its first run: the app already handled a denied mic correctly. The
 value is that it cannot silently stop doing so.
 
+---
+
+## Re-baseline — 2026-08-01, deep tool-panel e2e (W5-04 closed)
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 386 / 26 files, 0 skipped | unchanged |
+| E2E local | **19 passed** | 15 |
+| E2E under `CI=1` | **15 passed, 4 skipped** | 12 + 3 |
+| E2E spec files | **5** | 4 |
+
+`tests/e2e/tool-panels.spec.ts` closes the "rebuild deep per-tool e2e through
+the Workshop tool-panel nav" follow-up. Until now the only assertion on any
+panel was that it OPENS. Three of its four tests run on CI (Beat Maker, Melody
+Editor, the open/close walk); the fourth is the **fourth** runtime skip — a pad
+tap has no state outcome, so proving it works means proving samples reached the
+master output, which needs real capture.
+
+**Four runtime skips now**, all hardware-audio, all cited by file:
+`audio-output.spec.ts`, the mic-record and jumbotron blocks of `v2-flow.spec.ts`,
+and the pads/Magic-Pad block of `tool-panels.spec.ts`. `mic-denied.spec.ts` is
+NOT one — it needs capture to fail, not to work.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint
