@@ -146,6 +146,25 @@ VRAM figures were measured with a scratch Playwright spec run against `main` and
 branch on the same machine — method and full tables in
 `design/PERF_SINGLE_PHASER_GAME.md`.
 
+---
+
+## Re-baseline — 2026-08-01, visualizer re-homed into the Track
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **382** / 25 files, 0 skipped | 359 / 23 |
+| E2E local | **11 passed** | 10 |
+| E2E under `CI=1` | **8 passed, 3 skipped** | 8 + 2 |
+
+Both numbers measured, not inferred. The **third** runtime skip is new:
+`v2-flow.spec.ts`'s jumbotron test needs a real audio pipeline for the same
+reason `audio-output.spec.ts` does, so it is gated to local runs. Cited by file,
+not line.
+
+New unit files: `tests/unit/spectrum.test.ts` (7) and
+`tests/unit/scene-visualizer.test.ts` (12); `tiled-maps.test.ts` gained 4 guards
+on the `viz-screen` placement.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint

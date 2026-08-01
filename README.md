@@ -103,11 +103,17 @@ Maker) stations are wired up in `assets/maps/workshop.json`. The seeded
 and listened for, with nothing emitting it. Giving all of these their stations
 back is a to-do.
 
-**The retro screensaver visualizer is parked, not shipped:** `src/visualizer/`
-still implements `RendererPort`, but its only mount point (`VizPanel`) lost its
-last importer when the v1 shell was deleted, so nothing in the running app
-renders it. Re-homing it into the Phaser Track view via the existing analyser
-tap is a backlog item.
+**"See the sound" ships in the Track view.** A jumbotron stands in the middle of
+the oval and shows the song as it rides: three styles — Bars, Lava, Retro Scope —
+and you tap the screen to change which. It is driven by the master-output
+analyser, the same node the audio diagnostics read, so it can only ever show
+sound that actually reached the speakers. It fades up when the song starts and
+back out on silence, so a parked Track is exactly the painted scene and there is
+no motion when nobody is listening.
+
+(This was a README pillar that spent a release as unreachable code — the DOM
+"Watch" panel lost its last importer with the v1 shell. The three styles were
+kept and re-hosted; `VizPanel` and the DOM render loop are gone.)
 
 **Gates:** `npm run typecheck` clean, the Vitest unit suite, and the Playwright
 E2E suite. For the current counts see **`BASELINE.md`** — it is the single

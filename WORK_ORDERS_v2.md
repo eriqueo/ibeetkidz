@@ -300,14 +300,16 @@ earn first.
   interruption leaves the train riding silently — promote if a kid-visible report ever comes in);
   `activePartId` push into `YardScene`; per-lane FX-chain hoist.
 - **`?diag` ring buffer + persist blob-skip** (from v1 W3-03).
-- **Re-home the visualizer into Phaser via the existing analyser tap** (from M2). A1 parked the
-  code; M1 then removed its last importer, so `src/visualizer/**` + `VizPanel.tsx` +
-  `renderer-port.ts` are now unreachable from the running app, not merely opt-in. The tap already
-  exists (`SoundPort.getAnalyser()`; `getAudioDiag()` already reads that same node for the e2e
-  master-output peak assertion) —
-  the work is a Phaser-side renderer in the Track view driven off it, after which `VizPanel.tsx`
-  (React/DOM canvas) can go. Until then the README says "parked, not shipped"; keep those two in
-  sync.
+- ~~**Re-home the visualizer into Phaser via the existing analyser tap** (from M2).~~ **DONE
+  2026-08-01.** It is a jumbotron in the middle of the Track's oval
+  (`src/game/scene-visualizer.ts`), fed by `engine.getAnalyser()` pushed in from React. The three
+  `VisualStyle`s are unchanged — only the host moved, which is what A1's "park it, don't delete
+  it" was protecting. `VizPanel.tsx`, `src/visualizer/visualizer.ts`, the `RendererPort`
+  interface and the `.viz-*` CSS are deleted; README and CLAUDE.md updated in the same change.
+  Two defects were found and fixed on the way, both invisible in code review and both now pinned
+  by tests: gating on raw RMS made the screen strobe once per note (rests are not silence — it
+  uses a peak-hold envelope), and a linear FFT sweep put a kid's whole melody in the first two
+  bars (`src/visualizer/spectrum.ts` does log-spaced bands, peak per band).
 - **Deep per-tool e2e through the Workshop stations nav** (W5-04) and **SoundPort transport
   contract tests** (W5-02).
 

@@ -89,8 +89,8 @@ body {
   background-size: 16px 16px;
   color: var(--ink);
 }
-/* Let the visualizer glow against the dark shell. */
-.viz-canvas { opacity: 0.42; mix-blend-mode: screen; }
+/* (The `.viz-canvas` recessed-glow rule lived here for the DOM Watch panel. The
+   visualizer is a Phaser jumbotron in the Track scene now — no DOM canvas.) */
 
 /* ============================================================================
    BOOT GATE

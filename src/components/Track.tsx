@@ -9,7 +9,7 @@ import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 const SONG_FILE_NAME = "my-train-song.wav";
 
 export const Track: FC = () => {
-  const { dispatch, engine, sound } = useApp();
+  const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
 
@@ -32,7 +32,13 @@ export const Track: FC = () => {
     sceneRef.current = scene as TrackScene;
     sceneRef.current.setCars(carsRef.current);
     sceneRef.current.setTempo(projectRef.current.tempoBpm);
-  }, []);
+    // "See the sound": hand the scene the master-output tap so the jumbotron in
+    // the middle of the oval can draw what actually reached the speakers. React
+    // owns the ports, so the analyser is PUSHED in — the scene never reaches
+    // for audio itself. `engine.getAnalyser()` is the same node `getAudioDiag`
+    // reads, which is what keeps "the visualizer never lies" literally true.
+    sceneRef.current.attachVisualizer(engine.getAnalyser(), getProject);
+  }, [engine, getProject]);
 
   useEffect(() => { sceneRef.current?.setCars(cars); }, [cars]);
   useEffect(() => { sceneRef.current?.setTempo(project.tempoBpm); }, [project.tempoBpm]);

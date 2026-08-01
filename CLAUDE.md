@@ -181,11 +181,21 @@ inversion). **This is a decided architecture, not an accident — see
   Pages serves from `/ibeetkidz/`, so a bare `/assets/...` 404s there and only
   there — invisible in `npm run dev`. `tests/unit/public-asset-url.test.ts` guards
   it.
-- **The visualizer is parked, not shipped.** `src/visualizer/**`, `VizPanel.tsx`
-  and `renderer-port.ts` have no importer in the running app (M1 removed the last
-  one). Decision A1: park the code, re-home it into the Track view via the existing
-  analyser tap (`SoundPort.getAnalyser()`) as a backlog item. Don't delete it, and
-  don't describe it as live.
+- **The visualizer is LIVE, in the Track view** (decision A1's re-home, done).
+  `src/game/scene-visualizer.ts` is a jumbotron standing in the middle of the
+  oval: a Graphics cabinet in the scene's chip language wrapping a 320×96
+  `CanvasTexture` that the **unchanged** `VisualStyle`s draw into, so the three
+  styles that shipped for the old DOM panel run verbatim. React pushes the
+  analyser in via `TrackScene.attachVisualizer` (the scene never reaches for
+  audio); placement is the `viz-screen` rect in `track.json`'s geometry-layer.
+  Visibility follows a peak-hold envelope on the master output — **not raw RMS,
+  which chases the rests between notes and strobes** — so it fades up on sound,
+  rides through musical rests, and clears after STOP. Tap the screen to cycle
+  styles. `src/visualizer/spectrum.ts` is the one producer of the FFT→bars
+  reduction (log-spaced bands, peak per band; a linear sweep put a kid's whole
+  melody in the first two bars). `VizPanel.tsx`, `src/visualizer/visualizer.ts`,
+  the `RendererPort` interface and the `.viz-*` CSS are **deleted** — do not
+  describe the visualizer as parked.
 
 ---
 

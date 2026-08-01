@@ -4,6 +4,7 @@
 
 import type { VisualFrame, VisualStyle } from "../../ports/renderer-port.ts";
 import type { Project } from "../../core/types.ts";
+import { bandLevels } from "../spectrum.ts";
 
 const GROUND = "#29242e"; // theme ground (Gruvbox-dark × Dracula)
 // Warm→cool ramp reused from the theme palette; soft, not neon.
@@ -21,16 +22,15 @@ export const barsStyle: VisualStyle = {
     ctx.fillRect(0, 0, w, h);
 
     const bars = 28;
-    const step = Math.max(1, Math.floor(frame.spectrum.length / bars));
+    // Log-spaced bands, so the melody spreads across the whole screen instead
+    // of bunching into the first two bars. See `../spectrum.ts`.
+    const levels = bandLevels(frame.spectrum, bars);
     const gap = 3;
     const barW = w / bars;
     const radius = Math.min(8, barW / 2 - gap);
 
     for (let i = 0; i < bars; i++) {
-      // Average a small window so the bars move smoothly instead of jittering.
-      let sum = 0;
-      for (let k = 0; k < step; k++) sum += frame.spectrum[i * step + k] ?? 0;
-      const v = sum / step / 255;
+      const v = levels[i] ?? 0;
       const bh = Math.max(2, v * h * 0.78);
       const x = i * barW + gap / 2;
       const bw = barW - gap;

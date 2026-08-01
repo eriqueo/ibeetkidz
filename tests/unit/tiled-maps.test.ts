@@ -309,3 +309,58 @@ describe("track.json ride-path geometry", () => {
     expect(() => parseTiledPath(TRACK, "nope-layer", "track-path")).toThrow(/no object layer/);
   });
 });
+
+describe("track.json visualizer screen", () => {
+  // The jumbotron ("see the sound") stands in the middle of the oval. Its
+  // placement is Tiled data so Eric can drag it in the `?edit` editor — which is
+  // exactly why it needs a guard: a drag that parks it over the transport bar or
+  // out on the grass would look deliberate and nothing would complain.
+  const geometry = parseTiledLayer(TRACK, "geometry-layer");
+  const screen = geometry.find((s) => s.id === "viz-screen");
+  const ridePath = parseTiledPath(TRACK, "geometry-layer", "track-path");
+
+  it("exists as a real rect, not a zero-size marker", () => {
+    expect(screen, "TrackScene renders nothing without it").toBeDefined();
+    expect(screen!.w).toBeGreaterThan(0.2);
+    expect(screen!.h).toBeGreaterThan(0.1);
+  });
+
+  it("stands INSIDE the oval, clear of the header and the transport bar", () => {
+    const s = screen!;
+    const top = s.cy - s.h / 2;
+    const bottom = s.cy + s.h / 2;
+    const left = s.cx - s.w / 2;
+    const right = s.cx + s.w / 2;
+
+    // Below the header panel and above the transport bar (both from track.json,
+    // read here rather than restated so moving either moves this bound too).
+    const header = need(track, "panel-header");
+    const bar = need(track, "btn-ride");
+    expect(top).toBeGreaterThan(header.cy + header.h / 2);
+    expect(bottom).toBeLessThan(bar.cy - bar.h / 2);
+
+    // …and inside the ride path's own footprint, so it sits on the infield
+    // rather than out on the scenery.
+    const xs = ridePath.points.map((p) => p.x);
+    const ys = ridePath.points.map((p) => p.y);
+    expect(left).toBeGreaterThan(Math.min(...xs));
+    expect(right).toBeLessThan(Math.max(...xs));
+    expect(top).toBeGreaterThan(Math.min(...ys));
+    expect(bottom).toBeLessThan(Math.max(...ys));
+  });
+
+  it("keeps the 10:3 aspect its backing store is drawn at", () => {
+    // `RENDER_W/RENDER_H` in scene-visualizer.ts is 320x96. A different aspect
+    // here would stretch every style non-uniformly — subtle enough to ship.
+    const s = screen!;
+    const px = (s.w * 2560) / (s.h * 1440);
+    expect(px).toBeCloseTo(320 / 96, 1);
+  });
+
+  it("is not interactive chrome — the scene owns its tap, not the Tiled engine", () => {
+    // `spawnUiLayer` only ever reads the ui-layer, but an `action` authored here
+    // would read as wired and do nothing.
+    expect(screen!.action).toBeUndefined();
+    expect(screen!.sprite).toBeUndefined();
+  });
+});

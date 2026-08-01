@@ -4,6 +4,7 @@
 
 import type { VisualFrame, VisualStyle } from "../../ports/renderer-port.ts";
 import type { Project } from "../../core/types.ts";
+import { bandLevels } from "../spectrum.ts";
 
 // iBeetKidz dark theme (Gruvbox-dark × Dracula). The visualizer glows behind the
 // cream-on-plum panels — the theme.css canvas runs it at mix-blend-mode: screen
@@ -28,11 +29,13 @@ export const retroScopeStyle: VisualStyle = {
     // Chunky mirrored spectrum bars, cycling the warm→cool theme palette. Kept
     // shorter and semi-transparent so they sit back instead of flashing.
     const bars = 32;
-    const step = Math.floor(frame.spectrum.length / bars);
+    // Log-spaced bands (see `../spectrum.ts`) — and averaged, where this used to
+    // take a single bin per bar, which made the row twitch as much as it moved.
+    const levels = bandLevels(frame.spectrum, bars);
     const barW = w / bars;
     ctx.globalAlpha *= 0.55;
     for (let i = 0; i < bars; i++) {
-      const v = (frame.spectrum[i * step] ?? 0) / 255;
+      const v = levels[i] ?? 0;
       const bh = v * h * 0.3;
       ctx.fillStyle = SPECTRUM[i % SPECTRUM.length] ?? WAVEFORM;
       ctx.fillRect(i * barW + 1, h - bh, barW - 2, bh);
