@@ -569,6 +569,17 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   /** Test-only read of the currently open satellite tool panel (null = none). */
+  /** Exposed for the e2e bridge: the words the open tool is showing a kid.
+   *  Used to prove the mic-denied path reaches them with something friendly
+   *  rather than failing silently — "mic-denied must leave the app fully
+   *  usable" is a stated rule that had no test. */
+  get toolStatus(): { voice: string; keys: string } {
+    return {
+      voice: this.toolModel?.voice.status ?? "",
+      keys: this.toolModel?.keys.status ?? "",
+    };
+  }
+
   get activeToolId(): string | null {
     return this.activeTool;
   }

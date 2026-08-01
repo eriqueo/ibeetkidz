@@ -194,6 +194,25 @@ reach it. `generateBeat` now has its affordance in the Workshop's empty-car
 prompt. The Workshop LCD also reads **SPEED**, matching the Track — it read
 `TEMP`, a truncation of TEMPO that fit the chip but is not a word.
 
+---
+
+## Re-baseline — 2026-08-01, mic-denied covered
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 386 / 26 files, 0 skipped | unchanged |
+| E2E local | **15 passed** | 14 |
+| E2E under `CI=1` | **12 passed, 3 skipped** | 11 + 3 |
+| E2E spec files | **4** | 3 |
+
+`tests/e2e/mic-denied.spec.ts` covers "mic-denied must leave the app fully
+usable", a stated rule that had no test. **It does NOT skip on CI** — it needs
+`getUserMedia` to FAIL, which is what a runner without a capture device does
+anyway. It is the mirror of the two hardware-audio specs, not a fourth one.
+
+It passed on its first run: the app already handled a denied mic correctly. The
+value is that it cannot silently stop doing so.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint
