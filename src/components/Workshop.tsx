@@ -101,7 +101,8 @@ export const Workshop: FC = () => {
     carType: part.carType,
     selectedLayerId: selectedLayer,
     tempoBpm: project.tempoBpm,
-  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm]);
+    carCount: project.parts.length,
+  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm, project.parts.length]);
 
   // Tool-panel model — derived from the store + the transient take state above.
   const toolModel = useMemo<ToolModel>(() => {
