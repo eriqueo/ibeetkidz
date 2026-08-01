@@ -21,6 +21,7 @@ import {
   initHistory,
 } from "../core/project-state.ts";
 import type { Command, Project } from "../core/types.ts";
+import { lostBy, offersUndo } from "../core/undoable.ts";
 import type { KidMessage } from "../core/project-schema.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
@@ -108,9 +109,23 @@ if (
 
 // Dispatch wrapper: mutate state, then reconcile the transport if a beat is
 // playing so edits are heard immediately (mirrors the old main.ts behavior).
+//
+// It is also where "Undo everywhere" is honoured. EVERY command in the app
+// passes through here, so classifying destruction at this one point (against
+// `core/undoable.ts`) is what makes the promise hold for commands nobody has
+// written yet — the alternative, remembering to offer undo at each of the ✕
+// buttons, is a promise that decays with the next feature.
 function dispatch(cmd: Command): void {
+  const before = store.getSnapshot();
   store.dispatch(cmd);
   if (engine.isPlaying) engine.reconcile(getProject());
+  // A no-op command changes nothing and pushes no history entry, so there would
+  // be nothing for "put it back" to restore — checking the store rather than
+  // the command keeps this honest about what actually happened.
+  if (store.getSnapshot() === before) return;
+  const lost = offersUndo(cmd) ? lostBy(cmd) : null;
+  if (lost) EventBus.emit("undo-offered", lost);
+  else EventBus.emit("undo-withdrawn");
 }
 
 // ── "I can't save your song" channel ────────────────────────────────────────
@@ -317,12 +332,18 @@ const api: AppApi = {
   engine,
   store,
   dispatch,
+  // Moving through history retires any standing offer. The chip hides itself
+  // when TAPPED, but that is not the only way here — and a chip left standing
+  // after an undo is worse than no chip: the history has already moved, so the
+  // next tap would undo whatever came before the thing it claims to restore.
   undo: () => {
     store.undo();
+    EventBus.emit("undo-withdrawn");
     if (engine.isPlaying) engine.reconcile(getProject());
   },
   redo: () => {
     store.redo();
+    EventBus.emit("undo-withdrawn");
     if (engine.isPlaying) engine.reconcile(getProject());
   },
   save: () => void persist(),
@@ -332,6 +353,13 @@ const api: AppApi = {
   },
   getProject,
 };
+
+// The scene-side "put it back" chip, answered here. Module scope rather than a
+// component effect, matching the store subscription above: the offer can be
+// tapped in any view, and this is the singleton that owns undo. It closes the
+// last gap in "Forgiving UX. Undo everywhere" — the history stack, the store
+// method and this API have all existed since v1 with no caller.
+EventBus.on("undo-requested", () => api.undo());
 
 const AppContext = createContext<AppApi>(api);
 

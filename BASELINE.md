@@ -165,6 +165,19 @@ New unit files: `tests/unit/spectrum.test.ts` (7) and
 `tests/unit/scene-visualizer.test.ts` (12); `tiled-maps.test.ts` gained 4 guards
 on the `viz-screen` placement.
 
+---
+
+## Re-baseline — 2026-08-01, undo made reachable
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **386** / 26 files, 0 skipped | 382 / 25 |
+| E2E local | **13 passed** | 11 |
+| E2E under `CI=1` | 10 passed, 3 skipped | 8 + 3 |
+
+New: `tests/unit/undoable.test.ts` (4) plus two e2e specs covering the "put it
+back" offer and its withdrawal. No new runtime skips.
+
 ### Gate now has four steps
 ```
 npm run typecheck && npm run test && npm run lint

@@ -296,6 +296,74 @@ test("Track: the jumbotron lights up from real audio, and dark otherwise", async
     .toBe(0);
 });
 
+test("deleting a track offers to put it back, and putting it back works", async ({ page }) => {
+  // "Forgiving UX. Undo everywhere" is a stated rule that shipped as a lie: the
+  // UndoStack, the store method and `AppApi.undo()` all existed with ZERO
+  // callers, so ✕ on a lane was final. This drives the real path a kid takes.
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  await emit(page, "workshop-add-melody", "guitar");
+  await expect.poll(async () => activeMelodyCount(await getProject(page))).toBe(1);
+  const layerId: string = await page.evaluate(() => {
+    const p = (window as any).__ibeetkidz_test__.getProject();
+    const part = p.parts.find((x: any) => x.id === p.activePartId) ?? p.parts[0];
+    return part.layers.find((l: any) => l.kind === "melody").id;
+  });
+
+  const offer = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer);
+  expect((await offer()).offering, "nothing lost yet").toBe(false);
+
+  await emit(page, "workshop-layer-delete", layerId);
+  await expect.poll(async () => activeMelodyCount(await getProject(page))).toBe(0);
+  await expect.poll(async () => (await offer()).offering).toBe(true);
+  expect((await offer()).lost).toMatch(/TRACK GONE/i);
+
+  // The rescue itself — the lane comes back…
+  await emit(page, "undo-requested");
+  await expect.poll(async () => activeMelodyCount(await getProject(page))).toBe(1);
+  // …and the offer retires with it. Undoing moves the history, so a chip left
+  // standing would undo whatever came BEFORE the thing it just restored.
+  await expect.poll(async () => (await offer()).offering).toBe(false);
+
+  // A REFUSED destructive command must not offer anything: `removeCar` declines
+  // to delete the last car, so nothing was lost and there is nothing to put
+  // back. The funnel asks the STORE whether state moved, not the command what
+  // it intended — an offer here would undo whatever came before instead.
+  await page.evaluate(() => {
+    const t = (window as any).__ibeetkidz_test__;
+    t.dispatch({ type: "removeCar", partId: t.getProject().activePartId });
+  });
+  await expect.poll(async () => (await getProject(page)).parts.length).toBe(1);
+  expect((await offer()).offering, "a refused delete must not offer a rescue").toBe(false);
+});
+
+test("the undo offer withdraws once the kid does something else", async ({ page }) => {
+  // Not politeness: `undo()` pops the LAST history entry, so a stale offer would
+  // undo whatever happened AFTER the deletion. The offer has to go when the
+  // history moves on, or the rescue button becomes a wrecking ball.
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  await emit(page, "workshop-add-melody", "guitar");
+  const layerId: string = await page.evaluate(() => {
+    const p = (window as any).__ibeetkidz_test__.getProject();
+    const part = p.parts.find((x: any) => x.id === p.activePartId) ?? p.parts[0];
+    return part.layers.find((l: any) => l.kind === "melody").id;
+  });
+  const offer = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer);
+
+  await emit(page, "workshop-layer-delete", layerId);
+  await expect.poll(async () => (await offer()).offering).toBe(true);
+
+  await emit(page, "tempo-changed", 10); // anything else at all
+  await expect.poll(async () => (await offer()).offering).toBe(false);
+});
+
 test("Map guards Track until a train exists", async ({ page }) => {
   await boot(page);
   // `emptyProject` seeds one car on the train so the app is rideable on boot,

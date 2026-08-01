@@ -9,6 +9,7 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
+import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
 import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
@@ -97,6 +98,10 @@ export class YardScene extends BackgroundScene {
   private chromeSpawns: readonly TiledSpawn[] = [];
   private chrome: UiElement[] = [];
 
+  /** The "put it back" offer. Public getter below is the e2e seam — it is how
+   *  a test proves a kid can actually reach undo, which is the whole point. */
+  private undoToast?: UndoToast;
+
   constructor() {
     super(YardScene.KEY);
   }
@@ -132,8 +137,18 @@ export class YardScene extends BackgroundScene {
         cameraSize: () => this.scale.gameSize,
       };
     }
+    // "Undo everywhere": the offer chip. React classifies destruction in its
+    // one dispatch funnel and emits over the bus, so this scene needs no
+    // knowledge of WHICH commands destroy anything.
+    this.undoToast = attachUndoToast(this);
     this.announceReady();
   }
+
+  /** Exposed for the e2e bridge: is the undo offer on screen, and for what. */
+  get undoOffer(): { offering: boolean; lost: string } {
+    return { offering: this.undoToast?.offering ?? false, lost: this.undoToast?.lost ?? "" };
+  }
+
 
   // YardScene owns the palette selection, so the animated/selection-aware action
   // intents are translated here: a Tiled "yard-add"/"yard-depart" tap runs the

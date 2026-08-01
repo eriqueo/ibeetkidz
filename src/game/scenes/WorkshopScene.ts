@@ -29,6 +29,7 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
+import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
@@ -181,6 +182,10 @@ export class WorkshopScene extends BackgroundScene {
   private editOrNewHits: { zone: "edit" | "new"; rect: Phaser.GameObjects.Rectangle }[] = [];
   private editOrNewDecided = false;
 
+  /** The "put it back" offer. Public getter below is the e2e seam — it is how
+   *  a test proves a kid can actually reach undo, which is the whole point. */
+  private undoToast?: UndoToast;
+
   constructor() {
     super(WorkshopScene.KEY);
   }
@@ -225,8 +230,18 @@ export class WorkshopScene extends BackgroundScene {
         cameraSize: () => this.scale.gameSize,
       };
     }
+    // "Undo everywhere": the offer chip. React classifies destruction in its
+    // one dispatch funnel and emits over the bus, so this scene needs no
+    // knowledge of WHICH commands destroy anything.
+    this.undoToast = attachUndoToast(this);
     this.announceReady();
   }
+
+  /** Exposed for the e2e bridge: is the undo offer on screen, and for what. */
+  get undoOffer(): { offering: boolean; lost: string } {
+    return { offering: this.undoToast?.offering ?? false, lost: this.undoToast?.lost ?? "" };
+  }
+
 
   /** Put `type`'s art on the car, fetching the texture first if this is the
    *  first time this session has shown it. See `preload` for why only one type

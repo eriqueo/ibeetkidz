@@ -181,6 +181,20 @@ inversion). **This is a decided architecture, not an accident — see
   Pages serves from `/ibeetkidz/`, so a bare `/assets/...` 404s there and only
   there — invisible in `npm run dev`. `tests/unit/public-asset-url.test.ts` guards
   it.
+- **Undo is reachable now** (it was not). The `UndoStack`, `store.undo()` and
+  `AppApi.undo()` have existed since v1 with **zero callers**, so "Forgiving UX.
+  Undo everywhere" was prose only and ✕ on a lane was final. The affordance is a
+  transient **"PUT IT BACK" chip** (`src/game/undo-toast.ts`, Graphics in the
+  scenes' chip language — the chrome bars are authored art with no free slot),
+  attached to Workshop + Yard via `attachUndoToast`. `src/core/undoable.ts` is
+  the **single producer** of "destructive", read by the ONE dispatch funnel in
+  `app/context.tsx`, so a `remove*` command added later is covered the moment it
+  gets a table entry — and `tests/unit/undoable.test.ts` fails if it doesn't.
+  Two rules that look like polish and are not: the offer **withdraws on any
+  later command and on undo/redo** (undo pops the LAST entry, so a stale chip
+  would undo the wrong thing), and a **refused** command offers nothing (the
+  funnel checks whether the STORE moved, not what the command intended —
+  `removeCar` declines to delete the last car).
 - **The visualizer is LIVE, in the Track view** (decision A1's re-home, done).
   `src/game/scene-visualizer.ts` is a jumbotron standing in the middle of the
   oval: a Graphics cabinet in the scene's chip language wrapping a 320×96

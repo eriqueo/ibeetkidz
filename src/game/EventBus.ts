@@ -103,6 +103,17 @@ export interface EventMap {
   "tool-lane-crunch": [value: number];
   "tool-lane-volume": [value: number];
 
+  // ── Undo ("Forgiving UX. Undo everywhere") ─────────────────────────────────
+  // React -> every scene: something was just taken away; offer to put it back.
+  // Emitted from the ONE dispatch funnel in `app/context.tsx`, classified by
+  // `core/undoable.ts`, so a destructive command added later is covered without
+  // touching any scene. Payload is the kid words for what was lost.
+  "undo-offered": [lost: string];
+  // React -> every scene: withdraw the offer (the history moved on).
+  "undo-withdrawn": [];
+  // Scene -> React: the kid tapped "put it back".
+  "undo-requested": [];
+
   // ── Satellite tool panels (Phaser) -> React (audio/state) ──────────────────
   // The kid closed the open tool panel.
   "tool-closed": [];
