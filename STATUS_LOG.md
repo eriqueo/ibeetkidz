@@ -232,6 +232,10 @@ hit-area adapter (nav only, per the charter). No scene owns chrome coordinates.
     the production build: every scene complete in ~2 s, art visually unchanged.
 *   Remaining perf follow-up: a loading indicator between view swaps would
     still be kind on slow connections (Phaser paints only after preload).
+    **Narrowed 2026-08-01:** one shared `Phaser.Game` now serves all four
+    scenes, so a REVISIT preloads nothing (measured ~1.7 s → ~0.2 s per hop).
+    The gap this describes is now first-visit-only. See
+    `design/PERF_SINGLE_PHASER_GAME.md`.
 
 ### Previously Completed (2026-07-02 — engineering pass wiring the art sprint in)
 *   **Yard bottom bar is real buttons:** the interim baked strip + labelled hits
