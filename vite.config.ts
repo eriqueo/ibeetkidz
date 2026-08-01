@@ -1,6 +1,7 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "node:url";
+import { ibkMapWriter } from "./vite-plugins/ibk-map-writer.ts";
 
 // Dual-base build, mirroring the kidpix pattern:
 //   `vite build`            -> dist/      base "/"        (local / release tarball)
@@ -9,7 +10,9 @@ export default defineConfig(({ mode }) => {
   const isGh = mode === "gh";
   return {
     base: isGh ? "/ibeetkidz/" : "/",
-    plugins: [react()],
+    // `ibkMapWriter` is `apply: "serve"` and additionally gated on IBK_EDIT=1,
+    // so it is absent from every build and inert in an ordinary `npm run dev`.
+    plugins: [react(), ibkMapWriter()],
     build: {
       outDir: isGh ? "dist-gh" : "dist",
       emptyOutDir: true,

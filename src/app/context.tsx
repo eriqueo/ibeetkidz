@@ -69,7 +69,17 @@ declare global {
 }
 if (import.meta.env.DEV && typeof window !== "undefined") {
   let lastScene: Phaser.Scene | null = null;
-  EventBus.on("current-scene-ready", (scene) => { lastScene = scene; });
+  EventBus.on("current-scene-ready", (scene) => {
+    lastScene = scene;
+    // The dev-only scene editor (`?edit`). This is the SINGLE reference to
+    // `src/editor/` from outside it, and it is dynamic on purpose: nothing in
+    // the production module graph names that chunk, so it cannot be bundled.
+    // `tests/unit/architecture.test.ts` rule 6 asserts this stays the only one,
+    // and `scripts/check-no-editor-in-dist.sh` fails the build if it leaks.
+    if (new URLSearchParams(window.location.search).has("edit")) {
+      void import("../editor/boot.ts").then((m) => m.attachEditor(scene));
+    }
+  });
   window.__ibeetkidz_test__ = {
     emit: (event, ...args) => EventBus.emit(event, ...args),
     getProject,

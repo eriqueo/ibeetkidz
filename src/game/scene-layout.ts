@@ -85,11 +85,13 @@ export const TRACK_LAYOUT_V2 = {
   signal: { x: 0.5, y: 0.683, w: 0.05 } as const,
 } as const;
 
-// Map: where the handcar location-marker sits over each painted landmark
-// (Workshop cabin / Yard shed / Track oval), as a fraction of the cover-fit
-// backgroundRect. MEASURED FROM ART — needs a live visual tuning pass.
-export const MAP_HANDCAR = {
-  workshop: { cx: 0.185, cy: 0.30, w: 0.07 },
-  yard: { cx: 0.525, cy: 0.30, w: 0.07 },
-  track: { cx: 0.78, cy: 0.34, w: 0.07 },
-} as const;
+// MAP_HANDCAR lived here and was wrong: every marker sat ~0.12 of image height
+// ABOVE its landmark, which put the Workshop handcar on the cabin roof. It was
+// hand-guessed in TypeScript and carried its own "needs a live visual tuning
+// pass" note for as long as it existed, because there was no way to do that
+// pass — nothing could read a position back out of the running game.
+//
+// It now lives in `map.json`'s `fixtures-layer` and was positioned by DRAGGING
+// it in the scene editor (`?edit`, see src/editor/). That is the migration this
+// file should keep losing entries to: a value that describes WHERE something
+// sits on the art belongs in the map, next to the art, where it can be seen.

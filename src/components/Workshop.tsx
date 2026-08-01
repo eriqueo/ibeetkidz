@@ -101,7 +101,8 @@ export const Workshop: FC = () => {
     carType: part.carType,
     selectedLayerId: selectedLayer,
     tempoBpm: project.tempoBpm,
-  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm]);
+    carCount: project.parts.length,
+  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm, project.parts.length]);
 
   // Tool-panel model — derived from the store + the transient take state above.
   const toolModel = useMemo<ToolModel>(() => {
@@ -195,6 +196,12 @@ export const Workshop: FC = () => {
     const onCarType = (carType: CarType): void => dispatch({ type: "setCarType", partId: activePart(projectRef.current).id, carType });
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
     const onPlay = (): void => engine.playLoop(projectRef.current);
+    // LOOP hears the car you are working on, alone. `playCarLoop` has existed in
+    // the engine since the v2 data model landed and had no caller at all — the
+    // Tiled LOOP button was authored to emit `transport-play("loop")`, i.e. the
+    // exact same event as PLAY, so the two buttons were the same button.
+    const onLoopCar = (): void =>
+      engine.playCarLoop(activePart(projectRef.current).id, projectRef.current);
     const onStop = (): void => engine.stop();
     const onTempo = (delta: number): void => {
       const bpm = Math.max(40, Math.min(220, projectRef.current.tempoBpm + delta));
@@ -295,6 +302,12 @@ export const Workshop: FC = () => {
       if (start) {
         if (phase.current !== "idle") return;
         phase.current = "opening";
+        // Stop the loop before opening the mic. On a laptop there is no headset:
+        // whatever is playing goes out the speakers, straight back into the mic,
+        // and then gets multiplied by the normalizer. Playback policy belongs
+        // here rather than in the port — React already owns `engine` (see
+        // `onStop` above), and the port stays free of opinions about transport.
+        engine.stop();
         onOpening();
         try { await sound.startRecording(); } catch (err) { console.error("mic open failed", err); phase.current = "idle"; onError(); return; }
         if ((phase.current as RecPhase) === "stopping") void finish();
@@ -446,6 +459,7 @@ export const Workshop: FC = () => {
       ["workshop-cell-toggled", onCell], ["workshop-instrument-added", onInstrument],
       ["workshop-car-type-changed", onCarType], ["workshop-layer-selected", onSelect],
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
+      ["workshop-loop-car", onLoopCar],
       ["tool-closed", onToolClosed],
       ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
       ["nav-map", onNavMap], ["nav-yard", onNavYard],

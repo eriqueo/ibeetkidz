@@ -28,6 +28,9 @@
    is Tiled-only).
 3. **AR-015 remainder — 16-dir × 2-frame refs** for loco/tanker/flatcar
    (supersedes the AR-012 gaps for those types).
+4. **AR-021 — `inst-pads` + `inst-magic` characters** (two built tool panels are
+   reachable by event but have no instrument to tap).
+5. **AR-022 — Map building labels** (the three destinations are unlabelled).
 4. **AR-018 — satellite tool panel plate** (engine parchment interim shipped).
 5. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
    AR-019 (yard readability polish).
@@ -421,3 +424,69 @@ padding conventions as btn-nav-map."
 
 **Unblocks:** replacing the interim drawn chip in `TrackScene.layoutChrome`
 with a `ui-button` spawn (one manifest entry + flip the Tiled object's type).
+
+---
+
+## AR-021 · `inst-pads` + `inst-magic` instrument characters — HIGH
+
+**Target files** (one shared canvas per instrument, three states each, matching
+the existing `inst-*` family):
+- `src/assets/sprites/instruments/inst-pads-passive.png` / `-hover.png` / `-active.png`
+- `src/assets/sprites/instruments/inst-magic-passive.png` / `-hover.png` / `-active.png`
+
+**Context:** the Workshop field row is data-driven from `workshop.json`, and an
+instrument only exists there if it has art. Two fully-built tool panels are
+stranded behind that: `sound-pads` (`PadsToolPanel` — the soundboard of the
+built-in pack plus your own recordings) and `theremin-xy` (`MagicToolPanel` —
+the live oscillator+filter Magic Pad). Both are reachable today only by emitting
+`workshop-open-tool` by hand; a kid has no way in.
+
+**Note — `inst-keys` is NOT part of this request.** Its art already shipped (a
+`UI_SPRITES` entry with all three frames in the packed atlas); it was simply
+absent from the map. It is wired now, by a map edit, with no new art.
+
+**Prompt:** "A friendly animal-character musician in the same family as the
+existing Workshop instrument sprites (frog + drum kit, chipmunk + mic, bear +
+xylophone, cat + guitar, alien + violin, husky + piano): chunky 16-color
+Nintendo pixels, 1px dark-plum outline, hard drop shadow, standing on a floor
+line with the instrument at their feet. For `inst-pads`, the instrument is a
+chunky grid of coloured drum/sample pads on a small stand. For `inst-magic`, it
+is a glowing theremin-style antenna box with two aerials and a soft aura.
+Passive = at rest; hover = same pose slightly brighter; active = drawn LARGER
+within the SAME canvas (the pop is a texture swap with no reposition).
+Transparent background, true alpha 0."
+
+**Canvas size:** match the shipped `inst-*` sprites exactly (they draw at
+roughly 0.42–0.65 of source, i.e. about 2× linear oversample; the row slot is
+340×280 map px). Deliver at the same dimensions as `inst-piano` so the existing
+`content` box convention holds.
+
+**Unblocks:** two objects in `workshop.json` (no code) — the Sound Pads and
+Magic Pad tools become reachable by tapping a character, like every other tool.
+
+---
+
+## AR-022 · Map building labels — MEDIUM
+
+**Target:** either baked into `src/assets/scenes-v2/map-scene-clean.png`, or
+three plaque sprites.
+
+**Context:** the Map is the boot landing. It shows three painted landmarks — a
+cabin (Workshop), a shed over sidings (Yard), and an oval of track (Track) — and
+nothing names any of them. The handcar marker now parks on the rails at whichever
+one you were last in, which tells you where you ARE but not where you are GOING.
+
+**Strongly prefer baking the names into the plate.** The alternative needs code
+first: `MapScene` is the one scene still on `spawnTiledScene`, which has no label
+or sprite support at all (`makeLabel` is private to `ui-scene.ts`), so plaque
+sprites would require migrating `MapScene` to `spawnUiLayer` before any art could
+be used. Baked-in names need nothing.
+
+**Prompt (baked):** "Same island map, unchanged, plus a small hand-painted
+wooden signpost beside each of the three landmarks reading WORKSHOP, YARD and
+TRACK in the same baked lettering as the existing nav plaques. Signs sit on the
+grass at the near side of each building so they never cover the structure or the
+rail line. Chunky pixels, 1px dark-plum outline, hard drop shadow."
+
+**Unblocks:** nothing in code — it is a legibility fix for the first screen a
+kid sees.

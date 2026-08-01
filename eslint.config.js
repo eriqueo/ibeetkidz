@@ -72,9 +72,15 @@ export default tseslint.config(
     },
   },
 
-  // --- config files run in Node, not the browser --------------------------
+  // --- config files + build plugins run in Node, not the browser ----------
+  // `vite-plugins/**` needs its own entry: the block above is anchored to the
+  // repo ROOT, so it does not match a nested directory, and the browser-globals
+  // block above matches every `**/*.ts`. Without this, `process` and the
+  // `node:` imports in the plugin lint as undefined globals. Note these files
+  // are also OUTSIDE tsconfig's `include` (["src", "tests"]), so ESLint is the
+  // only checker that sees them at all.
   {
-    files: ["*.config.{ts,js}"],
+    files: ["*.config.{ts,js}", "vite-plugins/**/*.{ts,js}"],
     languageOptions: { globals: { ...globals.node } },
   },
 

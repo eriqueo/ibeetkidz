@@ -951,6 +951,11 @@ export class ToneSoundPort implements SoundPort {
 
   private tapModuleUrl(): string {
     if (!this.captureTapUrl) {
+      // Deliberately writes NO output: this is a capture tap, not an insert.
+      // The graph it hangs off is already routed to the destination, so echoing
+      // input to output here would double the signal. `process` returning true
+      // with an untouched output buffer is the intended "listen only" shape —
+      // it is not an oversight, and it is not what causes recording static.
       const src = `registerProcessor("ibk-capture-tap", class extends AudioWorkletProcessor {
         process(inputs) {
           const i = inputs[0];
@@ -1401,113 +1406,8 @@ function expandCrazy(amount: number): EffectDescriptor[] {
   return out;
 }
 
-/** The slice of `AudioBuffer` {@link normalizeBuffer} needs. `AudioBuffer`
- *  satisfies it structurally; declaring it separately is what lets the loudness
- *  maths be unit-tested without a WebAudio context. */
-export interface NormalizableBuffer {
-  readonly numberOfChannels: number;
-  readonly sampleRate: number;
-  getChannelData(channel: number): Float32Array;
-}
-
-/** ~-18 dBFS RMS. Loud enough to hear on a tablet speaker, quiet enough to
- *  still be a waveform. The previous 0.25 (-12 dBFS) is hotter than broadcast
- *  speech mastering and is already a limited master before any boost. */
-const TARGET_RMS = 0.12;
-/** +21.6 dB. Enough to rescue a genuinely quiet take; NOT enough to lift a
- *  silent room to full scale. The previous cap was 60 (+35.6 dB). */
-const MAX_NORMALIZE_GAIN = 12;
-/** Below the knee the signal passes through untouched — this is the whole
- *  point. Only peaks above it are shaped, so the bulk of the waveform keeps
- *  its shape instead of being flattened. */
-const LIMIT_KNEE = 0.7;
-const LIMIT_CEIL = 0.98;
-/** Loudness is measured over 20 ms blocks, not per sample: that is roughly the
- *  timescale the ear integrates over, and it is what makes a lone click one
- *  block among hundreds instead of a term in a global sum. */
-const LOUDNESS_BLOCK_SEC = 0.02;
-/** Take the 90th-percentile block, i.e. "how loud is this when it is actually
- *  saying something". Robust from both ends: leading/trailing silence sits in
- *  the discarded low blocks, and a single click cannot drag a percentile. */
-const LOUDNESS_PERCENTILE = 0.9;
-
-/** Transparent below {@link LIMIT_KNEE}, smoothly limited above it, never past
- *  {@link LIMIT_CEIL}. Replaces a bare `Math.tanh(gain * x)` applied to EVERY
- *  sample — at drive 5 that is already 94 % of the way to a square wave
- *  (measured output crest factor 1.07; a square wave is 1.00), which is what
- *  turned quiet takes into static. */
-function softLimit(y: number): number {
-  const a = Math.abs(y);
-  if (a <= LIMIT_KNEE) return y;
-  const span = LIMIT_CEIL - LIMIT_KNEE;
-  const shaped = LIMIT_KNEE + span * Math.tanh((a - LIMIT_KNEE) / span);
-  return y < 0 ? -shaped : shaped;
-}
-
-/** Make a recording audible in place, without making it static.
- *
- *  The intent inherited from `f0d0996` is right and is kept: peak-normalizing
- *  alone left takes quiet, because one stray click sets the peak while the
- *  voice's average energy — what we hear as loudness — stays low. So loudness,
- *  not peak, drives the gain.
- *
- *  What changed is HOW loudness is measured. The old version averaged every
- *  sample above an absolute 0.003 floor. That floor excludes digital silence
- *  but *includes room tone, fan noise and mic hiss*, so on a quiet laptop take
- *  the estimate was the ROOM's level, not the voice's — and the gain went to
- *  ~50, lifting the hiss to a constant roar and slamming the words through a
- *  `tanh` that squares them off. That was the "just static" bug.
- *
- *  Measuring the 90th-percentile 20 ms block instead answers the question we
- *  actually meant to ask — how loud is this while someone is talking — and is
- *  robust to silence at both ends and to a lone transient.
- *
- *  Only lifts, never attenuates: a take that is already loud is left alone. */
-export function normalizeBuffer(buf: NormalizableBuffer, targetRms = TARGET_RMS): void {
-  const channels: Float32Array[] = [];
-  for (let ch = 0; ch < buf.numberOfChannels; ch++) channels.push(buf.getChannelData(ch));
-  const len = channels[0]?.length ?? 0;
-  if (len === 0) return;
-
-  const block = Math.max(1, Math.round(buf.sampleRate * LOUDNESS_BLOCK_SEC));
-  const blockRms: number[] = [];
-  for (let start = 0; start < len; start += block) {
-    const end = Math.min(len, start + block);
-    let sumSq = 0;
-    let n = 0;
-    for (const data of channels) {
-      for (let i = start; i < end; i++) {
-        const x = data[i] as number;
-        sumSq += x * x;
-        n++;
-      }
-    }
-    if (n > 0) blockRms.push(Math.sqrt(sumSq / n));
-  }
-  if (blockRms.length === 0) return;
-
-  blockRms.sort((a, b) => a - b);
-  const idx = Math.min(blockRms.length - 1, Math.floor(blockRms.length * LOUDNESS_PERCENTILE));
-  const loudness = blockRms[idx] as number;
-  // Effectively silent — a room with nothing in it. Leave it alone rather than
-  // amplifying noise, which is exactly the failure this guard exists to stop.
-  if (loudness < 1e-4) return;
-
-  const gain = Math.min(MAX_NORMALIZE_GAIN, targetRms / loudness);
-  if (gain <= 1.0001) return; // already loud enough — never attenuate
-
-  for (const data of channels) {
-    for (let i = 0; i < len; i++) data[i] = softLimit((data[i] as number) * gain);
-  }
-}
-
-/** Trim leading and trailing near-silence from a recording so it works as a
- *  sampled instrument: a note (often a fraction of a second) must hit the voice
- *  immediately, not the dead air before the singer starts. The threshold is
- *  relative to the take's own peak so it works for quiet and loud recordings;
- *  a few ms of head-room is kept so the onset isn't clipped. Returns the source
- *  unchanged if it's silent or already tight. */
-function trimSilence(ctx: AudioContext, buf: AudioBuffer): AudioBuffer {
+/** Peak of a whole buffer, across every channel. */
+function bufferPeak(buf: AudioBuffer): number {
   let peak = 0;
   for (let ch = 0; ch < buf.numberOfChannels; ch++) {
     const data = buf.getChannelData(ch);
@@ -1516,6 +1416,184 @@ function trimSilence(ctx: AudioContext, buf: AudioBuffer): AudioBuffer {
       if (a > peak) peak = a;
     }
   }
+  return peak;
+}
+
+/** 20ms — long enough that a frame's RMS is a stable level reading, short enough
+ *  that a syllable lands inside a handful of frames. */
+const FRAME_SEC = 0.02;
+
+/** Estimate the level of the SIGNAL in a take, ignoring the room it was recorded
+ *  in. This is the heart of the anti-static fix.
+ *
+ *  The previous approach measured RMS over every sample above an absolute floor
+ *  of 0.003 — which excludes digital silence but happily *includes room tone*.
+ *  On a quiet take (a kid a foot from a laptop mic in a normal room) almost all
+ *  the energy is room tone, so the estimate came back as the room's level, the
+ *  gain went to ~50, and the room got amplified into constant hiss. That hiss is
+ *  the bug Eric heard.
+ *
+ *  Instead: chop into short frames and read each frame's own RMS. Speech is
+ *  bursty — on a quiet take MOST frames are room tone and a MINORITY are voice,
+ *  so the median frame is a good estimate of the noise floor. Anything well
+ *  above that median is signal. Measuring only those frames gives the level of
+ *  the voice, not the level of the room, and it degrades gracefully: on a take
+ *  that IS wall-to-wall voice the median is the voice, the gate lands above
+ *  everything, and we fall back to the whole-buffer RMS.
+ *
+ *  `hasBursts` reports whether any frame actually stood out. A take where none
+ *  did is *uniform* — either a held note or a room with nobody in it — and the
+ *  caller needs to tell those apart by level, because boosting the second one is
+ *  precisely the static.
+ *
+ *  O(n), allocation-proportional-to-frames, and pure — exported for unit test. */
+export function estimateSignalRms(buf: AudioBuffer): { rms: number; hasBursts: boolean } {
+  const frameLen = Math.max(1, Math.round(buf.sampleRate * FRAME_SEC));
+  const frameCount = Math.floor(buf.length / frameLen);
+  if (frameCount < 4) {
+    // Too short to reason about bursts — fall back to plain RMS over everything.
+    let sumSq = 0;
+    let n = 0;
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) {
+        const x = data[i] as number;
+        sumSq += x * x;
+        n++;
+      }
+    }
+    return { rms: n === 0 ? 0 : Math.sqrt(sumSq / n), hasBursts: false };
+  }
+
+  const frames = new Float64Array(frameCount);
+  for (let f = 0; f < frameCount; f++) {
+    let sumSq = 0;
+    let n = 0;
+    const from = f * frameLen;
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = from; i < from + frameLen; i++) {
+        const x = data[i] as number;
+        sumSq += x * x;
+        n++;
+      }
+    }
+    frames[f] = n === 0 ? 0 : Math.sqrt(sumSq / n);
+  }
+
+  const sorted = Float64Array.from(frames).sort();
+  const median = sorted[Math.floor(frameCount / 2)] as number;
+  // 4x the median frame: comfortably above room tone, well below any syllable.
+  // The absolute term keeps a digitally-silent take from producing a zero gate.
+  const gate = Math.max(0.003, 4 * median);
+
+  let sumSq = 0;
+  let n = 0;
+  for (let f = 0; f < frameCount; f++) {
+    const level = frames[f] as number;
+    if (level >= gate) {
+      sumSq += level * level;
+      n++;
+    }
+  }
+  if (n === 0) {
+    // No frame stood out — the take is uniform (a held note, or an empty room).
+    // Its own overall level is the honest estimate; `hasBursts: false` tells the
+    // caller it must decide by level which of those two this is.
+    let all = 0;
+    for (let f = 0; f < frameCount; f++) {
+      const level = frames[f] as number;
+      all += level * level;
+    }
+    return { rms: Math.sqrt(all / frameCount), hasBursts: false };
+  }
+  return { rms: Math.sqrt(sumSq / n), hasBursts: true };
+}
+
+/** Target level for a normalized take: ~-22 dBFS RMS, inside the range broadcast
+ *  speech sits at. The old value was 0.25 (~-12 dBFS), which is louder than a
+ *  mastered pop record and only reachable by squashing everything flat. */
+const TARGET_RMS = 0.08;
+/** Below this the limiter is perfectly transparent; only peaks above it round off. */
+const LIMIT_KNEE = 0.7;
+/** A uniform take quieter than this (~-34 dBFS) is an empty room, not a held
+ *  note, so it is left exactly as recorded. Without this floor the gain cap is
+ *  the only thing standing between room tone and an 8x amplified hiss — which is
+ *  a quieter version of the original bug, not a fix for it. */
+const UNIFORM_SIGNAL_FLOOR = 0.02;
+
+/** Soft-knee limiter. Linear below the knee — the body of the signal passes
+ *  through UNTOUCHED — and only the part above it is compressed into the
+ *  remaining headroom. The old code ran `Math.tanh` over every sample, which at
+ *  the gains it was reaching is a square-wave shaper: measured crest factor 1.005
+ *  at gain 60, where a literal square wave is 1.000. That is why takes came back
+ *  as a flat buzz. */
+function limit(x: number): number {
+  const a = Math.abs(x);
+  if (a <= LIMIT_KNEE) return x;
+  const over = (a - LIMIT_KNEE) / (1 - LIMIT_KNEE);
+  const shaped = LIMIT_KNEE + (1 - LIMIT_KNEE) * Math.tanh(over);
+  return x < 0 ? -shaped : shaped;
+}
+
+/** Make a recording loud in place, without making it a fuzz pedal.
+ *
+ *  Peak-normalizing alone leaves takes quiet — one stray click sets the peak
+ *  while the voice's average energy, which is what we hear as loudness, stays
+ *  low. So we still normalize toward a target RMS. The three things that made
+ *  the old version generate static are all fixed here:
+ *
+ *  1. The level is measured over the SIGNAL, not the room (`estimateSignalRms`).
+ *  2. The gain is capped twice — an absolute ceiling, and a peak-relative one so
+ *     nothing ever arrives at the limiter more than 2.5x over full scale. The
+ *     old cap of 60 meant a quiet take hit the shaper at 60x.
+ *  3. Peaks are limited, not waveshaped, so crest factor survives.
+ *
+ *  Exported for unit test. */
+export function normalizeBuffer(buf: AudioBuffer, targetRms = TARGET_RMS): void {
+  const peak = bufferPeak(buf);
+  if (peak < 1e-4) return; // effectively silent — nothing worth lifting
+
+  const { rms, hasBursts } = estimateSignalRms(buf);
+  if (rms < 1e-5) return;
+  // Nothing in this take stood out from its own background, and the whole thing
+  // is quiet: it is a room, not a performance. Leave it alone.
+  if (!hasBursts && rms < UNIFORM_SIGNAL_FLOOR) return;
+
+  // Two independent caps. The RMS cap stops a whisper being blown up; the peak
+  // cap stops ANY take driving the limiter into audible distortion.
+  const gain = Math.min(8, 2.5 / peak, Math.max(1, targetRms / rms));
+  if (gain <= 1.0001) {
+    // Already loud enough to leave the gain alone — but a take can still arrive
+    // hot enough to clip, so run the limiter if (and only if) it would do work.
+    if (peak <= LIMIT_KNEE) return;
+    for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+      const data = buf.getChannelData(ch);
+      for (let i = 0; i < data.length; i++) data[i] = limit(data[i] as number);
+    }
+    return;
+  }
+  for (let ch = 0; ch < buf.numberOfChannels; ch++) {
+    const data = buf.getChannelData(ch);
+    for (let i = 0; i < data.length; i++) data[i] = limit(gain * (data[i] as number));
+  }
+}
+
+/** Trim leading and trailing near-silence from a recording so it works as a
+ *  sampled instrument: a note (often a fraction of a second) must hit the voice
+ *  immediately, not the dead air before the singer starts. The threshold is
+ *  relative to the take's own peak so it works for quiet and loud recordings;
+ *  a few ms of head-room is kept so the onset isn't clipped. Returns the source
+ *  unchanged if it's silent or already tight.
+ *
+ *  NOTE: this was a no-op on every take until the `normalizeBuffer` rewrite. It
+ *  runs on the ALREADY-NORMALIZED buffer (`decodeRecording` -> `voiceSample`),
+ *  and the old normalizer left post-`tanh` peak ~= 1.0 with the room tone
+ *  amplified above `peak * 0.05` — so the threshold was met from the first
+ *  sample to the last and nothing was ever trimmed. It starts doing real work
+ *  now that takes retain their crest factor. */
+function trimSilence(ctx: AudioContext, buf: AudioBuffer): AudioBuffer {
+  const peak = bufferPeak(buf);
   if (peak < 1e-4) return buf; // effectively silent — nothing to trim against
   const threshold = Math.max(peak * 0.05, 0.01);
   let start = buf.length;

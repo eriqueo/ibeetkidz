@@ -85,6 +85,10 @@ export interface EventMap {
   // The optional carType comes from the NEW CAR dropdown picker tile.
   "workshop-new-car": [carType?: CarType];
   "workshop-surprise": [];                        // seeded "surprise me" generation
+  // Loop the ACTIVE car on its own (one bar), as opposed to `transport-play`
+  // which lays out the whole train. The Workshop is where you edit ONE car, so
+  // its LOOP button wants to hear that car alone.
+  "workshop-loop-car": [];
   // Phaser -> React (Workshop): delete a lane / open the piano-roll for a lane.
   "workshop-layer-delete": [layerId: string];
   "workshop-edit-melody": [layerId: string];

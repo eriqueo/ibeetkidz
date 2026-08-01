@@ -19,8 +19,13 @@
 // The base plate is the CLEAN open-boxcar environment (workshop-boxcar-open.png)
 // — no painted toolbar, transport, LCDs, or instruments. All UI is sprites on top.
 //
-// (The old 8-icon toolbar, SONG/SPEED baked chrome, and the 4-way car-type picker
-// were retired here; their EventBus events + reducers live on for a later sprint.)
+// (The old 8-icon toolbar and the SONG/SPEED baked chrome were retired here.
+// So was the 4-way car-type picker in its ORIGINAL sense — a control that
+// re-skinned the CURRENT car. `workshop-car-type-changed` and the `setCarType`
+// reducer are what survive from it: both are unreachable from the running app
+// and kept alive only by project-state.test.ts, awaiting a decision on whether
+// re-skinning comes back. The dropdown below shares its ART but is a different
+// control — it STARTS A NEW CAR, and is labelled to say so.)
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
@@ -32,7 +37,7 @@ import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import workshopMap from "../../assets/maps/workshop.json";
-import { STEP_COUNT, CAR_TYPES, type CarType, type LaneKind } from "../../core/types.ts";
+import { STEP_COUNT, CAR_TYPES, MAX_CARS, type CarType, type LaneKind } from "../../core/types.ts";
 import {
   BaseToolPanel,
   VoiceToolPanel,
@@ -61,6 +66,10 @@ export interface WorkshopModel {
   readonly carType: CarType;
   readonly selectedLayerId: string | null;
   readonly tempoBpm: number;
+  /** How many cars the LIBRARY holds. The New Car picker needs it to tell a kid
+   *  the yard is full instead of silently doing nothing — `addCar` no-ops at
+   *  `MAX_CARS`, which is invisible from in here without this. */
+  readonly carCount: number;
 }
 
 const LABEL_COLOR = "#e8dcc8";
@@ -85,11 +94,24 @@ function chalkTint(colorInt: number): number {
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
+/** Captions under the New Car tiles. Phrased as the ACTION the tile performs,
+ *  not the noun it depicts — the menu starts a car, it does not describe one. */
+const PICKER_CAPTIONS: Record<CarType, string> = {
+  boxcar: "NEW BOXCAR",
+  tanker: "NEW TANKER",
+  hopper: "NEW HOPPER",
+  flatcar: "NEW FLATCAR",
+};
+
 // ── AR-016 layered field (bg → car → chalkboard → grid → characters) ─────────
 // All four car-side sprites share one canvas + wheel baseline, so ONE content
 // box (the boxcar's) anchors placement for every type — a car-type swap is a
 // pure texture change with no reposition, like the chrome state variants.
 const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
+/** The one car texture that preloads. Matches `project-state.ts`'s seed car, so
+ *  the common case never waits, and it is what `buildCarLayer` constructs on
+ *  before `showCar` corrects it. */
+const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
 const DEPTH_CAR = 0.4;
 const DEPTH_BOARD = 0.6;
@@ -120,7 +142,7 @@ interface LaneRow {
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null, tempoBpm: 120 };
+  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
   private emptyText: Phaser.GameObjects.Text | undefined;
@@ -139,7 +161,8 @@ export class WorkshopScene extends BackgroundScene {
   private tempoText: Phaser.GameObjects.Text | undefined;
   // Car-type picker dropdown (toggled by the New Car button).
   private carPicker: Phaser.GameObjects.Container | undefined;
-  private pickerTiles: { type: CarType; img: Phaser.GameObjects.Image; def: UiSpriteDef }[] = [];
+  private pickerTiles: { type: CarType; img: Phaser.GameObjects.Image; caption: Phaser.GameObjects.Text; def: UiSpriteDef }[] = [];
+  private pickerTitle: Phaser.GameObjects.Text | undefined;
   private pickerOpen = false;
   private toolPanels: Record<string, BaseToolPanel> = {};
   private activeTool: string | null = null;
@@ -164,11 +187,15 @@ export class WorkshopScene extends BackgroundScene {
 
   preload(): void {
     this.loadBackground(SCENE_BG_V2.workshopInterior);
-    // All four car types preload so a picker swap is instant (they're light
-    // PNG8s after the perf pass; one texture change, no reposition).
-    for (const asset of Object.values(CAR_SIDE_SPRITES)) {
-      if (!this.textures.exists(asset.key)) this.load.image(asset.key, asset.url);
-    }
+    // Only the DEFAULT car type preloads. All four used to, "so a picker swap is
+    // instant" — but each is a 2560x1440 PNG that decodes to ~15 MB of GPU
+    // texture, so three types nobody is looking at cost ~44 MB of VRAM and
+    // ~690 KB of transfer on a scene that shows exactly one car. The others load
+    // on first use via `showCar`; the swap is one texture change with no
+    // reposition (they share a canvas and a baseline), so a late arrival is
+    // dimensionally safe.
+    const boot = CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE];
+    if (!this.textures.exists(boot.key)) this.load.image(boot.key, boot.url);
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     loadUiSprites(this); // the one packed chrome multiatlas
   }
@@ -184,14 +211,54 @@ export class WorkshopScene extends BackgroundScene {
     this.layoutFixtures();
     this.bindPickerToggle();
     this.bindSendToYard();
+    // Dev-only seam for the scene editor (`?edit`). `editorHandle` is typed
+    // `unknown` on BackgroundScene, so this scene still imports nothing from
+    // `src/editor/` — the dependency arrow points one way only, and the whole
+    // branch is compile-time dead in a production build.
+    if (import.meta.env.DEV) {
+      this.editorHandle = {
+        mapName: "workshop",
+        layerName: "ui-layer",
+        spawns: this.chromeSpawns,
+        relayout: () => this.layoutChrome(),
+        backgroundRect: () => this.backgroundRect,
+        cameraSize: () => this.scale.gameSize,
+      };
+    }
     this.announceReady();
+  }
+
+  /** Put `type`'s art on the car, fetching the texture first if this is the
+   *  first time this session has shown it. See `preload` for why only one type
+   *  is resident up front.
+   *
+   *  The `carType` re-check in the callback matters: two quick swaps would
+   *  otherwise race, and the slower load would win and stomp the newer choice. */
+  private showCar(type: CarType): void {
+    const asset = CAR_SIDE_SPRITES[type];
+    if (this.textures.exists(asset.key)) {
+      this.car?.setTexture(asset.key);
+      return;
+    }
+    this.load.image(asset.key, asset.url);
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      // The scene can be torn down mid-flight (every nav destroys the game).
+      if (!this.car?.scene || this.model.carType !== type) return;
+      if (!this.textures.exists(asset.key)) return;
+      this.car.setTexture(asset.key);
+      this.layoutFixtures();
+    });
+    this.load.start();
   }
 
   // ── the layered field: car sprite + chalkboard in its void ─────────────────
   private buildCarLayer(): void {
+    // Always constructed on the preloaded default, then corrected by `showCar`:
+    // the real car type arrives from React and may not be resident yet.
     this.car = this.add
-      .image(0, 0, CAR_SIDE_SPRITES[this.model.carType].key)
+      .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
+    this.showCar(this.model.carType);
     this.board = this.add
       .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base)
       .setDepth(DEPTH_BOARD);
@@ -391,11 +458,27 @@ export class WorkshopScene extends BackgroundScene {
     this.pickerTiles = CAR_TYPES.map((type) => {
       const def = UI_SPRITES[`btn-picker-${type}`]!;
       const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      img.on("pointerup", () => this.chooseCarType(type));
-      return { type, img, def };
+      // Arm on our OWN pointerdown, exactly as `ui-scene.ts` does for chrome:
+      // Phaser delivers `pointerup` to whatever is under the pointer at release
+      // even when the press began elsewhere, so a bare `pointerup` here could
+      // start a car from a release that began on the panel above.
+      let armed = false;
+      img.on("pointerdown", () => { armed = true; });
+      img.on("pointerout", () => { armed = false; });
+      img.on("pointerup", () => { if (armed) { armed = false; this.chooseCarType(type); } });
+      const caption = this.add
+        .text(0, 0, PICKER_CAPTIONS[type], { ...LCD_STYLE, fontSize: "14px", color: LCD_PLUM })
+        .setOrigin(0.5);
+      return { type, img, caption, def };
     });
+    this.pickerTitle = this.add
+      .text(0, 0, "START A NEW CAR", { ...LCD_STYLE, fontSize: "16px", color: LCD_PLUM })
+      .setOrigin(0.5);
     this.carPicker = this.add
-      .container(0, 0, this.pickerTiles.map((t) => t.img))
+      .container(0, 0, [
+        this.pickerTitle,
+        ...this.pickerTiles.flatMap((t) => [t.img, t.caption]),
+      ])
       .setDepth(30)
       .setVisible(false);
   }
@@ -410,6 +493,14 @@ export class WorkshopScene extends BackgroundScene {
     // The NEW CAR picker starts a FRESH EMPTY car of this type (Eric: "clear
     // all the tracks when you say new car") — re-skinning the current car was
     // the old picker's job and read as NEW CAR doing nothing.
+    //
+    // `addCar` silently no-ops at MAX_CARS, so without this check the picker
+    // closes and NOTHING happens — which reads as the same bug the comment
+    // above says was fixed. Say so instead.
+    if (this.model.carCount >= MAX_CARS) {
+      this.pickerTitle?.setText(`TRAIN YARD FULL — ${MAX_CARS} CARS`);
+      return;
+    }
     EventBus.emit("workshop-new-car", type);
     this.pickerOpen = false;
     this.carPicker?.setVisible(false);
@@ -423,14 +514,22 @@ export class WorkshopScene extends BackgroundScene {
     const cx = r.x + r.width * 0.5;
     const slotW = r.width * 0.2;
     const slotH = r.height * 0.11;
+    const full = this.model.carCount >= MAX_CARS;
+    this.pickerTitle
+      ?.setPosition(cx, r.y + r.height * 0.235)
+      .setText(full ? `TRAIN YARD FULL — ${MAX_CARS} CARS` : "START A NEW CAR");
     this.pickerTiles.forEach((t, i) => {
       const cy = r.y + r.height * (0.30 + i * 0.115);
       placeUiSprite(t.img, t.def, { x: cx, y: cy, width: slotW, height: slotH });
-      const selected = t.type === this.model.carType;
-      // Boxcar has dedicated `selected` art; others just brighten when chosen.
+      t.caption.setPosition(cx, cy + slotH * 0.42);
+      // Every tile reads the same. This menu STARTS A CAR — it is not a picker
+      // showing which type the current car is, and highlighting the active type
+      // as "selected" was why tapping it looked like it did nothing (it made a
+      // new, identical-looking car).
       const selKey = t.def.states["selected"];
-      if (selKey) t.img.setFrame(selected ? selKey : t.def.base);
-      t.img.setAlpha(selected ? 1 : 0.82);
+      if (selKey) t.img.setFrame(t.def.base);
+      t.img.setAlpha(full ? 0.4 : 1);
+      t.caption.setAlpha(full ? 0.4 : 1);
     });
   }
 
@@ -476,8 +575,7 @@ export class WorkshopScene extends BackgroundScene {
     this.model = model;
     if (!this.ready) return;
     // Car-type swap is a pure texture change — same canvas, same baseline.
-    if (model.carType !== prevCarType)
-      this.car?.setTexture(CAR_SIDE_SPRITES[model.carType].key);
+    if (model.carType !== prevCarType) this.showCar(model.carType);
     const key = model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes).map((l) => l.id).join("|");
     if (key !== this.structKey) {
       this.buildGrid();

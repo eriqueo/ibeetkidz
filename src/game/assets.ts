@@ -57,19 +57,37 @@ export function publicAssetUrl(path: string): string {
   return joinPublicBase(import.meta.env.BASE_URL, path);
 }
 
-const v2 = (file: string): string =>
-  new URL(`../assets/scenes-v2/${file}`, import.meta.url).href;
-
 // v2 clean scene base plates (no painted-in UI chrome); the Tiled-driven
 // sprites are drawn on top.
+//
+// These were written as `v2("name.png")` over a `new URL(`../assets/scenes-v2/${file}`)`
+// template. Vite cannot statically resolve a template, so it glob-bundles the
+// WHOLE directory: `src/assets/scenes-v2/` holds 10 PNGs and all 10 shipped —
+// 5.2 MB, of which 2.6 MB was for files no scene loads (measured in dist/, not
+// assumed). The header at the top of this file already warned about exactly
+// this. Static literals only, one per entry — a template here costs megabytes.
 export const SCENE_BG_V2 = {
-  workshop: { key: "bg-workshop-v2", url: v2("workshop-scene-base.png") },
   // AR-016 layered interior: brick arches + rails, NO car (the car is a sprite).
-  workshopInterior: { key: "bg-workshop-interior", url: v2("workshop-interior-clean.png") },
-  yard: { key: "bg-yard-v2", url: v2("yard-scene-clean-v2.png") },
-  track: { key: "bg-track-v2", url: v2("track-scene-clean-v2.png") },
-  map: { key: "bg-map-v2", url: v2("map-scene-clean.png") },
+  workshopInterior: {
+    key: "bg-workshop-interior",
+    url: new URL("../assets/scenes-v2/workshop-interior-clean.png", import.meta.url).href,
+  },
+  yard: {
+    key: "bg-yard-v2",
+    url: new URL("../assets/scenes-v2/yard-scene-clean-v2.png", import.meta.url).href,
+  },
+  track: {
+    key: "bg-track-v2",
+    url: new URL("../assets/scenes-v2/track-scene-clean-v2.png", import.meta.url).href,
+  },
+  map: {
+    key: "bg-map-v2",
+    url: new URL("../assets/scenes-v2/map-scene-clean.png", import.meta.url).href,
+  },
 } as const satisfies Record<string, ImageAsset>;
+// `workshop` (workshop-scene-base.png) was dropped with the glob: it was
+// declared here but loaded by no scene — WorkshopScene loads `workshopInterior`.
+// The file is still in `src/assets/scenes-v2/`, it just no longer ships.
 
 // AR-016 side-on car sprites (Workshop Layer 2). All four share one 2560×1440
 // canvas, wheels on the same baseline, and an IDENTICAL punched interior void
