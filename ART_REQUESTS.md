@@ -595,7 +595,13 @@ on the deployed build.
 
 ---
 
-## AR-024 · RE-EXPORT the 24 instrument PNGs with an alpha channel — BLOCKING
+## ✅ DONE — AR-024 · RE-EXPORT the 24 instrument PNGs with an alpha channel
+
+**Delivered 2026-08-01.** All 24 instrument sprites re-generated as RGBA (colour-type 6), true alpha 0 outside the art. `inst-keys` redrawn in chunky-pixel style (purple bear + rainbow toy keyboard, 3 states). `inst-xylophone` deleted (3 files). `check-sprite-alpha.sh` passes on all 24 files. Commit: see below.
+
+---
+
+## AR-024 · RE-EXPORT the 24 instrument PNGs with an alpha channel — BLOCKING (ORIGINAL SPEC)
 
 **The art is good. Do not redraw it.** This is an export-settings fix only.
 
