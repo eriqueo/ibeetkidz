@@ -76,9 +76,10 @@ as an afterthought. Do not attempt it opportunistically alongside other changes.
 
 ## Still available without the refactor
 
-- **Lazy-load the three non-active car sprites.** `WorkshopScene` preloads all four
-  (2560×1440 each) to make a picker swap instant; that is 42 MB to display one car, and
-  the picker no longer re-skins the current car anyway.
+- ~~Lazy-load the three non-active car sprites.~~ **Already done** — `WorkshopScene.preload`
+  loads only `DEFAULT_CAR_TYPE` and `showCar()` fetches a type on first use, with a
+  `carType` re-check in the load callback so two quick swaps cannot race. Verified in
+  the code, not assumed; this note previously listed it as available and was wrong.
 - **Split the ui-atlas per scene.** Workshop chrome and Yard/Track chrome overlap far
   less than one shared atlas implies.
 - **`transparent: true`** in the game config forces per-frame alpha compositing with the
