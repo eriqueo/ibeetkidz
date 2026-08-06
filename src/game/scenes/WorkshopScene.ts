@@ -37,6 +37,8 @@ import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
+import { drawGlyph } from "../car-livery.ts";
+import { CHIP_EDGE, colorFor, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
 import workshopMap from "../../assets/maps/workshop.json";
 import { STEP_COUNT, CAR_TYPES, MAX_CARS, type CarType, type LaneKind } from "../../core/types.ts";
 import {
@@ -65,6 +67,11 @@ export interface WorkshopLane {
 export interface WorkshopModel {
   readonly lanes: readonly WorkshopLane[];
   readonly carType: CarType;
+  /** The active car's NAME and LIVERY index, shown on the LCD. Same glyph, same
+   *  colour the Yard paints on that car's flank — seeing them together while
+   *  editing is what makes the mark mean something on a siding later. */
+  readonly carName: string;
+  readonly livery: number;
   readonly selectedLayerId: string | null;
   readonly tempoBpm: number;
   /** How many cars the LIBRARY holds. The New Car picker needs it to tell a kid
@@ -143,7 +150,7 @@ interface LaneRow {
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], carType: "boxcar", selectedLayerId: null, tempoBpm: 120, carCount: 1 };
+  private model: WorkshopModel = { lanes: [], carType: "boxcar", carName: "Loop 1", livery: 0, selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
   /** The empty-car prompt (hint + the SURPRISE ME chip), or undefined when
@@ -163,6 +170,8 @@ export class WorkshopScene extends BackgroundScene {
   private lcdChip: Phaser.GameObjects.Graphics | undefined;
   private songText: Phaser.GameObjects.Text | undefined;
   private tempoText: Phaser.GameObjects.Text | undefined;
+  private liveryMark: Phaser.GameObjects.Graphics | undefined;
+  private lcdRect: { x: number; y: number; width: number; height: number } | undefined;
   // Car-type picker dropdown (toggled by the New Car button).
   private carPicker: Phaser.GameObjects.Container | undefined;
   private pickerTiles: { type: CarType; img: Phaser.GameObjects.Image; caption: Phaser.GameObjects.Text; def: UiSpriteDef }[] = [];
@@ -442,9 +451,18 @@ export class WorkshopScene extends BackgroundScene {
       hitDepth: 10,
     });
 
-    // SONG + TEMPO LCD: dark-plum text on a cream chip drawn over the panel.
+    // CAR + SPEED LCD: dark-plum text on a cream chip drawn over the panel.
+    //
+    // The top line used to read a hardcoded "SONG 001" that nothing ever
+    // updated. It is now the ACTIVE CAR's name, with its livery glyph drawn
+    // beside it in its livery colour — the same glyph, in the same colour, that
+    // the car wears in the Yard. That is what teaches the mapping: a kid sees
+    // "this mark" while editing "this car", and later picks "this mark" out of
+    // twelve on a siding. A cream chip nobody has ever connected to anything is
+    // scenery; this is the connection.
     this.lcdChip = this.add.graphics().setDepth(9);
-    this.songText = this.add.text(0, 0, "SONG 001", LCD_STYLE).setOrigin(0.5).setDepth(11);
+    this.liveryMark = this.add.graphics().setDepth(11);
+    this.songText = this.add.text(0, 0, "", LCD_STYLE).setOrigin(0.5).setDepth(11);
     this.tempoText = this.add.text(0, 0, "SPEED 120", LCD_STYLE).setOrigin(0.5).setDepth(11);
   }
 
@@ -468,7 +486,27 @@ export class WorkshopScene extends BackgroundScene {
       const fs = Math.max(10, Math.round(p.height * 0.26));
       this.songText.setPosition(p.x, p.y - p.height * 0.24).setFontSize(fs);
       this.tempoText.setPosition(p.x, p.y + p.height * 0.24).setFontSize(fs);
+      this.lcdRect = p;
+      this.drawLiveryMark();
     }
+  }
+
+  /** The active car's livery glyph, drawn on the LCD to the left of its name at
+   *  the same size the Yard draws it. Redrawn on resize AND on car change, so
+   *  the two are never out of step. */
+  private drawLiveryMark(): void {
+    const g = this.liveryMark;
+    const p = this.lcdRect;
+    if (!g || !p || !this.songText) return;
+    g.clear();
+    const r = Math.max(4, p.height * 0.11);
+    // Just left of the name, inside the chip.
+    const cx = this.songText.x - this.songText.width / 2 - r * 1.9;
+    const cy = this.songText.y;
+    const color = colorFor(this.model.livery);
+    g.fillStyle(CHIP_EDGE, 1).fillCircle(cx, cy, r * 1.5);
+    g.fillStyle(hexToInt(color), 1).fillCircle(cx, cy, r * 1.32);
+    drawGlyph(g, glyphFor(this.model.livery), cx, cy, r * 0.82, inkOn(color));
   }
 
   // ── car-type picker (toggled by the New Car button) ─────────────────────────
@@ -628,6 +666,8 @@ export class WorkshopScene extends BackgroundScene {
     // "SPEED", matching the Track's LCD — this read "TEMP", a truncation of
     // TEMPO that fit the chip but is not a word. Eric asked for SPEED here.
     this.tempoText?.setText(`SPEED ${Math.round(this.model.tempoBpm)}`);
+    this.songText?.setText(this.model.carName.toUpperCase());
+    this.drawLiveryMark(); // the name's width moved, so the glyph must too
   }
 
   /** React → scene: transport step 0..STEP_COUNT-1, or <0 when stopped. Called
