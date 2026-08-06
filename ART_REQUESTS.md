@@ -866,6 +866,12 @@ This is invisible in a screenshot and obvious in motion.
 **Deliver:** all five vehicle types × 8 directions, drawn at final on-screen size,
 in two depth tiers:
 
+> **⚠ SUPERSEDED IN PART BY AR-033 (below). Read that first.** If AR-033 is
+> approved, the Track plate is redrawn WITHOUT perspective and **the FAR tier in
+> this entry is not needed at all** — deliver the NEAR size only, as the single
+> size used everywhere. The two-tier table below applies only if the existing
+> perspective plate is kept.
+
 | Tier | Cell | Content width | Used where |
 |---|---|---|---|
 | NEAR | 288 × 288 | ~282 px | bottom / near half of the oval |
@@ -922,3 +928,63 @@ independently.
 
 **Unblocks:** Laws 2 and 4 for the Track, and the same kit is reusable for the
 Yard's cars and for any future overworld character.
+
+## AR-033 · REDRAW the Track plate in the house projection — HIGH (supersedes half of AR-030/031)
+
+**This is a premise fix, not a polish pass. Read it before starting AR-030 or AR-031.**
+
+**The finding.** Three of the four scene plates are drawn in the classic 16-bit
+oblique top-down projection — a fixed camera angle, no scale change with depth.
+`map-scene-clean.png` and `yard-scene-clean-v2.png` both do this correctly:
+constant tie pitch all the way along a track, buildings in 3/4 showing roof and
+front face, depth read from overlap and stacking rather than from size. The Map
+plate even contains a small oval of track whose far and near sides are **the same
+size**, and the Yard has another at the top of the frame.
+
+`track-scene-clean-v2.png` is the only outlier. It is drawn in strong one-point
+perspective, measured at a **3.7 : 1** ratio (tie pitch 24.3 px far vs 90.0 px
+near). That is not a SNES idiom — 16-bit hardware could not scale sprites, so the
+era's games used fixed-angle projections precisely to avoid this.
+
+**Why it has to go, beyond looking wrong.** It is not only an aesthetic mismatch:
+
+1. **Sprites cannot be drawn correctly for it.** A vehicle must render legibly
+   from 282 px down to 76 px, needing two entirely different drawings.
+2. **The 8-direction sprite atlas is invalid under it.** Eight frames express
+   *heading*. Under real perspective the camera's angle onto the object also
+   changes as it travels around the loop — you would see the far side more from
+   above and the near side more from the side. No heading-only atlas can express
+   that, which is part of why the train reads as pasted on.
+3. **It makes half the song unreadable.** On the Track, each car IS a bar of the
+   kid's song. At a quarter size on the far rails, half the arrangement cannot be
+   read or recognised. That is a product failure, not a style preference.
+4. **It blocks the overworld.** A walkable character (planned) needs one
+   consistent world grammar across Map, Yard and Track. The Track is the only
+   scene it could not walk into unchanged.
+
+**Deliver:** `track-scene-clean-v3.png`, 2560 × 1440, the same scene content —
+oval of track, crossing signal, grass, pines, rocks — **redrawn in the Map's
+projection**. Requirements:
+
+- **No perspective.** Tie pitch, rail gauge and ballast width are constant all the
+  way around the oval. Far and near sides are the same size.
+- **Match `map-scene-clean.png`'s camera angle, palette and daylight**, so the
+  three outdoor scenes read as one world. The Map's own small oval is the
+  reference for exactly the shape wanted, scaled up to fill the scene.
+- The oval still reads as an oval — a circle seen from the house angle is a
+  vertically-compressed ellipse, which is correct and is what the Map already
+  does. What must NOT vary is the *track's own width and tie spacing*.
+- Keep the crossing signal at bottom-centre; it is the song's downbeat marker and
+  code depends on its position.
+- Same 16-colour palette discipline and palette-PNG encoding as the other plates
+  (they are 223 colours; see the standing re-render rule at the end of this file).
+
+**Deliver alongside it:** the foreground occluder cut-outs requested in **AR-030**,
+taken from this new plate rather than the old one — the two jobs share all their
+work, so do them together.
+
+**What this unblocks in code.** `depthScaleAt()` collapses to a constant, world
+sprites draw at ONE integer scale, Law 1 in `design/GAME_FEEL.md` is satisfied
+with no exception needed, AR-031 loses its far tier entirely, and the same
+vehicle art and contact-shadow kit becomes reusable across Track, Yard and the
+future overworld.
