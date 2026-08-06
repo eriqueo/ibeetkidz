@@ -43,6 +43,45 @@ a pop is read as distance, a crawl is read as cheapness.
 multiplier. Each must be an integer. Then watch a sprite move slowly across the
 screen at 4× zoom; the interior pixels must not writhe.
 
+### The exception: a sprite moving in depth on a perspective plane
+
+This law has one real exception, and it must be stated honestly rather than
+quietly broken.
+
+If the backdrop is drawn in perspective and an actor travels *into* that
+perspective, the actor must scale with the ground it stands on. That scale is
+continuous, so it cannot also be an integer. **Matching the ground wins.** A
+sprite at the wrong size is not standing on the track at all — that is a
+correctness failure. Pixel crawl is a polish failure. Never trade the first for
+the second.
+
+**Measured on this project's Track plate** (`track-scene-clean-v2.png`), using
+railway tie pitch along the direction of travel — a ground-plane distance along
+the track, which scales by exactly the same factor as an object's height:
+
+| | tie pitch | |
+|---|---|---|
+| far side (top of oval, y=415) | 24.3 px | 37 ties across 900 px |
+| near side (bottom of oval, y=1070) | 90.0 px | 10 ties across 900 px |
+| **true perspective ratio** | **3.7 : 1** | |
+
+The code's `farScale 0.9 → nearScale 1.06` is a ratio of **1.18 : 1**. The world
+scales by 370% across the oval and the train scales by 18%, which is why it
+visibly fails to sit on the far rails. Use **tie pitch**, not rail gauge, to
+measure this — gauge is a distance *across* the track and is foreshortened by the
+camera tilt as well as by depth, so it overstates the ratio badly (it reads ~7:1
+here).
+
+Two things reduce the cost of the exception without reintroducing the bug:
+
+- **Authored size tiers.** Ship the art at two or more sizes and switch tiers
+  with depth, scaling smoothly only *within* a tier. Two tiers halve the worst
+  resampling error. Do not quantize the scale itself into visible steps — across a
+  3.7× range even four tiers means 55% pops, which is worse than the crawl.
+- **Anchor at the ground contact point**, never the sprite centre. Under a large
+  scale range a centre-anchored sprite's feet drift off the ground as it resizes.
+  This is usually a second, independent cause of "it isn't standing on anything."
+
 ---
 
 ## Law 2 — Everything in the world touches the ground.

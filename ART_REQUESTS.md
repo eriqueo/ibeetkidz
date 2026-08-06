@@ -869,11 +869,27 @@ in two depth tiers:
 | Tier | Cell | Content width | Used where |
 |---|---|---|---|
 | NEAR | 288 × 288 | ~282 px | bottom / near half of the oval |
-| FAR | 248 × 248 | ~240 px | top / far half of the oval |
+| FAR | 96 × 96 | ~76 px | top / far half of the oval |
 
-Engineering then draws both at **scale 1** and switches tiers at the halfway
-point, so the pixel grid is stable and matches the plate. Two tiers is enough —
-the real perspective swing is only 17%.
+**Corrected 2026-08-06 — the FAR tier is much smaller than first written.** The
+first version of this entry said 248 px, on the assumption that the perspective
+swing was the 17% implied by `farScale 0.9`/`nearScale 1.06` in `track.json`.
+Those constants are wrong; they are the bug. The plate was then measured directly
+— railway tie pitch along the direction of travel, **24.3 px far vs 90.0 px near**
+— so the painted track's true perspective ratio is **3.7 : 1**, not 1.18 : 1. A
+car on the far rails should be roughly **a quarter** the size of the same car on
+the near rails. That is why the deployed train visibly is not on the track at the
+top of the oval.
+
+Engineering switches tiers with depth and scales smoothly *within* a tier, so
+each tier is drawn near its authored size and resampling error stays small. Two
+tiers rather than many: across a 3.7× range, quantizing into visible steps would
+pop by ~55% and read worse than smooth scaling.
+
+**Draw the far tier with fewer, larger pixels — do not just draw the near art
+small.** At ~76 px wide a locomotive has room for a silhouette and little else;
+detail that survives at 282 px turns to noise here. Read it as a distinct, simpler
+drawing of the same vehicle.
 
 **The FAR tier must be REDRAWN at the smaller size in the 16-colour palette, not
 downscaled from the near art.** Same reasoning as the standing re-render rule
