@@ -1,4 +1,7 @@
-node_modules/
+# No trailing slash: a git worktree usually gets its node_modules as a SYMLINK
+# to the main checkout's, and `node_modules/` matches directories only — so the
+# symlink was not ignored and `git add -A` committed it (once, for real).
+node_modules
 dist/
 dist-gh/
 coverage/
