@@ -421,3 +421,41 @@ the painted plate. Not done, deliberately.
 when that spec was re-run alone, and the next full `CI=1` run was clean at
 26/4/0. Same load-sensitivity this file has warned about since the first
 re-baseline, now seen on `v2-flow` rather than `audio-output`.
+---
+
+## Re-baseline — 2026-08-06, the Yard palette stopped hiding its own cars
+
+Measured on its own branch, off `399 / 26` — so the "previous" column below is that
+branch point, not the coupling entry above it. The merged total is re-measured in the
+entry that follows.
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **430** / 28 files, 0 skipped | 399 / 26 |
+| E2E local | **29 passed** | 29 |
+| E2E spec files | 8 | unchanged |
+| Tracked files | **512** | 489 |
+
+E2E is unchanged on purpose: the layout retune moves every palette hit area, and
+the suite did not notice — because every spec drives the Yard through the
+EventBus and the Tiled chrome, and **nothing has ever asserted on a palette
+car's position**. That is worth writing down rather than reporting as "no
+regressions": the reason the palette could ship overlapping itself from day one
+is the same reason the fix is invisible to the suite.
+
+The two new unit files are where the guard actually lives:
+`tests/unit/yard-layout.test.ts` (12) and `tests/unit/car-identity.test.ts` (19).
+
+**Both seeded.** Reverting `carFitScale` to the width-only fit reds 4 of the 12;
+restoring the old `carW`/`carH` reds 1; an oversized `carH` reds 3. The identity
+guards are properties (12 cars ⇒ 12 liveries; no pair repeats both shape and
+colour; every livery colour's glyph ink clears a luma gap against its own panel),
+so they fail on a table edit rather than on a rendering change.
+
+**Two seams moved to make this testable at all.** `src/game/car-geometry.ts` and
+`src/game/yard-geometry.ts` are Phaser-free (`import type` only). A REAL
+`import Phaser` cannot load under jsdom — it dies in `checkInverseAlpha` on a
+null 2D context — so anything living inside a scene file is unreachable by the
+unit suite by construction. The palette's slot arithmetic had been in
+`YardScene.ts` for its whole life, which is a large part of why the bug survived
+it.

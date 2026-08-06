@@ -22,8 +22,10 @@ import {
   frameKey,
   velocityToDirection,
   spawnSmoke,
+  FRAME_SIZE,
   type TrainType,
 } from "../sprite-assets.ts";
+import { decorateMovingCar } from "../car-livery.ts";
 import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
 import { couplingOffsets, popScale } from "../train-chain.ts";
 import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser.ts";
@@ -35,10 +37,17 @@ import { SceneVisualizer } from "../scene-visualizer.ts";
 import { VISUAL_STYLES } from "../../visualizer/styles.ts";
 import trackMap from "../../assets/maps/track.json";
 import type { CarType, Project } from "../../core/types.ts";
+import type { LaneGroup } from "../../core/lane-color.ts";
 
 export interface TrackCar {
   readonly id: string;
-  readonly color: string;
+  /** Livery index + carried family — the same two identity channels the Yard
+   *  draws, derived in React from the project (`core/car-identity.ts`). The
+   *  Track deliberately skips the Yard's name chip: a text plate under every
+   *  car on a moving oval is clutter, and the load, the livery panel and the
+   *  silhouette carry it without one. */
+  readonly livery: number;
+  readonly cargo: LaneGroup | null;
   readonly carType: CarType;
   readonly muted: boolean;
 }
@@ -642,6 +651,9 @@ export class TrackScene extends BackgroundScene {
     const targetW = r.width * 0.075;
     const body = this.add.image(0, 0, "train", frameKey(car.carType, "E")).setOrigin(0.5);
     const children: Phaser.GameObjects.GameObject[] = [body];
+    // Identity rides BETWEEN the body and the tarp: a tarped car is covered, so
+    // its load and livery are covered too, which is the truth the tarp states.
+    children.push(...decorateMovingCar(this, FRAME_SIZE, car.livery, car.cargo));
     if (car.muted) {
       const tarp = this.add.image(0, 0, "tarp", "tarp").setOrigin(0.5);
       tarp.setDisplaySize(body.width * 1.05, body.height * 1.05);

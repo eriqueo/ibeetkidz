@@ -62,9 +62,29 @@ inversion). **This is a decided architecture, not an accident — see
   so the lane lands in the grid on close. There is no "stations dock" and no
   in-scene 4-way car-type picker any more — their EventBus events and reducers
   survive for a later sprint (see `WorkshopScene.ts`'s header comment).
-- **Yard** (`YardScene`): palette cars on the 4 sidings (tinted sprites) + the
-  assembled train on the top line; `animatePickup` crane hook; **Add to Train**
-  dispatches in the crane onComplete; per-slot Tarp/Remove; **Send to Track**.
+- **Yard** (`YardScene`): palette cars on the 4 sidings + the assembled train on
+  the top line; `animatePickup` crane hook; **Add to Train** dispatches in the
+  crane onComplete; per-slot Tarp/Remove; **Send to Track**. Cars face **`E`**
+  (the sidings run east–west) and their 128 px atlas cell is contain-fitted on
+  **both** axes — it was width-only, which drew a 238 px body on a 132.5 px
+  siding pitch and buried every car under the next. The pure slot arithmetic
+  lives in `src/game/yard-geometry.ts`, Phaser-free so `tests/unit/yard-layout.
+  test.ts` can hold it to the pitch; the scene re-exports it.
+- **Car identity is "livery + load"** (`src/core/car-identity.ts`, drawn by
+  `src/game/car-livery.ts`), rendered on the palette, the assembly line and the
+  Track. **LOAD** is derived — the dominant instrument family of the car's own
+  lanes, shown as the `inst-*` sprite already in the packed atlas, riding on the
+  roof; an empty car carries nothing. **LIVERY** is assigned — a unique colour +
+  shape glyph painted as a flat panel on the car's flank, resolved over the whole
+  library so it is collision-free at `MAX_CARS`. Neither needs a persisted field.
+  **Never use `setTint` for this**: it is a multiply and the train atlas is dark
+  brown, so every car colour lands at a peak channel of ≤61/255 and four of five
+  read as the same dark thing. Colour goes BESIDE the sprite, never into it.
+  The name chip is a SIBLING of the car container, not a child — inside it, it
+  inherits the fit scale, which is what hid every label but the last.
+  (`setTintMode` in Phaser 4 does offer FILL/ADD/SCREEN and would sidestep the
+  multiply — but the painted-beside approach already shipped and reads well, so
+  the rule above stands until something forces a revisit.)
 - **Track** (`TrackScene`): sprite loco + cars ride the painted oval **coupled** —
   every vehicle sits half of each neighbour's on-screen length behind the one in
   front (`src/game/train-chain.ts`, arc length over path length), so the consist

@@ -64,14 +64,49 @@ export const YARD_LAYOUT_V2 = {
 
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each
 // siding + the shared x-range; cars lay out left→right along the active siding.
+//
+// RETUNED 2026-08-04. `carW`/`carH` are the box a car's 128×128 atlas CELL is
+// contain-fitted into (`yard-geometry.carFitScale`), so both axes are
+// load-bearing:
+//
+//   pitch between sidings   dy 0.092 × 1440 = 132.5 px
+//   cell budget             carH 0.085 × 1440 = 122.4 px → fit scale 0.956
+//   tallest body (boxcar-E) 97 × 0.956 = 92.7 px         → ~40 px for a chip
+//
+// The previous values (carW 0.11, carH 0.07) were sized for a WIDTH-only fit,
+// which scaled the cell to 281.6 px — a 238 px-tall body on a 132.5 px pitch,
+// i.e. ~105 px of car-on-car overlap, and the whole reason only the last car in
+// each column had a readable label. `carW` is deliberately a little wider than
+// `carH` so HEIGHT is the binding axis: the siding pitch is the hard constraint,
+// the horizontal run of the painted rails is not.
+//
+// `dx` spreads the (at most) 3 columns of 12 cars across the clear part of the
+// sidings — the painted rails run to ≈0.66 of width but the gantry crane's left
+// leg lands at ≈0.51, so the palette stops short of it.
 export const YARD_SIDINGS_V2 = {
   rows: 4,
-  x0: 0.06, // left edge of a siding (first car centre offset added per index)
+  x0: 0.085, // left edge of a siding (first car centre offset added per index)
   y0: 0.517, // centre y of the top siding (2026-07-02 plate: rails at 0.517)
   dy: 0.092, // vertical spacing between sidings
-  carW: 0.11, // car sprite / hit-area width (fraction of image)
-  carH: 0.07,
-  dx: 0.115, // horizontal spacing between cars on a siding
+  carW: 0.052, // car CELL fit width (fraction of image width)
+  carH: 0.085, // car CELL fit height (fraction of image HEIGHT) — the binding axis
+  dx: 0.053, // horizontal spacing between cars on a siding
+  /** Name chip: width + height as fractions of image WIDTH, and the gap below
+   *  the car's wheels. Sized in SCREEN space (the chip is not a child of the
+   *  car) so its legibility does not track the car's fit scale.
+   *
+   *  The vertical sum is what has to clear the siding pitch. In fractions of
+   *  image HEIGHT, at any 16:9 canvas:
+   *      body  0.758 × 0.085            = 0.0644
+   *      gap   0.0025 × (16/9)          = 0.0044
+   *      chip  0.0105 × (16/9)          = 0.0187
+   *                                  ⇒   0.0875  <  dy 0.092  ✓
+   *  `tests/unit/yard-layout.test.ts` asserts that inequality, so tuning any of
+   *  these five numbers back into an overlap fails the gate instead of
+   *  quietly reintroducing the bug. */
+  plateW: 0.048,
+  plateH: 0.0105,
+  plateGap: 0.0025,
 } as const;
 
 // Track v2: the oval the train rides, the crossing-signal point on the bottom

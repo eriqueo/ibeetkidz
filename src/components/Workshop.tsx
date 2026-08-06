@@ -21,6 +21,7 @@ import {
   type InstrumentId,
 } from "../core/instruments.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
+import { carLiveries } from "../core/car-identity.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
@@ -126,10 +127,16 @@ export const Workshop: FC = () => {
       return { id: layer.id, label, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
     carType: part.carType,
+    // The LCD shows WHICH car this is — its name and its livery mark, the same
+    // mark the Yard paints on its flank. That pairing is the only thing that
+    // teaches a kid what the mark means; the readout previously said a
+    // hardcoded "SONG 001" that nothing ever updated.
+    carName: part.name,
+    livery: carLiveries(project.parts).get(part.id) ?? 0,
     selectedLayerId: selectedLayer,
     tempoBpm: project.tempoBpm,
     carCount: project.parts.length,
-  }), [layers, project.clips, part.carType, selectedLayer, project.tempoBpm, project.parts.length]);
+  }), [layers, project.clips, part.carType, part.name, part.id, project.parts, selectedLayer, project.tempoBpm]);
 
   // Tool-panel model — derived from the store + the transient take state above.
   const toolModel = useMemo<ToolModel>(() => {

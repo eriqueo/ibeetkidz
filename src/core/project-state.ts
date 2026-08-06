@@ -35,6 +35,7 @@ import {
   type VersionedSave,
 } from "./project-schema.ts";
 import { MELODY_ROWS, type ScaleId, type KeyId } from "./scale.ts";
+import { CAR_COLORS, nextCarColor } from "./car-identity.ts";
 import type { PitchPin } from "./types.ts";
 
 const clamp = (v: number, lo: number, hi: number): number =>
@@ -102,30 +103,19 @@ function coerceNote(raw: unknown, index: number): StepNote | null {
   return null;
 }
 
-/** Friendly colors cycled onto new cars (Song Train). */
-const CAR_COLORS = ["#fb5607", "#3a86ff", "#06d6a0", "#8338ec", "#ffd166"];
-
-/**
- * Derive a car color from its dominant lane kind so the car's color tells you
- * what it IS at a glance — matching the design system's car-family mapping:
- *   pure drum  → tomato red   (hopper)
- *   pure melody→ teal green   (tanker)
- *   mixed      → grape purple (gondola)
- *   empty/other→ cycle from CAR_COLORS
- */
-function carColorFromLayers(
-  layers: readonly Layer[],
-  fallbackIndex: number,
-): string {
-  if (layers.length === 0)
-    return CAR_COLORS[fallbackIndex % CAR_COLORS.length] as string;
-  const drumCount = layers.filter((l) => l.kind === "drum").length;
-  const melodyCount = layers.filter((l) => l.kind === "melody").length;
-  if (drumCount > 0 && melodyCount === 0) return "#fb4934"; // tomato — pure drum car
-  if (melodyCount > 0 && drumCount === 0) return "#8ec07c"; // teal — pure melody car
-  if (melodyCount > 0 && drumCount > 0) return "#bd93f9"; // grape — mixed car
-  return CAR_COLORS[fallbackIndex % CAR_COLORS.length] as string;
-}
+// `CAR_COLORS` moved to `car-identity.ts` (imported above) and grew from 5 to
+// 12 — one per `MAX_CARS` — because it is no longer decoration: it is the
+// LIVERY, the assigned half of a car's identity, and a 5-entry table cycling
+// over 12 cars guaranteed duplicates.
+//
+// `carColorFromLayers` was deleted with that move. It claimed to derive a car's
+// colour from its dominant lane kind (drum→tomato / melody→teal / mixed→grape),
+// but its only two callers were `addCar`, which passed a literal `[]`, and
+// `normalizeProject`, which passes a table colour — so the derived branch never
+// executed in a running app, and nothing recomputed a colour when lanes
+// changed. What a car CARRIES is now a real, live, derived channel: `carCargo`
+// in `car-identity.ts`, recomputed on render from the lanes rather than frozen
+// into a hex string at birth.
 
 /** Build a car (Part). The default project has exactly one. */
 export function makePart(
@@ -836,10 +826,14 @@ export function reduce(state: Project, cmd: Command): Project {
     case "addCar": {
       if (state.parts.some((p) => p.id === cmd.id)) return state; // id clash → no-op
       if (state.parts.length >= MAX_CARS) return state; // at the car cap → no-op
+      // Lowest livery colour nobody is wearing, not `parts.length % 5`: cars
+      // are told apart in the Yard BY this colour, and cycling a short table
+      // meant car 6 was car 1's twin. Pure and deterministic — no RngPort
+      // needed, and undo/redo replays to the same livery.
       const part = makePart(
         cmd.id,
         `Loop ${state.parts.length + 1}`,
-        carColorFromLayers([], state.parts.length),
+        nextCarColor(state.parts),
         [],
         cmd.carType ?? "boxcar",
       );
@@ -897,11 +891,15 @@ export function reduce(state: Project, cmd: Command): Project {
       const idx = state.parts.findIndex((p) => p.id === cmd.partId);
       if (idx < 0) return state;
       const src = state.parts[idx]!;
-      // Carry the source car's color + sprite so the duplicate reads identically.
+      // Carry the source car's SPRITE (same lanes ⇒ same kind of car) but give
+      // the copy its own livery colour. Copying `src.color` made duplicates
+      // guaranteed twins in the Yard — same silhouette, same load, same
+      // colour — which is the one case the derived channel cannot separate and
+      // therefore the one case the assigned channel exists for.
       const part = makePart(
         cmd.id,
         `Loop ${state.parts.length + 1}`,
-        src.color,
+        nextCarColor(state.parts),
         [...src.layers],
         src.carType,
       );
