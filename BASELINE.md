@@ -364,3 +364,60 @@ refactor, not this fix) but the spec now walks both pipelines.
 **Both seeded, each failing on its own assertion:** killing `ui-scene.fire()` →
 "tapping the Workshop's YARD plaque did nothing"; killing
 `TiledSceneAdapter`'s emit → "tapping the Map's WORKSHOP sign did nothing".
+
+---
+
+## Re-baseline — 2026-08-06, the train is a train
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **413** / 27 files, 0 skipped | 399 / 26 |
+| E2E local | **30 passed** | 29 |
+| E2E under `CI=1` | **26 passed, 4 skipped** | 25 + 4 |
+| E2E spec files | 8 | 8 |
+
+New unit file: `tests/unit/train-chain.test.ts` (14). `track-timing.spec.ts`
+went from 2 tests to 3.
+
+**Car spacing was a fraction of the lap.** `TrackScene.placeTrain` put car `i`
+at `progress - i / carCount`, so the gap between cars changed when the song
+gained a bar, and at four bars the cars sat a quarter-lap apart — four wagons
+that had lost each other, and the top complaint on the play-test screenshot.
+The loco, fourteen lines below, was already coupled with the correct model:
+arc length over path length. `src/game/train-chain.ts` generalises that model
+to the whole consist as pure arithmetic (`couplingOffsets`), with
+`chainSqueeze` compressing proportionally rather than letting a consist longer
+than the lap wrap onto its own loco.
+
+**The bar readout moved off position and onto a highlight** — a lamp under the
+sounding car plus a bounce on the bar change — because coupled position can no
+longer encode which bar is sounding. Both are derived from the same `progress`
+React feeds in, so PROJECT_CHARTER §2.5 is untouched; the charter now says
+explicitly that WHICH visual carries the readout was never part of that
+decision, since it has now been changed twice.
+
+**Not `setTint`.** Tint is a multiply blend and the train atlas is dark brown;
+a previous round measured every tint as indistinguishable. The lamp is a
+separate `Ellipse` drawn at depth 3.5, under the train band. Its first pass was
+also too faint — 0.19 effective alpha, measured on a real screenshot as barely
+distinguishable from the painted grass — and was turned up to 0.55–0.90 with a
+bright rim, re-checked on screenshots at two points on the oval.
+
+**All three `track-timing` tests are seed-proven**, each against the model it
+replaced: restoring `i / carCount` spacing reds the coupling test ("cars 0→1 at
+t=0 are uncoupled"); pinning the sounding bar to 0 reds both the highlight test
+and the never-lead test.
+
+**The polyline-vs-spline question is CLOSED, measured.** The 64-vertex Tiled
+polyline was suspected of making the 8-way sprite frame flip-flop at vertices.
+Measured over the real `track-path` data: 8 direction-bucket transitions per
+lap (one per compass direction, monotone), **zero** A→B→A flip-flops, max turn
+between consecutive segments 15.6° against a 45° bucket. A `Curves.Spline`
+would fix nothing and would re-open the `parkAngle = 0.25` calibration against
+the painted plate. Not done, deliberately.
+
+**One flaky CI run recorded rather than hidden:** the first `CI=1` full run had
+`v2-flow.spec.ts`'s "surprise" and "Map guards Track" tests red; both passed
+when that spec was re-run alone, and the next full `CI=1` run was clean at
+26/4/0. Same load-sensitivity this file has warned about since the first
+re-baseline, now seen on `v2-flow` rather than `audio-output`.
