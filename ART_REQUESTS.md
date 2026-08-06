@@ -801,3 +801,108 @@ palette entry is the thing to add.
 **Self-check before delivering a plate:** it should have on the order of a few
 hundred distinct colours, not tens of thousands, and it should be a palette PNG.
 The other three scene plates are 223, and all are palette-encoded.
+
+---
+
+# GAME-FEEL BATCH (added 2026-08-06) — AR-030 … AR-032
+
+These three exist for one reason, in Eric's words about the deployed Track:
+*"it looks super amateur and not native... the train looks like it is imposed
+onto the background and not an organic part of the scene."* That is correct and
+it is an ART-SHAPED problem as much as a code one. `design/GAME_FEEL.md` is the
+full doctrine; these entries are the art it needs. Track first, but the same
+treatment is coming for the Map, Yard and Workshop.
+
+> **⚠ These three OVERRIDE the "deliver at roughly 2× the drawn size" sizing note
+> near the top of this file.** That rule is right for UI chrome, because
+> `placeUiSprite` contain-fits into a fixed slot and native resolution only costs
+> GPU memory. **These are world sprites, and for world sprites native resolution
+> IS the drawn size.** A world sprite must share the background plate's pixel
+> size; delivering these at 2× re-creates the exact bug they are fixing. Draw
+> them at the pixel dimensions stated, no larger.
+
+## AR-030 · Track foreground occluder overlay — HIGH
+
+**The problem.** `src/assets/maps/track.json` has exactly ONE `base-plate` image
+layer, so every pine, rock and bush is baked into the backdrop. The train draws
+above all of it. The painted rails visibly pass *behind* the pines at the top of
+the oval — and the train slides straight over them. Nothing in the scene can ever
+occlude the train, which is most of why it reads as pasted on.
+
+**Deliver:** the scenery that sits BETWEEN the viewer and the rails, cut out as
+individual transparent PNGs — the pines, rocks and bushes that the painted
+centreline passes behind (top of the oval especially, plus anything on the inner
+and outer edge of the bottom straight).
+
+For each prop, give its **placement x,y on the 2560×1440 plate** and its
+**baseline Y** — the pixel row where it meets the ground. Engineering authors
+those into a Tiled `props-layer` and depth-sorts each one independently, so the
+train passes behind a far pine and in front of a near one.
+
+**Do NOT redraw them and do NOT re-render the base plate.** Cut the existing
+pixels. Because this is hard-edged 16-colour art, drawing the cut-out back at the
+same position over the untouched plate composites to a pixel-identical image, so
+there is no risk of a hole or a seam, and no second plate to keep in sync.
+
+A single flat foreground PNG is an acceptable fallback if per-prop cutting is
+painful, but it is strictly worse — one flat layer means the train is either
+always in front or always behind, and the whole point is that it depends on where
+it is.
+
+**Unblocks:** Law 3 in `design/GAME_FEEL.md`, for the Track.
+
+## AR-031 · Train vehicles redrawn at on-screen size (2 depth tiers) — HIGH
+
+**The problem, measured.** Car art is 128×128 native (`train.png`, 1024×640,
+40 frames = 5 types × 8 directions). It is drawn at `carW 0.11 × 2560` = **281.6 px**
+wide, i.e. **2.2×**, and `TrackScene.depthScaleAt()` then multiplies that by a
+continuously interpolated float (`farScale 0.9` → `nearScale 1.06`). Final scale
+therefore wanders between **1.98× and 2.33×** and is almost never an integer.
+Under nearest-neighbour filtering that maps each source pixel to 1 or 2 screen
+pixels in a pattern that **reorganises every frame as the train moves** — the
+train's pixels are both the wrong size relative to the background and unstable.
+This is invisible in a screenshot and obvious in motion.
+
+**Deliver:** all five vehicle types × 8 directions, drawn at final on-screen size,
+in two depth tiers:
+
+| Tier | Cell | Content width | Used where |
+|---|---|---|---|
+| NEAR | 288 × 288 | ~282 px | bottom / near half of the oval |
+| FAR | 248 × 248 | ~240 px | top / far half of the oval |
+
+Engineering then draws both at **scale 1** and switches tiers at the halfway
+point, so the pixel grid is stable and matches the plate. Two tiers is enough —
+the real perspective swing is only 17%.
+
+**The FAR tier must be REDRAWN at the smaller size in the 16-colour palette, not
+downscaled from the near art.** Same reasoning as the standing re-render rule
+above: a resample invents intermediate colours and turns crisp pixels to mush.
+
+## AR-032 · Train motion + ground kit: wheelsets and contact shadows — HIGH
+
+**The problem.** Two of the eight laws fail here at once. (Law 2) **No world
+object in this entire project has a contact shadow** — every `shadow` in the
+codebase is UI chrome, so vehicles float above the rails. (Law 4) The train is a
+static image being slid along a curve; there are exactly two registered
+animations in the whole game, `smoke` and `signal-flash`, and no vehicle has a
+cycle of any kind.
+
+**Deliver two small sets:**
+
+**(a) Animated wheelsets** — 8 directions × 4 frames of wheel rotation, drawn to
+sit *under* a car body as an overlay, so one set serves every car type that
+shares a truck. If the loco's drivers and side-rods differ from the wagons'
+trucks (they should), deliver a separate loco set — the side-rod motion is the
+single most train-like thing on screen. Small cells; these are wheels, not
+vehicles. Engineering advances the cycle by **distance travelled**, not by a
+timer, so the wheels turn in step with the train and stop when it stops.
+
+**(b) Contact shadows** — one per vehicle type per direction, matching that
+sprite's actual footprint, in the palette's darkest ground shade with the house
+dither rather than a soft alpha blob. Delivered as separate sprites so
+engineering can draw them one depth below the vehicle and squash them
+independently.
+
+**Unblocks:** Laws 2 and 4 for the Track, and the same kit is reusable for the
+Yard's cars and for any future overworld character.
