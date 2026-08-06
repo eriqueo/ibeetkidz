@@ -3,6 +3,24 @@
 // the one in front, so a four-car song reads as one train and not as four wagons
 // that lost each other. Smoke puffs from the loco while moving; cars bounce.
 //
+// GAME FEEL (`design/GAME_FEEL.md`) — the rules this scene is held to, because
+// "correctly positioned" was never the same thing as "lives in the scene":
+//   Law 1  one pixel grid. `WORLD_PIXEL_SCALE` is the base size of every world
+//          sprite; the plate's perspective multiplies it (see `depthScaleAt`,
+//          which AR-033 will retire).
+//   Law 2  every vehicle stands on a contact shadow (interim, pending AR-032).
+//   Law 4  the bob's phase comes from distance travelled, not from `time.now`.
+//   Law 5  bob and smoke ramp in and out (`TrainMotion.energy`).
+//   Law 6  smoke is emitted per unit of DISTANCE, never on a timer.
+//   Law 7  world sprites are positioned on whole pixels.
+// Law 3 (passing behind scenery) is blocked on AR-030: the plate is one baked
+// image, so there is nothing in the scene for a train to go behind yet.
+//
+// AND THE THING UNDERNEATH ALL OF IT: a vehicle is anchored at the point where
+// its WHEELS meet the rail (`car-geometry.ts`), not at the centre of its atlas
+// cell. Centre-anchoring is why the train sat beside the painted track rather
+// than on it, and it gets worse the more the perspective scales the sprite.
+//
 // Cars + loco are drawn from the directional spritesheet atlas (sprite-assets.ts):
 // each frame is one of 8 compass directions, picked every frame from the path
 // tangent so the sprite always faces the way it's travelling.
@@ -23,11 +41,30 @@ import {
   velocityToDirection,
   spawnSmoke,
   FRAME_SIZE,
+  type Direction,
   type TrainType,
 } from "../sprite-assets.ts";
 import { decorateMovingCar } from "../car-livery.ts";
 import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
-import { couplingOffsets, popScale } from "../train-chain.ts";
+import { alignCarBody, carBodySize, CAR_CONTENT_E } from "../car-geometry.ts";
+import { couplingOffsets, popScale, popHop, HOP_HEIGHT_PX } from "../train-chain.ts";
+import {
+  advanceMotion,
+  bobOffset,
+  motionIntensity,
+  puffsDue,
+  reseatMotion,
+  MOTION_AT_REST,
+  SMOKE_PIXEL_SCALE,
+  WORLD_PIXEL_SCALE,
+  type TrainMotion,
+} from "../train-motion.ts";
+import {
+  shadowPixels,
+  shadowSpecFor,
+  ALL_SHADOW_SPECS,
+  SHADOW_ALPHA,
+} from "../pixel-shadow.ts";
 import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { loadUiSprites } from "../ui-sprites.ts";
@@ -52,9 +89,22 @@ export interface TrackCar {
   readonly muted: boolean;
 }
 
-const SMOKE_INTERVAL_MS = 800;
 // Depth band the train tokens draw in (y-sorted within it, under the chrome).
 const TRAIN_DEPTH = 4;
+// Contact shadows ride under every vehicle and over the sounding-car lamp — the
+// car blocks the lamp's light, which is the whole point of a shadow.
+const SHADOW_DEPTH = TRAIN_DEPTH - 0.25;
+// Smoke draws in FRONT of the train (and of the jumbotron), under the signal.
+const SMOKE_DEPTH = TRAIN_DEPTH + 1.5;
+// The plate lights everything from the upper left, so shade falls to the right.
+// In unscaled cell px; the perspective scales it with everything else.
+const SHADOW_DX = 2;
+// The ride path traces the CENTRELINE between the two painted rails, but every
+// vehicle frame is drawn from the side, showing the near-side wheels — so the
+// line those wheels stand on is the NEAR rail, half a gauge below it on screen.
+// In unscaled cell px (× the perspective scale): ~33 px at the bottom of the
+// oval, where the painted gauge is 72, and ~7 at the top, where it is 10.
+const RAIL_DROP = 15;
 // The sounding-car glow rides just under the train band, so it reads as light
 // on the ground beneath the car rather than a sticker on top of it.
 const GLOW_DEPTH = TRAIN_DEPTH - 0.5;
@@ -70,8 +120,9 @@ export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
   private path!: Phaser.Curves.Path;
-  // Perspective: token scale interpolates farScale→nearScale across the path's
-  // vertical extent (authored on the `track-path` Tiled object, tuned per plate).
+  // Vertical extent of the ride path: y-sorts the train within its depth band,
+  // and drives the plate's perspective (`farScale`→`nearScale`, authored on the
+  // `track-path` Tiled object). See `depthScaleAt`.
   private pathYMin = 0;
   private pathYMax = 1;
   private farScale = 1;
@@ -90,10 +141,25 @@ export class TrackScene extends BackgroundScene {
   private popBar = -1;
   private popStartedAt = -1;
   private glow?: Phaser.GameObjects.Ellipse;
+  // Motion state: distance travelled, smoothed speed, and the 0..1 ramp every
+  // piece of secondary motion is multiplied by. Advanced once per frame from
+  // the transport-fed `progress` — the train still owns no clock of its own
+  // (PROJECT_CHARTER §2.5); this only measures the one it is given.
+  private motion: TrainMotion = MOTION_AT_REST;
+  /** Timestamp of the previous `update`, so the frame gap is measured and not
+   *  taken from Phaser's smoothed `delta`. -1 until the first frame. */
+  private lastUpdateAt = -1;
+  // Distance since the last stack puff, in px. Smoke is emitted per unit of
+  // distance travelled, the way a stack puffs per wheel revolution.
+  private smokeDebt = 0;
+  // One contact shadow per vehicle, index-aligned with `[loco, ...carTokens]`.
+  private shadows: Phaser.GameObjects.Image[] = [];
   // Scratch vectors — `getPoint`/`getTangent` allocate a Vector2 per call
   // otherwise, and both run once per vehicle per frame.
   private readonly scratchPoint = new Phaser.Math.Vector2();
   private readonly scratchTangent = new Phaser.Math.Vector2();
+  // Unit heading of the loco, kept so smoke drifts back along the train.
+  private readonly locoHeading = new Phaser.Math.Vector2(1, 0);
   // Data-driven static chrome (track.json): nav plaques + the sprite transport
   // bar (SLOW/STOP/RIDE/FAST) placed on the base plate's painted panel frame.
   private chromeSpawns: readonly TiledSpawn[] = [];
@@ -135,6 +201,7 @@ export class TrackScene extends BackgroundScene {
   create(): void {
     this.addBackground("contain");
     registerAnimations(this);
+    this.buildShadowTextures();
     this.layoutPath();
     // The "this car is sounding" lamp, under the train band. Sized + moved onto
     // the sounding car every frame by `placeTrain`.
@@ -147,13 +214,10 @@ export class TrackScene extends BackgroundScene {
       .sprite(0, 0, "signal", "signal-up")
       .setOrigin(0.5, 1)
       .setDepth(7);
-    // Puff smoke from the loco stack on a steady interval while the train moves.
-    this.time.addEvent({
-      delay: SMOKE_INTERVAL_MS,
-      loop: true,
-      callback: this.puffSmoke,
-      callbackScope: this,
-    });
+    // NOTE: smoke used to puff here on a `time.addEvent` interval — the same
+    // 800 ms whether the train was crawling or flat out, and (until `puffSmoke`
+    // checked) whether it was moving at all. It is emitted per unit of distance
+    // travelled now; see `advanceRide`.
     this.buildChrome();
     this.layoutFixtures();
     this.rebuildCars();
@@ -382,16 +446,58 @@ export class TrackScene extends BackgroundScene {
   setMoving(moving: boolean): void {
     if (this.moving === moving) return;
     this.moving = moving;
+    // Re-seat the sampler on the current position. Without this, the first
+    // frame after a start reads the whole gap since the last sample as one
+    // enormous step and fires a burst of smoke.
+    this.motion = reseatMotion(this.motion, this.progress);
     if (!moving) this.lastSignalBar = -1;
   }
 
-  update(_time: number, delta: number): void {
+  update(time: number, delta: number): void {
     // The jumbotron follows the master output, not the train, so it runs before
     // (and independently of) the ride-path work below. It eases on the real
     // frame delta, so its timings are the same at 27 fps (a headless CI frame
     // rate) as at 120 Hz.
     this.viz?.update(delta);
+    // …but the ride measures the gap ITSELF rather than trusting `delta`.
+    // Phaser's TimeStep smooths and clamps the delta it hands out, and on a slow
+    // frame that makes it several times SMALLER than the real gap — which turned
+    // "distance moved ÷ delta" into a speed four times too high (measured at
+    // 14 fps headless). Speed drives the bob and the smoke, so it has to be true
+    // at any frame rate.
+    const dt = this.lastUpdateAt < 0 ? delta : time - this.lastUpdateAt;
+    this.lastUpdateAt = time;
+    this.advanceRide(dt);
     this.placeTrain();
+  }
+
+  /**
+   * Measure the ride: how far the train moved this frame, how fast it is going,
+   * and how much smoke that owes.
+   *
+   * This is the whole of Law 4 in one place — nothing downstream reads a clock.
+   * `advanceMotion` refuses to integrate a step bigger than a quarter-lap, so a
+   * scrub, a scene rebuild or a backgrounded tab cannot spin the wheels.
+   */
+  private advanceRide(dtMs: number): void {
+    if (!this.path) return;
+    const before = this.motion.travelled;
+    this.motion = advanceMotion(this.motion, {
+      progress: this.progress,
+      pathLength: this.path.getLength() || 1,
+      dtMs,
+      moving: this.moving,
+    });
+    this.smokeDebt += this.motion.travelled - before;
+    const { puffs, debt } = puffsDue(this.smokeDebt);
+    this.smokeDebt = debt;
+    for (let i = 0; i < puffs; i++) this.puffSmoke();
+  }
+
+  /** Exposed for the e2e bridge: the measured ride, so a test can assert that
+   *  the animation really is a function of movement (and stops when it does). */
+  get rideMotion(): TrainMotion {
+    return this.motion;
   }
 
   /** Position the loco + cars along the path for the current progress. Split
@@ -404,12 +510,17 @@ export class TrackScene extends BackgroundScene {
 
     // COUPLED spacing. Every gap is an arc length over the path length — the
     // model the loco always used, now generalised to the whole consist by
-    // `couplingOffsets`. Lengths are read from each token's LIVE display size,
-    // which the perspective depth-scale has already shrunk toward the far side,
-    // so the coupling adapts to car size and perspective with no hardcoded arc;
-    // the atlas frame's ~8% transparent padding is the coupler. Scale lags one
-    // frame (each token is scaled when it is placed) — invisible, and the loco
-    // has worked this way since it was written.
+    // `couplingOffsets`. A vehicle's length is its atlas cell at the size it is
+    // drawn, so the coupling adapts to perspective with no hardcoded arc; the
+    // frame's ~8% transparent padding is the coupler.
+    //
+    // Solved TWICE. The first pass sizes each vehicle where it is standing NOW,
+    // which is a frame behind and — under this plate's steep perspective — wrong
+    // by up to 18% on the far side, where a gap of that size is a visibly
+    // uncoupled train. The second pass re-sizes each vehicle where the first
+    // pass says it will BE and re-solves, which converges immediately because
+    // the scale field is smooth. (With a flat plate — AR-033 — both passes give
+    // the same answer and this costs one extra path sample per vehicle.)
     //
     // Car 0 is still the phase reference: at progress 0 it is parked ON the
     // crossing signal, and the consist trails behind it. What position NO
@@ -422,14 +533,23 @@ export class TrackScene extends BackgroundScene {
     // four-bar song sat its cars a quarter-lap apart and the train read as four
     // wagons that had lost each other.
     const consist = [this.loco, ...this.carTokens];
-    const offsets = couplingOffsets(
-      consist.map((t) => this.coupledLen(t)),
+    // Anchor on car 0 when there is one; on the loco alone when there is not.
+    const anchor = this.carTokens.length > 0 ? 1 : 0;
+    const uFor = (offset: number): number =>
+      TRACK_LAYOUT_V2.parkAngle + dir * (this.progress - offset / len);
+    let offsets = couplingOffsets(consist.map((t) => this.coupledLen(t)), len, anchor);
+    offsets = couplingOffsets(
+      consist.map((t, i) => {
+        const body = t.getData("body") as Phaser.GameObjects.Image | undefined;
+        if (!body) return 0;
+        const u = uFor(offsets[i] ?? 0);
+        const p = this.path.getPoint(((u % 1) + 1) % 1, this.scratchPoint);
+        return body.width * this.worldScaleAt(p ? p.y : this.pathYMax);
+      }),
       len,
-      // Anchor on car 0 when there is one; on the loco alone when there is not.
-      this.carTokens.length > 0 ? 1 : 0,
+      anchor,
     );
-    const uAt = (i: number): number =>
-      TRACK_LAYOUT_V2.parkAngle + dir * (this.progress - (offsets[i] ?? 0) / len);
+    const uAt = (i: number): number => uFor(offsets[i] ?? 0);
 
     // Bar change first, so the bounce and the signal fire on the SAME frame the
     // bar turns over rather than one frame late.
@@ -451,15 +571,13 @@ export class TrackScene extends BackgroundScene {
     this.cars.forEach((car, i) => {
       const token = this.carTokens[i];
       if (!token) return;
-      const u = uAt(i + 1);
-      // The sounding car bounces; every other car rides flat.
-      const pop = i === bar ? popScale(this.time.now - this.popStartedAt) : 1;
-      this.placeOnPath(token, u, i, pop);
-      this.faceAlongPath(token, u, dir, car.carType);
+      // The sounding car HOPS; every other car rides flat. (It used to grow by
+      // up to 1.3×, which was the last fractional scale left on a world sprite
+      // — see `popHop`.)
+      const hop = i === bar ? popHop(this.time.now - this.popStartedAt) : 0;
+      this.placeVehicle(token, uAt(i + 1), i + 1, dir, car.carType, hop);
     });
-    const headU = uAt(0);
-    this.placeOnPath(this.loco, headU, -1);
-    this.faceAlongPath(this.loco, headU, dir, "loco");
+    this.placeVehicle(this.loco, uAt(0), 0, dir, "loco", 0);
 
     this.placeGlow(bar);
   }
@@ -493,9 +611,14 @@ export class TrackScene extends BackgroundScene {
     // rim, which is what makes it look deliberate instead of like a smudge. A
     // first pass at 0.19 effective alpha was measured on a screenshot as barely
     // distinguishable from the painted grass; this is the fix.
-    glow.setSize(w * 1.35, w * 0.6);
+    // Sized just under the atlas cell, which is about the car's visible body:
+    // at 1.35 the pool was half again as wide as the car and read as a patch of
+    // sand on the ballast rather than as light under a vehicle.
+    glow.setSize(w * 0.98, w * 0.42);
     glow.setStrokeStyle(Math.max(2, w * 0.035), 0xfffbe6, 0.95);
-    glow.setPosition(token.x, token.y + w * 0.24);
+    // The token's origin is its wheels, so the pool of light goes there — it
+    // used to be offset down from the car's centre to reach the ground.
+    glow.setPosition(token.x, token.y);
     // Breathe with the pop so the beat is felt as well as seen.
     const beat = popScale(this.time.now - this.popStartedAt, 260, 0.35);
     glow.setScale(beat);
@@ -516,6 +639,21 @@ export class TrackScene extends BackgroundScene {
   }
 
   // ── internals ────────────────────────────────────────────────────────────
+
+  /** Build the three contact-shadow textures (one per direction bucket) as raw
+   *  dithered pixels. Idempotent: one `TextureManager` serves every scene, so a
+   *  revisit must not try to re-create a key that already exists. */
+  private buildShadowTextures(): void {
+    for (const spec of ALL_SHADOW_SPECS) {
+      if (this.textures.exists(spec.key)) continue;
+      const tex = this.textures.createCanvas(spec.key, spec.width, spec.height);
+      const image = tex?.imageData;
+      if (!tex || !image) continue;
+      image.data.set(shadowPixels(spec.width, spec.height));
+      tex.putData(image, 0, 0);
+      tex.refresh();
+    }
+  }
 
   /** Rebuild the ride path from the `track-path` polygon authored in
    *  track.json's geometry-layer — the track centreline traced over the
@@ -538,11 +676,41 @@ export class TrackScene extends BackgroundScene {
     this.nearScale = typeof data.props["nearScale"] === "number" ? data.props["nearScale"] : 1;
   }
 
-  /** Perspective size factor at a screen y: far (top of the loop) → near. */
-  private depthScaleAt(y: number): number {
+  /** Where a screen y sits in the ride path's vertical extent, 0 (far) → 1
+   *  (near). Drives the depth sort and the perspective. */
+  private depthFractionAt(y: number): number {
     const span = Math.max(1, this.pathYMax - this.pathYMin);
-    const t = Phaser.Math.Clamp((y - this.pathYMin) / span, 0, 1);
-    return this.farScale + (this.nearScale - this.farScale) * t;
+    return Phaser.Math.Clamp((y - this.pathYMin) / span, 0, 1);
+  }
+
+  /**
+   * The plate's perspective factor at a contact y: far (top of the loop) → near.
+   *
+   * THIS IS INTERIM AND IT IS MEANT TO GO. `track-scene-clean-v2.png` is drawn
+   * in one-point perspective — the painted track really is ~3.7× bigger at the
+   * bottom of the oval than at the top, measured off its sleeper pitch — and it
+   * is the only one of the four plates that is: the Map and the Yard are both
+   * flat oblique top-down, and the Map even contains an oval of track whose far
+   * and near sides are the same size. **AR-033 redraws this plate with no
+   * perspective.** When it lands, set `farScale` and `nearScale` both to 1.0 in
+   * `track.json` and every world sprite draws at one flat `WORLD_PIXEL_SCALE`;
+   * this function returns a constant and can then be deleted outright. Nothing
+   * else in the scene needs to change — that is deliberate.
+   *
+   * The shipped values (0.25 → 1.10) were calibrated by compositing a car onto
+   * the plate at the far and near extremes and picking the size whose wheels sat
+   * on the painted rails. The values they replaced (0.9 → 1.06) claimed an 18%
+   * swing against the plate's real 370%, which is why the train looked like it
+   * was floating beside the track on the far side.
+   */
+  private depthScaleAt(y: number): number {
+    if (this.farScale === this.nearScale) return this.nearScale;
+    return this.farScale + (this.nearScale - this.farScale) * this.depthFractionAt(y);
+  }
+
+  /** What a world sprite standing at contact y is drawn at. */
+  private worldScaleAt(y: number): number {
+    return WORLD_PIXEL_SCALE * this.depthScaleAt(y);
   }
 
   private layoutFixtures(): void {
@@ -562,63 +730,123 @@ export class TrackScene extends BackgroundScene {
   /** A vehicle's current on-screen length along the track (atlas frame width
    *  at its live scale — the frame's transparent padding doubles as coupler).
    *
-   *  The sounding car's bounce is divided back out: a car that grows 30% for
-   *  260 ms must not shove the whole tail of the train backwards while it does
-   *  it. Couplings answer to size and perspective, not to the beat. */
+   *  Every vehicle is drawn at `WORLD_PIXEL_SCALE` and the frame loop never
+   *  changes that, so this is a constant per token now. It stays a live read so
+   *  that the day the atlas gains a second (FAR) tier, the couplings follow the
+   *  art instead of a hardcoded arc. */
   private coupledLen(token: Phaser.GameObjects.Container): number {
     const body = token.getData("body") as Phaser.GameObjects.Image | undefined;
-    if (!body) return 0;
-    const pop = (token.getData("pop") as number) || 1;
-    return (body.width * token.scaleX) / pop;
+    return body ? body.width * token.scaleX : 0;
   }
 
-  private placeOnPath(
+  /**
+   * Put one vehicle on the path: position, facing, size, depth, bob, hop — and
+   * its shadow. One method rather than the `placeOnPath` + `faceAlongPath` pair
+   * it replaces, because the shadow needs the ground point AND the facing.
+   *
+   * The token's origin is its WHEELS (`alignCarBody`), so the path point is the
+   * contact point: the vehicle grows and shrinks about the rail instead of
+   * about its own middle, which is what keeps it on the track as the plate's
+   * perspective scales it.
+   *
+   * `Path.getTangent` walks the same arc-length table `getPoint` does and
+   * returns the segment's unit tangent directly — one curve sample instead of a
+   * two-point finite difference, and with no `eps` to get wrong near a vertex.
+   */
+  private placeVehicle(
     token: Phaser.GameObjects.Container,
     t: number,
     index: number,
-    pop = 1,
+    dir: 1 | -1,
+    type: TrainType,
+    hopPx: number,
   ): void {
     const u = ((t % 1) + 1) % 1;
     const p = this.path.getPoint(u, this.scratchPoint);
     if (!p) return;
-    // Perspective: shrink toward the far (top) side and y-sort so nearer
-    // vehicles draw over farther ones. `pop` is the sounding car's bounce.
-    token.setScale(((token.getData("baseScale") as number) || 1) * this.depthScaleAt(p.y) * pop);
-    token.setData("pop", pop);
-    token.setDepth(TRAIN_DEPTH + p.y / Math.max(1, this.pathYMax));
-    // Gentle bounce while moving — phase-offset per car so they don't sync.
-    const bounce =
-      this.moving && index >= 0
-        ? Math.sin(this.time.now / 160 + index * 0.9) * 2
-        : 0;
-    token.setPosition(p.x, p.y + bounce);
-  }
-
-  /** Pick the directional atlas frame from the path tangent at `u`.
-   *
-   *  `Path.getTangent` walks the same arc-length table `getPoint` does and
-   *  returns the segment's unit tangent directly — one curve sample instead of
-   *  the two-point finite difference this used to do (three samples per vehicle
-   *  per frame), and with no `eps` to get wrong near a vertex. */
-  private faceAlongPath(
-    token: Phaser.GameObjects.Container,
-    t: number,
-    dir: 1 | -1,
-    type: TrainType,
-  ): void {
     const body = token.getData("body") as Phaser.GameObjects.Image | undefined;
-    if (!body) return;
-    const u = ((t % 1) + 1) % 1;
-    const tan = this.path.getTangent(u, this.scratchTangent);
-    if (!tan) return;
     // Tangent for increasing u; flip for reverse so the sprite faces its travel.
-    const d = velocityToDirection(tan.x * dir, tan.y * dir);
-    body.setFrame(frameKey(type, d));
+    const tan = this.path.getTangent(u, this.scratchTangent);
+    const facing: Direction = tan ? velocityToDirection(tan.x * dir, tan.y * dir) : "E";
+    body?.setFrame(frameKey(type, facing));
+    // Remember which way the head of the train is pointing, so smoke can drift
+    // BACK over the train instead of along a fixed screen axis.
+    if (index === 0 && tan) this.locoHeading.set(tan.x * dir, tan.y * dir);
+
+    const scale = this.worldScaleAt(p.y);
+    token.setScale(scale);
+    // Law 4: the bob's phase is distance travelled, so it speeds up with the
+    // train and stops with it. Law 7: whole pixels, or the art shimmers between
+    // frames. The coupling arithmetic upstream stays in floats — only the draw
+    // is snapped. Both bob and hop scale with the perspective, or a far-side
+    // car bounces four times its own height.
+    const bob = bobOffset(this.motion, index) * scale;
+    const lift = hopPx * scale - bob;
+    const ground = p.y + RAIL_DROP * scale;
+    token.setPosition(Math.round(p.x), Math.round(ground - lift));
+    // Y-sort within the train's depth band: nearer vehicles draw over farther
+    // ones. Normalised across the path's own vertical extent, so the whole band
+    // is used whatever the plate's geometry. This ordering is ALL that is left
+    // of the old perspective treatment, and it is the half that was never the
+    // problem.
+    token.setDepth(TRAIN_DEPTH + this.depthFractionAt(p.y));
+    // Both readable from the e2e bridge: "the bob is a function of movement"
+    // and "the sounding car hops" are claims a test should be able to check.
+    token.setData("hop", hopPx);
+    token.setData("bob", bob);
+    this.placeShadow(index, p.x, ground, facing, scale, Math.max(0, lift / scale));
   }
 
+  /** Park a vehicle's contact shadow on the ground under it (Law 2).
+   *
+   *  The token's origin is already the contact point, so the shadow goes right
+   *  there — and it STAYS there while the vehicle bobs and hops above it, which
+   *  is the whole reason a shadow reads as contact. It tightens and fades as the
+   *  vehicle lifts. */
+  private placeShadow(
+    index: number,
+    groundX: number,
+    groundY: number,
+    facing: Direction,
+    scale: number,
+    liftCellPx: number,
+  ): void {
+    const shadow = this.shadows[index];
+    if (!shadow) return;
+    const spec = shadowSpecFor(facing);
+    if (shadow.texture.key !== spec.key) shadow.setTexture(spec.key);
+    shadow.setPosition(Math.round(groundX + SHADOW_DX * scale), Math.round(groundY));
+    const t = Math.min(1, Math.max(0, liftCellPx / HOP_HEIGHT_PX));
+    shadow.setScale(scale * (1 - 0.12 * t));
+    shadow.setAlpha(SHADOW_ALPHA * (1 - 0.35 * t));
+  }
+
+  /** One puff from the stack. Called by `advanceRide` per unit of DISTANCE
+   *  travelled (Law 6), never on a timer, so a stopped train stops smoking and
+   *  a fast one smokes harder. The puff drifts back over the tender as it
+   *  dissipates — its own dissipation is genuinely time-based, which is fine:
+   *  Law 4 is about cycles that must stay in step with movement. */
   private puffSmoke(): void {
     if (!this.moving || !this.loco) return;
-    spawnSmoke(this, this.loco.x, this.loco.y - 6, 0.3);
+    const intensity = motionIntensity(this.motion);
+    // The loco's origin is its wheels, so the stack is one body-height up.
+    const scale = this.loco.scaleX || WORLD_PIXEL_SCALE;
+    const stack = carBodySize("loco").h * scale * 0.95;
+    const puff = this.add
+      .sprite(this.loco.x, this.loco.y - stack, "smoke", "smoke-1")
+      .setScale(SMOKE_PIXEL_SCALE * scale)
+      .setDepth(SMOKE_DEPTH)
+      .setAlpha(0.45 + 0.4 * intensity);
+    puff.play("smoke");
+    const drift = (20 + 34 * intensity) * scale;
+    this.tweens.add({
+      targets: puff,
+      x: puff.x - this.locoHeading.x * drift,
+      y: puff.y - this.locoHeading.y * drift - (12 + 20 * intensity) * scale,
+      alpha: 0,
+      duration: 520,
+      onComplete: () => puff.destroy(),
+    });
   }
 
   private flashSignal(): void {
@@ -641,34 +869,49 @@ export class TrackScene extends BackgroundScene {
   private rebuildCars(): void {
     this.carTokens.forEach((c) => c.destroy());
     this.carTokens = this.cars.map((car) => this.makeCar(car));
+    // One shadow per vehicle, index-aligned with `[loco, ...carTokens]`. Built
+    // here rather than with each token because the loco outlives every rebuild.
+    this.shadows.forEach((s) => s.destroy());
+    this.shadows = [this.loco, ...this.carTokens].map(() =>
+      this.add
+        .image(0, 0, ALL_SHADOW_SPECS[0]!.key)
+        .setOrigin(0.5)
+        .setScale(WORLD_PIXEL_SCALE)
+        .setDepth(SHADOW_DEPTH)
+        .setAlpha(SHADOW_ALPHA),
+    );
     this.placeTrain();
   }
 
   /** A car: directional atlas body; overlay a tarp frame when muted. Tapping
-   *  the car toggles its tarp (mute) — the kid covers/uncovers the load. */
+   *  the car toggles its tarp (mute) — the kid covers/uncovers the load.
+   *
+   *  `alignCarBody` moves the body inside the container so the container's
+   *  origin is where the wheels meet the rail. The tarp shares the atlas's
+   *  128×128 cell and is offset the same way, so it stays over the load — it
+   *  used to be `setDisplaySize(body.width * 1.05, …)`, a 5% overhang that drew
+   *  the muted car fractionally larger than the car underneath it. */
   private makeCar(car: TrackCar): Phaser.GameObjects.Container {
-    const r = this.backgroundRect;
-    const targetW = r.width * 0.075;
     const body = this.add.image(0, 0, "train", frameKey(car.carType, "E")).setOrigin(0.5);
+    alignCarBody(body, CAR_CONTENT_E[car.carType]);
     const children: Phaser.GameObjects.GameObject[] = [body];
     // Identity rides BETWEEN the body and the tarp: a tarped car is covered, so
     // its load and livery are covered too, which is the truth the tarp states.
     children.push(...decorateMovingCar(this, FRAME_SIZE, car.livery, car.cargo));
     if (car.muted) {
       const tarp = this.add.image(0, 0, "tarp", "tarp").setOrigin(0.5);
-      tarp.setDisplaySize(body.width * 1.05, body.height * 1.05);
+      tarp.setPosition(body.x, body.y);
       children.push(tarp);
     }
     const c = this.add.container(0, 0, children);
     c.setData("body", body);
-    const baseScale = body.width > 0 ? targetW / body.width : 1;
-    c.setData("baseScale", baseScale);
-    c.setScale(baseScale);
     c.setDepth(TRAIN_DEPTH);
-    // Kid-sized hit area (1.6× the body) around the moving car. Same armed
-    // press/release rule as the chrome so nothing leaks a stray pointerup.
+    // Kid-sized hit area (1.6× the body) around the moving car, over where the
+    // art actually is. Same armed press/release rule as the chrome so nothing
+    // leaks a stray pointerup.
     const hit = new Phaser.Geom.Rectangle(
-      -body.width * 0.8, -body.height * 0.8, body.width * 1.6, body.height * 1.6,
+      body.x - body.width * 0.8, body.y - body.height * 0.8,
+      body.width * 1.6, body.height * 1.6,
     );
     c.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
     if (c.input) c.input.cursor = "pointer";
@@ -683,15 +926,16 @@ export class TrackScene extends BackgroundScene {
     return c;
   }
 
+  /** The loco. Drawn at the same scale as every car: it used to be 0.11 of the
+   *  plate against a car's 0.075 (~1.5× bigger), but the loco art fills its cell
+   *  about as much as a boxcar does (113 px of content against 117), so the
+   *  difference was pure scaling of the same-sized art. One scale for the whole
+   *  consist is also the size AR-031 specifies for every vehicle type. */
   private makeLoco(): Phaser.GameObjects.Container {
-    const r = this.backgroundRect;
-    const targetW = r.width * 0.11; // loco ~1.5× a car
     const img = this.add.image(0, 0, "train", frameKey("loco", "E")).setOrigin(0.5);
+    alignCarBody(img, CAR_CONTENT_E["loco"]);
     const c = this.add.container(0, 0, [img]);
     c.setData("body", img);
-    const baseScale = img.width > 0 ? targetW / img.width : 1;
-    c.setData("baseScale", baseScale);
-    c.setScale(baseScale);
     c.setDepth(TRAIN_DEPTH);
     return c;
   }

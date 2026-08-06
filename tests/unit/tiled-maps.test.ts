@@ -304,6 +304,54 @@ describe("track.json ride-path geometry", () => {
     expect(typeof path.props["nearScale"]).toBe("number");
   });
 
+  // ── the ride line stands on the painted rails ────────────────────────────
+  //
+  // This is a BEHAVIOURAL guard, not a shape one: a vehicle is anchored at its
+  // wheels (`car-geometry.ts`), so wherever this polygon runs is where the
+  // wheels are. It shipped traced onto the INNER EDGE of the painted oval — 70
+  // px above the rails at the bottom of the loop and 40 px below them at the
+  // top — which is why the deployed train "isn't even on the tracks when it is
+  // on the back side of the tracks".
+  //
+  // The four numbers below are the painted track's own centreline, measured off
+  // `src/assets/scenes-v2/track-scene-clean-v2.png` by finding the two steel
+  // rails inside the brown ballast band (the method `scripts/trace-track-path.py`
+  // documents and automates). RE-MEASURE THEM when the plate is repainted —
+  // AR-033 replaces it with a flat, no-perspective one — by re-running that
+  // script, which prints the traced extents.
+  it("runs along the painted track's centreline, not beside it", () => {
+    const PLATE_W = 2560;
+    const PLATE_H = 1440;
+    // Measured centreline of the painted rails, in plate px.
+    const PAINTED = { top: 401, bottom: 982, left: 336, right: 2217 };
+    // Half the painted gauge at its narrowest end — the distance at which a
+    // wheel is still on steel rather than on ballast.
+    const TOLERANCE = 25;
+
+    const xs = path.points.map((p) => p.x * PLATE_W);
+    const ys = path.points.map((p) => p.y * PLATE_H);
+    const off = (got: number, want: number): number => Math.abs(got - want);
+
+    expect(off(Math.min(...ys), PAINTED.top), "far side of the loop").toBeLessThan(TOLERANCE);
+    expect(off(Math.max(...ys), PAINTED.bottom), "near side of the loop").toBeLessThan(TOLERANCE);
+    expect(off(Math.min(...xs), PAINTED.left), "left of the loop").toBeLessThan(TOLERANCE);
+    expect(off(Math.max(...xs), PAINTED.right), "right of the loop").toBeLessThan(TOLERANCE);
+  });
+
+  it("is traced finely enough, and evenly enough, to ride", () => {
+    // Arc-uniform vertices are what make `parkAngle = 0.25` land on the crossing
+    // signal and what keep `couplingOffsets` honest — both work in arc length.
+    const seg: number[] = [];
+    for (let i = 0; i < path.points.length; i++) {
+      const a = path.points[i]!;
+      const b = path.points[(i + 1) % path.points.length]!;
+      seg.push(Math.hypot((b.x - a.x) * 2560, (b.y - a.y) * 1440));
+    }
+    const min = Math.min(...seg);
+    const max = Math.max(...seg);
+    expect(max / min).toBeLessThan(1.1);
+  });
+
   it("throws loudly when the geometry is missing", () => {
     expect(() => parseTiledPath(TRACK, "geometry-layer", "nope")).toThrow(/no object named/);
     expect(() => parseTiledPath(TRACK, "nope-layer", "track-path")).toThrow(/no object layer/);

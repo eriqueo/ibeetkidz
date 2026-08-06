@@ -84,7 +84,7 @@ test("the cars ride coupled, a car-length apart and not a lap-fraction apart", a
         lap: s.path.getLength(),
         loco: { x: s.loco.x, y: s.loco.y, w: widthOf(s.loco) },
         cars: s.carTokens.map((c: any) => ({ x: c.x, y: c.y, w: widthOf(c) })),
-        signalDist: s.carTokens.map((c: any) => Math.hypot(c.x - sig.x, c.y - sig.y)),
+        signalOffset: s.carTokens.map((c: any) => ({ dx: c.x - sig.x, dy: c.y - sig.y })),
       });
     }
     return out;
@@ -123,15 +123,23 @@ test("the cars ride coupled, a car-length apart and not a lap-fraction apart", a
       (max, c) => Math.max(max, Math.hypot(c.x - loco.x, c.y - loco.y)),
       0,
     );
-    // A loco plus four cars is ~21% of this oval, measured. Under the model
-    // this replaced, the same consist spanned three quarters of it.
-    expect(span, `the train is spread over the oval at t=${shot.t}`).toBeLessThan(lap * 0.25);
+    // A loco plus four cars is ~26% of this oval, measured — it was ~21% when
+    // vehicles were drawn at a flat 1.5×/2.2×, and they are bigger now that the
+    // near half of the loop is drawn at the size the painted rails ask for.
+    // Under the model this replaced, the same consist spanned three quarters of
+    // the oval, which is the thing this number is here to prevent.
+    expect(span, `the train is spread over the oval at t=${shot.t}`).toBeLessThan(lap * 0.3);
   }
 
   // Car 0 is still the phase reference: at progress 0 it is parked ON the
-  // crossing signal, which is what keeps the ride phase-locked to bar 0. (Both
-  // sides come from the same `getPoint`, so this is exact.)
-  expect(shots[0]!.signalDist[0], "car 0 must be parked on the signal at bar 0").toBeLessThan(4);
+  // crossing signal, which is what keeps the ride phase-locked to bar 0. Along
+  // the track that is exact (both sides come from the same `getPoint`); across
+  // it the vehicle is drawn a half-gauge lower than the traced centreline,
+  // because the art shows the near-side wheels and those stand on the near rail.
+  const park = shots[0]!.signalOffset[0] as { dx: number; dy: number };
+  expect(Math.abs(park.dx), "car 0 must be parked on the signal at bar 0").toBeLessThan(4);
+  expect(park.dy, "car 0 must sit ON the rail, not above the track").toBeGreaterThan(0);
+  expect(park.dy, "car 0 has sunk below the track").toBeLessThan(45);
 });
 
 test("the highlight names the sounding car, and it lands on that car", async ({ page }) => {
@@ -156,11 +164,15 @@ test("the highlight names the sounding car, and it lands on that car", async ({ 
       // The bounce decays over ~260 ms and a headless frame can be 100 ms, so
       // sample it across the window and keep the peak rather than betting the
       // assertion on which frame the read lands in.
-      const peak = s.carTokens.map(() => 1);
+      //
+      // It is a HOP (a lift, in px) and no longer a scale pop: the plate's
+      // perspective already owns every vehicle's size, so the beat could not
+      // also be told with size without the two meanings colliding.
+      const peak = s.carTokens.map(() => 0);
       for (let f = 0; f < 4; f++) {
         await frame();
         s.carTokens.forEach((c: any, i: number) => {
-          peak[i] = Math.max(peak[i], (c.getData("pop") as number) ?? 1);
+          peak[i] = Math.max(peak[i], (c.getData("hop") as number) ?? 0);
         });
       }
       const g = s.glow;
@@ -171,19 +183,19 @@ test("the highlight names the sounding car, and it lands on that car", async ({ 
         lampDist: s.carTokens.map((c: any) => Math.hypot(c.x - g.x, c.y - g.y)),
         lampWidth: g.displayWidth,
         carWidth: s.carTokens.map((c: any) => c.getData("body").width * c.scaleX),
-        // The bounce is per-car; only the sounding one should be popped.
-        pop: peak,
+        // The bounce is per-car; only the sounding one should be hopping.
+        hop: peak,
       });
     }
     return out;
   }, CARS);
 
   for (const run of runs) {
-    const { bar, reported, lampDist, pop } = run as {
+    const { bar, reported, lampDist, hop } = run as {
       bar: number;
       reported: { bar: number; visible: boolean };
       lampDist: number[];
-      pop: number[];
+      hop: number[];
     };
     expect(reported.bar, `the scene must report bar ${bar} as sounding`).toBe(bar);
     expect(reported.visible, `the lamp must be lit at bar ${bar}`).toBe(true);
@@ -204,11 +216,124 @@ test("the highlight names the sounding car, and it lands on that car", async ({ 
     expect(run.lampWidth).toBeGreaterThan(run.carWidth[bar] * 0.6);
 
     // The bounce fires on the sounding car and on nothing else.
-    expect(pop[bar], `car ${bar} must bounce on its bar`).toBeGreaterThan(1.05);
-    pop.forEach((p, i) => {
-      if (i !== bar) expect(p, `car ${i} bounced on car ${bar}'s bar`).toBeCloseTo(1, 5);
+    expect(hop[bar], `car ${bar} must bounce on its bar`).toBeGreaterThan(1);
+    hop.forEach((p, i) => {
+      if (i !== bar) expect(p, `car ${i} bounced on car ${bar}'s bar`).toBe(0);
     });
   }
+});
+
+// `design/GAME_FEEL.md` says it plainly: "a screenshot passes 1, 2, 3 and fails
+// to test 4, 5, 6, 7 — review animation in motion or not at all". These two
+// tests are that review, done by a machine. Neither needs audible output.
+test("every vehicle stands on the rails, on whole pixels, at every size", async ({ page }) => {
+  await trainOf(page, 4);
+
+  const shots = await page.evaluate(async (probes: number[]) => {
+    const s: any = (window as any).__ibeetkidz_test__.getScene();
+    const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+    s.setMoving(false);
+    const out: any[] = [];
+    for (const t of probes) {
+      s.setProgress(t);
+      await frame();
+      await frame();
+      const veh = [s.loco, ...s.carTokens].map((v: any) => ({
+        x: v.x, y: v.y, scale: v.scaleX, depth: v.depth,
+      }));
+      out.push({
+        t,
+        veh,
+        shadows: s.shadows.map((sh: any) => ({
+          x: sh.x, y: sh.y, scale: sh.scaleX, alpha: sh.alpha, depth: sh.depth,
+          visible: sh.visible,
+        })),
+      });
+    }
+    return out;
+  }, [0, 0.12, 0.25, 0.37, 0.5, 0.63, 0.75, 0.88]);
+
+  const allScales: number[] = [];
+  for (const shot of shots) {
+    for (const [i, v] of shot.veh.entries()) {
+      // Law 7 — sub-pixel positions make pixel art shimmer between frames.
+      expect(Number.isInteger(v.x), `vehicle ${i} x=${v.x} at t=${shot.t} is off-pixel`).toBe(true);
+      expect(Number.isInteger(v.y), `vehicle ${i} y=${v.y} at t=${shot.t} is off-pixel`).toBe(true);
+      expect(v.scale, `vehicle ${i} has no size at t=${shot.t}`).toBeGreaterThan(0.2);
+      allScales.push(v.scale);
+
+      // Law 2 — every world object has a contact shadow, under it and on the
+      // ground it is standing on (not carried up by the bob).
+      const sh = shot.shadows[i];
+      expect(sh, `vehicle ${i} has no contact shadow`).toBeDefined();
+      expect(sh.depth, "a shadow must draw under its vehicle").toBeLessThan(v.depth);
+      expect(sh.alpha).toBeGreaterThan(0.1);
+      // The shadow is drawn at the vehicle's own size, tightening a little
+      // while the vehicle is lifted off the rail by its bar-hop.
+      expect(sh.scale).toBeLessThanOrEqual(v.scale + 1e-9);
+      expect(sh.scale).toBeGreaterThan(v.scale * 0.85);
+      expect(Math.hypot(sh.x - v.x, sh.y - v.y)).toBeLessThan(64 * v.scale);
+    }
+  }
+
+  // The plate is drawn in perspective, so size has to track depth: the same car
+  // is meaningfully smaller at the top of the oval than at the bottom. (This is
+  // interim — AR-033 redraws the plate flat and this collapses to one size.)
+  // progress 0 parks car 0 on the crossing signal at the BOTTOM of the oval;
+  // half a lap later it is at the top. (`parkAngle` is 0.25, so progress and
+  // path position differ by a quarter turn — hence not 0.25/0.75 here.)
+  const near = shots.find((s) => s.t === 0)!.veh[1].scale;
+  const far = shots.find((s) => s.t === 0.5)!.veh[1].scale;
+  expect(near / far, "the train ignores the plate's perspective").toBeGreaterThan(2);
+  expect(Math.min(...allScales)).toBeGreaterThan(0.3);
+  expect(Math.max(...allScales)).toBeLessThan(3);
+});
+
+test("the train's life comes from movement, and stops when it does", async ({ page }) => {
+  await trainOf(page, 4);
+
+  const readings = await page.evaluate(async () => {
+    const t = (window as any).__ibeetkidz_test__;
+    const s: any = t.getScene();
+    const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+    const sample = async (frames: number): Promise<any> => {
+      let bob = 0;
+      let smoke = 0;
+      for (let i = 0; i < frames; i++) {
+        await frame();
+        bob = Math.max(bob, ...s.carTokens.map((c: any) => Math.abs(c.getData("bob") ?? 0)));
+        smoke = Math.max(
+          smoke,
+          s.children.list.filter((o: any) => o.texture && o.texture.key === "smoke").length,
+        );
+      }
+      return { bob, smoke, motion: { ...s.rideMotion } };
+    };
+
+    const parked = await sample(10);
+    t.emit("transport-play", "ride");
+    const riding = await sample(45);
+    t.emit("transport-stop");
+    // Long enough for the ramp to run all the way out (it is ~520 ms).
+    const stopping = await sample(60);
+    return { parked, riding, stopping };
+  });
+
+  // Law 4/6 — a parked train has no cycle running at all. The bob it replaced
+  // was `Math.sin(time.now / 160)`: it ran forever, at one speed, stopped or not.
+  expect(readings.parked.bob, "a parked train is bobbing").toBe(0);
+  expect(readings.parked.smoke, "a parked train is smoking").toBe(0);
+  expect(readings.parked.motion.energy).toBe(0);
+
+  // …and a moving one is alive: it has covered ground, and that ground is what
+  // drives the bob.
+  expect(readings.riding.motion.travelled, "the ride never moved").toBeGreaterThan(50);
+  expect(readings.riding.motion.speed).toBeGreaterThan(0);
+  expect(readings.riding.bob, "a moving train is not bobbing").toBeGreaterThan(0);
+
+  // Law 5 — and it eases back out rather than snapping off.
+  expect(readings.stopping.motion.energy, "the ramp never reached rest").toBe(0);
+  expect(readings.stopping.motion.speed).toBeLessThan(readings.riding.motion.speed);
 });
 
 test("the ride never shows a bar the ear has not reached yet", async ({ page }) => {

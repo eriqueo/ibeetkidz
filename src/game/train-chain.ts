@@ -73,12 +73,40 @@ export function couplingOffsets(
  *
  * Snaps up on the beat and eases back to 1 — a bounce a four-year-old reads as
  * "that one". Written as a closed form of elapsed time rather than a tween
- * because `placeOnPath` rewrites every token's scale each frame (perspective
- * depth-scale), and a tween on `token.scale` would be overwritten immediately.
+ * because `placeOnPath` rewrites every token's transform each frame, and a tween
+ * on the token would be overwritten immediately.
+ *
+ * NOTE: this no longer scales a VEHICLE. `design/GAME_FEEL.md` Law 1 says every
+ * world sprite's final scale must be an integer, and 1.3× of an integer is not
+ * one — the sounding car was the one sprite in the scene still resampling itself
+ * every frame. The car now hops instead (`popHop`), and this drives the lamp
+ * under it, which is a vector `Ellipse` and has no pixel grid to fall off.
  */
 export function popScale(elapsedMs: number, durationMs = 260, amount = 0.3): number {
   if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || durationMs <= 0) return 1;
   const u = Math.min(elapsedMs / durationMs, 1);
   const fall = 1 - u;
   return 1 + amount * fall * fall;
+}
+
+/** Peak lift of the sounding car's hop, in UNSCALED cell px (the caller
+ *  multiplies by the vehicle's drawn scale). */
+export const HOP_HEIGHT_PX = 12;
+
+/**
+ * The same bounce as `popScale`, expressed as a LIFT in px instead of a scale.
+ *
+ * Same curve, so the beat reads identically; a hop keeps the sprite's pixel
+ * grid intact where a scale pop destroyed it. Returns 0 once the bar has been
+ * sounding longer than `durationMs`, and for any nonsense input.
+ */
+export function popHop(
+  elapsedMs: number,
+  durationMs = 260,
+  heightPx = HOP_HEIGHT_PX,
+): number {
+  if (!Number.isFinite(elapsedMs) || elapsedMs < 0 || durationMs <= 0) return 0;
+  const u = Math.min(elapsedMs / durationMs, 1);
+  const fall = 1 - u;
+  return heightPx * fall * fall;
 }
