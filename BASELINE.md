@@ -459,3 +459,59 @@ null 2D context — so anything living inside a scene file is unreachable by the
 unit suite by construction. The palette's slot arithmetic had been in
 `YardScene.ts` for its whole life, which is a large part of why the bug survived
 it.
+
+---
+
+## Re-baseline — 2026-08-06, Phase 0 merged: Yard identity + Track grounding
+
+Both branches landed together. Numbers measured on the merged tree, not summed.
+
+| Fact | Value | Previous (main) |
+|---|---|---|
+| Unit tests | **486** / 31 files, 0 skipped | 413 / 27 |
+| E2E local | **32 passed**, 0 failed | 30 |
+| E2E spec files | 8 | 8 |
+
+**No flake this round.** `audio-output.spec.ts` passed inside the full run on the first
+attempt, so the standing "re-run it alone before calling a red a regression" procedure was
+not needed. Recorded because a clean run is worth as much evidence as a dirty one.
+
+**The Track's real bug was not the one that was reported.** The ride path had been traced
+onto the *inner edge* of the painted oval, not the centreline — 70 px above the rails at
+the bottom of the loop, 40 px below them at the top. Centre-anchoring hid that at the
+bottom and exposed it at the top, which is exactly why it read as "not on the tracks on
+the back side." Ground-contact anchoring **alone would have made the near side worse**.
+`scripts/trace-track-path.py` re-traces from the plate and is re-runnable.
+
+Perspective constants were separately wrong by ~4×: the plate measures **3.7 : 1** by tie
+pitch (24.3 px far, 90.0 px near) against an authored `farScale 0.9 / nearScale 1.06` =
+1.18 : 1. Now 0.25 → 1.10, calibrated by compositing a car at both extremes until its
+wheels sat on the rails. **Measure this with tie pitch, never rail gauge** — gauge is
+foreshortened by camera tilt as well as depth and reads a misleading ~7 : 1.
+`depthScaleAt` early-returns a constant when the two props are equal, so it collapses to
+nothing when the plate is redrawn; the calibration is **interim by design**.
+
+**`spawnSmoke` is now dead.** `rg` over `src/` and `tests/` finds only its definition at
+`src/game/sprite-assets.ts:143`. Kept deliberately — the Yard and Workshop register zero
+animations today and that pass will want it.
+
+### Known-open, found by audit during this merge
+
+- **Yard tarp is now anisotropic** (`YardScene` tarp sizing): a square 128 px texture sized
+  `117×97` gives scaleX 0.96 / scaleY 0.796. New on the Yard branch, not pre-existing.
+- **Yard car scale went from a 2.2× upscale to a 0.956× minification.** The overlap bug is
+  genuinely fixed, but downscaling 128 px art is destructive; neither value is an integer.
+- **Yard cars sit on the rail midpoint, not the near railhead** — ~16 px high. The painted
+  near railheads are at 0.5278 / 0.6208 / 0.7111 / 0.7986; config uses the midpoints.
+- **The crane animation happens ~1000 px from the painted crane.** The gantry occupies
+  x ≈ 1250–1930; the pickup tween runs x ≈ 294 → 576.
+- **Workshop `car-anchor` puts wheels on neither rail** (plate y 1080 vs near railhead 1152,
+  far railhead 1044), and its "all four car sprites share one wheel baseline" claim is false
+  — measured opaque bottoms differ by up to 70 px.
+- **`car-side-flatcar.png` is 60.5% semi-transparent** (alpha ≈38/255), so selecting a
+  flatcar hazes the whole scene.
+- **No `roundPixels`** in the Phaser config; **only two registered animations game-wide**
+  (`smoke`, `signal-flash`), both consumed by the Track alone.
+
+Full audit with `file:line` for every item is in the Phase 3 scope of
+`~/.claude/plans/hidden-riding-truffle.md`.
