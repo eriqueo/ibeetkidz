@@ -39,7 +39,6 @@ import {
   registerAnimations,
   frameKey,
   velocityToDirection,
-  spawnSmoke,
   FRAME_SIZE,
   type Direction,
   type TrainType,
