@@ -52,7 +52,7 @@ const GLOW_DEPTH = TRAIN_DEPTH - 0.5;
 // Warm lamp yellow. Deliberately drawn BESIDE the sprite, never `setTint`:
 // tint is a multiply blend and this atlas's art is dark brown, so every tint
 // came out indistinguishable (measured).
-const GLOW_COLOR = 0xffe27a;
+const GLOW_COLOR = 0xffc93c;
 // The jumbotron stands in the middle of the oval, so the train rides IN FRONT
 // of it — above the painted plate, below every vehicle.
 const VIZ_DEPTH = 2;
@@ -130,7 +130,7 @@ export class TrackScene extends BackgroundScene {
     // The "this car is sounding" lamp, under the train band. Sized + moved onto
     // the sounding car every frame by `placeTrain`.
     this.glow = this.add
-      .ellipse(0, 0, 10, 10, GLOW_COLOR, 0.55)
+      .ellipse(0, 0, 10, 10, GLOW_COLOR, 1)
       .setDepth(GLOW_DEPTH)
       .setVisible(false);
     this.loco = this.makeLoco();
@@ -479,14 +479,18 @@ export class TrackScene extends BackgroundScene {
       glow.setVisible(false);
       return;
     }
-    // A pool of light a little wider than the car and much flatter — it reads
-    // as ground light in the oval's perspective, not as a halo.
-    glow.setSize(w * 1.15, w * 0.5);
-    glow.setPosition(token.x, token.y + w * 0.22);
+    // A pool of light wider than the car and much flatter, so it reads as light
+    // on the ground in the oval's perspective rather than a halo — with a bright
+    // rim, which is what makes it look deliberate instead of like a smudge. A
+    // first pass at 0.19 effective alpha was measured on a screenshot as barely
+    // distinguishable from the painted grass; this is the fix.
+    glow.setSize(w * 1.35, w * 0.6);
+    glow.setStrokeStyle(Math.max(2, w * 0.035), 0xfffbe6, 0.95);
+    glow.setPosition(token.x, token.y + w * 0.24);
     // Breathe with the pop so the beat is felt as well as seen.
-    const beat = popScale(this.time.now - this.popStartedAt, 260, 0.5);
+    const beat = popScale(this.time.now - this.popStartedAt, 260, 0.35);
     glow.setScale(beat);
-    glow.setAlpha(0.35 + 0.45 * (beat - 1) * 2);
+    glow.setAlpha(0.55 + (beat - 1));
     glow.setVisible(true);
   }
 

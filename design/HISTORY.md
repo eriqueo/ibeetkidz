@@ -65,10 +65,22 @@ inversion). **This is a decided architecture, not an accident — see
 - **Yard** (`YardScene`): palette cars on the 4 sidings (tinted sprites) + the
   assembled train on the top line; `animatePickup` crane hook; **Add to Train**
   dispatches in the crane onComplete; per-slot Tarp/Remove; **Send to Track**.
-- **Track** (`TrackScene`): sprite loco + cars ride the painted oval; car i sits
-  at the crossing signal exactly when bar i sounds; signal flips up/down + flashes
-  per pass; loco smoke particles; per-car bounce; speed (tempo) + Forward/Reverse
+- **Track** (`TrackScene`): sprite loco + cars ride the painted oval **coupled** —
+  every vehicle sits half of each neighbour's on-screen length behind the one in
+  front (`src/game/train-chain.ts`, arc length over path length), so the consist
+  reads as one train at any car count. Which bar is sounding is shown by the
+  **highlight** — a lamp under that car plus a bounce on the bar change — derived
+  from the same `progress` the transport feeds in. Signal flips up/down + flashes
+  per bar; loco smoke particles; per-car bounce; speed (tempo) + Forward/Reverse
   (cosmetic, signal-consistent) + live tarp strip.
+  - **Two earlier models, both wrong, and why.** v1 coupled the cars and had NO
+    bar readout at all. That was replaced by spacing car i at `i / carCount` of
+    the whole lap, which made position the readout — and made spacing a function
+    of song length, so a four-bar train sat a quarter-lap apart and looked like
+    four wagons that had lost each other (the #1 play-test complaint). Position
+    cannot be both the coupling and the clock readout; the readout moved off it.
+    Do not put it back. `tests/e2e/track-timing.spec.ts` pins all of this, and
+    each of its three tests is seed-proven against the model it replaced.
 - **Layout coordinates for static chrome live in the Tiled maps, not in
   TypeScript.** `src/game/scene-layout.ts` keeps only the dynamic/gameplay
   fixtures (`WORKSHOP_GRID_V2`, `YARD_LAYOUT_V2`, `TRACK_LAYOUT_V2`);
