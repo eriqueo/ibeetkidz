@@ -1,16 +1,17 @@
-// The Track view (v2): the assembled train (loco + cars) rides the painted oval.
-// Each car occupies an equal arc of the oval; as the train moves, each car in
-// turn passes the crossing signal at the bottom-centre straight, where it lights
-// up. Smoke puffs from the loco while moving; cars bounce gently.
+// The Track view (v2): the assembled train (loco + cars) rides the painted oval
+// COUPLED — every vehicle sits half of each neighbour's on-screen length behind
+// the one in front, so a four-car song reads as one train and not as four wagons
+// that lost each other. Smoke puffs from the loco while moving; cars bounce.
 //
 // Cars + loco are drawn from the directional spritesheet atlas (sprite-assets.ts):
-// each frame is one of 8 compass directions, picked every frame from the car's
-// tangent along the oval so the sprite always faces the way it's travelling.
+// each frame is one of 8 compass directions, picked every frame from the path
+// tangent so the sprite always faces the way it's travelling.
 //
 // Audio stays transport-driven (gapless, the BeepBox trait): React feeds
-// `setProgress(0..1)` from the live transport each frame, so the car at the
-// signal is exactly the bar that's sounding. Direction + speed are visual /
-// tempo controls owned by React.
+// `setProgress(0..1)` from the live transport each frame. Which bar is sounding
+// is shown by the HIGHLIGHT (glow + bounce on the sounding car), derived from
+// that same progress — see `placeTrain`. Direction + speed are visual / tempo
+// controls owned by React.
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
@@ -24,6 +25,7 @@ import {
   type TrainType,
 } from "../sprite-assets.ts";
 import { TRACK_LAYOUT_V2 } from "../scene-layout.ts";
+import { couplingOffsets, popScale } from "../train-chain.ts";
 import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { loadUiSprites } from "../ui-sprites.ts";
@@ -44,6 +46,13 @@ export interface TrackCar {
 const SMOKE_INTERVAL_MS = 800;
 // Depth band the train tokens draw in (y-sorted within it, under the chrome).
 const TRAIN_DEPTH = 4;
+// The sounding-car glow rides just under the train band, so it reads as light
+// on the ground beneath the car rather than a sticker on top of it.
+const GLOW_DEPTH = TRAIN_DEPTH - 0.5;
+// Warm lamp yellow. Deliberately drawn BESIDE the sprite, never `setTint`:
+// tint is a multiply blend and this atlas's art is dark brown, so every tint
+// came out indistinguishable (measured).
+const GLOW_COLOR = 0xffe27a;
 // The jumbotron stands in the middle of the oval, so the train rides IN FRONT
 // of it — above the painted plate, below every vehicle.
 const VIZ_DEPTH = 2;
@@ -66,6 +75,16 @@ export class TrackScene extends BackgroundScene {
   private direction: 1 | -1 = 1;
   private moving = false;
   private lastSignalBar = -1;
+  // Which car the bounce is currently on, and when it started. Coupled cars no
+  // longer encode the bar in their POSITION, so the bar is shown directly: a
+  // glow under the sounding car plus a pop on every bar change.
+  private popBar = -1;
+  private popStartedAt = -1;
+  private glow?: Phaser.GameObjects.Ellipse;
+  // Scratch vectors — `getPoint`/`getTangent` allocate a Vector2 per call
+  // otherwise, and both run once per vehicle per frame.
+  private readonly scratchPoint = new Phaser.Math.Vector2();
+  private readonly scratchTangent = new Phaser.Math.Vector2();
   // Data-driven static chrome (track.json): nav plaques + the sprite transport
   // bar (SLOW/STOP/RIDE/FAST) placed on the base plate's painted panel frame.
   private chromeSpawns: readonly TiledSpawn[] = [];
@@ -108,6 +127,12 @@ export class TrackScene extends BackgroundScene {
     this.addBackground("contain");
     registerAnimations(this);
     this.layoutPath();
+    // The "this car is sounding" lamp, under the train band. Sized + moved onto
+    // the sounding car every frame by `placeTrain`.
+    this.glow = this.add
+      .ellipse(0, 0, 10, 10, GLOW_COLOR, 0.55)
+      .setDepth(GLOW_DEPTH)
+      .setVisible(false);
     this.loco = this.makeLoco();
     this.signal = this.add
       .sprite(0, 0, "signal", "signal-up")
@@ -366,49 +391,109 @@ export class TrackScene extends BackgroundScene {
   private placeTrain(): void {
     if (!this.path || !this.loco) return;
     const dir = this.direction;
-    // Signal-sync spacing. The train rides exactly ONE lap per song, so one bar
-    // IS one 1/n of the oval: car i must sit 1/n of the path behind car i-1, or
-    // it cannot be at the crossing signal on its own bar. Car 0 is the phase
-    // reference — at progress 0 (bar 0) it is parked ON the signal.
+    const len = this.path.getLength() || 1;
+
+    // COUPLED spacing. Every gap is an arc length over the path length — the
+    // model the loco always used, now generalised to the whole consist by
+    // `couplingOffsets`. Lengths are read from each token's LIVE display size,
+    // which the perspective depth-scale has already shrunk toward the far side,
+    // so the coupling adapts to car size and perspective with no hardcoded arc;
+    // the atlas frame's ~8% transparent padding is the coupler. Scale lags one
+    // frame (each token is scaled when it is placed) — invisible, and the loco
+    // has worked this way since it was written.
     //
-    // This replaces bumper-to-bumper coupling for the cars, which read better as
-    // a train but is geometrically incompatible with the invariant: a car body
-    // is ~0.05 of the perimeter, so a 4-bar song's consist crossed the signal
-    // inside its first bar (measured: bars 0.30 / 0.49 / 0.71 / 0.90 instead of
-    // 0 / 1 / 2 / 3, with nothing at the crossing for the other 3 bars while the
-    // signal kept flashing). Spacing and sync cannot both be free — the clock
-    // wins, PROJECT_CHARTER.md §2.5.
-    const n = Math.max(1, this.cars.length);
+    // Car 0 is still the phase reference: at progress 0 it is parked ON the
+    // crossing signal, and the consist trails behind it. What position NO
+    // LONGER encodes is which bar is sounding — spacing is a function of car
+    // size now, not of song length. That readout moved to the highlight below,
+    // which is derived from the same `progress`, so the visual is still
+    // rendered FROM the transport and never the reverse (PROJECT_CHARTER §2.5).
+    //
+    // The old model spaced car i at `i / carCount` of the WHOLE LAP, so a
+    // four-bar song sat its cars a quarter-lap apart and the train read as four
+    // wagons that had lost each other.
+    const consist = [this.loco, ...this.carTokens];
+    const offsets = couplingOffsets(
+      consist.map((t) => this.coupledLen(t)),
+      len,
+      // Anchor on car 0 when there is one; on the loco alone when there is not.
+      this.carTokens.length > 0 ? 1 : 0,
+    );
+    const uAt = (i: number): number =>
+      TRACK_LAYOUT_V2.parkAngle + dir * (this.progress - (offsets[i] ?? 0) / len);
+
+    // Bar change first, so the bounce and the signal fire on the SAME frame the
+    // bar turns over rather than one frame late.
+    //
+    // The BOUNCE is not gated on `moving`: it answers the question "which car
+    // just became the sounding one", which is true of a parked train too (and
+    // of one whose consist just changed under it). The crossing SIGNAL is
+    // gated — a level crossing that flashes at a stopped train is a lie.
+    const bar = this.soundingBar();
+    if (bar !== this.popBar) {
+      this.popBar = bar;
+      this.popStartedAt = this.time.now;
+    }
+    if (this.moving && bar !== this.lastSignalBar) {
+      this.lastSignalBar = bar;
+      this.flashSignal();
+    }
+
     this.cars.forEach((car, i) => {
       const token = this.carTokens[i];
       if (!token) return;
-      const u = TRACK_LAYOUT_V2.parkAngle + dir * (this.progress - i / n);
-      this.placeOnPath(token, u, i);
+      const u = uAt(i + 1);
+      // The sounding car bounces; every other car rides flat.
+      const pop = i === bar ? popScale(this.time.now - this.popStartedAt) : 1;
+      this.placeOnPath(token, u, i, pop);
       this.faceAlongPath(token, u, dir, car.carType);
     });
-    // The loco couples onto the head car BUMPER-TO-BUMPER — the one gap that
-    // still can, because the loco sounds no bar of its own. Its distance from
-    // car 0 is half of each of their on-screen coupled lengths, read from the
-    // tokens' live display size (which the perspective depth-scale already
-    // shrank toward the far side), so the coupling adapts to car size AND
-    // perspective with no hardcoded arc; the ~8% transparent frame padding is
-    // the coupler.
-    const len = this.path.getLength() || 1;
-    const head = this.carTokens[0];
-    const gap = head ? (this.coupledLen(this.loco) / 2 + this.coupledLen(head) / 2) / len : 0;
-    const headU = TRACK_LAYOUT_V2.parkAngle + dir * (this.progress + gap);
+    const headU = uAt(0);
     this.placeOnPath(this.loco, headU, -1);
     this.faceAlongPath(this.loco, headU, dir, "loco");
 
-    // Flash the crossing signal as the train passes the bottom-centre each bar.
-    if (this.moving) {
-      const n = Math.max(1, this.carTokens.length);
-      const bar = Math.floor(this.progress * n) % n;
-      if (bar !== this.lastSignalBar) {
-        this.lastSignalBar = bar;
-        this.flashSignal();
-      }
+    this.placeGlow(bar);
+  }
+
+  /** Which car is sounding: the bar the transport is in. The ride covers one
+   *  lap per song, so this is just `progress` in bar units — a pure function of
+   *  the clock React feeds in, computed the same whether the train is moving or
+   *  parked so the readout is never blank. */
+  private soundingBar(): number {
+    const n = this.carTokens.length;
+    if (n === 0) return -1;
+    return Math.min(n - 1, Math.floor(this.progress * n));
+  }
+
+  /** Park the lamp under the sounding car, sized to that car's live width. */
+  private placeGlow(bar: number): void {
+    const glow = this.glow;
+    if (!glow) return;
+    const token = bar >= 0 ? this.carTokens[bar] : undefined;
+    if (!token) {
+      glow.setVisible(false);
+      return;
     }
+    const w = this.coupledLen(token);
+    if (w <= 0) {
+      glow.setVisible(false);
+      return;
+    }
+    // A pool of light a little wider than the car and much flatter — it reads
+    // as ground light in the oval's perspective, not as a halo.
+    glow.setSize(w * 1.15, w * 0.5);
+    glow.setPosition(token.x, token.y + w * 0.22);
+    // Breathe with the pop so the beat is felt as well as seen.
+    const beat = popScale(this.time.now - this.popStartedAt, 260, 0.5);
+    glow.setScale(beat);
+    glow.setAlpha(0.35 + 0.45 * (beat - 1) * 2);
+    glow.setVisible(true);
+  }
+
+  /** Exposed for the e2e bridge: which car the ride says is sounding, and
+   *  whether the lamp under it is actually lit. */
+  get rideHighlight(): { bar: number; visible: boolean } {
+    return { bar: this.soundingBar(), visible: this.glow?.visible === true };
   }
 
   protected onResize(): void {
@@ -462,18 +547,31 @@ export class TrackScene extends BackgroundScene {
   }
 
   /** A vehicle's current on-screen length along the track (atlas frame width
-   *  at its live scale — the frame's transparent padding doubles as coupler). */
+   *  at its live scale — the frame's transparent padding doubles as coupler).
+   *
+   *  The sounding car's bounce is divided back out: a car that grows 30% for
+   *  260 ms must not shove the whole tail of the train backwards while it does
+   *  it. Couplings answer to size and perspective, not to the beat. */
   private coupledLen(token: Phaser.GameObjects.Container): number {
     const body = token.getData("body") as Phaser.GameObjects.Image | undefined;
-    return body ? body.width * token.scaleX : 0;
+    if (!body) return 0;
+    const pop = (token.getData("pop") as number) || 1;
+    return (body.width * token.scaleX) / pop;
   }
 
-  private placeOnPath(token: Phaser.GameObjects.Container, t: number, index: number): void {
+  private placeOnPath(
+    token: Phaser.GameObjects.Container,
+    t: number,
+    index: number,
+    pop = 1,
+  ): void {
     const u = ((t % 1) + 1) % 1;
-    const p = this.path.getPoint(u);
+    const p = this.path.getPoint(u, this.scratchPoint);
+    if (!p) return;
     // Perspective: shrink toward the far (top) side and y-sort so nearer
-    // vehicles draw over farther ones.
-    token.setScale(((token.getData("baseScale") as number) || 1) * this.depthScaleAt(p.y));
+    // vehicles draw over farther ones. `pop` is the sounding car's bounce.
+    token.setScale(((token.getData("baseScale") as number) || 1) * this.depthScaleAt(p.y) * pop);
+    token.setData("pop", pop);
     token.setDepth(TRAIN_DEPTH + p.y / Math.max(1, this.pathYMax));
     // Gentle bounce while moving — phase-offset per car so they don't sync.
     const bounce =
@@ -483,7 +581,12 @@ export class TrackScene extends BackgroundScene {
     token.setPosition(p.x, p.y + bounce);
   }
 
-  /** Pick the directional atlas frame from the path tangent at `u`. */
+  /** Pick the directional atlas frame from the path tangent at `u`.
+   *
+   *  `Path.getTangent` walks the same arc-length table `getPoint` does and
+   *  returns the segment's unit tangent directly — one curve sample instead of
+   *  the two-point finite difference this used to do (three samples per vehicle
+   *  per frame), and with no `eps` to get wrong near a vertex. */
   private faceAlongPath(
     token: Phaser.GameObjects.Container,
     t: number,
@@ -493,11 +596,10 @@ export class TrackScene extends BackgroundScene {
     const body = token.getData("body") as Phaser.GameObjects.Image | undefined;
     if (!body) return;
     const u = ((t % 1) + 1) % 1;
-    const eps = 0.01;
-    const a = this.path.getPoint(u);
-    const b = this.path.getPoint(((u + eps) % 1 + 1) % 1);
+    const tan = this.path.getTangent(u, this.scratchTangent);
+    if (!tan) return;
     // Tangent for increasing u; flip for reverse so the sprite faces its travel.
-    const d = velocityToDirection((b.x - a.x) * dir, (b.y - a.y) * dir);
+    const d = velocityToDirection(tan.x * dir, tan.y * dir);
     body.setFrame(frameKey(type, d));
   }
 
