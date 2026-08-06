@@ -11,18 +11,50 @@ import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
-import { loadSpriteAssets, frameKey, type Direction } from "../sprite-assets.ts";
+import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
+import { alignCarBody, CAR_CONTENT_E, FRAME_SIZE } from "../car-geometry.ts";
 import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
+// The pure slot arithmetic lives outside the scene so the unit suite can reach
+// it — a real `import Phaser` cannot load under jsdom, and this is the math the
+// palette got wrong. Re-exported: it is still the Yard's geometry.
+import {
+  paletteSlot,
+  trainSlot,
+  trainStep,
+  carFitScale,
+  namePlateBox,
+  PALETTE_DIR,
+  type SlotRect,
+} from "../yard-geometry.ts";
+export {
+  paletteSlot,
+  trainSlot,
+  trainStep,
+  carFitScale,
+  namePlateBox,
+  TALLEST_CAR_BODY,
+  PALETTE_DIR,
+  type SlotRect,
+} from "../yard-geometry.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { loadUiSprites } from "../ui-sprites.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
+import { decorateCar, CarNamePlate } from "../car-livery.ts";
 import yardMap from "../../assets/maps/yard.json";
 import type { CarType } from "../../core/types.ts";
+import type { LaneGroup } from "../../core/lane-color.ts";
 
-/** A built car in the palette (left sidings). */
+/** A built car in the palette (left sidings).
+ *
+ *  `livery` (which colour + glyph this car wears) and `cargo` (which instrument
+ *  family it carries) are the two identity channels — see `core/car-identity.ts`
+ *  for what decides them and `game/car-livery.ts` for what they look like. Both
+ *  are DERIVED in React from the project and passed in, so the scene renders
+ *  identity without owning any of the rules. */
 export interface YardCar {
   readonly id: string;
-  readonly color: string;
+  readonly livery: number;
+  readonly cargo: LaneGroup | null;
   readonly name: string;
   readonly carType: CarType;
 }
@@ -31,55 +63,19 @@ export interface YardCar {
 export interface YardTrainCar {
   readonly instanceId: string;
   readonly partId: string;
-  readonly color: string;
+  readonly livery: number;
+  readonly cargo: LaneGroup | null;
+  readonly name: string;
   readonly carType: CarType;
   readonly muted: boolean;
 }
 
-export interface SlotRect {
-  x: number;
-  y: number;
-  width: number;
-  height: number;
-}
-
-/** Centre + size of palette slot `i` within a contained-image rect. Cars fill
- *  the 4 sidings top→bottom, then wrap to the next column. Shared by the Phaser
- *  sprite and the React hit-area so they always coincide. */
-export function paletteSlot(
-  rect: SlotRect,
-  i: number,
-): { cx: number; cy: number; w: number; h: number } {
-  const row = i % YARD_SIDINGS_V2.rows;
-  const col = Math.floor(i / YARD_SIDINGS_V2.rows);
-  return {
-    cx: rect.x + rect.width * (YARD_SIDINGS_V2.x0 + YARD_SIDINGS_V2.carW / 2 + col * YARD_SIDINGS_V2.dx),
-    cy: rect.y + rect.height * (YARD_SIDINGS_V2.y0 + row * YARD_SIDINGS_V2.dy),
-    w: rect.width * YARD_SIDINGS_V2.carW,
-    h: rect.height * YARD_SIDINGS_V2.carH,
-  };
-}
-
-/** Centre + size of assembly-line slot `i` (left→right along the top track). */
-export function trainSlot(
-  rect: SlotRect,
-  i: number,
-  count: number,
-): { cx: number; cy: number; w: number; h: number } {
-  const a = YARD_LAYOUT_V2.assemblyLine;
-  const w = rect.width * YARD_SIDINGS_V2.carW;
-  const h = rect.height * YARD_SIDINGS_V2.carH;
-  // Pack slots across the assembly line; spacing shrinks as the train grows so
-  // they stay inside the painted track.
-  const span = rect.width * a.w;
-  const step = Math.min(w * 1.05, span / Math.max(1, count));
-  const startX = rect.x + rect.width * a.x + w / 2;
-  return {
-    cx: startX + i * step,
-    cy: rect.y + rect.height * (a.y + a.h / 2),
-    w,
-    h,
-  };
+/** A car on screen: the scaled sprite token, plus its name chip — which lives
+ *  OUTSIDE the token, in screen space, because anything inside inherits the
+ *  token's fit scale (that is the bug that hid every label but the last). */
+interface CarToken {
+  readonly car: Phaser.GameObjects.Container;
+  readonly plate: CarNamePlate;
 }
 
 export class YardScene extends BackgroundScene {
@@ -88,8 +84,8 @@ export class YardScene extends BackgroundScene {
   private cars: YardCar[] = [];
   private train: YardTrainCar[] = [];
   private selectedId: string | null = null;
-  private paletteTokens = new Map<string, Phaser.GameObjects.Container>();
-  private trainTokens: Phaser.GameObjects.Container[] = [];
+  private paletteTokens = new Map<string, CarToken>();
+  private trainTokens: CarToken[] = [];
   private busy = false; // a crane/departure tween is in flight — ignore presses
   // Data-driven static chrome (yard.json): nav plaques + the interim action
   // strip, spawned by the generic Three-Zone engine. The action buttons are
@@ -179,7 +175,7 @@ export class YardScene extends BackgroundScene {
   setSelectedPalette(id: string | null): void {
     this.selectedId = id;
     this.paletteTokens.forEach((token, cid) => {
-      (token.getData("ring") as Phaser.GameObjects.Graphics).setVisible(cid === id);
+      (token.car.getData("ring") as Phaser.GameObjects.Graphics).setVisible(cid === id);
     });
   }
 
@@ -204,14 +200,17 @@ export class YardScene extends BackgroundScene {
 
     // Ghost = the car being carried + a cable/hook above it, grouped so they move
     // together. Hide the static palette token while it's "in the air". The car is
-    // shown side-on ('E') as it lands on the assembly track.
+    // shown side-on ('E'), matching the palette, the assembly line and the Track.
+    const content = CAR_CONTENT_E[car.carType];
+    const bodyH = (content[3] - content[1]) * FRAME_SIZE;
     const body = this.add.image(0, 0, "train", frameKey(car.carType, "E")).setOrigin(0.5);
+    alignCarBody(body, content);
     const cable = this.add.graphics();
-    cable.lineStyle(3, 0x2a2a2a, 1).lineBetween(0, -body.height / 2 - 60, 0, -body.height / 2);
-    cable.fillStyle(0xf2b134, 1).fillRect(-8, -body.height / 2 - 8, 16, 12); // hook block
+    cable.lineStyle(3, 0x2a2a2a, 1).lineBetween(0, -bodyH - 60, 0, -bodyH);
+    cable.fillStyle(0xf2b134, 1).fillRect(-8, -bodyH - 8, 16, 12); // hook block
     const ghost = this.add.container(from.cx, from.cy, [cable, body]);
-    ghost.setScale(from.w / body.width).setDepth(20);
-    this.paletteTokens.get(car.id)?.setVisible(false);
+    ghost.setScale(carFitScale(from)).setDepth(20);
+    this.setTokenVisible(this.paletteTokens.get(car.id), false);
 
     this.tweens.chain({
       targets: ghost,
@@ -222,10 +221,16 @@ export class YardScene extends BackgroundScene {
       ],
       onComplete: () => {
         ghost.destroy();
-        this.paletteTokens.get(car.id)?.setVisible(true);
+        this.setTokenVisible(this.paletteTokens.get(car.id), true);
         onComplete();
       },
     });
+  }
+
+  /** A car and its (separately-parented) name chip show and hide together. */
+  private setTokenVisible(token: CarToken | undefined, visible: boolean): void {
+    token?.car.setVisible(visible);
+    token?.plate.setVisible(visible);
   }
 
   /** Add to Train: run the crane lift for `partId`; the dispatch happens only in
@@ -258,8 +263,10 @@ export class YardScene extends BackgroundScene {
     }
     const r = this.backgroundRect;
     // A quick bob (the "toot-toot") then the whole train rolls off to the right.
+    // Chips travel with their cars — they are siblings, not children.
+    const targets = this.trainTokens.flatMap((t) => [t.car, t.plate.container]);
     this.tweens.chain({
-      targets: this.trainTokens,
+      targets,
       tweens: [
         { y: "-=8", duration: 110, yoyo: true, ease: "Sine.easeOut" },
         { x: `+=${r.width * 1.2}`, duration: 650, ease: "Sine.easeIn" },
@@ -271,7 +278,13 @@ export class YardScene extends BackgroundScene {
   /** Visual no-op when Add is pressed with nothing selected: blink the palette. */
   private flashPalette(): void {
     this.paletteTokens.forEach((t) =>
-      this.tweens.add({ targets: t, alpha: { from: 1, to: 0.3 }, yoyo: true, duration: 120, repeat: 1 }),
+      this.tweens.add({
+        targets: [t.car, t.plate.container],
+        alpha: { from: 1, to: 0.3 },
+        yoyo: true,
+        duration: 120,
+        repeat: 1,
+      }),
     );
   }
 
@@ -282,14 +295,14 @@ export class YardScene extends BackgroundScene {
   // ── internals ──────────────────────────────────────────────────────────────
 
   private rebuild(): void {
-    this.paletteTokens.forEach((t) => t.destroy());
+    this.paletteTokens.forEach((t) => this.destroyToken(t));
     this.paletteTokens.clear();
-    this.trainTokens.forEach((t) => t.destroy());
+    this.trainTokens.forEach((t) => this.destroyToken(t));
     this.trainTokens = [];
 
     this.cars.forEach((car) => {
-      const token = this.makeCar(car.carType, car.name, false, "S");
-      this.makePaletteInteractive(token, car.id);
+      const token = this.makeCar(car, false);
+      this.makePaletteInteractive(token.car, car.id, car.carType);
       this.paletteTokens.set(car.id, token);
     });
     this.train.forEach((slot) =>
@@ -301,11 +314,22 @@ export class YardScene extends BackgroundScene {
     this.setSelectedPalette(this.selectedId);
   }
 
-  /** Make a palette car token tap-to-select. The hit area is the (unscaled) body
-   *  centred on the container; the container's world scale applies on hit-test. */
-  private makePaletteInteractive(token: Phaser.GameObjects.Container, partId: string): void {
-    const body = token.getData("body") as Phaser.GameObjects.Image;
-    const hit = new Phaser.Geom.Rectangle(-body.width / 2, -body.height / 2, body.width, body.height);
+  /** Make a palette car token tap-to-select. The hit area is the car's opaque
+   *  body, padded for a five-year-old's finger, in UNSCALED container coords —
+   *  Phaser applies the container's own transform on hit-test, so this needs no
+   *  update on relayout. Padding is 20% rather than the whole 128 px cell so two
+   *  cars on neighbouring sidings cannot steal each other's taps. */
+  private makePaletteInteractive(
+    token: Phaser.GameObjects.Container,
+    partId: string,
+    carType: CarType,
+  ): void {
+    const [x0, y0, x1, y1] = CAR_CONTENT_E[carType];
+    const w = (x1 - x0) * FRAME_SIZE;
+    const h = (y1 - y0) * FRAME_SIZE;
+    const padX = w * 0.2;
+    const padY = h * 0.2;
+    const hit = new Phaser.Geom.Rectangle(-w / 2 - padX, -h - padY, w + padX * 2, h + padY * 2);
     token.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
     if (token.input) token.input.cursor = "pointer";
     token.on("pointerdown", () => this.selectPaletteCar(partId));
@@ -319,24 +343,30 @@ export class YardScene extends BackgroundScene {
 
   private layout(): void {
     const r = this.backgroundRect;
+    const palettePitch = r.width * YARD_SIDINGS_V2.dx;
     this.cars.forEach((car, i) => {
-      const slot = paletteSlot(r, i);
       const token = this.paletteTokens.get(car.id);
-      if (token) {
-        token.setPosition(slot.cx, slot.cy);
-        this.fitToken(token, slot.w);
-      }
+      if (token) this.placeToken(token, r, paletteSlot(r, i), palettePitch);
     });
     const count = Math.max(1, this.train.length);
+    const trainPitch = trainStep(r, count);
     this.train.forEach((_slot, i) => {
-      const pos = trainSlot(r, i, count);
       const token = this.trainTokens[i];
-      if (token) {
-        token.setPosition(pos.cx, pos.cy);
-        this.fitToken(token, pos.w);
-      }
+      if (token) this.placeToken(token, r, trainSlot(r, i, count), trainPitch);
     });
     this.layoutChrome();
+  }
+
+  /** Put a car on its rail and hang its name chip below, inside `pitchX`. */
+  private placeToken(
+    token: CarToken,
+    rect: SlotRect,
+    slot: { cx: number; cy: number; w: number; h: number },
+    pitchX: number,
+  ): void {
+    token.car.setPosition(slot.cx, slot.cy).setScale(carFitScale(slot));
+    const box = namePlateBox(rect, slot, pitchX);
+    token.plate.layout(box.cx, box.cy, box.w, box.h, box.maxW);
   }
 
   // Re-anchor the data-driven chrome to the painted art after the bg refits —
@@ -347,55 +377,66 @@ export class YardScene extends BackgroundScene {
     relayoutUiLayer(this.chrome, r, this.scale.gameSize);
   }
 
-  /** Scale a car container so its sprite body is ~`targetW` px wide. */
-  private fitToken(token: Phaser.GameObjects.Container, targetW: number): void {
-    const baseW = (token.getData("baseW") as number) || targetW;
-    token.setScale(targetW / baseW);
+  private destroyToken(token: CarToken): void {
+    token.car.destroy();
+    token.plate.destroy();
   }
 
-  /** Build a car token: directional atlas body + selection ring + name label. */
+  /**
+   * Build a car token: side-on body, selection ring, livery panel, load, and a
+   * screen-space name chip.
+   *
+   * The identity decorations go INSIDE the container (they ride with the car,
+   * through the crane tween and every relayout); the name chip stays OUTSIDE
+   * it. `dir` is always `"E"` now — both the palette and the assembly line show
+   * the car the same way round.
+   */
   private makeCar(
-    carType: CarType,
-    name: string,
+    car: { name: string; carType: CarType; livery: number; cargo: LaneGroup | null },
     isTrain: boolean,
-    dir: Direction,
-  ): Phaser.GameObjects.Container {
-    const body = this.add.image(0, 0, "train", frameKey(carType, dir)).setOrigin(0.5);
+  ): CarToken {
+    const dir = PALETTE_DIR;
+    const content = CAR_CONTENT_E[car.carType];
+    const [x0, y0, x1, y1] = content;
+    const bw = (x1 - x0) * FRAME_SIZE;
+    const bh = (y1 - y0) * FRAME_SIZE;
 
+    const body = this.add.image(0, 0, "train", frameKey(car.carType, dir)).setOrigin(0.5);
+    alignCarBody(body, content);
+
+    // Ring hugs the OPAQUE body, not the 128 px cell — a box drawn on the cell
+    // stands ~30 px off a flatcar on every side and reads as its own object.
     const ring = this.add.graphics();
-    const bw = body.width;
-    const bh = body.height;
-    ring.lineStyle(4, 0xffd166, 1).strokeRect(-bw / 2 - 4, -bh / 2 - 4, bw + 8, bh + 8);
+    const pad = 5;
+    ring.lineStyle(4, 0xffd166, 1).strokeRect(-bw / 2 - pad, -bh - pad, bw + pad * 2, bh + pad * 2);
     ring.setVisible(false);
 
-    const children: Phaser.GameObjects.GameObject[] = [ring, body];
-    if (!isTrain) {
-      const label = this.add
-        .text(0, bh / 2 + 6, name.toUpperCase(), {
-          fontFamily: "'Press Start 2P', monospace",
-          fontSize: "8px",
-          color: "#e8dcc8",
-        })
-        .setOrigin(0.5, 0);
-      children.push(label);
-    }
-    const c = this.add.container(0, 0, children);
+    const c = this.add.container(0, 0, [ring, body]);
+    c.add(decorateCar(this, content, FRAME_SIZE, car.livery, car.cargo));
     c.setData("ring", ring);
     c.setData("body", body);
-    c.setData("baseW", bw);
     c.setDepth(isTrain ? 5 : 4);
-    return c;
+
+    const plate = new CarNamePlate(this, car.name);
+    // Above both car depths: a chip hanging into the pitch below its car must
+    // never be swallowed by the next siding's car.
+    plate.setDepth(6);
+    return { car: c, plate };
   }
 
-  /** An assembly-line car: side-on body + a tarp overlay when muted. */
-  private makeTrainCar(slot: YardTrainCar): Phaser.GameObjects.Container {
-    const c = this.makeCar(slot.carType, "", true, "E");
-    const body = c.list[1] as Phaser.GameObjects.Image;
+  /** An assembly-line car: same body, livery, load and name chip as the palette
+   *  — the assembled train previously had NO identity at all, not even a bad
+   *  one — plus a tarp overlay when muted. */
+  private makeTrainCar(slot: YardTrainCar): CarToken {
+    const token = this.makeCar(slot, true);
     if (slot.muted) {
-      const tarp = this.add.image(0, 0, "tarp", "tarp").setOrigin(0.5);
-      tarp.setDisplaySize(body.width * 1.05, body.height * 1.05);
-      c.add(tarp);
+      const [x0, y0, x1, y1] = CAR_CONTENT_E[slot.carType];
+      const bw = (x1 - x0) * FRAME_SIZE;
+      const bh = (y1 - y0) * FRAME_SIZE;
+      const tarp = this.add.image(0, -bh / 2, "tarp", "tarp").setOrigin(0.5);
+      tarp.setDisplaySize(bw * 1.05, bh * 1.05);
+      token.car.add(tarp);
     }
-    return c;
+    return token;
   }
 }

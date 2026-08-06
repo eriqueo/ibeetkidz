@@ -5,6 +5,7 @@ import { liveTrain } from "../core/project-state.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
+import { carCargo, carLiveries } from "../core/car-identity.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
@@ -13,13 +14,23 @@ export const Track: FC = () => {
   const project = useProject();
   const sceneRef = useRef<TrackScene | null>(null);
 
+  // Same derived identity the Yard shows, so a car a kid picked out in the
+  // sidings is recognisably the same car riding the oval.
+  const liveries = useMemo(() => carLiveries(project.parts), [project.parts]);
+
   const cars = useMemo<TrackCar[]>(() => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
     return liveTrain(project).map((c) => {
       const part = byId.get(c.partId)!;
-      return { id: c.instanceId, color: part.color, carType: part.carType, muted: c.muted };
+      return {
+        id: c.instanceId,
+        livery: liveries.get(part.id) ?? 0,
+        cargo: carCargo(part, project.clips),
+        carType: part.carType,
+        muted: c.muted,
+      };
     });
-  }, [project]);
+  }, [project, liveries]);
 
   const carsRef = useRef(cars);
   carsRef.current = cars;

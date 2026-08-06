@@ -10,6 +10,7 @@ import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import { WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite } from "./ui-sprites.ts";
+import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
 import { STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
@@ -334,15 +335,17 @@ const PADS_PER_SHELF = 12;
 
 /** The shelves, in draw order. Built-ins first so the layout a kid learns does
  *  not reshuffle every time they record something. */
+// `sprite` is DERIVED from `LANE_GROUP_SPRITE`, not restated: "which picture
+// means drums" is one fact, and the Yard's car loads now draw the same set.
 const PAD_SHELVES: readonly {
   group: "drum" | "tone" | "voice";
   title: string;
   sprite: string;
   empty: string;
 }[] = [
-  { group: "drum", title: "DRUMS", sprite: "inst-drums", empty: "" },
-  { group: "tone", title: "NOTES", sprite: "inst-piano", empty: "" },
-  { group: "voice", title: "YOUR SOUNDS", sprite: "inst-mic", empty: "Record one with the mic or the magic pad!" },
+  { group: "drum", title: "DRUMS", sprite: LANE_GROUP_SPRITE.drum, empty: "" },
+  { group: "tone", title: "NOTES", sprite: LANE_GROUP_SPRITE.tone, empty: "" },
+  { group: "voice", title: "YOUR SOUNDS", sprite: LANE_GROUP_SPRITE.voice, empty: "Record one with the mic or the magic pad!" },
 ];
 
 const PAD_GOLD = 0xffd166;

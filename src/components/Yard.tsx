@@ -3,6 +3,7 @@ import { useApp, useProject } from "../app/context.tsx";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { YardScene, type YardCar, type YardTrainCar } from "../game/scenes/YardScene.ts";
 import { liveTrain } from "../core/project-state.ts";
+import { carCargo, carLiveries } from "../core/car-identity.ts";
 import { AppView } from "../core/types.ts";
 import { EventBus } from "../game/EventBus.ts";
 
@@ -10,23 +11,44 @@ let instSeq = 0;
 const newInstanceId = (): string => `inst-${Date.now().toString(36)}-${instSeq++}`;
 
 export const Yard: FC = () => {
-  const { dispatch } = useApp();
+  const { dispatch, engine } = useApp();
   const project = useProject();
   const sceneRef = useRef<YardScene | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
+  // Identity is DERIVED, never stored: which livery a car wears comes from its
+  // position in the colour table, and what it carries is folded out of its own
+  // lanes on every render. Nothing to migrate, and a car that gains a drum lane
+  // is visibly carrying drums the moment the kid comes back to the Yard.
+  const liveries = useMemo(() => carLiveries(project.parts), [project.parts]);
+
   const cars = useMemo<YardCar[]>(
-    () => project.parts.map((p) => ({ id: p.id, color: p.color, name: p.name, carType: p.carType })),
-    [project.parts],
+    () =>
+      project.parts.map((p) => ({
+        id: p.id,
+        livery: liveries.get(p.id) ?? 0,
+        cargo: carCargo(p, project.clips),
+        name: p.name,
+        carType: p.carType,
+      })),
+    [project.parts, project.clips, liveries],
   );
 
   const train = useMemo<YardTrainCar[]>(() => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
     return liveTrain(project).map((c) => {
       const part = byId.get(c.partId)!;
-      return { instanceId: c.instanceId, partId: c.partId, color: part.color, carType: part.carType, muted: c.muted };
+      return {
+        instanceId: c.instanceId,
+        partId: c.partId,
+        livery: liveries.get(part.id) ?? 0,
+        cargo: carCargo(part, project.clips),
+        name: part.name,
+        carType: part.carType,
+        muted: c.muted,
+      };
     });
-  }, [project]);
+  }, [project, liveries]);
 
   const carsRef = useRef(cars); carsRef.current = cars;
   const trainRef = useRef(train); trainRef.current = train;
@@ -46,7 +68,15 @@ export const Yard: FC = () => {
   // here follows the animation. Selection-aware actions (edit/delete) target the
   // ACTIVE car, which a palette tap (`yard-car-selected`) makes current.
   useEffect(() => {
-    const onSelect = (partId: string) => dispatch({ type: "setActivePart", partId });
+    // Tapping a car in the palette also PLAYS it. Identity by sight answers
+    // "where is the one I want?"; hearing it answers "is this the one?" — the
+    // confirmation gesture, and it is the same `playCarLoop` the Workshop's
+    // LOOP button already uses. `playCarLoop` no-ops until the AudioContext has
+    // been started by the boot gesture, so this touches nothing before then.
+    const onSelect = (partId: string) => {
+      dispatch({ type: "setActivePart", partId });
+      engine.playCarLoop(partId, projectRef.current);
+    };
     const onAdd = (partId: string) =>
       dispatch({ type: "addToTrain", instanceId: newInstanceId(), partId });
     const onSend = () => dispatch({ type: "setActiveView", view: "track" });
@@ -82,7 +112,7 @@ export const Yard: FC = () => {
       EventBus.off("yard-remove-car", onRemoveCar);
       EventBus.off("yard-nav", onNav);
     };
-  }, [dispatch]);
+  }, [dispatch, engine]);
 
   return (
     <div style={VIEW_OVERLAY}>

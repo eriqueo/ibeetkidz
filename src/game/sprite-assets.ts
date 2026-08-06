@@ -29,15 +29,17 @@
 import Phaser from "phaser";
 import { publicAssetUrl } from "./assets.ts";
 
-export const FRAME_SIZE = 128;
+// The cell size, the type list and the per-type content boxes live in
+// `car-geometry.ts`, which is Phaser-free and therefore unit-testable — this
+// module's `import Phaser` (needed for `Phaser.Animations.Events` below) makes
+// anything it owns unloadable under jsdom. Re-exported so the loader manifest
+// stays the one obvious place to look for "what is in the train atlas".
+export { FRAME_SIZE, TRAIN_TYPES, type TrainType } from "./car-geometry.ts";
+import type { TrainType } from "./car-geometry.ts";
 
 /** Directions in clockwise order starting East, matching the oval path tangent. */
 export const DIRECTIONS = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"] as const;
 export type Direction = typeof DIRECTIONS[number];
-
-/** All train sprite types. */
-export const TRAIN_TYPES = ["loco", "boxcar", "tanker", "hopper", "flatcar"] as const;
-export type TrainType = typeof TRAIN_TYPES[number];
 
 /**
  * Given a velocity vector (dx, dy), returns the nearest 8-direction compass name.
