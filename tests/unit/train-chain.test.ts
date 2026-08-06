@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  HOP_HEIGHT_PX,
   TRAIN_MAX_FILL,
   chainSqueeze,
   couplingOffsets,
+  popHop,
   popScale,
 } from "../../src/game/train-chain.ts";
 
@@ -123,5 +125,40 @@ describe("popScale — the sounding car's bounce", () => {
     expect(popScale(-1)).toBe(1);
     expect(popScale(NaN)).toBe(1);
     expect(popScale(100, 0)).toBe(1);
+  });
+});
+
+describe("popHop — the same bounce, as a lift instead of a resize", () => {
+  // The sounding car used to be SCALED up by 1.3×. The plate's perspective
+  // already scales every vehicle, and stacking a second, beat-driven multiplier
+  // on top of it made the sounding car's size mean two different things at once
+  // (how far away it is, and whether it is playing) — and made its couplings
+  // shove the tail of the train around on every bar. A lift says "that one"
+  // just as clearly and leaves size meaning distance.
+  it("lifts on the beat and lands back on the rail", () => {
+    expect(popHop(0)).toBeCloseTo(HOP_HEIGHT_PX, 10);
+    expect(popHop(260)).toBe(0);
+    expect(popHop(10_000)).toBe(0);
+  });
+
+  it("follows the same curve as the pop it replaced", () => {
+    for (const ms of [0, 40, 90, 150, 220, 260]) {
+      expect(popHop(ms, 260, 1)).toBeCloseTo((popScale(ms, 260, 1) - 1), 10);
+    }
+  });
+
+  it("decays monotonically", () => {
+    let prev = popHop(0);
+    for (let ms = 10; ms <= 260; ms += 10) {
+      const v = popHop(ms);
+      expect(v).toBeLessThan(prev);
+      prev = v;
+    }
+  });
+
+  it("is neutral for nonsense input", () => {
+    expect(popHop(-1)).toBe(0);
+    expect(popHop(NaN)).toBe(0);
+    expect(popHop(100, 0)).toBe(0);
   });
 });
