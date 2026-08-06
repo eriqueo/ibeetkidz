@@ -80,6 +80,45 @@ manifest entry + a placeUiSprite call, no per-tool changes).
 
 ---
 
+## AR-027 · Car liveries as Beet-crew characters — LOW (nothing is blocked)
+
+**Filed 2026-08-04 alongside the Yard car-identity work. This request blocks
+NOTHING** — car identity shipped with no new art at all, using the `inst-*`
+sprites already in the packed atlas plus flat colour panels drawn with Graphics.
+It is logged now because it is the natural upgrade path and because it carries
+one requirement that has to be stated *before* twelve sprites get drawn, not
+after.
+
+**Target files:** twelve new `livery-<n>-side.png`, 512² each, transparent.
+
+**Why:** a car's assigned identity is currently a colour + a geometric glyph
+(circle / square / triangle / diamond / star / plus / hexagon / ring). It works,
+it is colour-blind-safe, and it is legible at the ~110×92 px the palette gives a
+car — but it is the one piece of the scheme that is *abstract*, in an app whose
+charter is "the Beet crew… friendly objects with faces". A frog car, a chipmunk
+car and a rocket car would be strictly better at the same job.
+
+**The requirement to fix now, while it is still cheap:** the twelve characters
+must differ in **SILHOUETTE**, not only in paint. A frog and a chipmunk of the
+same size in the same pose are the SAME CAR to a colour-blind kid, and at the
+Track's ~160 px with perspective scaling they are the same car to everybody.
+Vary the outline: tall/squat, round/angular, ears/horns/fins/antennae.
+
+**Prompt:** "Twelve character emblems for train-car liveries, one 512×512
+transparent PNG each, warm 16-colour palette, chunky pixels, 1px dark-plum
+outline, drop shadow baked OFF. Each is a friendly creature or object head/bust
+facing the viewer, filling most of the canvas. **The twelve must be
+distinguishable from their OUTLINE ALONE** — vary height, width and profile, not
+just colour. Deliver flat, no gradients."
+
+**Unblocks:** nothing today. When it lands it is a **texture swap behind the
+existing selector** — `livery-style.ts`'s `glyphFor(index)` returns a shape name
+and `car-livery.ts` draws it; a sprite variant replaces that one call. No data
+change, no schema change, no migration: livery is derived from `Part.color`'s
+position in `CAR_COLORS`, which is already persisted.
+
+---
+
 ## AR-026 · ×2 lever ON state + deck labels a non-reader can read — HIGH
 
 **Target files:** `src/assets/sprites/panels/toggle-double.png` (needs a SECOND
