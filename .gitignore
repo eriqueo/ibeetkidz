@@ -19,3 +19,7 @@ playwright-report/
 # is still tracked on purpose — it is the in-flight input batch for the loco
 # sprite pass. Move it into art/ and drop it from git once that pass lands.
 /art/
+
+# Third-party course transcript kept as a local reference only.
+# 762KB of someone else s content and this repo is public.
+design/reference/phaser3-zelda-course-transcript.md
