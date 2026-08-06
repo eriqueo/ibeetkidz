@@ -56,10 +56,18 @@ Every scene (except Map) follows a strict three-zone layout, defined in Tiled:
 **The audio transport drives the train. The train never drives the audio.**
 
 This is the settled architecture, not an open question. `AudioEngine.scheduleArrangement`
-lays the whole train out on Tone.js's transport ahead of time; the Phaser train and the
-crossing signal in `TrackScene` are **rendered from** the transport's position — car `i`
-reaches the crossing signal exactly when bar `i` sounds because the visual reads the clock,
-never the reverse. Playback is gapless and jitter-free as a result.
+lays the whole train out on Tone.js's transport ahead of time; the Phaser train, the
+crossing signal and the sounding-car highlight in `TrackScene` are **rendered from** the
+transport's position — the car the highlight names is exactly the bar that is sounding,
+because the visual reads the clock, never the reverse. Playback is gapless and jitter-free
+as a result.
+
+**Which visual carries the readout is NOT part of this decision.** It was car POSITION for
+one round (`i / carCount` of the lap), which forced car spacing to be a function of song
+length and made the train read as scattered wagons. The cars are now coupled by real arc
+length and the readout is an explicit highlight. Both are derived from the same `progress`,
+so the rule above is untouched — a future round may move the readout again, and only has to
+keep deriving it from the transport. See `design/HISTORY.md` for the two failed models.
 
 **Why the inverse was rejected.** The alternative — the train's physical position on the
 oval triggering each car's loop as it passes the signal — makes audio onsets a function of

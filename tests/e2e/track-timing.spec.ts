@@ -1,17 +1,25 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// The Track view's one hard promise (PROJECT_CHARTER.md §2.5, CLAUDE.md):
-// **car i sits at the crossing signal exactly when bar i sounds**, because the
-// visual is rendered FROM the transport and never the reverse.
+// The Track view's two hard promises (PROJECT_CHARTER.md §2.5, CLAUDE.md):
 //
-// It shipped broken. The cars were spaced bumper-to-bumper (a car body is ~5%
-// of the oval's perimeter) while the ride still covers one lap per song, so a
-// 4-bar train crossed the signal at bars 0.30 / 0.49 / 0.71 / 0.90 and then
-// nothing crossed for the remaining 3 bars — while the signal kept flashing on
-// every bar. Neither of the two tests below passed before the fix.
+//  1. **The train is a TRAIN.** Every vehicle is coupled to the one in front by
+//     half of each of their on-screen lengths — an arc length over the path
+//     length. Spacing is a function of how long a car IS, never of how many
+//     bars the song has.
+//  2. **Which bar is sounding is shown, and it is read FROM the transport.**
+//     The visual is derived from `progress`; it may lag the audio, never lead
+//     it.
 //
-// Neither needs audible output (the first does not even need the transport), so
-// both run in CI as well as locally.
+// Promise 1 shipped broken twice, in opposite directions. First bumper-to-bumper
+// coupling with no bar readout at all; then `i / carCount` of the WHOLE LAP,
+// which made position the readout but put a four-bar song's cars a quarter-lap
+// apart — four wagons that had lost each other, and the #1 complaint on the
+// screenshot. Position cannot be both the coupling and the clock readout, so the
+// readout moved to an explicit HIGHLIGHT (a lamp under the sounding car plus a
+// bounce on the bar change) and the coupling went back to real geometry.
+//
+// Neither test needs audible output (the first does not even need the
+// transport), so both run in CI as well as locally.
 
 async function boot(page: Page): Promise<void> {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
@@ -53,37 +61,152 @@ async function trainOf(page: Page, n: number): Promise<void> {
     .toBe(n);
 }
 
-test("car i is at the crossing signal exactly at bar i", async ({ page }) => {
+test("the cars ride coupled, a car-length apart and not a lap-fraction apart", async ({ page }) => {
   const CARS = 4;
   await trainOf(page, CARS);
 
   // Drive the scene's own progress input — the same 0..1 lap position React
-  // feeds it from the transport — and read where the car tokens actually landed.
-  const runs = await page.evaluate(async (n) => {
+  // feeds it from the transport — and read where the vehicles actually landed.
+  const shots = await page.evaluate(async (probes: number[]) => {
     const s: any = (window as any).__ibeetkidz_test__.getScene();
     const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
-    const out: { bar: number; dists: number[] }[] = [];
-    for (let bar = 0; bar < n; bar++) {
-      s.setProgress(bar / n);
+    // Parked: no bounce inflating anyone's width while we measure geometry.
+    s.setMoving(false);
+    const widthOf = (tok: any): number => tok.getData("body").width * tok.scaleX;
+    const out: any[] = [];
+    for (const t of probes) {
+      s.setProgress(t);
       await frame();
       await frame();
       const sig = s.path.getPoint(0.25); // parkAngle — the crossing signal
       out.push({
+        t,
+        lap: s.path.getLength(),
+        loco: { x: s.loco.x, y: s.loco.y, w: widthOf(s.loco) },
+        cars: s.carTokens.map((c: any) => ({ x: c.x, y: c.y, w: widthOf(c) })),
+        signalDist: s.carTokens.map((c: any) => Math.hypot(c.x - sig.x, c.y - sig.y)),
+      });
+    }
+    return out;
+  }, [0, 0.13, 0.37, 0.62, 0.88]);
+
+  const lap = shots[0]!.lap as number;
+  expect(lap).toBeGreaterThan(1000);
+
+  for (const shot of shots) {
+    const cars = shot.cars as { x: number; y: number; w: number }[];
+    const loco = shot.loco as { x: number; y: number; w: number };
+
+    // Adjacent cars are coupled: centres sit half of each of their widths
+    // apart. Measured as a straight line, so it reads slightly SHORT of the arc
+    // through a curve — hence the asymmetric window. The point of the test is
+    // the order of magnitude: ~a car, not ~a quarter of the oval.
+    for (let i = 1; i < cars.length; i++) {
+      const want = (cars[i - 1]!.w + cars[i]!.w) / 2;
+      const got = Math.hypot(cars[i]!.x - cars[i - 1]!.x, cars[i]!.y - cars[i - 1]!.y);
+      expect(want, "a car must have a real on-screen width").toBeGreaterThan(20);
+      expect(got, `cars ${i - 1}→${i} at t=${shot.t} are uncoupled`).toBeLessThan(want * 1.1);
+      expect(got, `cars ${i - 1}→${i} at t=${shot.t} are stacked`).toBeGreaterThan(want * 0.75);
+      // The bug this replaced, stated directly: spacing must NOT be a fraction
+      // of the lap. At 4 cars that was lap/4.
+      expect(got, `cars ${i - 1}→${i} are still spaced by lap/n`).toBeLessThan(lap / CARS / 2);
+    }
+
+    // The loco couples onto car 0 by the same rule, and leads it.
+    const locoGap = Math.hypot(loco.x - cars[0]!.x, loco.y - cars[0]!.y);
+    const wantLoco = (loco.w + cars[0]!.w) / 2;
+    expect(locoGap).toBeLessThan(wantLoco * 1.1);
+    expect(locoGap).toBeGreaterThan(wantLoco * 0.75);
+
+    // …and the whole consist is one object on the oval, not a scattering.
+    const span = cars.reduce(
+      (max, c) => Math.max(max, Math.hypot(c.x - loco.x, c.y - loco.y)),
+      0,
+    );
+    // A loco plus four cars is ~21% of this oval, measured. Under the model
+    // this replaced, the same consist spanned three quarters of it.
+    expect(span, `the train is spread over the oval at t=${shot.t}`).toBeLessThan(lap * 0.25);
+  }
+
+  // Car 0 is still the phase reference: at progress 0 it is parked ON the
+  // crossing signal, which is what keeps the ride phase-locked to bar 0. (Both
+  // sides come from the same `getPoint`, so this is exact.)
+  expect(shots[0]!.signalDist[0], "car 0 must be parked on the signal at bar 0").toBeLessThan(4);
+});
+
+test("the highlight names the sounding car, and it lands on that car", async ({ page }) => {
+  const CARS = 4;
+  await trainOf(page, CARS);
+
+  const runs = await page.evaluate(async (n) => {
+    const s: any = (window as any).__ibeetkidz_test__.getScene();
+    const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
+    // Parked. The highlight is the readout of "which bar is sounding" and must
+    // not need the train to be rolling to be correct — and a parked train is
+    // also the only way to read a position without the per-car sine bounce
+    // moving it under the measurement.
+    s.setMoving(false);
+    const out: any[] = [];
+    // Bar 0 LAST: the scene opens parked on bar 0, and the bounce fires on a
+    // CHANGE of sounding car. Walking 1,2,…,0 makes every step a real change.
+    const order = [...Array(n).keys()].slice(1).concat(0);
+    for (const bar of order) {
+      // Mid-bar, so nothing hangs on a boundary rounding either way.
+      s.setProgress((bar + 0.5) / n);
+      // The bounce decays over ~260 ms and a headless frame can be 100 ms, so
+      // sample it across the window and keep the peak rather than betting the
+      // assertion on which frame the read lands in.
+      const peak = s.carTokens.map(() => 1);
+      for (let f = 0; f < 4; f++) {
+        await frame();
+        s.carTokens.forEach((c: any, i: number) => {
+          peak[i] = Math.max(peak[i], (c.getData("pop") as number) ?? 1);
+        });
+      }
+      const g = s.glow;
+      out.push({
         bar,
-        dists: s.carTokens.map((c: any) => Math.hypot(c.x - sig.x, c.y - sig.y)),
+        reported: s.rideHighlight,
+        // Which car token the lamp is actually sitting on.
+        lampDist: s.carTokens.map((c: any) => Math.hypot(c.x - g.x, c.y - g.y)),
+        lampWidth: g.displayWidth,
+        carWidth: s.carTokens.map((c: any) => c.getData("body").width * c.scaleX),
+        // The bounce is per-car; only the sounding one should be popped.
+        pop: peak,
       });
     }
     return out;
   }, CARS);
 
-  // The oval is ~4076px around at the reference size; a car body is ~200px.
-  // "At the signal" is exact (both come from the same `getPoint`), so a couple
-  // of pixels is generous; "not at the signal" must be at least a car away.
-  for (const { bar, dists } of runs) {
-    expect(dists[bar], `car ${bar} must sit ON the signal at bar ${bar}`).toBeLessThan(4);
-    dists.forEach((d, i) => {
-      if (i !== bar)
-        expect(d, `car ${i} must NOT be at the signal at bar ${bar}`).toBeGreaterThan(200);
+  for (const run of runs) {
+    const { bar, reported, lampDist, pop } = run as {
+      bar: number;
+      reported: { bar: number; visible: boolean };
+      lampDist: number[];
+      pop: number[];
+    };
+    expect(reported.bar, `the scene must report bar ${bar} as sounding`).toBe(bar);
+    expect(reported.visible, `the lamp must be lit at bar ${bar}`).toBe(true);
+
+    // The lamp is ON the sounding car — nearest to it by a clear margin, not
+    // merely somewhere in the neighbourhood.
+    const nearest = lampDist.indexOf(Math.min(...lampDist));
+    expect(nearest, `the lamp is on car ${nearest}, not the sounding car ${bar}`).toBe(bar);
+    expect(lampDist[bar], `the lamp is not sitting on car ${bar}`).toBeLessThan(
+      run.carWidth[bar] * 0.5,
+    );
+    lampDist.forEach((d, i) => {
+      if (i !== bar) expect(d, `the lamp is ambiguous between cars ${bar} and ${i}`)
+        .toBeGreaterThan(run.carWidth[bar] * 0.5);
+    });
+
+    // The lamp is big enough to read as belonging to the car.
+    expect(run.lampWidth).toBeGreaterThan(run.carWidth[bar] * 0.6);
+
+    // The bounce fires on the sounding car and on nothing else.
+    expect(pop[bar], `car ${bar} must bounce on its bar`).toBeGreaterThan(1.05);
+    pop.forEach((p, i) => {
+      if (i !== bar) expect(p, `car ${i} bounced on car ${bar}'s bar`).toBeCloseTo(1, 5);
     });
   }
 });
@@ -94,28 +217,41 @@ test("the ride never shows a bar the ear has not reached yet", async ({ page }) 
   // one lookAhead in the future. So a correct read of "where the song is" must
   // LAG the wall clock since the play tap by that lead; reading `.ticks`
   // instead put the train a measured 98 ms ahead of its own soundtrack.
+  //
+  // Coupling moved the bar readout off position and onto the highlight, so this
+  // now pins BOTH: `progress` still lags the audio, and the highlight is a pure
+  // function of `progress` — which is what makes it inherit the same guarantee
+  // instead of becoming a second, unchecked clock.
   const CARS = 4;
   await trainOf(page, CARS);
 
-  const lead = await page.evaluate(async (n) => {
+  const result = await page.evaluate(async (n) => {
     const t = (window as any).__ibeetkidz_test__;
     const s: any = t.getScene();
     const barSec = (60 / t.getProject().tempoBpm) * 4;
     const t0 = t.audioDiag().currentTime; // audio clock at the moment of the tap
     t.emit("transport-play", "ride");
     const worst: number[] = [];
+    const disagreements: { progress: number; shown: number; expected: number }[] = [];
     for (let i = 0; i < 90; i++) {
       await new Promise((r) => requestAnimationFrame(r));
       const elapsed = t.audioDiag().currentTime - t0;
-      if (s.progress > 0) worst.push(elapsed - s.progress * n * barSec);
+      const progress = s.progress;
+      const shown = s.rideHighlight.bar;
+      const expected = Math.min(n - 1, Math.floor(progress * n));
+      if (shown !== expected) disagreements.push({ progress, shown, expected });
+      if (progress > 0) worst.push(elapsed - progress * n * barSec);
     }
     t.emit("transport-stop");
-    return worst.length ? Math.min(...worst) : NaN;
+    return { lead: worst.length ? Math.min(...worst) : NaN, disagreements };
   }, CARS);
 
-  expect(lead, "the ride never advanced — nothing was measured").not.toBeNaN();
+  expect(result.lead, "the ride never advanced — nothing was measured").not.toBeNaN();
   // Musical position must always sit BEHIND wall-clock-since-tap by the
   // scheduler's lead (Tone's default lookAhead is 100 ms). Reading the
   // lookahead-shifted clock made this ~0.
-  expect(lead, "the train is running ahead of the audio").toBeGreaterThan(0.03);
+  expect(result.lead, "the train is running ahead of the audio").toBeGreaterThan(0.03);
+  // …and the highlight is derived from that same reading, never from a clock of
+  // its own, so it cannot lead the audio either.
+  expect(result.disagreements, "the highlight disagreed with the transport").toEqual([]);
 });

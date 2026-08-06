@@ -82,8 +82,11 @@ export const TRACK_LAYOUT_V2 = {
   // centreline, clockwise from the right apex). Repaint the plate → retrace
   // the polygon in Tiled; no code here.
   // Where CAR 0 sits at progress 0 — i.e. parked on the crossing signal, which
-  // is what makes "car i is at the signal when bar i sounds" true (the loco
-  // couples on just ahead of it). The traced path starts at the right apex and
+  // is what phase-locks the ride to bar 0; the rest of the consist couples on
+  // behind it by real arc length, and the loco just ahead of it. (Position used
+  // to encode WHICH bar was sounding, via `i / carCount` spacing; that readout
+  // is now the highlight in `TrackScene`, and the cars are coupled.) The traced
+  // path starts at the right apex and
   // runs clockwise, so 0.25 is EXACTLY the bottom-centre straight — right at
   // the crossing signal. Verified against the polygon: t=0.25 lands at
   // normalized (0.5000, 0.6340), and its 64 segments are arc-uniform to within
