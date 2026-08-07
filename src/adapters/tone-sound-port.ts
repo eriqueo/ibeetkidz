@@ -17,6 +17,13 @@ import { createRng } from "../core/rng.ts";
 import { voiceBufferId, type InstrumentId } from "../core/instruments.ts";
 import { gridSubdivision, type QuantizeGrid } from "../core/quantize.ts";
 import {
+  NEUTRAL_TERRAIN,
+  clampSend,
+  clampTempoScale,
+  rampSeconds,
+  type TerrainEffect,
+} from "../core/terrain.ts";
+import {
   stepIndexFromProgress,
   subHitOffsets,
   swingDelayFraction,
@@ -212,6 +219,17 @@ export class ToneSoundPort implements SoundPort {
   /** Per-lane echo sends (FeedbackDelay nodes), torn down with the transport. */
   private readonly scheduledFx: Tone.ToneAudioNode[] = [];
 
+  // Terrain (Track ride): a master-bus insert plus a momentary tempo scale.
+  // `tempoScale` is deliberately SEPARATE from `tempoBpm` — the bake cache keys
+  // off `tempoBpm`, so scaling here can never mint a new cache entry.
+  private tempoScale = 1;
+  private terrainFx?:
+    | { reverb: Tone.Reverb; grit: Tone.Distortion }
+    | undefined;
+  private terrainChainReady?: Promise<void> | undefined;
+  /** Bumped per `scheduleTerrain` so a superseded ride's revert can't fire. */
+  private terrainGen = 0;
+
   // Theremin voice (live, never baked).
   private thereminWave: ThereminWave = "triangle";
   private theremin?:
@@ -237,6 +255,10 @@ export class ToneSoundPort implements SoundPort {
     this.analyser.fftSize = 2048;
     Tone.getDestination().connect(this.analyser);
     this.installKeepAlive();
+    // Build the terrain insert now, while we are already in the boot await:
+    // `Tone.Reverb` renders an impulse response asynchronously, and the Track
+    // must never wait on that when a kid taps a terrain mid-ride.
+    await this.ensureTerrainChain();
   }
 
   /** Dev-only diagnostics for the test bridge: is the context actually
@@ -251,6 +273,10 @@ export class ToneSoundPort implements SoundPort {
     destinationMute: boolean;
     destinationVolumeDb: number;
     masterPeak: number;
+    /** Live transport tempo — the BASE tempo times any terrain in force. */
+    transportBpm: number;
+    /** The terrain tempo multiplier currently applied (1 = flat ground). */
+    terrainScale: number;
   } {
     let masterPeak = -1;
     if (this.analyser) {
@@ -268,6 +294,8 @@ export class ToneSoundPort implements SoundPort {
       destinationMute: dest.mute,
       destinationVolumeDb: dest.volume.value,
       masterPeak,
+      transportBpm: Tone.getTransport().bpm.value,
+      terrainScale: this.tempoScale,
     };
   }
 
@@ -795,6 +823,7 @@ export class ToneSoundPort implements SoundPort {
       const player = new Tone.Player(
         this.drumBuffer(kind, durationSec, pitch),
       ).connect(this.scheduledDestination(opts));
+      player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
       Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
       return;
@@ -806,6 +835,7 @@ export class ToneSoundPort implements SoundPort {
       const player = new Tone.Player(buf).connect(
         this.scheduledDestination(opts),
       );
+      player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
       Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
     });
@@ -1136,7 +1166,92 @@ export class ToneSoundPort implements SoundPort {
     // The engine is the single writer of tempo; record it before handing it to
     // the transport so beat-snapping never has to read the signal back.
     this.tempoBpm = normalizeBpm(bpm);
-    Tone.getTransport().bpm.value = bpm;
+    // An active terrain scales the LIVE transport but never `tempoBpm`, so the
+    // bake cache stays keyed on the base tempo and cannot grow per terrain.
+    Tone.getTransport().bpm.value = bpm * this.tempoScale;
+  }
+
+  /** Build the master-bus terrain insert. Called once, at boot, because
+   *  `Tone.Reverb` has to render an impulse response and exposes `.ready` — the
+   *  await belongs here and not on the hot path. `Destination.chain` splices
+   *  these between the master volume and the speakers, so no individual voice's
+   *  routing changes, and the analyser (which taps the destination's output)
+   *  sees the terrain too — the visualizer keeps showing real signal. */
+  private async ensureTerrainChain(): Promise<void> {
+    if (this.terrainFx) return;
+    this.terrainChainReady ??= (async () => {
+      try {
+        const reverb = new Tone.Reverb({ decay: 2.4, wet: 0 });
+        await reverb.ready;
+        // Waveshaper, NOT BitCrusher. Tone's BitCrusher is an AudioWorklet, and
+        // `new AudioWorkletNode` throws outside a secure context — constructing
+        // one at boot took the whole page down on a plain-http origin (caught by
+        // `tests/e2e/built-artifact.spec.ts`, which serves the build over http).
+        // Distortion is a plain WaveShaperNode: no worklet, works anywhere.
+        const grit = new Tone.Distortion({ distortion: 0.85, wet: 0 });
+        Tone.getDestination().chain(grit, reverb);
+        this.terrainFx = { reverb, grit };
+      } catch {
+        // Terrain is a garnish; booting the app is not. If this environment
+        // can't give us a reverb or an AudioWorklet, the kid still gets the
+        // whole instrument — and `applyTerrainNow` degrades to tempo alone.
+        this.terrainFx = undefined;
+      }
+    })();
+    return this.terrainChainReady;
+  }
+
+  /** Move the world to `effect` right now. Tempo STEPS (see below); the wet
+   *  sends glide over `sendRamp` seconds.
+   *
+   *  Tempo steps rather than ramps on purpose. `Player.playbackRate` is a plain
+   *  number, not a ramp-able Param, so a gliding tempo with a stepped playback
+   *  rate would let baked loops drift against the grid for the length of the
+   *  glide. Landing the change squarely on the bar line is both phase-exact and
+   *  the clearer read for a kid: you hit the hill, the song leans back. */
+  private applyTerrainNow(effect: TerrainEffect, sendRamp: number): void {
+    const scale = clampTempoScale(effect.tempoScale);
+    this.tempoScale = scale;
+    Tone.getTransport().bpm.value = this.tempoBpm * scale;
+    // Baked loops are fixed buffers: they follow a tempo change only if their
+    // playback rate follows too. This is what makes terrain free — no re-bake,
+    // no new cache entries, no reschedule.
+    for (const p of this.scheduledVoices) p.playbackRate = scale;
+    const fx = this.terrainFx;
+    if (!fx) return;
+    fx.reverb.wet.rampTo(clampSend(effect.reverb), sendRamp);
+    fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp);
+  }
+
+  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void {
+    const transport = Tone.getTransport();
+    if (transport.state !== "started") return; // no ride, no terrain
+    const gen = ++this.terrainGen;
+    const hold = Math.max(1, Math.round(holdBars));
+    const tpb = this.ticksPerBar;
+    // Strictly the NEXT bar line, never the one we are standing on: a repeat
+    // scheduled at the exact tick the transport already occupies can be missed
+    // outright (measured in `spike/tempo-phase.ts`).
+    const startTicks = Math.floor(transport.ticks / tpb) * tpb + tpb;
+    const endTicks = startTicks + hold * tpb;
+    const sendRamp = rampSeconds(effect, bpm, hold);
+    // Ticks → seconds here, seconds → ticks inside Tone, both at the tempo in
+    // force right now: an identity round-trip. The events therefore land on the
+    // intended BAR however the tempo moves in between.
+    transport.scheduleOnce(() => {
+      if (gen !== this.terrainGen) return;
+      this.applyTerrainNow(effect, sendRamp);
+    }, Tone.Ticks(startTicks).toSeconds());
+    transport.scheduleOnce(() => {
+      if (gen !== this.terrainGen) return;
+      this.applyTerrainNow(NEUTRAL_TERRAIN, sendRamp);
+    }, Tone.Ticks(endTicks).toSeconds());
+  }
+
+  clearTerrain(): void {
+    this.terrainGen++; // strand any armed ride
+    if (this.tempoScale === 1 && !this.terrainFx) return;
+    this.applyTerrainNow(NEUTRAL_TERRAIN, 0.05);
   }
   startTransport(): void {
     Tone.getTransport().start();
@@ -1149,6 +1264,10 @@ export class ToneSoundPort implements SoundPort {
    *  it plays never interrupts the groove. */
   clearScheduled(): void {
     this.scheduleGen++; // invalidate any async scheduleStep still in flight
+    // `cancel()` below wipes EVERY transport event, including an armed
+    // terrain's revert — which would strand the song slowed or drenched
+    // forever. Editing while riding therefore ends the terrain, deliberately.
+    this.clearTerrain();
     Tone.getTransport().cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;

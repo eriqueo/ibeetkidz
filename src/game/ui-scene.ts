@@ -131,10 +131,22 @@ function wireInstrument(img: Phaser.GameObjects.Image, def: UiSpriteDef, spawn: 
   });
 }
 
-/** Build a transparent hit-area for an art-less spawn (legacy behaviour). */
+/** Parse a Tiled `fill` colour ("#ff8800" / "ff8800") to a Phaser int. */
+function fillColor(value: string): number | undefined {
+  const hex = value.trim().replace(/^#/, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(hex)) return undefined;
+  return Number.parseInt(hex, 16);
+}
+
+/** Build a hit-area for an art-less spawn. Transparent by default (the legacy
+ *  behaviour), but a `fill` in the map paints it — that is what lets a scene be
+ *  greyboxed and played before any of its art exists. */
 function makeHit(scene: Phaser.Scene, spawn: TiledSpawn, rect: Rect, cam: CameraSize, depth: number): Phaser.GameObjects.Rectangle {
   const p = placeSpawn(spawn, rect, cam);
-  const hit = scene.add.rectangle(p.x, p.y, p.width, p.height, 0xffffff, 0).setDepth(depth);
+  const paint = spawn.fill ? fillColor(spawn.fill) : undefined;
+  const hit = scene.add
+    .rectangle(p.x, p.y, p.width, p.height, paint ?? 0xffffff, paint === undefined ? 0 : (spawn.fillAlpha ?? 1))
+    .setDepth(depth);
   if (spawn.action !== undefined) {
     let armed = false;
     hit.setInteractive({ useHandCursor: true });

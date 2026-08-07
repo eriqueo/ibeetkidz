@@ -87,6 +87,14 @@ export interface TiledSpawn {
   /** The `labelColor` custom property → the caption's CSS colour. Absent ⇒ the
    *  default dark plum (right on cream panels; dark scenes author a cream). */
   labelColor?: string;
+  /** The `fill` custom property → a CSS/hex colour painted behind an ART-LESS
+   *  spawn, so a control can be visible before its art exists. This is how a
+   *  scene is greyboxed from the map alone: author the button, see and tap it,
+   *  commission the sprite later. Ignored once the spawn resolves to real art. */
+  fill?: string;
+  /** The `fillAlpha` custom property, 0..1. Absent ⇒ fully opaque when `fill`
+   *  is set. Without `fill` the hit-area stays invisible, as it always was. */
+  fillAlpha?: number;
   /** Normalized centre on the source image, 0..1 (resolution-independent). */
   cx: number;
   cy: number;
@@ -184,6 +192,8 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     const sprite = props["sprite"];
     const label = props["label"];
     const labelColor = props["labelColor"];
+    const fill = props["fill"];
+    const fillAlpha = props["fillAlpha"];
 
     const spawn: TiledSpawn = {
       id: o.name,
@@ -200,6 +210,9 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
     if (typeof sprite === "string" && sprite.length > 0) spawn.sprite = sprite;
     if (typeof label === "string" && label.length > 0) spawn.label = label;
     if (typeof labelColor === "string" && labelColor.length > 0) spawn.labelColor = labelColor;
+    if (typeof fill === "string" && fill.length > 0) spawn.fill = fill;
+    if (typeof fillAlpha === "number" && Number.isFinite(fillAlpha))
+      spawn.fillAlpha = Math.min(1, Math.max(0, fillAlpha));
     return spawn;
   });
 }

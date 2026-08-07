@@ -7,6 +7,7 @@ import {
 } from "../../src/core/project-state.ts";
 import type { Clip, Project } from "../../src/core/types.ts";
 import type { SoundPort } from "../../src/ports/sound-port.ts";
+import { TERRAIN, type TerrainEffect } from "../../src/core/terrain.ts";
 
 /** A SoundPort that records the (cycleBars, barOffset) of every scheduled voice,
  *  so we can assert the Song Train lays cars out across the right bars without
@@ -45,6 +46,16 @@ class FakeSoundPort implements SoundPort {
   clearScheduled(): void {
     this.clears++;
     this.scheduled.length = 0;
+  }
+
+  /** Terrain rides requested, in order, plus how often flat ground was forced. */
+  readonly terrains: { effect: TerrainEffect; holdBars: number; bpm: number }[] = [];
+  terrainClears = 0;
+  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void {
+    this.terrains.push({ effect, holdBars, bpm });
+  }
+  clearTerrain(): void {
+    this.terrainClears++;
   }
 
   // ── inert stubs ──────────────────────────────────────────────────────────
@@ -234,5 +245,70 @@ describe("AudioEngine play modes", () => {
     engine.reconcile(project); // an edit while riding
     expect(sound.clears).toBe(clearsAfterPlay + 1);
     expect(sound.scheduled).toHaveLength(2); // still the whole song
+  });
+});
+
+describe("AudioEngine terrain", () => {
+  it("rides a terrain only while the song is actually playing", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+
+    engine.applyTerrain("hill", project); // stopped — nothing to ride through
+    expect(sound.terrains).toHaveLength(0);
+
+    engine.playRide(project);
+    engine.applyTerrain("hill", project);
+    expect(sound.terrains).toHaveLength(1);
+
+    engine.stop();
+    engine.applyTerrain("hill", project);
+    expect(sound.terrains).toHaveLength(1);
+  });
+
+  it("passes the terrain's effect, hold and the song's own tempo down", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = { ...oneHitCar(), tempoBpm: 96 };
+    engine.playRide(project);
+
+    engine.applyTerrain("bridge", project, 3);
+    expect(sound.terrains[0]).toEqual({
+      effect: TERRAIN.bridge,
+      holdBars: 3,
+      bpm: 96,
+    });
+  });
+
+  it("defaults to a couple of bars, not one", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    engine.playRide(project);
+    engine.applyTerrain("rain", project);
+    expect(sound.terrains[0]?.holdBars).toBe(2);
+  });
+
+  it("terrain never schedules or clears voices — it is not a reschedule", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    engine.playRide(project);
+    const clearsBefore = sound.clears;
+    const scheduledBefore = sound.scheduled.length;
+
+    engine.applyTerrain("hill", project);
+
+    // The whole point of test 0: a hill must not go through the reschedule
+    // path, because cancel+reschedule on a bar line drops that bar's downbeat.
+    expect(sound.clears).toBe(clearsBefore);
+    expect(sound.scheduled).toHaveLength(scheduledBefore);
+  });
+
+  it("clearTerrain returns to flat ground", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    engine.clearTerrain();
+    expect(sound.terrainClears).toBe(1);
   });
 });

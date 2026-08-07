@@ -6,6 +6,7 @@ import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 import { carCargo, carLiveries } from "../core/car-identity.ts";
+import { isTerrainKind } from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
@@ -71,17 +72,27 @@ export const Track: FC = () => {
       const slot = liveTrain(projectRef.current).find((c) => c.instanceId === instanceId);
       if (slot) dispatch({ type: "muteCar", instanceId, muted: !slot.muted });
     };
+    // Terrain: a physical thing the train rides through, heard as a change to
+    // the song. The bar it lands on is resolved from the TRANSPORT inside the
+    // adapter — never from where the train happens to be drawn (charter A4).
+    const onTerrain = (kind: string) => {
+      if (!isTerrainKind(kind)) return;
+      engine.applyTerrain(kind, projectRef.current);
+      sceneRef.current?.showTerrain?.(kind);
+    };
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
     EventBus.on("tempo-changed", onTempo);
     EventBus.on("track-nav", onNav);
     EventBus.on("track-car-mute-toggled", onMuteToggle);
+    EventBus.on("terrain-picked", onTerrain);
     return () => {
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);
       EventBus.off("track-nav", onNav);
       EventBus.off("track-car-mute-toggled", onMuteToggle);
+      EventBus.off("terrain-picked", onTerrain);
     };
   }, [dispatch, engine]);
 

@@ -9,6 +9,7 @@ import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
 import { activeLayers, liveTrain, partForCar } from "./project-state.ts";
 import { resolveInstrument } from "./instruments.ts";
+import { DEFAULT_HOLD_BARS, terrainEffect, type TerrainKind } from "./terrain.ts";
 
 /** What the transport is playing: "loop" repeats the active car forever (Home's
  *  Play — today's behavior); "ride" plays the whole arrangement, car after car,
@@ -36,6 +37,28 @@ export class AudioEngine {
 
   setTempo(bpm: number): void {
     this.sound.setTempo(bpm);
+  }
+
+  /** Ride through a terrain: it lands on the NEXT bar, holds for `holdBars`,
+   *  then the world goes back to normal. Ephemeral by design — no `Command`, no
+   *  reducer entry, no undo history: this is a performance, not a composition.
+   *
+   *  `when` is resolved from the TRANSPORT inside the adapter, never from the
+   *  train's on-screen position. PROJECT_CHARTER.md Decision A4: the audio
+   *  clock drives the visual, never the reverse. */
+  applyTerrain(
+    kind: TerrainKind,
+    project: Project,
+    holdBars: number = DEFAULT_HOLD_BARS,
+  ): void {
+    if (!this.started || !this.playing) return;
+    this.sound.scheduleTerrain(terrainEffect(kind), holdBars, project.tempoBpm);
+  }
+
+  /** Drop any terrain and return to flat ground now. */
+  clearTerrain(): void {
+    if (!this.started) return;
+    this.sound.clearTerrain();
   }
 
   /** Set the global on-beat snap grid for one-off triggers. */

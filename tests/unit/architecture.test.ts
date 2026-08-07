@@ -184,6 +184,32 @@ describe("architecture guards (source text over src/**)", () => {
     expect(sites.every((hit) => hit.startsWith("src/game/"))).toBe(true);
   });
 
+  // 8. The audio clock drives the visual, NEVER the reverse (PROJECT_CHARTER
+  // Decision A4). Terrain is the most likely place to invert that, because it
+  // is *picked* while the train is moving, so "which bar does this land on?"
+  // reads naturally — and wrongly — as "where is the train drawn right now?".
+  // The answer must come from the transport, which lives behind SoundPort. So:
+  // nothing in the game/render layer may schedule terrain itself.
+  it("resolves terrain from the transport, never from the render loop", () => {
+    const renderLayer = SOURCES.filter(([p]) => p.startsWith("src/game/"));
+    expect(renderLayer.length).toBeGreaterThan(0);
+    expect(offenders(/\bscheduleTerrain\s*\(/, renderLayer)).toEqual([]);
+    // …and the scene must not compute a bar for it either.
+    expect(offenders(/\bapplyTerrain\s*\(/, renderLayer)).toEqual([]);
+  });
+
+  // The guard above is worthless if terrain scheduling has moved or vanished.
+  it("has exactly one place that schedules terrain", () => {
+    const sites = offenders(/\bscheduleTerrain\s*\(/).map((h) => h.split(":")[0]);
+    expect(new Set(sites)).toEqual(
+      new Set([
+        "src/ports/sound-port.ts", // the contract
+        "src/adapters/tone-sound-port.ts", // the one implementation
+        "src/core/audio-engine.ts", // the one caller
+      ]),
+    );
+  });
+
   // The editor is only worth guarding if it is actually there.
   it("has an editor to guard", () => {
     const files = SOURCES.filter(([p]) => p.startsWith("src/editor/")).map(([p]) => p);

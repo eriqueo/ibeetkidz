@@ -515,3 +515,60 @@ animations today and that pass will want it.
 
 Full audit with `file:line` for every item is in the Phase 3 scope of
 `~/.claude/plans/hidden-riding-truffle.md`.
+
+---
+
+## Re-baseline — 2026-08-07, terrain: Phase 1 audio spike landed
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **507** / 32 files, 0 skipped | 486 / 31 |
+| E2E local | **36 passed**, 0 failed | 32 |
+| E2E under `CI=1` | 32 passed, 4 skipped (unchanged skips) | 28 + 4 |
+| E2E spec files | **9** | 8 |
+| Tracked files | **521** | 512 |
+
+New: `tests/unit/terrain.test.ts` (14), `tests/e2e/terrain.spec.ts` (4, **none
+skipped** — they assert on the live transport, not on audible output, so they run
+on CI), plus 2 new guards in `architecture.test.ts` (now 11) and 5 in
+`audio-engine.test.ts`.
+
+**Test 0 passed, and it changed the design.** The plan's gating question was
+whether a mid-song tempo change keeps the song in phase. Measured under Tone's
+offline renderer in real Chromium (`spike/tempo-phase.ts`, re-runnable):
+
+| Path | Result |
+|---|---|
+| Change bpm alone | **Phase-exact.** 0.5 s spacing → 1.0 s spacing, no beat dropped or doubled. Tone's timeline is in tempo-independent ticks. |
+| `clearScheduled()` + reschedule, on a bar line | **Drops that bar's downbeat.** Gap 1.504 s where 1.0 s was due. |
+| `clearScheduled()` + reschedule, just before a bar line | Clean, and the ~0.1 s wall-clock shift is musically correct — that is what slowing down means. |
+| Baked 1-bar loop, tempo halved, untouched | Does not stretch: 5 s hole, then wrong internal spacing. |
+| Same loop + `player.playbackRate = 0.5` | **Re-locks exactly**: internal clicks 1.0 s → 2.0 s, filling the new 4 s bar. |
+
+So terrain deliberately does **not** go through `reconcile()`. That single finding
+removes two risks the plan had budgeted for: no re-bake means **no reschedule cost
+to measure** and **no new bake-cache entries**, so cache eviction is no longer a
+prerequisite for this mechanic. `tempoScale` is kept separate from `tempoBpm` for
+exactly that reason — the cache stays keyed on the base tempo and cannot grow.
+
+Two guards encode the finding: `architecture.test.ts` rule 8 forbids the render
+layer from scheduling terrain at all (PROJECT_CHARTER A4 — the train must never
+drive the audio), and asserts terrain is scheduled in exactly three files.
+
+**A regression this round, caught by the suite, worth recording.** The first
+implementation put a `Tone.BitCrusher` on the master bus at boot. BitCrusher is an
+**AudioWorklet** node, and `new AudioWorkletNode` throws outside a secure context —
+so the page crashed on any plain-http origin. `built-artifact.spec.ts` serves the
+build over `http://ibeetkidz.test/` and caught it; the deployed https sites would
+not have. Rain now uses `Tone.Distortion` (a plain WaveShaper, no worklet), which
+also settles the plan's open "crunch or a real distortion node?" question with
+evidence rather than taste. The core field is named `grit`, not `crush`, so the
+name stops implying bitcrush.
+
+**Terrain is ephemeral by construction**: no `Command`, no reducer entry, no undo
+history, no schema bump. Editing while riding ends the terrain, deliberately —
+`clearScheduled()` calls `Tone.Transport.cancel()`, which would otherwise strand
+the revert event and leave the song slowed forever.
+
+`spike/` is a throwaway harness at the repo root, outside the `src/**` glob the
+architecture guards scan — which is why it may import Tone directly.

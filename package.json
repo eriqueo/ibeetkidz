@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Kidpix for audio — a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
+  "description": "Kidpix for audio \u2014 a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && npm run build:gh",
@@ -15,7 +15,9 @@
     "test:unit": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "npm run build:gh && playwright test",
-    "test:e2e:headed": "npm run build:gh && playwright test --headed"
+    "test:e2e:headed": "npm run build:gh && playwright test --headed",
+    "deploy": "npm run build && npm run deploy:cf",
+    "deploy:cf": "npx -y wrangler@4 pages deploy ./dist --project-name=ibeetkidz --branch=main --commit-dirty=true"
   },
   "dependencies": {
     "phaser": "^4.2.0",

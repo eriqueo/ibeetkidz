@@ -5,6 +5,7 @@
 import type { Clip, EffectDescriptor, ThereminWave } from "../core/types.ts";
 import type { InstrumentId } from "../core/instruments.ts";
 import type { QuantizeGrid } from "../core/quantize.ts";
+import type { TerrainEffect } from "../core/terrain.ts";
 
 /** Opaque handle to an audio buffer held by the adapter (keyed by id). */
 export type BufferId = string;
@@ -142,6 +143,25 @@ export interface SoundPort {
   startTransport(): void;
   stopTransport(): void;
   stopAll(): void;
+
+  /** Ride through a terrain: glide into `effect` at the start of the NEXT bar,
+   *  hold it for `holdBars`, then glide back to flat ground. A second call
+   *  supersedes an in-flight one.
+   *
+   *  This deliberately does NOT go through `clearScheduled` + reschedule, and
+   *  that is the whole point. Measured (`spike/tempo-phase.ts`): a tempo change
+   *  on its own keeps the song perfectly in phase, because Tone's timeline is
+   *  in tempo-independent ticks — but cancelling and re-scheduling exactly on a
+   *  bar line DROPS that bar's downbeat, which is precisely the moment terrain
+   *  lands on. Baked loops follow the new tempo via `playbackRate`, so nothing
+   *  needs re-baking and the bake cache cannot grow.
+   *
+   *  No-ops when the transport is stopped: terrain is something you ride
+   *  through, so there has to be a ride. */
+  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void;
+
+  /** Drop any armed terrain and return to flat ground immediately. */
+  clearTerrain(): void;
 
   /** Tear down scheduled loop voices WITHOUT stopping the transport, so the
    *  loop keeps playing across edits. Reconcile re-schedules right after. */

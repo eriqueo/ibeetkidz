@@ -168,6 +168,8 @@ export class TrackScene extends BackgroundScene {
   private lcdChip?: Phaser.GameObjects.Graphics;
   private tempoText?: Phaser.GameObjects.Text;
   private tempoBpm = 120;
+  /** Transient "HILL"/"BRIDGE"/"RAIN" acknowledgement over the oval. */
+  private terrainToast?: Phaser.GameObjects.Text | undefined;
   private lcdRect?: { width: number; height: number };
   // SEND flow: a plaque in the header (same cream-chip treatment as the LCD,
   // anchored to the `btn-send` Tiled display object) + the result panel. State
@@ -405,6 +407,40 @@ export class TrackScene extends BackgroundScene {
       this.lcdRect = { width: p.width, height: p.height };
       this.refreshLcd();
     }
+  }
+
+  /** React → scene: acknowledge a terrain pick THE INSTANT it is tapped.
+   *
+   *  The sound itself lands on the next bar, which is deliberate — but a gap
+   *  between a tap and any response is exactly how a four-year-old learns that
+   *  a button does nothing. This closes it: the tap answers now, the music
+   *  answers on the beat. (GAME_FEEL Law 8.) */
+  showTerrain(kind: string): void {
+    if (!this.ready) return;
+    this.terrainToast?.destroy();
+    const r = this.backgroundRect;
+    const toast = this.add
+      .text(r.centerX, r.y + r.height * 0.26, kind.toUpperCase(), {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+        stroke: "#2b2440",
+        strokeThickness: 6,
+      })
+      .setOrigin(0.5)
+      .setDepth(60)
+      .setFontSize(Math.max(14, Math.round(r.height * 0.055)));
+    this.terrainToast = toast;
+    this.tweens.add({
+      targets: toast,
+      alpha: 0,
+      y: toast.y - r.height * 0.06,
+      duration: 1400,
+      ease: "Quad.easeIn",
+      onComplete: () => {
+        toast.destroy();
+        if (this.terrainToast === toast) this.terrainToast = undefined;
+      },
+    });
   }
 
   /** React → scene: the song tempo shown on the SPEED LCD. */

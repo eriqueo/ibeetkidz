@@ -17,6 +17,10 @@ export interface EventMap {
   "transport-play": [mode: "loop" | "ride"];
   "transport-stop": [];
   "tempo-changed": [delta: number]; // e.g., +10 or -10
+  // Tiled hit -> React (Track): ride through a terrain. Lands on the NEXT bar,
+  // holds a couple of bars, then the world goes back to normal — the Lemmings
+  // move, applied to the song. Ephemeral: it never enters project state.
+  "terrain-picked": [kind: string];
   // Phaser -> React (Yard): the kid picked a palette car (selection reflected;
   // React makes it the active car so edit/delete target it).
   "yard-car-selected": [partId: string];
