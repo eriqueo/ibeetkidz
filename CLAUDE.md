@@ -54,9 +54,30 @@ npm run test       # unit (Vitest)  — gate
 npm run lint       # eslint . (ticket S2) — gate
 npm run test:e2e   # Playwright, chromium, faked media
 npm run build      # dist/ (/) + dist-gh/ (/ibeetkidz/)
+npm run deploy     # build, then push dist/ to Cloudflare Pages
 ```
 
 **The gate is `npm run typecheck && npm run test && npm run lint`.**
+
+### Deploying — the work is not done until it is live
+
+Eric tests on the **live site**, never a dev server. Two independent targets ship
+the same commit, so a bad day at either vendor doesn't block a deploy:
+
+| Target | How | URL |
+|---|---|---|
+| **Cloudflare Pages** | `npm run deploy` (direct upload, no CI in the path) | <https://ibeetkidz.pages.dev> |
+| **GitHub Pages** | `git push origin main` → Actions | <https://eriqueo.github.io/ibeetkidz/> |
+
+**Deploy `dist/`, never `dist-gh/`, to Cloudflare.** `dist-gh/` hardcodes
+`/ibeetkidz/` into every asset URL for GitHub's sub-path; on a domain root that
+404s every file. `npm run build` emits both — the `deploy:cf` script names the
+right one, so use it rather than reconstructing the command.
+
+**A push is not a deploy.** Confirm the live bundle hash matches the one you
+built (`rg -o 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html`, then fetch the
+live `/`) before reporting anything as shipped. The Cloudflare production alias
+lags the deploy URL by roughly 30–60 s.
 
 ### Gate numbers live in `BASELINE.md`, not here
 
