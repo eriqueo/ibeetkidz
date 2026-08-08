@@ -17,6 +17,7 @@
 import { describe, expect, it } from "vitest";
 import {
   CAR_COLORS,
+  carIdentities,
   carCargo,
   carLiveries,
   liveryIndexOf,
@@ -190,5 +191,53 @@ describe("glyphs", () => {
     const seen = new Set<string>();
     for (let i = 0; i < MAX_CARS; i += 1) seen.add(`${glyphFor(i)}|${colorFor(i)}`);
     expect(seen.size).toBe(MAX_CARS);
+  });
+});
+
+describe("carIdentities — one producer for every view", () => {
+  const clips = {} as Record<string, never>;
+  const parts = [
+    makePart("a", "Loop 1", CAR_COLORS[0]!, []),
+    makePart("b", "Loop 2", CAR_COLORS[3]!, []),
+    makePart("c", "Loop 3", CAR_COLORS[1]!, []),
+  ];
+
+  it("gives every car a 1-based number matching its livery", () => {
+    const ids = carIdentities(parts, clips);
+    expect(ids.get("a")!.number).toBe(1); // CAR_COLORS[0]
+    expect(ids.get("b")!.number).toBe(4); // CAR_COLORS[3]
+    expect(ids.get("c")!.number).toBe(2); // CAR_COLORS[1]
+  });
+
+  it("numbers are unique across the library", () => {
+    const nums = [...carIdentities(parts, clips).values()].map((i) => i.number);
+    expect(new Set(nums).size).toBe(nums.length);
+  });
+
+  it("a car KEEPS its number when other cars are deleted", () => {
+    // This is the whole point: identity is looked up by the car's own colour,
+    // never by its position in an array. Position-derived identity is exactly
+    // how a car built in the Workshop becomes a different car in the Yard.
+    const before = carIdentities(parts, clips).get("c")!.number;
+    const after = carIdentities([parts[1]!, parts[2]!], clips).get("c")!.number;
+    expect(after).toBe(before);
+  });
+
+  it("a car keeps its number when a new car is added", () => {
+    const before = carIdentities(parts, clips).get("b")!.number;
+    const grown = [...parts, makePart("d", "Loop 4", CAR_COLORS[7]!, [])];
+    expect(carIdentities(grown, clips).get("b")!.number).toBe(before);
+  });
+
+  it("carries the same channels every view draws", () => {
+    const id = carIdentities(parts, clips).get("a")!;
+    expect(id).toMatchObject({
+      partId: "a",
+      name: "Loop 1",
+      color: CAR_COLORS[0],
+      liveryIndex: 0,
+      cargo: null, // no lanes yet
+    });
+    expect(id.carType).toBeTruthy();
   });
 });

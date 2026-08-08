@@ -932,7 +932,9 @@ export class TrackScene extends BackgroundScene {
     const children: Phaser.GameObjects.GameObject[] = [body];
     // Identity rides BETWEEN the body and the tarp: a tarped car is covered, so
     // its load and livery are covered too, which is the truth the tarp states.
-    children.push(...decorateMovingCar(this, FRAME_SIZE, car.livery, car.cargo));
+    children.push(
+      ...decorateMovingCar(this, FRAME_SIZE, car.livery, car.cargo, car.livery + 1),
+    );
     if (car.muted) {
       const tarp = this.add.image(0, 0, "tarp", "tarp").setOrigin(0.5);
       tarp.setPosition(body.x, body.y);

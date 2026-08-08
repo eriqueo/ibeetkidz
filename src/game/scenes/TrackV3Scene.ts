@@ -1,4 +1,4 @@
-// Track v3 — the side-scroller, GREYBOX.
+// Track v3 — the side-scroller.
 //
 // Not a redraw of the oval: a different premise. Eric's mechanic ("hills slow
 // the tempo, a bridge adds reverb, rain adds distortion, picked live like a
@@ -7,18 +7,32 @@
 // across the screen, and "next" has no direction.
 //
 // So the loop is unrolled into a line: one world laid out in bar order,
-// scrolling right-to-left past a fixed playhead. The ground under bar b, the
-// car for bar b and the terrain applied to bar b all travel together and reach
-// the playhead at the same instant. The consequence Eric asked about —
-// "does a four-year-old connect a tap to a change one bar later?" — mostly
-// dissolves: the hill is drawn ON the approaching ground, visibly coming.
+// scrolling right-to-left past a fixed playhead. The ground under bar b, the car
+// for bar b and the terrain applied to bar b all travel together and reach the
+// playhead at the same instant, so the next bar's terrain is drawn ON the
+// approaching ground, visibly coming.
 //
-// EVERY pixel here is generated (`Graphics` → `generateTexture`). No art is
-// commissioned until this greybox has been played and the premise is proven —
-// four art requests were filed against the oval and superseded in a single day.
+// ── TERRAIN IS GEOMETRY ────────────────────────────────────────────────────
+// A hill really lifts the rails and the train really climbs it, nose-up on the
+// way and nose-down off the back. A bridge is a real deck over a real gap. Rain
+// is real weather in a moving shaft. All three read `../terrain-profile.ts`,
+// which is the SINGLE source of truth for a terrain's shape: the greybox texture
+// is generated from it, the train's height is it, and the train's tilt is it
+// differentiated. Nothing here draws a silhouette of its own.
 //
-// The arithmetic lives in `../track-scroll.ts`, Phaser-free and unit-tested.
-// This file only draws.
+// ── SWAPPING THE ART ───────────────────────────────────────────────────────
+// Every texture is declared once in `ART_SLOTS` below with the key it will live
+// under and the generator that stands in until real art exists. `preload` skips
+// the generator for any key already in the TextureManager, so shipping art is:
+//
+//   1. add the file to `src/game/assets.ts`,
+//   2. load it under the SAME key in `preload`,
+//   3. delete nothing — the generator simply stops being called.
+//
+// The one contract art must honour is the profile: a hill sprite has to match
+// `liftSamples`, or the train will float above it or sink into it exactly the
+// way the oval did. That is why the greybox mound is drawn FROM that function
+// rather than eyeballed — the brief for the artist is a curve, not a vibe.
 
 import Phaser from "phaser";
 import { EventBus } from "../EventBus.ts";
@@ -33,11 +47,24 @@ import {
   wheelAngle,
   type ScrollView,
 } from "../track-scroll.ts";
+import {
+  BRIDGE_GAP,
+  HILL_PEAK,
+  groundDrop,
+  liftSamples,
+  railAngle,
+  railLift,
+  type TerrainSpan,
+} from "../terrain-profile.ts";
+import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 
-/** One car of the train, as the view needs it. */
+/** One car of the train, as the view needs it. Mirrors `core.CarIdentity` —
+ *  the same numbers the Workshop LCD and the Yard sidings show. */
 export interface V3Car {
   readonly id: string;
+  /** The car's spoken name: "car 3". Stable across every view. */
+  readonly number: number;
   readonly livery: number;
   readonly muted: boolean;
 }
@@ -52,37 +79,38 @@ export interface V3TerrainRide {
 const W = 2560;
 const H = 1440;
 
-// Horizon bands, back to front. `rate` is relative to the rails (1.0).
+// Horizon bands, back to front.
 const SKY_Y = 0;
 const HILLS_Y = 470;
 const TREES_Y = 690;
 const GROUND_Y = 980; // top of the ground slab
-const RAIL_Y = 1010; // where wheels touch
-// The occluder fringe starts ABOVE the railhead on purpose: it has to overlap
-// the wheels or it proves nothing. Law 3 wants the actor to actually disappear
-// behind something — but only its bottom third, so the turning wheel stays
-// legible.
+const RAIL_Y = 1010; // where wheels touch on FLAT ground
 const FORE_Y = 975;
-// Height of the near fringe. Deliberately a STRIP, not a slab: a slab hides
-// the rails, the ballast and everything drawn on them.
 const FORE_H = 130;
-// Terrain is a translucent COLUMN standing on the ground, spanning the bars it
-// covers — not a stripe on the ballast. Two earlier placements were invisible:
-// at the ground line it hid behind the cars, and below the rails it hid behind
-// the fringe. A column cannot be covered by either, and it reads from across
-// the room as a zone of weather you are about to ride into.
-const TERRAIN_TOP_Y = 250;
-const TERRAIN_LABEL_Y = 300;
+const TERRAIN_LABEL_Y = 330;
+
+/** Reference width every terrain texture is drawn at before being stretched to
+ *  its span. Height is NEVER scaled — the profile is normalized across the span
+ *  in x but absolute in y, so stretching horizontally keeps picture and physics
+ *  in agreement. */
+const TERRAIN_REF_W = 1024;
 
 const DEPTH = {
   sky: 0,
   hills: 1,
   trees: 2,
   ground: 3,
-  terrain: 2.5,
+  mound: 3.5, // a hill: the train stands ON it
   shadow: 5,
   train: 6,
   foreground: 7,
+  // A bridge means there is no ground and no grass here, so both its void and
+  // its structure draw IN FRONT of the near fringe — otherwise the fringe (a
+  // full-width strip that cannot have a hole punched in it) covers the whole
+  // thing, which is exactly how the first pass shipped an invisible bridge.
+  gap: 7.05,
+  deck: 7.1,
+  rain: 7.5,
   playhead: 8,
   hud: 10,
 } as const;
@@ -90,11 +118,6 @@ const DEPTH = {
 const CAR_W = 300;
 const CAR_H = 190;
 const WHEEL_R = 30;
-
-const LIVERY = [
-  0xc4453a, 0x3f7fb5, 0x4f9d54, 0xd08b2c, 0x8a5cb0, 0x2f9c9c,
-  0xb5476f, 0x7a6a55, 0x5566c4, 0xd0563a, 0x3f8f6b, 0x9a4bc4,
-];
 
 const TERRAIN_PAINT: Record<TerrainKind, number> = {
   hill: 0x4f8f38,
@@ -119,11 +142,16 @@ export class TrackV3Scene extends Phaser.Scene {
   private ground?: Phaser.GameObjects.TileSprite;
   private fore?: Phaser.GameObjects.TileSprite;
 
-  /** Car sprites are pooled per visible bar slot, not per song bar: the world
-   *  is longer than the song, so bar 1 and bar 5 of a 4-bar song can both be on
-   *  screen at once and each needs its own body. */
   private slots: SlotView[] = [];
-  private terrainBand?: Phaser.GameObjects.Rectangle;
+  private mound?: Phaser.GameObjects.Image;
+  private deck?: Phaser.GameObjects.Image;
+  private gap?: Phaser.GameObjects.Rectangle;
+  /** Rain is a fast-scrolling streak sheet clipped to its bar span, not a
+   *  particle emitter. Deterministic, no RNG (`Math.random` is banned in src/
+   *  and view jitter does not earn an RngPort), and one object instead of
+   *  hundreds — for a shaft of rain seen for two bars the read is identical. */
+  private rainSheet?: Phaser.GameObjects.TileSprite;
+  private gloom?: Phaser.GameObjects.Rectangle;
   private terrainLabel?: Phaser.GameObjects.Text;
   private marker?: Phaser.GameObjects.Rectangle;
   private lastPos = 0;
@@ -138,34 +166,56 @@ export class TrackV3Scene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#87ceeb");
 
     this.sky = this.add
-      .tileSprite(0, SKY_Y, W, HILLS_Y, "gb-sky")
+      .tileSprite(0, SKY_Y, W, HILLS_Y, "trk-sky")
       .setOrigin(0, 0)
       .setDepth(DEPTH.sky);
     this.hills = this.add
-      .tileSprite(0, HILLS_Y, W, TREES_Y - HILLS_Y + 40, "gb-hills")
+      .tileSprite(0, HILLS_Y, W, TREES_Y - HILLS_Y + 40, "trk-hills")
       .setOrigin(0, 0)
       .setDepth(DEPTH.hills);
     this.trees = this.add
-      .tileSprite(0, TREES_Y, W, GROUND_Y - TREES_Y + 40, "gb-trees")
+      .tileSprite(0, TREES_Y, W, GROUND_Y - TREES_Y + 40, "trk-trees")
       .setOrigin(0, 0)
       .setDepth(DEPTH.trees);
     this.ground = this.add
-      .tileSprite(0, GROUND_Y, W, H - GROUND_Y, "gb-ground")
+      .tileSprite(0, GROUND_Y, W, H - GROUND_Y, "trk-ground")
       .setOrigin(0, 0)
       .setDepth(DEPTH.ground);
     // Law 3: the actor must be able to pass BEHIND something, or the scene is a
-    // decal on a photograph. This strip is drawn over the train, and it rushes
-    // past faster than the rails because it is nearer the camera.
+    // decal on a photograph. A strip, not a slab — a slab hides the rails.
     this.fore = this.add
-      .tileSprite(0, FORE_Y, W, FORE_H, "gb-foreground")
+      .tileSprite(0, FORE_Y, W, FORE_H, "trk-foreground")
       .setOrigin(0, 0)
       .setDepth(DEPTH.foreground);
 
-    this.terrainBand = this.add
-      .rectangle(0, TERRAIN_TOP_Y, 0, GROUND_Y - TERRAIN_TOP_Y, 0xffffff, 0.38)
+    // ── terrain bodies, all hidden until a ride commits one ─────────────────
+    this.gap = this.add
+      .rectangle(0, GROUND_Y, 0, BRIDGE_GAP, 0x1d2b3a, 1)
       .setOrigin(0, 0)
-      .setDepth(DEPTH.terrain)
+      .setDepth(DEPTH.gap)
       .setVisible(false);
+    this.mound = this.add
+      .image(0, GROUND_Y, "trk-mound")
+      .setOrigin(0, 1)
+      .setDepth(DEPTH.mound)
+      .setVisible(false);
+    this.deck = this.add
+      .image(0, RAIL_Y, "trk-bridge")
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.deck)
+      .setVisible(false);
+    this.gloom = this.add
+      .rectangle(0, 0, 0, GROUND_Y, 0x24303f, 0.34)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.rain - 0.1)
+      .setVisible(false);
+    this.rainSheet = this.add
+      .tileSprite(0, 0, 10, GROUND_Y, "trk-rain")
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.rain)
+      .setAlpha(0.75)
+      .setVisible(false);
+
     this.terrainLabel = this.add
       .text(0, TERRAIN_LABEL_Y, "", {
         fontFamily: "'Press Start 2P', monospace",
@@ -175,7 +225,7 @@ export class TrackV3Scene extends Phaser.Scene {
       })
       .setOrigin(0.5, 0)
       .setFontSize(34)
-      .setDepth(DEPTH.terrain)
+      .setDepth(DEPTH.playhead)
       .setVisible(false);
 
     // The playhead: a fixed trackside post. Whatever is under it is sounding.
@@ -202,8 +252,8 @@ export class TrackV3Scene extends Phaser.Scene {
     EventBus.emit("current-scene-ready", this);
   }
 
-  /** Nav + transport. The oval gets these from Tiled chrome, which is authored
-   *  against its plate; the greybox has no plate, so it draws its own. */
+  /** Nav + transport. The oval gets these from Tiled chrome authored against its
+   *  plate; the greybox has no plate, so it draws its own. */
   private buildTopBar(): void {
     const items: { label: string; fire: () => void }[] = [
       { label: "MAP", fire: () => void EventBus.emit("track-nav", "map") },
@@ -214,9 +264,7 @@ export class TrackV3Scene extends Phaser.Scene {
     items.forEach((item, i) => {
       const cx = 220 + i * 300;
       this.pressable(
-        this.add
-          .rectangle(cx, 90, 250, 110, 0x3a3350, 1)
-          .setDepth(DEPTH.hud + 1),
+        this.add.rectangle(cx, 90, 250, 110, 0x3a3350, 1).setDepth(DEPTH.hud + 1),
         item.fire,
       );
       this.add
@@ -251,7 +299,7 @@ export class TrackV3Scene extends Phaser.Scene {
     });
   }
 
-  /** The Lemmings job bar. Greyboxed: flat swatches, real hit areas. */
+  /** The Lemmings job bar. */
   private buildLegend(): void {
     const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
     const bw = 260;
@@ -277,7 +325,6 @@ export class TrackV3Scene extends Phaser.Scene {
         .setOrigin(0.5, 0)
         .setFontSize(30)
         .setDepth(DEPTH.hud + 2);
-
       // Law 8: the response happens THIS frame, even though the sound lands on
       // the next bar.
       this.pressable(swatch, () => void EventBus.emit("terrain-picked", kind));
@@ -301,7 +348,7 @@ export class TrackV3Scene extends Phaser.Scene {
     if (!moving) this.speedBars = 0;
   }
 
-  /** The transport committed a terrain to a bar span; draw it there. */
+  /** The transport committed a terrain to a bar span; build it there. */
   setTerrainRide(ride: V3TerrainRide | null): void {
     this.ride = ride;
   }
@@ -319,7 +366,6 @@ export class TrackV3Scene extends Phaser.Scene {
     }
     this.lastPos = this.pos;
 
-    const dist = travelPx(this.pos, this.view);
     // Parallax. Every offset is floored to a whole pixel inside
     // `parallaxOffset` — a fractional tilePosition makes pixel art shimmer.
     if (this.sky) this.sky.tilePositionX = parallaxOffset(this.pos, this.view, 0.05);
@@ -328,91 +374,144 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     if (this.fore) this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45);
 
-    // The playhead is bright while the song is running and dim when it is not,
-    // so a stopped ride reads as stopped rather than as broken.
     this.marker?.setFillStyle(0xffe9b0, this.moving ? 0.75 : 0.25);
 
-    this.layoutTrain(dist);
     this.layoutTerrain();
+    this.layoutTrain(travelPx(this.pos, this.view));
+  }
+
+  private get span(): TerrainSpan | null {
+    return this.ride;
   }
 
   private layoutTrain(dist: number): void {
     const total = this.cars.length;
     if (total === 0) {
-      for (const s of this.slots) s.root.setVisible(false);
+      for (const s of this.slots) s.hide();
       return;
     }
     const slots = visibleBars(this.pos, total, this.view);
     const sounding = barAtPlayhead(this.pos);
     const bob = bobOffset(dist, this.speedBars);
     const angle = wheelAngle(dist, WHEEL_R);
+    const span = this.span;
 
     this.slots.forEach((s, i) => {
       const slot = slots[i];
-      if (!slot) {
-        s.root.setVisible(false);
+      const car = slot ? this.cars[slot.songBar] : undefined;
+      if (!slot || !car) {
+        s.hide();
         return;
       }
-      const car = this.cars[slot.songBar];
-      if (!car) {
-        s.root.setVisible(false);
-        return;
-      }
-      s.root.setVisible(true);
-      s.root.setPosition(Math.round(slot.centreX), Math.round(RAIL_Y + bob));
-      s.body.setFillStyle(LIVERY[car.livery % LIVERY.length]!, car.muted ? 0.35 : 1);
+      // The car's own position along the song is what the ground is sampled at,
+      // so the body sits on the surface the profile drew — never near it.
+      const atBar = slot.absBar + 0.5;
+      const lift = railLift(atBar, span);
+      const tilt = railAngle(atBar, span, this.view.barWidth);
+      const y = Math.round(RAIL_Y - lift + bob);
+
+      s.show();
+      s.root.setPosition(Math.round(slot.centreX), y);
+      s.root.setRotation(tilt);
+      s.body.setFillStyle(hexToInt(colorFor(car.livery)), car.muted ? 0.35 : 1);
+      s.label.setText(String(car.number));
+      s.label.setColor(inkOnCss(colorFor(car.livery)));
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
       // The sounding bar is a palette change, not new art (the era's technique).
-      const isNow = slot.absBar === sounding;
-      s.roof.setFillStyle(isNow ? 0xffe9b0 : 0x2b2440, 1);
-      s.label.setText(String(slot.songBar + 1));
-      // Law 2: the shadow is the only thing that says where the base meets the
-      // ground. It tightens as the body lifts.
-      s.shadow.setPosition(Math.round(slot.centreX), RAIL_Y + 34);
+      s.roof.setFillStyle(slot.absBar === sounding ? 0xffe9b0 : 0x2b2440, 1);
+      // Law 2: the shadow says where the base meets the ground, so it has to
+      // ride the LIFTED surface too, and tighten as the body bounces off it.
+      s.shadow.setPosition(Math.round(slot.centreX), Math.round(RAIL_Y - lift + 34));
+      s.shadow.setRotation(tilt);
       s.shadow.setScale(1 - Math.abs(bob) / 60, 1);
     });
   }
 
   private layoutTerrain(): void {
-    const band = this.terrainBand;
-    const label = this.terrainLabel;
-    if (!band || !label) return;
     const ride = this.ride;
-    if (!ride) {
-      band.setVisible(false);
-      label.setVisible(false);
+    const span = ride
+      ? terrainSpanX(ride.startBar, ride.endBar, this.pos, this.view)
+      : null;
+
+    if (!ride || !span || span.width <= 0) {
+      this.mound?.setVisible(false);
+      this.deck?.setVisible(false);
+      this.gap?.setVisible(false);
+      this.gloom?.setVisible(false);
+      this.rainSheet?.setVisible(false);
+      this.terrainLabel?.setVisible(false);
       return;
     }
-    const span = terrainSpanX(ride.startBar, ride.endBar, this.pos, this.view);
-    if (!span || span.width <= 0) {
-      band.setVisible(false);
-      label.setVisible(false);
-      return;
-    }
-    band.setVisible(true).setPosition(Math.round(span.x), TERRAIN_TOP_Y);
-    band.setSize(Math.round(span.width), GROUND_Y - TERRAIN_TOP_Y);
-    band.setFillStyle(TERRAIN_PAINT[ride.kind], 0.38);
-    label
-      .setVisible(true)
+
+    const x = Math.round(span.x);
+    const w = Math.round(span.width);
+
+    this.terrainLabel
+      ?.setVisible(true)
       .setPosition(Math.round(span.x + span.width / 2), TERRAIN_LABEL_Y)
       .setText(ride.kind.toUpperCase());
+
+    // A hill: a real mound the train stands on. Stretched in x only — the
+    // profile is normalized across the span, so the silhouette still matches
+    // `railLift` at every point.
+    const isHill = ride.kind === "hill";
+    this.mound?.setVisible(isHill);
+    if (isHill && this.mound) {
+      this.mound.setPosition(x, GROUND_Y + 2);
+      this.mound.setDisplaySize(w, HILL_PEAK);
+    }
+
+    // A bridge: the ground falls away and a deck carries the rails across it.
+    const isBridge = ride.kind === "bridge";
+    this.gap?.setVisible(isBridge);
+    this.deck?.setVisible(isBridge);
+    if (isBridge && this.gap && this.deck) {
+      // Inset by the shoulder so the dark gap starts where the ground actually
+      // drops, rather than squarely at the bar line.
+      const drop = groundDrop((ride.startBar + ride.endBar) / 2, ride);
+      this.gap.setPosition(x, RAIL_Y + 26);
+      this.gap.setSize(w, Math.max(1, drop));
+      // Girder immediately under the wheels, piers hanging into the void.
+      this.deck.setPosition(x, RAIL_Y);
+      this.deck.setDisplaySize(w, 170);
+    }
+
+    // Rain: weather in a moving shaft, plus the sky going over.
+    const isRain = ride.kind === "rain";
+    this.gloom?.setVisible(isRain);
+    if (isRain && this.gloom) {
+      this.gloom.setPosition(x, 0);
+      this.gloom.setSize(w, GROUND_Y);
+    }
+    this.rainSheet?.setVisible(isRain);
+    if (isRain && this.rainSheet) {
+      this.rainSheet.setPosition(x, 0);
+      this.rainSheet.setSize(w, GROUND_Y);
+      // Falls fast and drifts with the world, so it belongs to the scene rather
+      // than sitting on the glass in front of it.
+      this.rainSheet.tilePositionY = Math.floor(this.time.now * 2.2);
+      this.rainSheet.tilePositionX = parallaxOffset(this.pos, this.view, 1);
+    }
   }
 
-  /** Read-only geometry for tests. A screenshot cannot test speed-scaling or
-   *  whether the terrain is drawn AHEAD of the playhead; this can. */
+  /** Read-only geometry for tests. A screenshot cannot test speed-scaling, or
+   *  whether the train is standing ON the hill it is drawn over. */
   debugState(): {
     pos: number;
     playheadX: number;
     wheelAngle: number;
     soundingCarX: number | null;
+    soundingCarY: number | null;
+    soundingCarAngle: number;
     terrain: { x: number; width: number; kind: string } | null;
   } {
     const dist = travelPx(this.pos, this.view);
     const sounding = barAtPlayhead(this.pos);
     const slots = visibleBars(this.pos, Math.max(1, this.cars.length), this.view);
     const now = slots.find((s) => s.absBar === sounding);
+    const atBar = sounding + 0.5;
     const span = this.ride
       ? terrainSpanX(this.ride.startBar, this.ride.endBar, this.pos, this.view)
       : null;
@@ -421,6 +520,8 @@ export class TrackV3Scene extends Phaser.Scene {
       playheadX: playheadX(this.view),
       wheelAngle: wheelAngle(dist, WHEEL_R),
       soundingCarX: now ? now.centreX : null,
+      soundingCarY: now ? RAIL_Y - railLift(atBar, this.span) : null,
+      soundingCarAngle: railAngle(atBar, this.span, this.view.barWidth),
       terrain: span && this.ride ? { ...span, kind: this.ride.kind } : null,
     };
   }
@@ -430,7 +531,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const needed = visibleBars(0, Math.max(1, this.cars.length), this.view).length + 2;
     while (this.slots.length < needed) this.slots.push(this.makeSlot());
     for (let i = 0; i < this.slots.length; i++) {
-      this.slots[i]!.root.setVisible(i < needed);
+      if (i >= needed) this.slots[i]!.hide();
     }
   }
 
@@ -441,17 +542,29 @@ export class TrackV3Scene extends Phaser.Scene {
     const root = this.add.container(0, 0).setDepth(DEPTH.train);
     const body = this.add.rectangle(0, -CAR_H / 2, CAR_W, CAR_H, 0xc4453a, 1);
     const roof = this.add.rectangle(0, -CAR_H - 10, CAR_W * 0.86, 26, 0x2b2440, 1);
-    const wheelA = this.add.image(-CAR_W * 0.28, -WHEEL_R, "gb-wheel");
-    const wheelB = this.add.image(CAR_W * 0.28, -WHEEL_R, "gb-wheel");
+    const wheelA = this.add.image(-CAR_W * 0.28, -WHEEL_R, "trk-wheel");
+    const wheelB = this.add.image(CAR_W * 0.28, -WHEEL_R, "trk-wheel");
     const label = this.add
-      .text(0, -CAR_H / 2 - 18, "1", {
+      .text(0, -CAR_H / 2, "1", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#1a1526",
       })
       .setOrigin(0.5)
-      .setFontSize(40);
+      .setFontSize(64);
     root.add([body, roof, wheelA, wheelB, label]);
-    return { root, body, roof, wheelA, wheelB, label, shadow };
+    const view: SlotView = {
+      root, body, roof, wheelA, wheelB, label, shadow,
+      show: () => {
+        root.setVisible(true);
+        shadow.setVisible(true);
+      },
+      hide: () => {
+        root.setVisible(false);
+        shadow.setVisible(false);
+      },
+    };
+    view.hide();
+    return view;
   }
 }
 
@@ -463,23 +576,27 @@ interface SlotView {
   readonly wheelB: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly shadow: Phaser.GameObjects.Ellipse;
+  readonly show: () => void;
+  readonly hide: () => void;
 }
 
 /**
- * Every texture the greybox needs, drawn at runtime. Nothing here is art — it
- * is the shape of the scene, so the premise can be judged before a single
- * sprite is commissioned.
+ * Every texture the scene needs, drawn at runtime.
+ *
+ * `tex` early-returns when the key already exists, which IS the art-swap seam:
+ * load a real texture under the same key in `preload` and the generator below
+ * never runs. Nothing else in the file refers to "greybox".
  */
 function makeGreyboxTextures(scene: Phaser.Scene): void {
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   const tex = (key: string, w: number, h: number, draw: () => void): void => {
-    if (scene.textures.exists(key)) return;
+    if (scene.textures.exists(key)) return; // real art wins
     g.clear();
     draw();
     g.generateTexture(key, w, h);
   };
 
-  tex("gb-sky", 512, 512, () => {
+  tex("trk-sky", 512, 512, () => {
     g.fillStyle(0x87ceeb, 1).fillRect(0, 0, 512, 512);
     g.fillStyle(0xffffff, 0.85);
     g.fillEllipse(120, 120, 220, 80);
@@ -487,16 +604,14 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
   });
 
   // Receding planes desaturate and lose contrast — atmospheric perspective is
-  // what makes a STATIC frame read as deep. Parallax only amplifies depth; it
-  // cannot create it.
-  tex("gb-hills", 640, 300, () => {
+  // what makes a STATIC frame read as deep. Parallax amplifies depth; it cannot
+  // create it.
+  tex("trk-hills", 640, 300, () => {
     g.fillStyle(0x9db8a0, 1);
-    for (let i = 0; i < 5; i++) {
-      g.fillEllipse(i * 160, 250, 360, 300);
-    }
+    for (let i = 0; i < 5; i++) g.fillEllipse(i * 160, 250, 360, 300);
   });
 
-  tex("gb-trees", 480, 320, () => {
+  tex("trk-trees", 480, 320, () => {
     g.fillStyle(0x4f7a4a, 1);
     for (let i = 0; i < 6; i++) {
       const x = i * 80 + 40;
@@ -505,8 +620,7 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
     g.fillStyle(0x3d6b3a, 1).fillRect(0, 245, 480, 75);
   });
 
-  // Ground slab with sleepers and a rail line, so travel is legible.
-  tex("gb-ground", 320, 460, () => {
+  tex("trk-ground", 320, 460, () => {
     g.fillStyle(0x6f9440, 1).fillRect(0, 0, 320, 460);
     g.fillStyle(0x8a7355, 1).fillRect(0, 22, 320, 60);
     g.fillStyle(0x5d4a36, 1);
@@ -515,11 +629,8 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
     g.fillStyle(0x5f8438, 1).fillRect(0, 96, 320, 364);
   });
 
-  // Foreground occluder: the train draws BEHIND this.
-  tex("gb-foreground", 360, FORE_H, () => {
+  tex("trk-foreground", 360, FORE_H, () => {
     g.fillStyle(0x24421f, 1).fillRect(0, 70, 360, FORE_H - 70);
-    // Tips at the very top of the texture, so placing it at FORE_Y puts the
-    // fringe IN FRONT of the wheels rather than safely below them.
     g.fillStyle(0x2f5230, 1);
     for (let i = 0; i < 18; i++) {
       const x = i * 20 + 8;
@@ -527,7 +638,46 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
     }
   });
 
-  tex("gb-wheel", WHEEL_R * 2, WHEEL_R * 2, () => {
+  // THE MOUND IS DRAWN FROM THE PROFILE. Not an approximation of it — the same
+  // samples the train's height is read from. This is the contract real art has
+  // to honour, and drawing it this way is how the greybox proves it is possible.
+  tex("trk-mound", TERRAIN_REF_W, HILL_PEAK, () => {
+    const samples = liftSamples(
+      { kind: "hill", startBar: 0, endBar: 1 },
+      TERRAIN_REF_W / 8,
+    );
+    const pts: Phaser.Math.Vector2[] = [new Phaser.Math.Vector2(0, HILL_PEAK)];
+    samples.forEach((lift, i) => {
+      const x = (i / (samples.length - 1)) * TERRAIN_REF_W;
+      pts.push(new Phaser.Math.Vector2(x, HILL_PEAK - lift));
+    });
+    pts.push(new Phaser.Math.Vector2(TERRAIN_REF_W, HILL_PEAK));
+    g.fillStyle(0x5f8438, 1).fillPoints(pts, true);
+    // A rail line following the crest, so the surface reads as track.
+    g.lineStyle(7, 0x8a7355, 1).strokePoints(pts.slice(1, -1), false);
+  });
+
+  tex("trk-bridge", TERRAIN_REF_W, 150, () => {
+    g.fillStyle(0x6b5334, 1).fillRect(0, 0, TERRAIN_REF_W, 26); // deck
+    g.fillStyle(0x8a7a5c, 1);
+    for (let i = 0; i < 26; i++) g.fillRect(i * 40 + 6, 26, 12, 124); // piers
+    g.fillStyle(0x5b4529, 1).fillRect(0, 92, TERRAIN_REF_W, 14); // cross brace
+  });
+
+  // Diagonal streaks that tile seamlessly in both axes: each streak is drawn
+  // twice, offset by the tile size, so the wrap has no seam.
+  tex("trk-rain", 128, 128, () => {
+    g.fillStyle(0xbcd8f0, 0.9);
+    for (let i = 0; i < 7; i++) {
+      const x = i * 18;
+      for (const dy of [-128, 0]) {
+        g.fillTriangle(x, dy, x + 4, dy, x - 14, dy + 128);
+        g.fillTriangle(x + 4, dy, x - 10, dy + 128, x - 14, dy + 128);
+      }
+    }
+  });
+
+  tex("trk-wheel", WHEEL_R * 2, WHEEL_R * 2, () => {
     g.fillStyle(0x2b2440, 1).fillCircle(WHEEL_R, WHEEL_R, WHEEL_R);
     g.fillStyle(0xb9b9c4, 1).fillCircle(WHEEL_R, WHEEL_R, WHEEL_R * 0.36);
     // A spoke, so rotation is actually visible on a circle.

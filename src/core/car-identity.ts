@@ -28,8 +28,60 @@
 // of five collapse into "dark thing". Colour identity has to be painted BESIDE
 // the sprite (see `src/game/car-livery.ts`), never onto it.
 
-import type { Clip, Part } from "./types.ts";
+import type { CarType, Clip, Part } from "./types.ts";
 import { laneGroup, type LaneGroup } from "./lane-color.ts";
+
+/**
+ * Everything that makes a car recognisably ITSELF, in one object.
+ *
+ * The point is that there is exactly ONE producer. Before this, the Workshop,
+ * the Yard and the Track each assembled their own shape out of `carLiveries` +
+ * `carCargo` + fields off `Part` — four assemblies of the same idea, which is
+ * how a car can look like one thing in the shed and another on the rails. A
+ * view that consumes this cannot disagree with a view that also consumes it.
+ */
+export interface CarIdentity {
+  readonly partId: string;
+  /** The car's NUMBER, 1-based — the channel you can say out loud.
+   *
+   *  Derived from the livery index, so it is stable for the life of the car and
+   *  unique across the yard, and it survives other cars being added or deleted:
+   *  it is looked up by the car's own colour, never by its position in an array.
+   *  Position-derived identity is precisely how things get lost. */
+  readonly number: number;
+  readonly name: string;
+  readonly liveryIndex: number;
+  readonly color: string;
+  readonly carType: CarType;
+  /** What the car carries, folded live out of its own lanes. */
+  readonly cargo: LaneGroup | null;
+}
+
+/**
+ * The identity of every car in the library, keyed by part id. Resolved over the
+ * WHOLE library because livery uniqueness is a property of the set, not of any
+ * one car (see `carLiveries`).
+ */
+export function carIdentities(
+  parts: readonly Part[],
+  clips: Readonly<Record<string, Clip>>,
+): ReadonlyMap<string, CarIdentity> {
+  const liveries = carLiveries(parts);
+  const out = new Map<string, CarIdentity>();
+  for (const part of parts) {
+    const liveryIndex = liveries.get(part.id) ?? 0;
+    out.set(part.id, {
+      partId: part.id,
+      number: liveryIndex + 1,
+      name: part.name,
+      liveryIndex,
+      color: part.color,
+      carType: part.carType,
+      cargo: carCargo(part, clips),
+    });
+  }
+  return out;
+}
 
 /**
  * Livery colours, one per car slot — `MAX_CARS` is 12, so this table is 12 long

@@ -37,8 +37,37 @@ import {
   glyphFor,
   hexToInt,
   inkOn,
+  inkOnCss,
   type LiveryGlyph,
 } from "./livery-style.ts";
+
+/**
+ * The car's NUMBER, painted on the livery panel beside its glyph.
+ *
+ * A fourth channel, and the only one that can be spoken. Colour, shape and load
+ * all let you say "that one" while pointing; none of them let a kid say "where's
+ * car three?" — which is the question that exposed whether a car built in the
+ * Workshop is visibly the same car in the Yard and on the Track.
+ *
+ * Added to the car's own container by both decorators below, so it rides, scales
+ * and is destroyed with the car like every other identity channel.
+ */
+function addCarNumber(
+  scene: Phaser.Scene,
+  carNumber: number,
+  cx: number,
+  cy: number,
+  panelH: number,
+  ink: string,
+): Phaser.GameObjects.Text {
+  return scene.add
+    .text(cx, cy, String(carNumber), {
+      fontFamily: "'Press Start 2P', monospace",
+      color: ink,
+    })
+    .setOrigin(0.5)
+    .setFontSize(Math.max(6, Math.round(panelH * 0.46)));
+}
 
 /** Draw `glyph` centred on (cx, cy) at radius `r`, filled `fill`. */
 export function drawGlyph(
@@ -120,6 +149,7 @@ export function decorateCar(
   frameSize: number,
   liveryIndex: number,
   cargo: LaneGroup | null,
+  carNumber?: number,
 ): Phaser.GameObjects.GameObject[] {
   const [x0, y0, x1, y1] = content;
   // Body box in container coords. `alignCarBody` puts the content's horizontal
@@ -147,7 +177,8 @@ export function decorateCar(
 
   // ── the livery panel, painted on the flank ──────────────────────────────
   const color = colorFor(liveryIndex);
-  const panelW = Math.max(6, w * 0.44);
+  // Widened from 0.44 to make room for the number alongside the glyph.
+  const panelW = Math.max(6, w * 0.56);
   const panelH = Math.max(6, h * 0.36);
   const panelY = -h * 0.58; // upper-middle of the body, clear of the wheels
   const rad = Math.min(panelW, panelH) * 0.22;
@@ -157,8 +188,13 @@ export function decorateCar(
     .fillRoundedRect(-panelW / 2 - edge, panelY - panelH / 2 - edge, panelW + edge * 2, panelH + edge * 2, rad + edge)
     .fillStyle(hexToInt(color), 1)
     .fillRoundedRect(-panelW / 2, panelY - panelH / 2, panelW, panelH, rad);
-  drawGlyph(g, glyphFor(liveryIndex), 0, panelY, panelH * 0.33, inkOn(color));
+  const hasNum = typeof carNumber === "number";
+  const glyphX = hasNum ? -panelW * 0.26 : 0;
+  drawGlyph(g, glyphFor(liveryIndex), glyphX, panelY, panelH * 0.3, inkOn(color));
   out.push(g);
+  if (hasNum) {
+    out.push(addCarNumber(scene, carNumber, panelW * 0.2, panelY, panelH, inkOnCss(color)));
+  }
 
   return out;
 }
@@ -182,6 +218,7 @@ export function decorateMovingCar(
   cellSize: number,
   liveryIndex: number,
   cargo: LaneGroup | null,
+  carNumber?: number,
 ): Phaser.GameObjects.GameObject[] {
   const out: Phaser.GameObjects.GameObject[] = [];
 
@@ -196,7 +233,7 @@ export function decorateMovingCar(
   }
 
   const color = colorFor(liveryIndex);
-  const w = cellSize * 0.3;
+  const w = cellSize * 0.38;
   const h = cellSize * 0.22;
   const edge = Math.max(1, h * 0.1);
   const g = scene.add.graphics();
@@ -204,8 +241,12 @@ export function decorateMovingCar(
     .fillRoundedRect(-w / 2 - edge, -h / 2 - edge, w + edge * 2, h + edge * 2, h * 0.3 + edge)
     .fillStyle(hexToInt(color), 1)
     .fillRoundedRect(-w / 2, -h / 2, w, h, h * 0.3);
-  drawGlyph(g, glyphFor(liveryIndex), 0, 0, h * 0.33, inkOn(color));
+  const hasNum = typeof carNumber === "number";
+  drawGlyph(g, glyphFor(liveryIndex), hasNum ? -w * 0.26 : 0, 0, h * 0.3, inkOn(color));
   out.push(g);
+  if (hasNum) {
+    out.push(addCarNumber(scene, carNumber, w * 0.2, 0, h, inkOnCss(color)));
+  }
 
   return out;
 }

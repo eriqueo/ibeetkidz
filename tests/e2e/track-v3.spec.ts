@@ -125,3 +125,56 @@ test("a picked terrain lands AHEAD of the playhead — you see it coming", async
   const later = await state(page);
   if (later.terrain) expect(later.terrain.x).toBeLessThan(s.terrain.x);
 });
+
+test("a hill lifts the train and tilts it — terrain is geometry, not a colour", async ({
+  page,
+}) => {
+  await bootV3(page);
+  await emit(page, "transport-play", "ride");
+  await page.waitForTimeout(600);
+
+  const flat = await state(page);
+  expect(flat.soundingCarAngle).toBe(0);
+  const flatY = flat.soundingCarY;
+
+  await emit(page, "terrain-picked", "hill");
+
+  // Wait for the hill to actually reach the playhead, then check the car is
+  // standing ON it: higher up the screen, and rotated.
+  let climbed: any = null;
+  for (let i = 0; i < 60; i++) {
+    const s = await state(page);
+    if (s.soundingCarY !== null && s.soundingCarY < flatY - 20) {
+      climbed = s;
+      break;
+    }
+    await page.waitForTimeout(120);
+  }
+  expect(climbed, "the train never climbed the hill").not.toBeNull();
+  expect(climbed.soundingCarY).toBeLessThan(flatY); // up the screen = uphill
+  expect(Math.abs(climbed.soundingCarAngle)).toBeGreaterThan(0.05); // tilted
+
+  // …and the world goes back to flat on its own.
+  await expect
+    .poll(async () => (await state(page)).soundingCarAngle, { timeout: 30_000 })
+    .toBe(0);
+});
+
+test("a bridge and rain leave the rails level — only a hill is a climb", async ({
+  page,
+}) => {
+  await bootV3(page);
+  await emit(page, "transport-play", "ride");
+  await page.waitForTimeout(600);
+  const flatY = (await state(page)).soundingCarY;
+
+  for (const kind of ["bridge", "rain"]) {
+    await emit(page, "terrain-picked", kind);
+    for (let i = 0; i < 25; i++) {
+      const s = await state(page);
+      expect(s.soundingCarAngle).toBe(0);
+      expect(s.soundingCarY).toBe(flatY);
+      await page.waitForTimeout(100);
+    }
+  }
+});

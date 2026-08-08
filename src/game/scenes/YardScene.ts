@@ -412,7 +412,7 @@ export class YardScene extends BackgroundScene {
     ring.setVisible(false);
 
     const c = this.add.container(0, 0, [ring, body]);
-    c.add(decorateCar(this, content, FRAME_SIZE, car.livery, car.cargo));
+    c.add(decorateCar(this, content, FRAME_SIZE, car.livery, car.cargo, car.livery + 1));
     c.setData("ring", ring);
     c.setData("body", body);
     c.setDepth(isTrain ? 5 : 4);

@@ -666,7 +666,9 @@ export class WorkshopScene extends BackgroundScene {
     // "SPEED", matching the Track's LCD — this read "TEMP", a truncation of
     // TEMPO that fit the chip but is not a word. Eric asked for SPEED here.
     this.tempoText?.setText(`SPEED ${Math.round(this.model.tempoBpm)}`);
-    this.songText?.setText(this.model.carName.toUpperCase());
+    this.songText?.setText(
+      `${this.model.livery + 1}\u00b7${this.model.carName.toUpperCase()}`,
+    );
     this.drawLiveryMark(); // the name's width moved, so the glyph must too
   }
 

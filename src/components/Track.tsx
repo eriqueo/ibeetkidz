@@ -6,7 +6,7 @@ import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 import { TrackV3Scene } from "../game/scenes/TrackV3Scene.ts";
-import { carCargo, carLiveries } from "../core/car-identity.ts";
+import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
@@ -47,6 +47,23 @@ export const Track: FC = () => {
   const carsRef = useRef(cars);
   carsRef.current = cars;
 
+  // The side-scroller takes the SAME identity the Workshop LCD and the Yard
+  // sidings show — one producer, so "car 3" is car 3 everywhere.
+  const v3Cars = useMemo(() => {
+    const ids = carIdentities(project.parts, project.clips);
+    return liveTrain(project).map((c) => {
+      const id = ids.get(c.partId);
+      return {
+        id: c.instanceId,
+        number: id?.number ?? 1,
+        livery: id?.liveryIndex ?? 0,
+        muted: c.muted,
+      };
+    });
+  }, [project]);
+  const v3CarsRef = useRef(v3Cars);
+  v3CarsRef.current = v3Cars;
+
   // Latest project for the EventBus listeners (registered once, no stale closure).
   const projectRef = useRef(project);
   projectRef.current = project;
@@ -54,9 +71,7 @@ export const Track: FC = () => {
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     if (scene instanceof TrackV3Scene) {
       v3Ref.current = scene;
-      scene.setCars(
-        carsRef.current.map((c) => ({ id: c.id, livery: c.livery, muted: c.muted })),
-      );
+      scene.setCars(v3CarsRef.current);
       return;
     }
     sceneRef.current = scene as TrackScene;
@@ -72,10 +87,8 @@ export const Track: FC = () => {
 
   useEffect(() => {
     sceneRef.current?.setCars(cars);
-    v3Ref.current?.setCars(
-      cars.map((c) => ({ id: c.id, livery: c.livery, muted: c.muted })),
-    );
-  }, [cars]);
+    v3Ref.current?.setCars(v3CarsRef.current);
+  }, [cars, v3Cars]);
   useEffect(() => { sceneRef.current?.setTempo(project.tempoBpm); }, [project.tempoBpm]);
 
   // Phaser transport buttons → audio engine / state, across the EventBus.

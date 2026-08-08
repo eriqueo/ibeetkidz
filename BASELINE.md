@@ -621,3 +621,74 @@ wheels — enough to prove Law 3 without hiding the mechanism it occludes.
 `track-scroll.ts` is Phaser-free for the usual reason: a real `import Phaser`
 cannot load under jsdom, so anything inside a scene file is unreachable by the
 unit suite by construction.
+
+---
+
+## Re-baseline — 2026-08-07, terrain becomes geometry + one identity producer
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **553** / 34 files, 0 skipped | 531 / 33 |
+| E2E local | **43 passed**, 0 failed | 41 |
+| E2E under `CI=1` | 39 passed, 4 skipped (unchanged skips) | 37 + 4 |
+| E2E spec files | 10 | 10 |
+
+New unit file: `tests/unit/terrain-profile.test.ts` (18); `car-identity.test.ts`
+gained 5 and `track-v3.spec.ts` gained 2.
+
+### Terrain is geometry now, not a colour wash
+
+`src/game/terrain-profile.ts` is the SINGLE source of a terrain's shape, and
+three things read it so they cannot disagree: the greybox texture is generated
+from `liftSamples`, the train's height IS `railLift`, and its tilt is `railSlope`
+— the same curve differentiated analytically rather than sampled, so the tilt
+cannot lag the height. Measured at the playhead: on a hill the sounding car sits
+at y 915 against 1010 on the flat, rotated −0.436 rad; on a bridge and in rain it
+stays at 1010 / 0 exactly.
+
+A raised cosine, not a parabola, so the hill meets flat ground with zero slope at
+both ends — the join is the part the eye catches.
+
+**This is also the art contract.** Real hill art has to match `liftSamples` or the
+train will float above it or sink into it, which is precisely how the oval
+shipped. Drawing the greybox mound FROM that function is what proves the contract
+is satisfiable; the brief for an artist is a curve, not a vibe.
+
+### The art swap seam
+
+Every texture is generated under a stable `trk-*` key and `makeGreyboxTextures`
+early-returns for any key already in the TextureManager. Shipping art is: add the
+file to `assets.ts`, load it under the same key, change nothing else — the
+generator simply stops being called. No `gb-` naming survives.
+
+### One producer for car identity
+
+`carIdentities(parts, clips)` in `src/core/car-identity.ts` returns the whole
+identity of every car — number, name, livery, colour, carType, cargo — and every
+view consumes THAT. Before, the Workshop, Yard, Track and v3 each assembled their
+own shape out of `carLiveries` + `carCargo` + fields off `Part`: four assemblies
+of one idea.
+
+**Cars now carry a NUMBER**, drawn by `decorateCar` / `decorateMovingCar` (so
+Workshop, Yard and Track all got it from one edit) and by the v3 slot bodies. It
+is `liveryIndex + 1`, which is looked up by the car's own colour and therefore
+survives other cars being added or deleted — asserted by two tests, because
+position-derived identity is exactly how a car built in the shed becomes a
+different car on the rails. The Workshop LCD reads `3·LOOP 3`.
+
+`inkOnCss` joins `inkOn` in `livery-style.ts` so a number and the glyph beside it
+cannot end up contrasting differently.
+
+### Two defects found by looking, one by a test
+
+- The **bridge was invisible**: its void sat behind the ground slab and its deck
+  behind the near fringe — a full-width strip that cannot have a hole punched in
+  it. Both now draw in FRONT of the fringe (a bridge means there is no grass
+  here), which is also physically right.
+- **Rain is a scrolling streak TileSprite, not particles.** Phaser's own typings
+  reject a `Geom.Rectangle` as a `RandomZone` source, and the obvious workaround
+  needed `Math.random`, which `architecture.test.ts` rule 3 bans in `src/`. One
+  object instead of hundreds, deterministic, and the read is identical.
+- `railAngle` returned **`-0`** on level ground, and `Object.is(-0, 0)` is false,
+  so "level" failed an equality check forever. Normalized at the source with a
+  test, rather than loosened in the assertion.

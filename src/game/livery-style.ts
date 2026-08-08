@@ -12,6 +12,7 @@ import type { LaneGroup } from "../core/lane-color.ts";
 /** Cream chip face + dark-plum edge — the `undo-toast` / LCD chip language, so
  *  the livery invents no new dialect. */
 export const CHIP_FACE = 0xe9d7ac;
+export const CHIP_FACE_CSS = "#e9d7ac";
 export const CHIP_EDGE = 0x2b2440;
 export const CHIP_EDGE_CSS = "#2b2440";
 
@@ -86,4 +87,11 @@ export function luma(hex: string): number {
  */
 export function inkOn(hex: string): number {
   return luma(hex) > 0.55 ? CHIP_EDGE : CHIP_FACE;
+}
+
+/** `inkOn` as a CSS string, for `Text` (which cannot take a packed int). Same
+ *  threshold and the same two colours, so a glyph and the number beside it can
+ *  never end up contrasting differently. */
+export function inkOnCss(hex: string): string {
+  return luma(hex) > 0.55 ? CHIP_EDGE_CSS : CHIP_FACE_CSS;
 }
