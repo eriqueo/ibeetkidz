@@ -1223,9 +1223,13 @@ export class ToneSoundPort implements SoundPort {
     fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp);
   }
 
-  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void {
+  scheduleTerrain(
+    effect: TerrainEffect,
+    holdBars: number,
+    bpm: number,
+  ): { startBar: number; endBar: number } | null {
     const transport = Tone.getTransport();
-    if (transport.state !== "started") return; // no ride, no terrain
+    if (transport.state !== "started") return null; // no ride, no terrain
     const gen = ++this.terrainGen;
     const hold = Math.max(1, Math.round(holdBars));
     const tpb = this.ticksPerBar;
@@ -1246,6 +1250,7 @@ export class ToneSoundPort implements SoundPort {
       if (gen !== this.terrainGen) return;
       this.applyTerrainNow(NEUTRAL_TERRAIN, sendRamp);
     }, Tone.Ticks(endTicks).toSeconds());
+    return { startBar: startTicks / tpb, endBar: endTicks / tpb };
   }
 
   clearTerrain(): void {

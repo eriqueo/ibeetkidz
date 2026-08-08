@@ -51,8 +51,13 @@ class FakeSoundPort implements SoundPort {
   /** Terrain rides requested, in order, plus how often flat ground was forced. */
   readonly terrains: { effect: TerrainEffect; holdBars: number; bpm: number }[] = [];
   terrainClears = 0;
-  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void {
+  /** Pretend the ride is at bar 7, so callers can be checked on what they do
+   *  with the span the real transport hands back. */
+  scheduleTerrain(
+    effect: TerrainEffect, holdBars: number, bpm: number,
+  ): { startBar: number; endBar: number } | null {
     this.terrains.push({ effect, holdBars, bpm });
+    return { startBar: 8, endBar: 8 + holdBars };
   }
   clearTerrain(): void {
     this.terrainClears++;

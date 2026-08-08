@@ -5,15 +5,26 @@ import { liveTrain } from "../core/project-state.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
+import { TrackV3Scene } from "../game/scenes/TrackV3Scene.ts";
 import { carCargo, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
+/** `?v3` swaps the oval for the side-scroller greybox. A flag, not a
+ *  replacement: the oval stays the default until v3 is demonstrably better,
+ *  and both are driven by the same transport and the same EventBus actions. */
+function wantsV3(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("v3");
+}
+
 export const Track: FC = () => {
   const { dispatch, engine, sound, getProject } = useApp();
   const project = useProject();
+  const v3 = useMemo(wantsV3, []);
   const sceneRef = useRef<TrackScene | null>(null);
+  const v3Ref = useRef<TrackV3Scene | null>(null);
 
   // Same derived identity the Yard shows, so a car a kid picked out in the
   // sidings is recognisably the same car riding the oval.
@@ -41,6 +52,13 @@ export const Track: FC = () => {
   projectRef.current = project;
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
+    if (scene instanceof TrackV3Scene) {
+      v3Ref.current = scene;
+      scene.setCars(
+        carsRef.current.map((c) => ({ id: c.id, livery: c.livery, muted: c.muted })),
+      );
+      return;
+    }
     sceneRef.current = scene as TrackScene;
     sceneRef.current.setCars(carsRef.current);
     sceneRef.current.setTempo(projectRef.current.tempoBpm);
@@ -52,7 +70,12 @@ export const Track: FC = () => {
     sceneRef.current.attachVisualizer(engine.getAnalyser(), getProject);
   }, [engine, getProject]);
 
-  useEffect(() => { sceneRef.current?.setCars(cars); }, [cars]);
+  useEffect(() => {
+    sceneRef.current?.setCars(cars);
+    v3Ref.current?.setCars(
+      cars.map((c) => ({ id: c.id, livery: c.livery, muted: c.muted })),
+    );
+  }, [cars]);
   useEffect(() => { sceneRef.current?.setTempo(project.tempoBpm); }, [project.tempoBpm]);
 
   // Phaser transport buttons → audio engine / state, across the EventBus.
@@ -77,8 +100,12 @@ export const Track: FC = () => {
     // adapter — never from where the train happens to be drawn (charter A4).
     const onTerrain = (kind: string) => {
       if (!isTerrainKind(kind)) return;
-      engine.applyTerrain(kind, projectRef.current);
+      const ride = engine.applyTerrain(kind, projectRef.current);
       sceneRef.current?.showTerrain?.(kind);
+      // The bar span comes back FROM the transport, so the side-scroller draws
+      // the hill exactly where the audio will make it happen — it never works
+      // the bar out from where the train is on screen (charter A4).
+      if (ride) v3Ref.current?.setTerrainRide(ride);
     };
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
@@ -163,6 +190,20 @@ export const Track: FC = () => {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
+      const v3scene = v3Ref.current;
+      if (v3scene) {
+        const riding = engine.isPlaying && engine.playMode === "ride";
+        v3scene.setMoving(riding);
+        if (riding) {
+          const RES = 4096;
+          const sub = sound.getTransportStep(RES);
+          const frac = sub >= 0 ? sub / RES : 0;
+          // ABSOLUTE bars, not a normalized lap: the side-scroller lays the
+          // world out in bar order and never wraps its own position, so a
+          // terrain scheduled at bar 37 is drawn at bar 37.
+          v3scene.setSongPosition((engine.getTransportBar?.() ?? 0) + frac);
+        }
+      }
       const scene = sceneRef.current;
       if (scene) {
         const riding = engine.isPlaying && engine.playMode === "ride";
@@ -190,7 +231,10 @@ export const Track: FC = () => {
 
   return (
     <div style={VIEW_OVERLAY}>
-      <PhaserScene scene={TrackScene} onSceneReady={handleSceneReady} />
+      <PhaserScene
+        scene={v3 ? TrackV3Scene : TrackScene}
+        onSceneReady={handleSceneReady}
+      />
 
       {/* The whole view lives inside TrackScene now: nav + transport are Tiled
           chrome, muting is tap-the-car-to-tarp-it, and the SEND flow (plaque +

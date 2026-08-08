@@ -572,3 +572,52 @@ the revert event and leave the song slowed forever.
 
 `spike/` is a throwaway harness at the repo root, outside the `src/**` glob the
 architecture guards scan — which is why it may import Tone directly.
+
+---
+
+## Re-baseline — 2026-08-07, Track v3 side-scroller greybox (behind `?v3`)
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **531** / 33 files, 0 skipped | 507 / 32 |
+| E2E local | **41 passed**, 0 failed | 36 |
+| E2E under `CI=1` | 37 passed, 4 skipped (unchanged skips) | 32 + 4 |
+| E2E spec files | **10** | 9 |
+
+New: `tests/unit/track-scroll.test.ts` (24) and `tests/e2e/track-v3.spec.ts` (5,
+none skipped).
+
+**The oval is still the default.** v3 is behind `?v3` and will stay there until
+it is demonstrably better — both are driven by the same transport and the same
+EventBus actions, and a spec asserts the unflagged route still lands on
+`TrackScene`.
+
+**Why a side-scroller at all.** Terrain is a *sequence*, and a ring cannot show
+sequence: on an oval half the cars always travel the opposite way across the
+screen and "next" has no direction. Unrolled, the ground under bar b, the car for
+bar b and the terrain applied to bar b travel together and reach a fixed playhead
+at the same instant — so the terrain for the next bar is drawn ON the approaching
+ground, visibly coming. The e2e asserts exactly that (`terrain.x > playheadX`,
+then decreasing), because it is the premise the rebuild rests on.
+
+`scheduleTerrain` now returns the absolute bar span it committed to, so the view
+draws the hill where the AUDIO will make it happen and never derives a bar from
+where the train is on screen. Charter A4 holds by construction rather than by
+discipline.
+
+**Everything in the scene is generated at runtime** (`Graphics` →
+`generateTexture`). No art has been commissioned: AR-030/031/032/033 were all
+filed against the oval and remain held. Four art requests were superseded in a
+single day once already.
+
+**Three placement bugs, each found by looking rather than by a test**, recorded
+because the pattern is the lesson: the terrain band was first drawn at the ground
+line (hidden behind the cars), then below the rails (hidden behind the foreground
+fringe), and the fringe itself was first a full-height slab that hid the rails and
+ballast entirely. It is now a translucent full-height column that nothing can
+cover, and the fringe is a 130 px strip that overlaps only the bottom of the
+wheels — enough to prove Law 3 without hiding the mechanism it occludes.
+
+`track-scroll.ts` is Phaser-free for the usual reason: a real `import Phaser`
+cannot load under jsdom, so anything inside a scene file is unreachable by the
+unit suite by construction.

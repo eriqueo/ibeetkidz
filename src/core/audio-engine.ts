@@ -9,7 +9,12 @@ import type { QuantizeGrid } from "./quantize.ts";
 import { degreeToNote } from "./scale.ts";
 import { activeLayers, liveTrain, partForCar } from "./project-state.ts";
 import { resolveInstrument } from "./instruments.ts";
-import { DEFAULT_HOLD_BARS, terrainEffect, type TerrainKind } from "./terrain.ts";
+import {
+  DEFAULT_HOLD_BARS,
+  terrainEffect,
+  type TerrainKind,
+  type TerrainRide,
+} from "./terrain.ts";
 
 /** What the transport is playing: "loop" repeats the active car forever (Home's
  *  Play — today's behavior); "ride" plays the whole arrangement, car after car,
@@ -50,9 +55,12 @@ export class AudioEngine {
     kind: TerrainKind,
     project: Project,
     holdBars: number = DEFAULT_HOLD_BARS,
-  ): void {
-    if (!this.started || !this.playing) return;
-    this.sound.scheduleTerrain(terrainEffect(kind), holdBars, project.tempoBpm);
+  ): TerrainRide | null {
+    if (!this.started || !this.playing) return null;
+    const span = this.sound.scheduleTerrain(
+      terrainEffect(kind), holdBars, project.tempoBpm,
+    );
+    return span ? { kind, ...span } : null;
   }
 
   /** Drop any terrain and return to flat ground now. */

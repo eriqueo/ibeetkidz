@@ -15,6 +15,18 @@
 /** The terrains a kid can ride through. */
 export type TerrainKind = "hill" | "bridge" | "rain";
 
+/** Where a terrain landed, in ABSOLUTE transport bars. Returned by the port
+ *  because only the transport knows — and handing it back is what lets the
+ *  Track draw the hill in the right place without ever computing the bar
+ *  itself. The audio clock decides; the picture follows. */
+export interface TerrainRide {
+  readonly kind: TerrainKind;
+  /** First bar the terrain is in force. */
+  readonly startBar: number;
+  /** First bar it is NOT: the ride covers `[startBar, endBar)`. */
+  readonly endBar: number;
+}
+
 /** What a terrain does to the sound, as vendor-free numbers. */
 export interface TerrainEffect {
   /** Tempo multiplier. 1 = unchanged; below 1 = slower (and lower-pitched). */

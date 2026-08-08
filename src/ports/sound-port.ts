@@ -156,9 +156,15 @@ export interface SoundPort {
    *  lands on. Baked loops follow the new tempo via `playbackRate`, so nothing
    *  needs re-baking and the bake cache cannot grow.
    *
-   *  No-ops when the transport is stopped: terrain is something you ride
-   *  through, so there has to be a ride. */
-  scheduleTerrain(effect: TerrainEffect, holdBars: number, bpm: number): void;
+   *  Returns the ABSOLUTE bar span the terrain will occupy, so the view can
+   *  draw it in the right place without computing a bar itself — or null when
+   *  the transport is stopped, because terrain is something you ride through
+   *  and there has to be a ride. */
+  scheduleTerrain(
+    effect: TerrainEffect,
+    holdBars: number,
+    bpm: number,
+  ): { startBar: number; endBar: number } | null;
 
   /** Drop any armed terrain and return to flat ground immediately. */
   clearTerrain(): void;
