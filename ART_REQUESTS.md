@@ -843,6 +843,16 @@ The other three scene plates are 223, and all are palette-encoded.
 
 ---
 
+> # ⛔ SUPERSEDED — AR-030 … AR-033 · DO NOT WORK ON THESE
+>
+> All four entries below were filed against the Track's **top-down oval**, which
+> is no longer the premise. The Track is now a **side-scroller**: see the
+> **SIDE-SCROLLER BATCH (AR-034 … AR-039)** at the end of this file, which
+> replaces every one of them. AR-031's eight compass headings and two depth tiers
+> do not exist any more; AR-033's redrawn oval plate is not needed at all.
+>
+> Kept only as a record of what was decided and why.
+
 # GAME-FEEL BATCH (added 2026-08-06) — AR-030 … AR-032
 
 These three exist for one reason, in Eric's words about the deployed Track:
@@ -1027,3 +1037,355 @@ sprites draw at ONE integer scale, Law 1 in `design/GAME_FEEL.md` is satisfied
 with no exception needed, AR-031 loses its far tier entirely, and the same
 vehicle art and contact-shadow kit becomes reusable across Track, Yard and the
 future overworld.
+
+---
+
+# SIDE-SCROLLER BATCH (added 2026-08-10) — AR-034 … AR-039
+
+> **Read this header before starting any entry below.**
+>
+> **AR-030, AR-031, AR-032 and AR-033 are SUPERSEDED and must not be worked
+> on.** All four were filed against the Track's top-down oval. The oval is no
+> longer the premise: the Track is being rebuilt as a **side-scroller**, because
+> the mechanic it has to carry — terrain picked live and applied to the *next*
+> bar — is a SEQUENCE, and a ring cannot show sequence. On an oval half the cars
+> always travel the opposite way across the screen and "next" has no direction.
+> Anything drawn for the oval's projection, its 8 compass headings, or its depth
+> tiers is wasted work. (Four art requests were filed and superseded in a single
+> day once already. This header exists so it does not happen twice.)
+>
+> **The scene is already built and playable in greybox.** Open
+> <https://ibeetkidz.pages.dev/?v3>, press RIDE, and tap HILL / BRIDGE / RAIN.
+> Everything you see is a flat rectangle generated at runtime. Your art replaces
+> those rectangles one at a time; the geometry, motion and gameplay do not
+> change.
+>
+> ## How the swap works — drop the file in, that is all
+>
+> **Put the PNG in `src/assets/sprites/track3/` and it wins.** No manifest to
+> edit, no code to change. The scene globs that folder, loads every file it finds
+> under the key `trk-<filename>`, and only draws its greybox stand-in for the
+> slots the folder does not provide. `sky.png` becomes `trk-sky`. A
+> half-delivered batch runs fine — each slot falls back on its own.
+>
+> **Nine slots are live today and are pure drop-in:** `sky.png`, `hills.png`,
+> `trees.png`, `ground.png`, `fringe.png`, `mound.png`, `bridge.png`,
+> `rain.png`, `wheel.png`.
+>
+> **The rest need a small code change once they land, which engineering will
+> do** — the scene has nowhere to put them yet: `loco.png`, the four
+> `car-*.png` bodies, `shadow.png`, the six `btn-*.png` states,
+> `legend-plate.png` and `now-post.png`. Deliver them anyway; they load
+> harmlessly and get wired the day they arrive. See
+> `src/assets/sprites/track3/README.md`.
+>
+> ## The one hard rule: the HILL must match the profile
+>
+> The train's height and tilt are computed from a mathematical curve
+> (`src/game/terrain-profile.ts`). If the drawn hill does not match that curve,
+> the train floats above it or sinks into it — which is exactly the bug the oval
+> shipped with and the reason it is being replaced. AR-038 gives the curve as a
+> table of numbers. **Trace it.** Every other entry is free-hand.
+>
+> ## Common facts for this batch
+>
+> - Design resolution is **2560 × 1440**. All pixel sizes below are in that
+>   space, and they are the *drawn* size — deliver at 1× unless an entry says
+>   otherwise. (This batch overrides the "2× everything" sizing note near the top
+>   of this file: these are world/backdrop plates fitted to fixed bands, not
+>   `placeUiSprite` chrome.)
+> - The world scrolls **right-to-left**. Everything horizontal must **tile
+>   seamlessly left-to-right** — the left and right edges of each strip have to
+>   join with no visible seam, because they are repeated forever.
+> - One bar of song = **640 px** of track. That is the rhythmic grid the whole
+>   scene is laid out on; a strip whose repeat is a divisor of 640 (160, 320,
+>   640) will feel deliberately in time with the music.
+> - Horizon bands, top to bottom (y is measured from the top of the 2560×1440
+>   frame): sky **0–470**, far hills **470–730**, treeline **690–1020**, ground
+>   **980–1440**, near fringe **975–1105**. They overlap on purpose so nothing
+>   shows a hard join.
+> - **The railhead — where wheels touch — is y = 1010.** This single number is
+>   what every vehicle and every terrain piece is registered to.
+> - **True alpha 0** outside the art, as always. No paper wash, no grey key. See
+>   the export warning at the top of this file; three drops have violated it.
+
+---
+
+## AR-034 · Parallax backdrop set: sky, far hills, treeline — HIGH
+
+**Target files**
+| File | Key it loads under | Size | Tiles |
+|---|---|---|---|
+| `src/assets/sprites/track3/sky.png` | `trk-sky` | 640 × 470 | horizontally |
+| `src/assets/sprites/track3/hills.png` | `trk-hills` | 640 × 260 | horizontally |
+| `src/assets/sprites/track3/trees.png` | `trk-trees` | 640 × 330 | horizontally |
+
+**Why:** these three planes scroll at 5 %, 18 % and 42 % of the train's speed.
+Parallax is what turns a flat backdrop into distance — but **parallax amplifies
+depth, it does not create it.** The scene has to read as deep in a single frozen
+frame first. That is done with *atmospheric perspective*: the further back a
+plane is, the more it desaturates toward the sky colour, the lower its contrast,
+and the less internal detail it carries.
+
+- **Sky** — the flattest, palest plane. Warm-Nintendo daylight blue, a few soft
+  cloud shapes. Almost no contrast. Clouds may be soft-edged; this is the ONE
+  plane exempt from hard pixel edges.
+- **Far hills** — a single rolling ridge line, heavily desaturated toward the
+  sky (roughly 60–70 % of the way to the sky's hue), no trees, no texture, no
+  outline. Silhouette only. It should look like it is kilometres away.
+- **Treeline** — a band of conifers with a grass base, at maybe 75 % saturation
+  of the near ground. This is the nearest of the three and carries the most
+  contrast, but it must still sit clearly BEHIND the train.
+
+**Prompt:** "Seamlessly tiling side-scrolling parallax backdrop for a kids'
+16-bit train game. Three separate strips: a pale daylight sky with soft clouds; a
+distant desaturated rolling hill ridge in silhouette; a band of pixel-art
+conifers on a grass base. Warm Nintendo palette, chunky pixels, no gradients or
+glow. Each strip must tile seamlessly left to right. Atmospheric perspective:
+each plane further back is paler, lower contrast and less detailed."
+
+**Unblocks:** replaces three generated colour bands. Highest visual payoff per
+file in the batch — this is most of what the screen shows.
+
+---
+
+## AR-035 · Ground, rails, and the near grass fringe — HIGH
+
+**Target files**
+| File | Key | Size | Notes |
+|---|---|---|---|
+| `src/assets/sprites/track3/ground.png` | `trk-ground` | 640 × 460 | tiles horizontally |
+| `src/assets/sprites/track3/fringe.png` | `trk-fringe` | 640 × 130 | tiles horizontally; **alpha above the grass tips** |
+
+**The ground strip is registered to the railhead.** The strip is drawn with its
+top edge at y = 980, and **the top of the rail — the line wheels sit on — must be
+at exactly 30 px down from the top of this image.** Everything below that is
+ballast, sleepers and grass receding toward the camera. Get this one number wrong
+and every vehicle in the game floats or sinks.
+
+- Sleepers should repeat on a spacing that divides 640 evenly (40 or 80 px), so
+  the track visually ticks along with the beat.
+- Below the ballast, ~360 px of near grass. This is the largest flat area on
+  screen — give it enough texture to not read as a colour swatch, but keep it
+  quiet; the train has to win.
+
+**The fringe is the depth trick.** It is drawn **in front of the train** and
+scrolls at 145 % of its speed. Its job is to let the train partially disappear
+behind something, which is most of what makes a 2D scene feel three-dimensional
+(GAME_FEEL Law 3). Grass tufts, weeds, the odd fence post.
+
+- The top ~78 px must be **mostly transparent**, with only tufts and stalks
+  poking up. Solid from about y = 78 down.
+- The tips overlap the bottom third of the wheels on purpose. **Do not make it
+  tall or opaque enough to hide the wheels** — a kid has to see them turning. A
+  first pass at this was a full-height slab and it hid the entire railway.
+
+**Prompt:** "Seamlessly tiling pixel-art railway ground strip for a 16-bit side
+scroller: gravel ballast with wooden sleepers and a steel rail on top, then near
+grass receding below. Plus a separate near-foreground grass fringe strip with
+transparent background and only tufts and stalks reaching up from the bottom.
+Warm Nintendo palette, chunky pixels, 1 px dark outlines, no gradients."
+
+---
+
+## AR-036 · Side-on rolling stock — the locomotive and four cars — HIGH
+
+**This entry replaces AR-031 entirely, and it is roughly 8× less work than
+AR-031 was.** The oval needed every vehicle in eight compass headings (40
+frames). A side-scroller needs **one heading**. That budget should go into
+drawing five vehicles *well*, big enough to have real detail.
+
+**Target files** — all in `src/assets/sprites/track3/`
+| File | Key | Size |
+|---|---|---|
+| `loco.png` | `trk-loco` | 380 × 220 |
+| `car-boxcar.png` | `trk-car-boxcar` | 300 × 190 |
+| `car-tanker.png` | `trk-car-tanker` | 300 × 170 |
+| `car-hopper.png` | `trk-car-hopper` | 300 × 190 |
+| `car-flatcar.png` | `trk-car-flatcar` | 300 × 110 |
+
+**Registration — non-negotiable:**
+
+- **Facing RIGHT** (the direction of travel).
+- **Bodies only. Do NOT draw the wheels** — they are separate sprites so they can
+  rotate (AR-037). Draw the chassis/underframe the wheels tuck under.
+- The **bottom edge of the image is the railhead**: the point where the wheels
+  would touch. Draw the body sitting above it with a small gap for the wheels
+  (~55 px of clear space at the bottom, centred on the two axle positions).
+- Axles are at **±84 px from the horizontal centre** of a 300-px car
+  (±106 for the 380-px loco). Leave those two spots unobstructed.
+
+**Each car needs a blank flank panel.** The game paints a coloured livery plate
+with the car's NUMBER on the side of every car — that is how a kid knows the car
+they built in the Workshop is the same car on the Track. Leave a clear,
+low-detail rectangle roughly **170 × 68 px, centred horizontally, centred about
+110 px above the railhead**. No rivets, no planking, no lettering there.
+
+**Do not colour the cars.** Draw them in a neutral wood/steel base. Colour
+identity is applied by the game and there are twelve of them; a car painted red
+in the art would fight the blue it is assigned.
+
+**Prompt:** "Side-on pixel-art rolling stock for a kids' 16-bit train game,
+facing right, drawn without wheels so wheels can be attached separately. A
+cheerful steam locomotive with a tall funnel and a cab, plus four wagons: a
+boxcar, a tank wagon, a hopper and a flatcar. Neutral wood and steel colours, a
+clear blank panel on each flank for a number plate, warm Nintendo palette, chunky
+pixels, 1 px dark-plum outlines, hard drop shadows, no gradients."
+
+**Unblocks:** the single largest legibility win. Right now every car is an
+identical rectangle.
+
+---
+
+## AR-037 · Wheelsets and contact shadow — HIGH
+
+**Target files**
+| File | Key | Size |
+|---|---|---|
+| `src/assets/sprites/track3/wheel.png` | `trk-wheel` | 60 × 60 |
+| `src/assets/sprites/track3/shadow.png` | `trk-shadow` | 280 × 40 |
+
+**The wheel is ROTATED by the game**, at a rate driven by distance travelled —
+halve the train's speed and the wheels visibly halve with it. So:
+
+- It must be **radially symmetric about the exact centre of a 60 × 60 canvas**,
+  or it will visibly wobble.
+- It needs **spokes or a counterweight** — something asymmetric *within* the
+  rim. A plain dark disc rotates invisibly and the train reads as sliding.
+- Tyre, hub and 3–5 spokes is plenty at this size.
+
+**The shadow is what puts the train on the ground** (GAME_FEEL Law 2 — no world
+object in this project has ever had one). A soft dark ellipse, alpha around
+0.3–0.4, no hard outline, transparent everywhere else. The game squashes and
+stretches it as the car bounces, so draw it at rest.
+
+**Prompt:** "A single pixel-art train wheel, perfectly centred on a square
+transparent canvas, with a steel tyre, a hub and five spokes so its rotation is
+visible. Plus a soft dark elliptical contact shadow on a transparent background.
+Warm Nintendo palette, chunky pixels."
+
+---
+
+## AR-038 · Terrain pieces: hill, bridge, rain — HIGH
+
+Three physical things a kid drops onto the track. Each one changes the music
+(a hill slows the song, a bridge opens it up with reverb, rain roughs it up), so
+each one has to look like the sound it makes.
+
+### 038a · The hill — `src/assets/sprites/track3/mound.png` → key `trk-mound`, **1280 × 120**
+
+**⚠ THIS IS THE ONE PIECE THAT MUST MATCH A SPECIFIED SHAPE.** The train's
+height and tilt at every point are calculated from the curve below. Draw a
+different hill and the train will float over it or cut through it.
+
+The image is **1280 wide × 120 tall**. Its **bottom edge is the railhead**. The
+ground surface — the line the wheels run on — must sit at exactly this height
+above the bottom edge, at each fraction across the width:
+
+| across the image | height above the bottom edge |
+|---|---|
+| 0 % | 0 px |
+| 5 % | 3 px |
+| 10 % | 11 px |
+| 15 % | 25 px |
+| 20 % | 42 px |
+| 25 % | 60 px |
+| 30 % | 78 px |
+| 35 % | 95 px |
+| 40 % | 109 px |
+| 45 % | 117 px |
+| **50 %** | **120 px (the summit)** |
+| 55 % | 117 px |
+| 60 % | 109 px |
+| 65 % | 95 px |
+| 70 % | 78 px |
+| 75 % | 60 px |
+| 80 % | 42 px |
+| 85 % | 25 px |
+| 90 % | 11 px |
+| 95 % | 3 px |
+| 100 % | 0 px |
+
+It is a symmetrical raised cosine — it leaves the flat ground perfectly level,
+swells to its summit in the middle, and settles back perfectly level. **It must
+not meet the ground at an angle**; the join is the part the eye catches.
+
+Fill below that line with earth/grass matching AR-035's ground, and run a rail
+and sleepers along the crest so it reads as track climbing a bank. Everything
+above the line is transparent.
+
+### 038b · The bridge — `src/assets/sprites/track3/bridge.png` → key `trk-bridge`, **1280 × 170**
+
+Its **top edge sits at the railhead**, so this is everything *below* the rails: a
+girder or deck immediately under the track, then trestle piers descending into
+the gap. The game paints a dark void behind it, so the piers should read against
+darkness. Timber trestle or riveted steel — either fits the house style; timber
+matches the existing yard furniture better. Tiles horizontally is a bonus, not
+required.
+
+### 038c · The rain — `src/assets/sprites/track3/rain.png` → key `trk-rain`, **128 × 128**
+
+A **seamlessly tiling** sheet of diagonal rain streaks on transparent
+background. The game scrolls it fast and downward inside the rainy stretch, so it
+must tile in **both** axes. Pale blue-white, thin, mostly transparent — this is
+drawn over the whole scene at ~75 % opacity and must not hide the train.
+
+**Prompt:** "Pixel-art terrain pieces for a 16-bit side-scrolling train game: a
+symmetrical grassy embankment with railway track running over its crest,
+transparent above the ground line; a timber trestle bridge structure seen from
+the side, deck at the top and piers descending; and a seamlessly tiling sheet of
+thin diagonal rain streaks on transparent background. Warm Nintendo palette,
+chunky pixels, 1 px dark outlines."
+
+---
+
+## AR-039 · The terrain legend and the NOW marker — MEDIUM
+
+The HUD a kid actually touches. Currently three flat colour swatches and a thin
+line.
+
+**Target files** — `src/assets/sprites/track3/`
+| File | Key | Size | Notes |
+|---|---|---|---|
+| `legend-plate.png` | `trk-legend-plate` | 940 × 220 | the bar the three buttons sit on |
+| `btn-hill.png` / `btn-hill-pressed.png` | `trk-btn-hill` | 260 × 120 | two states |
+| `btn-bridge.png` / `btn-bridge-pressed.png` | `trk-btn-bridge` | 260 × 120 | two states |
+| `btn-rain.png` / `btn-rain-pressed.png` | `trk-btn-rain` | 260 × 120 | two states |
+| `now-post.png` | `trk-now-post` | 90 × 340 | trackside marker post |
+
+**These are picture buttons, not labelled ones.** The player is four years old
+and cannot read. Each button carries a picture of the terrain — a green bank, a
+trestle span, a rain cloud — in the same drawing style as the AR-038 piece it
+places, so the button and the thing it makes are recognisably the same object.
+The word underneath is for the adult.
+
+Match the existing steampunk plaque language from
+`src/assets/sprites/buttons/` — brass, wood, stone — so this reads as part of the
+same machine as the Workshop and Yard chrome.
+
+**The NOW post** is a trackside signal post marking where "now" is: the car
+level with it is the one you are hearing. It stands on the ground beside the
+track. It must read at a glance and must not look like scenery — this is the
+single most important indicator on the screen.
+
+**Prompt:** "Steampunk brass-and-wood control panel for a kids' 16-bit train
+game, with three large picture buttons showing a grassy hill, a timber bridge and
+a rain cloud, each in normal and pressed states. Plus a trackside signal post
+marker. Warm Nintendo palette, chunky pixels, 1 px dark-plum outlines, hard drop
+shadows, no gradients or glow."
+
+---
+
+### Delivery order for this batch
+
+1. **AR-036** (rolling stock) — every car is currently an identical rectangle.
+2. **AR-034** (parallax set) — most of the screen area.
+3. **AR-038** (terrain pieces) — the mechanic's whole point, and 038a carries the
+   one hard constraint.
+4. **AR-035** (ground + fringe).
+5. **AR-037** (wheels + shadow).
+6. **AR-039** (HUD) — the greybox HUD is legible and tappable today, so this is
+   last.
+
+Any single file can land on its own and be visible immediately. Nothing here
+blocks anything else.

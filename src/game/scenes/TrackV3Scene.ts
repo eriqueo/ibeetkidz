@@ -21,13 +21,11 @@
 // differentiated. Nothing here draws a silhouette of its own.
 //
 // ── SWAPPING THE ART ───────────────────────────────────────────────────────
-// Every texture is declared once in `ART_SLOTS` below with the key it will live
-// under and the generator that stands in until real art exists. `preload` skips
-// the generator for any key already in the TextureManager, so shipping art is:
-//
-//   1. add the file to `src/game/assets.ts`,
-//   2. load it under the SAME key in `preload`,
-//   3. delete nothing — the generator simply stops being called.
+// Drop a PNG into `src/assets/sprites/track3/` and it wins. That is the entire
+// procedure: no manifest to edit, no code to touch. `DROPPED_ART` globs the
+// folder at build time, `preload` loads every file it finds under the key
+// `trk-<filename>`, and the greybox generator is told which keys it must NOT
+// draw. A half-delivered batch runs fine — each slot falls back on its own.
 //
 // The one contract art must honour is the profile: a hill sprite has to match
 // `liftSamples`, or the train will float above it or sink into it exactly the
@@ -57,6 +55,22 @@ import {
 } from "../terrain-profile.ts";
 import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
+
+/**
+ * Real art, if any has been delivered. Vite resolves this at build time, so an
+ * empty folder costs nothing and a dropped file needs no other edit anywhere.
+ * `sky.png` → texture key `trk-sky`.
+ */
+const DROPPED_ART = import.meta.glob("../../assets/sprites/track3/*.png", {
+  eager: true,
+  query: "?url",
+  import: "default",
+}) as Record<string, string>;
+
+function artKeyOf(path: string): string {
+  const file = path.split("/").pop() ?? "";
+  return `trk-${file.replace(/\.png$/i, "")}`;
+}
 
 /** One car of the train, as the view needs it. Mirrors `core.CarIdentity` —
  *  the same numbers the Workshop LCD and the Yard sidings show. */
@@ -92,7 +106,7 @@ const TERRAIN_LABEL_Y = 330;
  *  its span. Height is NEVER scaled — the profile is normalized across the span
  *  in x but absolute in y, so stretching horizontally keeps picture and physics
  *  in agreement. */
-const TERRAIN_REF_W = 1024;
+const TERRAIN_REF_W = 1280;
 
 const DEPTH = {
   sky: 0,
@@ -162,7 +176,14 @@ export class TrackV3Scene extends Phaser.Scene {
   private lastAt = -1;
 
   preload(): void {
-    makeGreyboxTextures(this);
+    // Delivered art first, so the generator below knows what to skip.
+    const delivered = new Set<string>();
+    for (const [path, url] of Object.entries(DROPPED_ART)) {
+      const key = artKeyOf(path);
+      delivered.add(key);
+      if (!this.textures.exists(key)) this.load.image(key, url);
+    }
+    makeGreyboxTextures(this, delivered);
   }
 
   create(): void {
@@ -187,7 +208,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // Law 3: the actor must be able to pass BEHIND something, or the scene is a
     // decal on a photograph. A strip, not a slab — a slab hides the rails.
     this.fore = this.add
-      .tileSprite(0, FORE_Y, W, FORE_H, "trk-foreground")
+      .tileSprite(0, FORE_Y, W, FORE_H, "trk-fringe")
       .setOrigin(0, 0)
       .setDepth(DEPTH.foreground);
 
@@ -617,10 +638,12 @@ interface SlotView {
  * load a real texture under the same key in `preload` and the generator below
  * never runs. Nothing else in the file refers to "greybox".
  */
-function makeGreyboxTextures(scene: Phaser.Scene): void {
+function makeGreyboxTextures(scene: Phaser.Scene, delivered: ReadonlySet<string>): void {
   const g = scene.make.graphics({ x: 0, y: 0 }, false);
   const tex = (key: string, w: number, h: number, draw: () => void): void => {
-    if (scene.textures.exists(key)) return; // real art wins
+    // Real art wins — either already resident, or queued from the drop folder
+    // this same frame (in which case the texture does not exist YET).
+    if (delivered.has(key) || scene.textures.exists(key)) return;
     g.clear();
     draw();
     g.generateTexture(key, w, h);
@@ -659,7 +682,7 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
     g.fillStyle(0x5f8438, 1).fillRect(0, 96, 320, 364);
   });
 
-  tex("trk-foreground", 360, FORE_H, () => {
+  tex("trk-fringe", 360, FORE_H, () => {
     g.fillStyle(0x24421f, 1).fillRect(0, 70, 360, FORE_H - 70);
     g.fillStyle(0x2f5230, 1);
     for (let i = 0; i < 18; i++) {
@@ -674,7 +697,7 @@ function makeGreyboxTextures(scene: Phaser.Scene): void {
   tex("trk-mound", TERRAIN_REF_W, HILL_PEAK, () => {
     const samples = liftSamples(
       { kind: "hill", startBar: 0, endBar: 1 },
-      TERRAIN_REF_W / 8,
+      TERRAIN_REF_W / 10,
     );
     const pts: Phaser.Math.Vector2[] = [new Phaser.Math.Vector2(0, HILL_PEAK)];
     samples.forEach((lift, i) => {
