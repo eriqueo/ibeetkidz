@@ -50,10 +50,9 @@ import {
 import {
   BRIDGE_GAP,
   HILL_PEAK,
+  carPose,
   groundDrop,
   liftSamples,
-  railAngle,
-  railLift,
   type TerrainSpan,
 } from "../terrain-profile.ts";
 import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
@@ -116,6 +115,9 @@ const DEPTH = {
 } as const;
 
 const CAR_W = 300;
+/** Distance between the axles, as a fraction of a bar. The car is 300 px wide
+ *  with its wheels at ±28% of that, in a 640 px bar. */
+const WHEELBASE_BARS = (CAR_W * 0.56) / 640;
 const CAR_H = 190;
 const WHEEL_R = 30;
 
@@ -154,6 +156,7 @@ export class TrackV3Scene extends Phaser.Scene {
   private gloom?: Phaser.GameObjects.Rectangle;
   private terrainLabel?: Phaser.GameObjects.Text;
   private marker?: Phaser.GameObjects.Rectangle;
+  private nowBand?: Phaser.GameObjects.Rectangle;
   private lastPos = 0;
   private speedBars = 0; // bars per second, smoothed
   private lastAt = -1;
@@ -195,7 +198,10 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.gap)
       .setVisible(false);
     this.mound = this.add
-      .image(0, GROUND_Y, "trk-mound")
+      // Anchored to the RAILHEAD, not the ground line. The profile measures lift
+      // from where the wheels touch, so a mound based 30 px lower puts its crest
+      // 30 px above the car that is supposed to be standing on it.
+      .image(0, RAIL_Y, "trk-mound")
       .setOrigin(0, 1)
       .setDepth(DEPTH.mound)
       .setVisible(false);
@@ -228,10 +234,20 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.playhead)
       .setVisible(false);
 
-    // The playhead: a fixed trackside post. Whatever is under it is sounding.
+    // The playhead is a BAND one bar wide, not a hairline.
+    //
+    // A line marks a boundary, and cars are drawn in the MIDDLE of their bar —
+    // so for most of every bar the line pointed at the gap between two cars
+    // while a third was lit. The band is the bar itself: whatever is inside it
+    // is what you are hearing, which is the "different from a loop" indicator
+    // the mechanic was asked for.
     const px = playheadX(this.view);
+    this.nowBand = this.add
+      .rectangle(px, 0, this.view.barWidth, H, 0xffe9b0, 0.13)
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.playhead - 0.1);
     this.marker = this.add
-      .rectangle(px, 0, 6, H, 0xffe9b0, 0.55)
+      .rectangle(px, 0, 5, H, 0xffe9b0, 0.55)
       .setOrigin(0.5, 0)
       .setDepth(DEPTH.playhead);
     this.add
@@ -375,6 +391,7 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.fore) this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45);
 
     this.marker?.setFillStyle(0xffe9b0, this.moving ? 0.75 : 0.25);
+    this.nowBand?.setFillStyle(0xffe9b0, this.moving ? 0.16 : 0.06);
 
     this.layoutTerrain();
     this.layoutTrain(travelPx(this.pos, this.view));
@@ -403,11 +420,13 @@ export class TrackV3Scene extends Phaser.Scene {
         s.hide();
         return;
       }
-      // The car's own position along the song is what the ground is sampled at,
-      // so the body sits on the surface the profile drew — never near it.
+      // Posed off BOTH wheels, not off the car's middle: a rigid body on a
+      // curved surface cannot be placed from one sample without hovering over
+      // crests and cutting into dips.
       const atBar = slot.absBar + 0.5;
-      const lift = railLift(atBar, span);
-      const tilt = railAngle(atBar, span, this.view.barWidth);
+      const { lift, angle: tilt } = carPose(
+        atBar, WHEELBASE_BARS, span, this.view.barWidth,
+      );
       const y = Math.round(RAIL_Y - lift + bob);
 
       s.show();
@@ -448,10 +467,20 @@ export class TrackV3Scene extends Phaser.Scene {
     const x = Math.round(span.x);
     const w = Math.round(span.width);
 
-    this.terrainLabel
-      ?.setVisible(true)
-      .setPosition(Math.round(span.x + span.width / 2), TERRAIN_LABEL_Y)
-      .setText(ride.kind.toUpperCase());
+    // Keep the caption over its own span but inside the screen, so a terrain
+    // half off the edge still reads instead of leaving a stray letter behind.
+    const label = this.terrainLabel;
+    if (label) {
+      label.setText(ride.kind.toUpperCase()).setVisible(true);
+      const halfText = label.width / 2 + 20;
+      const wanted = span.x + span.width / 2;
+      const lo = Math.max(halfText, span.x + halfText);
+      const hi = Math.min(W - halfText, span.x + span.width - halfText);
+      label.setPosition(
+        Math.round(hi >= lo ? Math.min(hi, Math.max(lo, wanted)) : wanted),
+        TERRAIN_LABEL_Y,
+      );
+    }
 
     // A hill: a real mound the train stands on. Stretched in x only — the
     // profile is normalized across the span, so the silhouette still matches
@@ -459,7 +488,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const isHill = ride.kind === "hill";
     this.mound?.setVisible(isHill);
     if (isHill && this.mound) {
-      this.mound.setPosition(x, GROUND_Y + 2);
+      this.mound.setPosition(x, RAIL_Y);
       this.mound.setDisplaySize(w, HILL_PEAK);
     }
 
@@ -512,6 +541,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const slots = visibleBars(this.pos, Math.max(1, this.cars.length), this.view);
     const now = slots.find((s) => s.absBar === sounding);
     const atBar = sounding + 0.5;
+    const pose = carPose(atBar, WHEELBASE_BARS, this.span, this.view.barWidth);
     const span = this.ride
       ? terrainSpanX(this.ride.startBar, this.ride.endBar, this.pos, this.view)
       : null;
@@ -520,8 +550,8 @@ export class TrackV3Scene extends Phaser.Scene {
       playheadX: playheadX(this.view),
       wheelAngle: wheelAngle(dist, WHEEL_R),
       soundingCarX: now ? now.centreX : null,
-      soundingCarY: now ? RAIL_Y - railLift(atBar, this.span) : null,
-      soundingCarAngle: railAngle(atBar, this.span, this.view.barWidth),
+      soundingCarY: now ? RAIL_Y - pose.lift : null,
+      soundingCarAngle: pose.angle,
       terrain: span && this.ride ? { ...span, kind: this.ride.kind } : null,
     };
   }

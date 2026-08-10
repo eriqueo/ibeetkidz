@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BRIDGE_GAP,
   HILL_PEAK,
+  carPose,
   groundDrop,
   isWeather,
   liftSamples,
@@ -144,5 +145,57 @@ describe("level ground really is zero", () => {
         if (a === 0) expect(Object.is(a, 0)).toBe(true);
       }
     }
+  });
+});
+
+describe("a car rests on its wheels, not on its middle", () => {
+  const WB = 0.26; // wheelbase as a fraction of a bar
+  const BW = 640;
+
+  it("is level and on the ground away from any terrain", () => {
+    const p = carPose(3, WB, hill, BW);
+    expect(p.lift).toBe(0);
+    expect(p.angle).toBe(0);
+  });
+
+  it("tips nose-up climbing and nose-down descending", () => {
+    expect(carPose(4.4, WB, hill, BW).angle).toBeLessThan(0);
+    expect(carPose(5.6, WB, hill, BW).angle).toBeGreaterThan(0);
+  });
+
+  it("sits LOWER than the crest at the summit — it bridges it, not floats", () => {
+    // Both wheels are below the peak, so the chassis rides slightly under it.
+    // Posing off the centre alone would put it exactly ON the peak with both
+    // wheels hanging in the air.
+    const atPeak = carPose(5, WB, hill, BW);
+    expect(atPeak.lift).toBeLessThan(railLift(5, hill));
+    expect(atPeak.lift).toBeGreaterThan(0);
+    expect(Math.abs(atPeak.angle)).toBeLessThan(0.05); // level over the top
+  });
+
+  it("never tilts more steeply than the slope between its own wheels", () => {
+    for (let b = 4; b <= 6; b += 0.02) {
+      // With HILL_PEAK at 120 across two bars, nothing should exceed ~20°.
+      expect(Math.abs(carPose(b, WB, hill, BW).angle)).toBeLessThan(0.36);
+    }
+  });
+
+  it("a longer wheelbase rides a hill more gently", () => {
+    const shortCar = Math.abs(carPose(4.35, 0.1, hill, BW).angle);
+    const longCar = Math.abs(carPose(4.35, 0.6, hill, BW).angle);
+    expect(longCar).toBeLessThan(shortCar);
+  });
+
+  it("stays flat on a bridge and in rain", () => {
+    for (const span of [bridge, rain]) {
+      const p = carPose(5, WB, span, BW);
+      expect(p.lift).toBe(0);
+      expect(p.angle).toBe(0);
+    }
+  });
+
+  it("survives a zero wheelbase or a zero bar width", () => {
+    expect(Number.isFinite(carPose(5, 0, hill, BW).angle)).toBe(true);
+    expect(Number.isFinite(carPose(5, WB, hill, 0).angle)).toBe(true);
   });
 });

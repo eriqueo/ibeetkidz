@@ -30,8 +30,14 @@ export interface TerrainSpan {
   readonly endBar: number;
 }
 
-/** How high a hill lifts the rails at its summit, in px. */
-export const HILL_PEAK = 190;
+/** How high a hill lifts the rails at its summit, in px.
+ *
+ *  Was 190, which put the steepest part of the slope at ~25° — a gradient no
+ *  vehicle with two axles could sit on, and it showed: the car pivoted about its
+ *  centre and drove its corners into the ground. 120 peaks at ~16°, still
+ *  cartoon-steep but a slope a car can actually stand on once it is posed off
+ *  both wheels (`carPose`). */
+export const HILL_PEAK = 120;
 /** How far the ground falls away beneath a bridge, in px. */
 export const BRIDGE_GAP = 260;
 
@@ -115,4 +121,35 @@ export function liftSamples(span: TerrainSpan, samples = 48): number[] {
     out.push(railLift(atBar, span));
   }
   return out;
+}
+
+/**
+ * Where a two-axle vehicle actually SITS on the profile.
+ *
+ * A car is rigid and the ground is curved, so a single sample cannot place it:
+ * posing off the centre point alone leaves both wheels in the air on a crest and
+ * buries the corners in a dip, which is exactly what the first pass did — the
+ * body pivoted about its middle and cut into the mound.
+ *
+ * So sample the surface under each WHEEL and lay the car across them, the way a
+ * real chassis rests on its bogies. The angle is the line between the contact
+ * points, and the height is their mean, so both wheels touch on any slope this
+ * profile can produce and the car rides a crest tipping over it rather than
+ * hovering above it.
+ */
+export function carPose(
+  centreBar: number,
+  wheelbaseBars: number,
+  span: TerrainSpan | null,
+  barWidthPx: number,
+): { lift: number; angle: number } {
+  const half = Math.max(0, wheelbaseBars) / 2;
+  const rear = railLift(centreBar - half, span);
+  const front = railLift(centreBar + half, span);
+  const lift = (rear + front) / 2;
+  const runPx = Math.max(1, wheelbaseBars * barWidthPx);
+  // Screen y grows downward and Phaser rotation is clockwise-positive, so a
+  // front wheel HIGHER than the rear (climbing) needs a negative rotation.
+  const angle = -Math.atan2(front - rear, runPx);
+  return { lift, angle: angle === 0 ? 0 : angle };
 }

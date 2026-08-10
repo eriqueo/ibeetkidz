@@ -692,3 +692,36 @@ cannot end up contrasting differently.
 - `railAngle` returned **`-0`** on level ground, and `Object.is(-0, 0)` is false,
   so "level" failed an equality check forever. Normalized at the source with a
   test, rather than loosened in the assertion.
+
+---
+
+## Re-baseline — 2026-08-10, the train stands on the hill
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | **561** / 34 files, 0 skipped | 553 / 34 |
+| E2E local | **43 passed**, 0 failed | 43 |
+
+Three defects, all found by play-testing screenshots rather than by the suite.
+
+**A rigid car cannot be placed from one sample.** `carPose` now samples the
+surface under each WHEEL and lays the car across them, the way a chassis rests on
+its bogies. Posing off the centre point hovered over crests and drove the body's
+corners into dips — visible in every hill screenshot.
+
+**`HILL_PEAK` 190 → 120.** 190 put the steepest part of the slope at ~25°, a
+gradient nothing with two axles could stand on. 120 peaks at ~16°.
+
+**The mound was anchored to `GROUND_Y`, 30 px above the railhead it is measured
+from**, so its crest sat 30 px above the car standing on it. Anchored to `RAIL_Y`
+now — the profile measures lift from where the wheels touch, so that is what the
+picture has to be based on.
+
+**NOW is a BAND one bar wide, not a hairline.** Cars are drawn in the middle of
+their bar, so for most of every bar the line pointed at the gap between two cars
+while a third was lit. The band is the bar: whatever is inside it is what you are
+hearing. This is the "indicator of which car is playing, different from a loop"
+the mechanic was asked for.
+
+The terrain caption is also clamped to the screen now — a terrain scrolling off
+the left edge used to leave a stray letter behind.
