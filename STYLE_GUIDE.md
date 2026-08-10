@@ -1,3 +1,31 @@
+> # ⛔ STALE — DO NOT GENERATE FROM THIS DOCUMENT
+>
+> Last meaningfully updated **2026-06-24**. It describes the Phase A vision and
+> has not tracked the game since. Specific things in here that are now WRONG:
+>
+> - **"Track scene: Top-down oval track on green grass field"** — the Track is a
+>   SIDE-SCROLLER as of 2026-08-07. The oval is retired. This single line is the
+>   most dangerous thing in the file: an agent that locks style from it will draw
+>   the wrong projection for the whole scene.
+> - **"Sky/void: Pure black — scenes float on black"** — the side-scrolling Track
+>   has a daylight sky and parallax bands. Only the Map still floats on black.
+> - **The hex palette here is not the game's palette.** It was sampled off early
+>   reference images; the shipped palette is `design/palette-nintendo.json`.
+> - **"Perspective: slight top-down isometric"** as a GLOBAL rule — the game uses
+>   a different projection per scene. See the CURRENT VISUAL DIRECTION table in
+>   `ART_REQUESTS.md`.
+>
+> **Current sources of truth for art direction:**
+>
+> | For | Read |
+> |---|---|
+> | What to draw, and the contract it must satisfy | `ART_REQUESTS.md` (maintained; includes the CURRENT VISUAL DIRECTION block at the top) |
+> | The palette | `design/palette-nintendo.json` — the single producer, mapped to the app's CSS vars |
+> | What the style actually looks like now | the shipped sprites under `src/assets/sprites/` — trust these over any prose |
+> | What the game currently IS | `design/HISTORY.md` + `BASELINE.md` |
+>
+> Kept as a record of what was decided and why. Nothing below is a live brief.
+
 # iBeetKidz Pixel Art Style Guide
 
 Extracted from the existing reference scenes for use in AI generation prompts.

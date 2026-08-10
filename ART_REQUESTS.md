@@ -19,6 +19,58 @@
 
 ---
 
+## CURRENT VISUAL DIRECTION (2026-08-10) — read this before generating anything
+
+**`STYLE_GUIDE.md`, `ART_BRIEF.md` and `ART_GENERATION_PROMPTS.md` are STALE and
+carry deprecation headers. Do not generate from them.** They were written in late
+June and describe a game that has changed materially since. In particular
+`STYLE_GUIDE.md` still says the Track is a top-down oval; it is not.
+
+### Projection is per scene. There is no global "isometric".
+
+| Scene | Projection | Notes |
+|---|---|---|
+| **Map** | Top-down, floating island on black void | The one scene that still matches the old style guide. |
+| **Yard** | Shallow 3/4, night lighting | Sidings recede; cars are drawn side-on within it. |
+| **Workshop** | **Side-on** | A car on rails, seen from the side. Not isometric. |
+| **Track** | **Side-on side-scroller** (since 2026-08-07) | Daylight sky, parallax bands, world scrolls right-to-left past a fixed marker. **The oval is retired.** This is what AR-034 … AR-039 are for. |
+
+A vehicle drawn for one of these does not transfer to another — the Workshop's
+side-on car set and the retired oval's 8-heading set were always different art.
+The side-scroller uses **one heading only**, which is why AR-036 is ~8× less work
+than the AR-031 it replaces.
+
+### Where the truth actually lives
+
+| For | Read |
+|---|---|
+| The palette | `design/palette-nintendo.json` — the single producer, mapped to the app's CSS vars. Not the hexes in `STYLE_GUIDE.md`. |
+| What the style looks like NOW | The shipped sprites in `src/assets/sprites/` — `buttons/`, `instruments/`, `cars/`, `panels/`. **Trust these over any prose in this repo, including this file.** |
+| What the game currently IS | `design/HISTORY.md` (why it is shaped this way) + `BASELINE.md` (what is measured and when). **Not `STATUS_LOG.md`,** which stopped being maintained on 2026-08-01. |
+| The animation rules art has to support | `design/GAME_FEEL.md` — eight laws, each with the concrete way this project broke it. Laws 2 (contact shadows) and 3 (an actor must be able to pass behind something) are art dependencies, not code ones. |
+
+### Bootstrapping a fresh art session
+
+Minimum read set, in order: `PROJECT_CHARTER.md` → this file (contract block +
+this section + the queue) → `design/GAME_FEEL.md` → **then open three shipped
+sprites and look at them** (`instruments/inst-drums-passive.png`,
+`buttons/btn-nav-yard.png`, `cars/boxcar.png`) before drawing a line.
+
+### Two export lessons, learned the hard way — these are the contract now
+
+1. **The transparency key colour must not appear anywhere in the subject.**
+   `#00FF00` collides with teal characters; `#FF00FF` collides with red and
+   purple ones. There is no safe default — pick the key per subject, against the
+   colours actually in it.
+2. **Verify the export, do not assume it.** Two checks, both cheap: (a) all four
+   corner pixels must be *exactly* alpha 0, and (b) composite the file over a
+   dark background and look at it. A bounding-box check outside the art is
+   vacuous — it passes on a file with a full-canvas semi-opaque wash, which is
+   precisely the failure that has now shipped three times (AR-009, AR-012,
+   AR-017) and cost a full re-export of 24 files (AR-024).
+
+---
+
 ## PRIORITY ORDER (2026-08-01, rev 2)
 
 1. **AR-024 — RE-EXPORT the 24 instrument PNGs with an alpha channel. BLOCKING.**

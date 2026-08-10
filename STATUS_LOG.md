@@ -1,3 +1,20 @@
+> # ⛔ NOT MAINTAINED — last updated 2026-08-01
+>
+> This file stopped being updated on 2026-08-01 and now predates a large amount
+> of the game: the terrain mechanic (hills/bridges/rain), the side-scrolling
+> Track, the single car-identity producer, and the Cloudflare deploy path.
+>
+> **Do not read this for "current state".** It will tell you the Track is an
+> oval, which it no longer is.
+>
+> | For | Read |
+> |---|---|
+> | What the game is now, and why it is shaped that way | `design/HISTORY.md` |
+> | Gate numbers, and every measured change with its date | `BASELINE.md` |
+> | The art queue | `ART_REQUESTS.md` |
+>
+> Kept as a record of the July work. Nothing below is current.
+
 # iBeetKidz Status Log
 
 **Date:** July 2, 2026

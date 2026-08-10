@@ -1,3 +1,27 @@
+> # ⛔ STALE — DO NOT GENERATE FROM THIS DOCUMENT
+>
+> Last meaningfully updated **2026-06-30**. It describes the Phase B vision and
+> has not tracked the game since. Specific things in here that are now WRONG:
+>
+> - Same global **"isometric perspective"** constraint, wrong for the same two
+>   scenes.
+> - The Yard/Track/Map base plates it asks for have all since been generated,
+>   shipped, and in the Track's case retired. Regenerating from these prompts
+>   would undo work.
+> - Predates the alpha-channel export rule that three separate drops have now
+>   violated (see the warning at the top of `ART_REQUESTS.md`).
+>
+> **Current sources of truth for art direction:**
+>
+> | For | Read |
+> |---|---|
+> | What to draw, and the contract it must satisfy | `ART_REQUESTS.md` (maintained; includes the CURRENT VISUAL DIRECTION block at the top) |
+> | The palette | `design/palette-nintendo.json` — the single producer, mapped to the app's CSS vars |
+> | What the style actually looks like now | the shipped sprites under `src/assets/sprites/` — trust these over any prose |
+> | What the game currently IS | `design/HISTORY.md` + `BASELINE.md` |
+>
+> Kept as a record of what was decided and why. Nothing below is a live brief.
+
 # iBeetKidz Phase B Art Generation Prompts
 
 This document provides the exact prompts needed to generate the "clean" base plates and standalone interactive sprites required to unblock the wiring of the Yard, Track, and Map scenes.

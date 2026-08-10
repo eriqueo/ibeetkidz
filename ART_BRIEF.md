@@ -1,3 +1,27 @@
+> # ⛔ STALE — DO NOT GENERATE FROM THIS DOCUMENT
+>
+> Last meaningfully updated **2026-06-28**. It describes the Phase A vision and
+> has not tracked the game since. Specific things in here that are now WRONG:
+>
+> - **"isometric perspective" appended to every prompt** — wrong for the Track,
+>   which is now drawn side-on, and wrong for the Workshop, which is side-on too.
+> - Written for **Midjourney / DALL-E / Stable Diffusion** one-shot base plates.
+>   The pipeline has since moved to per-sprite generation with alpha, an atlas,
+>   and a strict export rule.
+> - The button and scene lists predate the steampunk keycap family, the
+>   instrument characters, the Workshop tool panels and the whole v2 rebuild.
+>
+> **Current sources of truth for art direction:**
+>
+> | For | Read |
+> |---|---|
+> | What to draw, and the contract it must satisfy | `ART_REQUESTS.md` (maintained; includes the CURRENT VISUAL DIRECTION block at the top) |
+> | The palette | `design/palette-nintendo.json` — the single producer, mapped to the app's CSS vars |
+> | What the style actually looks like now | the shipped sprites under `src/assets/sprites/` — trust these over any prose |
+> | What the game currently IS | `design/HISTORY.md` + `BASELINE.md` |
+>
+> Kept as a record of what was decided and why. Nothing below is a live brief.
+
 ---
 title: art-brief
 type: Reference
