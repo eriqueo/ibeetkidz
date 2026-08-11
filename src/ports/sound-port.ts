@@ -36,6 +36,13 @@ export interface StepOptions {
   readonly wobble?: number;
   /** Crunch (bitcrush amount), 0..1. Absent/0 = clean. */
   readonly crunch?: number;
+  /** Identity of the LANE these options describe (the layer id). Cells of one
+   *  lane share one live fx chain (echo/tone/wobble/crunch are per-lane knobs);
+   *  without this key the adapter built a chain PER CELL, and a busy car with
+   *  knobs up put 30+ chorus/bitcrush nodes on the audio thread — measured
+   *  dragging rendering to ~0.6x realtime (the "skipping with 5 instruments"
+   *  report). Absent = no sharing (a chain per call, the safe default). */
+  readonly laneKey?: string;
 }
 
 export interface SoundPort {

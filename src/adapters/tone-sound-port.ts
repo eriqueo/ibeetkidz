@@ -211,6 +211,47 @@ export class ToneSoundPort implements SoundPort {
    *  a tempo it was not rendered at. */
   private tempoBpm = 120;
 
+  /** Scheduler-health counters, read via `getAudioDiag`. A transport callback
+   *  normally runs ~lookAhead (100ms) BEFORE its event's audio-clock `time`;
+   *  when the main thread stalls past that window the callback runs after
+   *  `time` has already passed, Web Audio clamps `start(past)` to "now", and
+   *  the hit lands audibly late — that is a skip. `late` counts events whose
+   *  window was missed at all; `late20` ones late enough (>20ms) to hear. */
+  private readonly schedStats = { events: 0, late: 0, late20: 0, worstMs: 0 };
+
+  private recordSchedTiming(time: number): void {
+    const lateMs = (this.ctx.currentTime - time) * 1000;
+    const s = this.schedStats;
+    s.events++;
+    if (lateMs > 0) s.late++;
+    if (lateMs > 20) {
+      s.late20++;
+      this.adaptLookAhead();
+    }
+    if (lateMs > s.worstMs) s.worstMs = lateMs;
+  }
+
+  /** Trade tap-latency for loop-integrity, but only on devices that have
+   *  already audibly missed: from the third >20ms miss on, widen Tone's
+   *  scheduling horizon a step per miss, capped. A healthy device never pays a
+   *  millisecond of extra latency (the whole app schedules through Tone's
+   *  `now()`, so a blanket raise would lag every pad tap); a device whose main
+   *  thread stalls past the default 100ms window keeps its groove instead of
+   *  skipping. Deliberately never decays within a session: a machine that
+   *  missed three times will miss again, and oscillating latency is worse for
+   *  a kid than steady latency. */
+  private static readonly LOOKAHEAD_MAX_SEC = 0.3;
+
+  private adaptLookAhead(): void {
+    if (this.schedStats.late20 < 3) return;
+    const ctx = Tone.getContext();
+    const next = Math.min(
+      ToneSoundPort.LOOKAHEAD_MAX_SEC,
+      0.1 + 0.05 * (this.schedStats.late20 - 2),
+    );
+    if (next > ctx.lookAhead) ctx.lookAhead = next;
+  }
+
   // Live one-shot + scheduled players, tracked for cleanup.
   private readonly liveVoices = new Set<Tone.Player>();
   private readonly scheduledVoices: Tone.Player[] = [];
@@ -218,6 +259,9 @@ export class ToneSoundPort implements SoundPort {
   private readonly scheduledSynths: MelodyVoice[] = [];
   /** Per-lane echo sends (FeedbackDelay nodes), torn down with the transport. */
   private readonly scheduledFx: Tone.ToneAudioNode[] = [];
+  /** One live fx chain per lane (keyed by `StepOptions.laneKey`), shared by all
+   *  of that lane's scheduled cells. Cleared with `clearScheduled`. */
+  private readonly laneChains = new Map<string, Tone.ToneAudioNode>();
 
   // Terrain (Track ride): a master-bus insert plus a momentary tempo scale.
   // `tempoScale` is deliberately SEPARATE from `tempoBpm` — the bake cache keys
@@ -277,6 +321,16 @@ export class ToneSoundPort implements SoundPort {
     transportBpm: number;
     /** The terrain tempo multiplier currently applied (1 = flat ground). */
     terrainScale: number;
+    /** Scheduler health (cumulative since boot — sample twice and diff):
+     *  how many transport callbacks ran, how many ran after their event's
+     *  audio-clock time (missed the lookahead window), how many missed it
+     *  audibly (>20ms), and the worst miss seen. */
+    schedEvents: number;
+    schedLate: number;
+    schedLate20: number;
+    schedWorstLateMs: number;
+    /** Tone's live scheduling horizon — 0.1 until the adaptive ratchet fires. */
+    lookAheadSec: number;
   } {
     let masterPeak = -1;
     if (this.analyser) {
@@ -296,6 +350,11 @@ export class ToneSoundPort implements SoundPort {
       masterPeak,
       transportBpm: Tone.getTransport().bpm.value,
       terrainScale: this.tempoScale,
+      schedEvents: this.schedStats.events,
+      schedLate: this.schedStats.late,
+      schedLate20: this.schedStats.late20,
+      schedWorstLateMs: this.schedStats.worstMs,
+      lookAheadSec: Tone.getContext().lookAhead,
     };
   }
 
@@ -729,8 +788,15 @@ export class ToneSoundPort implements SoundPort {
   /** Build the input node for a scheduled voice: an optional tone (low-pass)
    *  stage feeding an optional echo send, ending at the main output. Returns
    *  the head of the chain (what the voice connects into). Created nodes are
-   *  tracked in `scheduledFx` so re-scheduling never leaks. */
+   *  tracked in `scheduledFx` so re-scheduling never leaks.
+   *
+   *  The chain is built ONCE per lane and shared by every cell of that lane
+   *  (`opts.laneKey`, written by the engine). These are per-LANE knobs; built
+   *  per cell, a busy car with wobble/crunch up carried 30+ chorus/bitcrush
+   *  nodes and the audio thread fell to ~0.6x realtime — heard as skipping. */
   private scheduledDestination(opts: StepOptions): Tone.ToneAudioNode {
+    const cached = opts.laneKey ? this.laneChains.get(opts.laneKey) : undefined;
+    if (cached) return cached;
     // Build back-to-front so each stage targets the next; default = master out.
     let head: Tone.ToneAudioNode = Tone.getDestination();
 
@@ -776,6 +842,7 @@ export class ToneSoundPort implements SoundPort {
       head = chorus;
     }
 
+    if (opts.laneKey) this.laneChains.set(opts.laneKey, head);
     return head;
   }
 
@@ -825,7 +892,10 @@ export class ToneSoundPort implements SoundPort {
       ).connect(this.scheduledDestination(opts));
       player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
+      Tone.getTransport().scheduleRepeat((time) => {
+        this.recordSchedTiming(time);
+        startAll(player, time);
+      }, interval, offset);
       return;
     }
 
@@ -837,7 +907,10 @@ export class ToneSoundPort implements SoundPort {
       );
       player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => startAll(player, time), interval, offset);
+      Tone.getTransport().scheduleRepeat((time) => {
+        this.recordSchedTiming(time);
+        startAll(player, time);
+      }, interval, offset);
     });
   }
 
@@ -884,6 +957,7 @@ export class ToneSoundPort implements SoundPort {
       : null;
     Tone.getTransport().scheduleRepeat(
       (time) => {
+        this.recordSchedTiming(time);
         const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
         const dur = voiceDur !== null ? Math.max(noteDur, Math.min(4, voiceDur)) : noteDur;
         if (hasBend && "frequency" in synth) {
@@ -1280,6 +1354,7 @@ export class ToneSoundPort implements SoundPort {
     this.scheduledSynths.length = 0;
     for (const fx of this.scheduledFx) fx.dispose();
     this.scheduledFx.length = 0;
+    this.laneChains.clear();
   }
 
   stopAll(): void {

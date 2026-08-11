@@ -137,6 +137,8 @@ export class AudioEngine {
         tone: layer.tone,
         wobble: layer.wobble ?? 0,
         crunch: layer.crunch ?? 0,
+        // One live fx chain per lane, shared by all its cells (see StepOptions).
+        laneKey: layer.id,
       };
       if (layer.kind === "melody") {
         const total = layer.notes.length || STEP_COUNT;
