@@ -1509,3 +1509,73 @@ rows around the rail are flat horizontal bands. **That turned out to be correct*
 and the request was wrong to ask for it: in a true side elevation a rail *is* a
 flat horizontal line, and the ballast texture belongs below it, which is exactly
 what was delivered. Recorded so a future reviewer does not "fix" it.
+
+---
+
+## AR-040 · Hill and bridge: revise for detail and fit — HIGH
+
+**Eric on the shipped batch:** *"the bridge animation isn't detailed enough, it
+doesn't fit with the rest of the art."* The same is true of the hill. Everything
+else in the side-scroller batch matches the house style; these two read as
+placeholder solids sitting in front of good art rather than as part of the world.
+
+The **shape of both is already correct and must not change** — the hill's
+silhouette is a hard constraint (AR-038a) and the bridge's registration is right.
+This is a detail-and-materials pass on the same geometry.
+
+### 040a · `mound.png` — 1280 × 120, replaces the current file
+
+Currently a flat brown lump with a faint line on top. Problems, in order:
+
+1. **It is bare earth.** The ground either side of it is ballast, sleepers, rail
+   and grass. The embankment has to be made of the same things — grass over its
+   flanks, a proper rail-and-sleeper line running along the crest, and ballast
+   under that line, so the track visibly continues up and over it.
+2. **It does not meet the ground.** Its edges end abruptly against `ground.png`.
+   The left and right ends should feather into the same grass and ballast tones
+   so there is no seam where the embankment starts.
+3. **No form.** One flat brown fill. It needs the house's 2–3 tone shading: a lit
+   top face, a mid flank, a shadowed base, plus a little scatter (tufts, a rock
+   or two) to break the silhouette.
+
+**Keep exactly:** the 21-point height table in AR-038a, the 1280 × 120 canvas,
+transparent above the ground line. **One correction to that spec:** draw the
+curve with its baseline ON the bottom edge and the summit reaching exactly
+120 px. The delivered file sits ~4.5 px high across the span and is clipped flat
+at the top, which makes the crest slightly flatter than the physics.
+
+### 040b · `bridge.png` — 1280 × 170, replaces the current file
+
+Currently a simple timber trestle: uniform posts and a plain X-brace, no
+material detail. It reads as a diagram.
+
+- **Give it structure and material.** Stone or brick abutments at each end,
+  timber piers between them, proper cross-bracing with visible joints, bolt
+  plates, and the same 2–3 tone shading and 1 px dark outline everything else in
+  this batch has.
+- **Give it a deck.** Right now the girder under the rails is a flat bar. It
+  should read as a real bridge deck — beams, tie plates, maybe a low parapet at
+  the sides.
+- **Weathering.** The rest of the scene is warm and lived-in; this is clean and
+  grey. Some staining and variation in the timber will do most of the work.
+
+**Keep exactly:** 1280 × 170, top edge at the railhead, transparent outside the
+structure. The game draws a dark void behind it and clips that void to this
+image's height, so the piers must reach the bottom edge.
+
+**Prompt:** "Detailed 16-bit pixel-art railway bridge seen from the side, warm
+Nintendo palette: stone abutments at each end, weathered timber trestle piers
+with cross-bracing and visible bolt plates, a beamed deck under the track, 2–3
+tone shading, 1 px dark-plum outlines, no gradients, transparent background.
+Plus a grassy railway embankment with ballast, sleepers and rail running over its
+crest, shaded in the same style, feathering into flat ground at both ends."
+
+---
+
+## AR-009 — RIDE keycap halo: PRIORITY RAISED to MEDIUM
+
+Logged as LOW when it only affected the Yard. `btn-track-ride` and the
+transport keycaps are now on the side-scrolling Track's top bar, over a dark
+panel, where the stray semi-opaque halo around the keycap art reads as a grey
+box behind each button. Same fix as originally described — true alpha 0 outside
+the keycap.

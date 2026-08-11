@@ -41,7 +41,6 @@ import {
   playheadX,
   terrainSpanX,
   travelPx,
-  visibleBars,
   wheelAngle,
   type ScrollView,
 } from "../track-scroll.ts";
@@ -54,6 +53,7 @@ import {
   type TerrainSpan,
 } from "../terrain-profile.ts";
 import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
 
@@ -100,8 +100,26 @@ const CAR_BODY_KEY: Readonly<Record<CarType, string>> = {
  *  in the Yard and on the oval. */
 const FLANK = { w: 170, h: 68, cy: -110 } as const;
 
-/** How far ahead of bar 0 the locomotive rides, in bars. */
-const LOCO_LEAD_BARS = 0.55;
+// ── THE TRAIN IS ONE TRAIN ──────────────────────────────────────────────────
+// It was a repeating frieze: the world was laid out in bar order forever, so a
+// one-bar song drew loco/wagon/loco/wagon edge to edge and the eye read a
+// wallpaper pattern, not a vehicle. Now there is exactly ONE consist — a
+// locomotive plus one car per car in the Yard — coupled bumper to bumper.
+//
+// The song's LOOP is no longer drawn by repeating the train. It is the playhead
+// marker walking back along the consist, car by car, and snapping to the front
+// when the song comes round. One train, one lap of the marker per cycle.
+const LOCO_W = 380;
+const COUPLING = 14;
+/** Where the locomotive's nose sits, as a fraction of the screen, when the
+ *  whole consist fits. A long train anchors its nose here and lets its tail run
+ *  off the left edge, which is what a long train should do. */
+const NOSE_X_FRAC = 0.82;
+/** Peak forward surge within each bar, px. Net zero over the bar — the train
+ *  pulls ahead on the downbeat and the camera eases back onto it, so there IS
+ *  real motion against the ground without the train ever leaving the frame.
+ *  (Any *persistent* drift would walk it off screen within a few bars.) */
+const TRAIN_SURGE = 30;
 
 /** A terrain the transport has committed to, in absolute bars. */
 export interface V3TerrainRide {
@@ -179,11 +197,12 @@ export class TrackV3Scene extends Phaser.Scene {
   private fore?: Phaser.GameObjects.TileSprite;
 
   private slots: SlotView[] = [];
-  /** One locomotive per visible song cycle, pooled like the cars.
-   *  A single shared loco was wrong: the song repeats every `cars.length` bars,
-   *  so a short song puts several bar-0s on screen at once and `find()` picked
-   *  the leftmost — which was usually off-screen (measured at x = -933). */
-  private locos: Phaser.GameObjects.Image[] = [];
+  private loco?: Phaser.GameObjects.Image;
+  private locoShadow?: Phaser.GameObjects.Image;
+  private nowPost?: Phaser.GameObjects.Image;
+  private smoke: Phaser.GameObjects.Image[] = [];
+  private smokeDebt = 0;
+  private smokeNext = 0;
   private mound?: Phaser.GameObjects.Image;
   private deck?: Phaser.GameObjects.Image;
   private gap?: Phaser.GameObjects.Rectangle;
@@ -194,13 +213,16 @@ export class TrackV3Scene extends Phaser.Scene {
   private rainSheet?: Phaser.GameObjects.TileSprite;
   private gloom?: Phaser.GameObjects.Rectangle;
   private terrainLabel?: Phaser.GameObjects.Text;
-  private marker?: Phaser.GameObjects.Rectangle;
-  private nowBand?: Phaser.GameObjects.Rectangle;
   private lastPos = 0;
   private speedBars = 0; // bars per second, smoothed
   private lastAt = -1;
 
   preload(): void {
+    // The same packed chrome atlas every other view uses, so this scene's nav
+    // and transport are the SAME buttons as the Workshop, Yard and oval Track —
+    // not a second set that drifts. Idempotent; the atlas is already resident
+    // whenever the kid arrives from another view.
+    loadUiSprites(this);
     // Delivered art first, so the generator below knows what to skip.
     const delivered = new Set<string>();
     for (const [path, url] of Object.entries(DROPPED_ART)) {
@@ -280,41 +302,40 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.playhead)
       .setVisible(false);
 
-    // The playhead is a BAND one bar wide, not a hairline.
-    //
-    // A line marks a boundary, and cars are drawn in the MIDDLE of their bar —
-    // so for most of every bar the line pointed at the gap between two cars
-    // while a third was lit. The band is the bar itself: whatever is inside it
-    // is what you are hearing, which is the "different from a loop" indicator
-    // the mechanic was asked for.
-    const px = playheadX(this.view);
-    this.nowBand = this.add
-      .rectangle(px, 0, this.view.barWidth, H, 0xffe9b0, 0.13)
-      .setOrigin(0, 0)
-      .setDepth(DEPTH.playhead - 0.1);
-    this.marker = this.add
-      .rectangle(px, 0, 5, H, 0xffe9b0, 0.55)
-      .setOrigin(0.5, 0)
-      .setDepth(DEPTH.playhead);
-    if (this.textures.exists("trk-now-post")) {
-      // A real trackside signal post standing on the ground beside the rails,
-      // in FRONT of the near fringe so it is never half-swallowed by grass.
-      this.add
-        .image(px, RAIL_Y + 16, "trk-now-post")
-        .setOrigin(0.5, 1)
-        .setDepth(DEPTH.playhead);
-    } else {
-      this.add
-        .text(px, 210, "NOW", {
-          fontFamily: "'Press Start 2P', monospace",
-          color: "#ffe9b0",
-          stroke: "#1a1526",
-          strokeThickness: 6,
-        })
-        .setOrigin(0.5, 0)
-        .setFontSize(28)
-        .setDepth(DEPTH.playhead);
+    // The playhead WALKS THE TRAIN. With one fixed consist a trackside post at
+    // a fixed x would point at the same car forever, so the marker now travels
+    // car by car and snaps to the front when the song comes round — that
+    // journey IS the loop, drawn as motion instead of as repetition.
+    // BEHIND the train, not in front of it: planted at the sounding car's
+    // centre, the post's sign clears the car roof while its shaft is occluded
+    // by the body — so it reads as a signal standing behind the train rather
+    // than as a sticker across the car's number.
+    this.nowPost = this.add
+      .image(0, RAIL_Y + 16, "trk-now-post")
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH.train - 0.2)
+      .setVisible(false);
+
+    for (let i = 0; i < 14; i++) {
+      this.smoke.push(
+        this.add
+          .image(0, 0, "trk-smoke")
+          .setOrigin(0.5)
+          .setDepth(DEPTH.train - 0.1)
+          .setVisible(false),
+      );
     }
+
+    this.loco = this.add
+      .image(0, RAIL_Y, "trk-loco")
+      .setOrigin(0.5, 1)
+      .setDepth(DEPTH.train)
+      .setVisible(false);
+    this.locoShadow = this.add
+      .image(0, 0, "trk-shadow")
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH.shadow)
+      .setVisible(false);
 
     this.buildTopBar();
     this.buildLegend();
@@ -326,26 +347,68 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Nav + transport. The oval gets these from Tiled chrome authored against its
    *  plate; the greybox has no plate, so it draws its own. */
   private buildTopBar(): void {
-    const items: { label: string; fire: () => void }[] = [
-      { label: "MAP", fire: () => void EventBus.emit("track-nav", "map") },
-      { label: "RIDE", fire: () => void EventBus.emit("transport-play", "ride") },
-      { label: "STOP", fire: () => void EventBus.emit("transport-stop") },
+    const items = [
+      { sprite: "btn-nav-map", label: "MAP", fire: () => void EventBus.emit("track-nav", "map") },
+      { sprite: "btn-track-ride", label: "RIDE", fire: () => void EventBus.emit("transport-play", "ride") },
+      { sprite: "btn-transport-stop", label: "STOP", fire: () => void EventBus.emit("transport-stop") },
     ];
-    this.add.rectangle(W / 2, 90, W, 180, 0x1a1526, 0.72).setDepth(DEPTH.hud);
+    const SLOT = 300;
+    const GAP = 60;
+    const total = items.length * SLOT + (items.length - 1) * GAP;
+    // CENTRED. They were pinned to the left corner, which read as debug chrome
+    // rather than as the same control deck the other three views carry.
+    const x0 = (W - total) / 2 + SLOT / 2;
+    const cy = 120;
+
+    this.add.rectangle(W / 2, cy, W, 240, 0x1a1526, 0.72).setDepth(DEPTH.hud);
+
     items.forEach((item, i) => {
-      const cx = 220 + i * 300;
+      const cx = x0 + i * (SLOT + GAP);
+      const def = UI_SPRITES[item.sprite];
+      if (def && this.textures.exists(UI_ATLAS_KEY)) {
+        const img = this.add
+          .image(0, 0, UI_ATLAS_KEY, def.base)
+          .setOrigin(0.5)
+          .setDepth(DEPTH.hud + 1);
+        // Content-fit through the shared helper, so these sit at the same
+        // optical size as the identical buttons in every other scene.
+        placeUiSprite(img, def, { x: cx, y: cy, width: SLOT, height: 190 });
+        this.pressableAtlas(img, def, item.fire);
+        return;
+      }
       this.pressable(
-        this.add.rectangle(cx, 90, 250, 110, 0x3a3350, 1).setDepth(DEPTH.hud + 1),
+        this.add.rectangle(cx, cy, 250, 110, 0x3a3350, 1).setDepth(DEPTH.hud + 1),
         item.fire,
       );
       this.add
-        .text(cx, 90, item.label, {
+        .text(cx, cy, item.label, {
           fontFamily: "'Press Start 2P', monospace",
           color: "#ffe9b0",
         })
         .setOrigin(0.5)
         .setFontSize(28)
         .setDepth(DEPTH.hud + 2);
+    });
+  }
+
+  /** Armed press on an atlas button, swapping to its `-pressed` frame when the
+   *  sprite ships one — the same idle/pressed contract `ui-scene.ts` uses. */
+  private pressableAtlas(
+    img: Phaser.GameObjects.Image,
+    def: { base: string; states: Record<string, string> },
+    fire: () => void,
+  ): void {
+    const idle = def.states[def.base] ?? def.base;
+    const down = def.states[`${def.base}-pressed`] ?? idle;
+    let armed = false;
+    img.setInteractive({ useHandCursor: true });
+    img.on("pointerdown", () => { armed = true; img.setFrame(down); });
+    img.on("pointerout", () => { armed = false; img.setFrame(idle); });
+    img.on("pointerup", () => {
+      img.setFrame(idle);
+      if (!armed) return;
+      armed = false;
+      fire();
     });
   }
 
@@ -486,8 +549,6 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     if (this.fore) this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45);
 
-    this.marker?.setFillStyle(0xffe9b0, this.moving ? 0.75 : 0.25);
-    this.nowBand?.setFillStyle(0xffe9b0, this.moving ? 0.16 : 0.06);
 
     this.layoutTerrain();
     this.layoutTrain(travelPx(this.pos, this.view));
@@ -497,42 +558,85 @@ export class TrackV3Scene extends Phaser.Scene {
     return this.ride;
   }
 
+  /** Screen x of the consist's nose, and each car's centre, left to right.
+   *  Pure geometry over the car count — no bars involved, because the train is
+   *  one object now rather than a bar-indexed frieze. */
+  private consistLayout(surge: number): { noseX: number; carX: number[] } {
+    const n = this.cars.length;
+    const trainLen = LOCO_W + n * (CAR_W + COUPLING);
+    // Centre a short train; anchor a long one by the nose and let its tail run
+    // off the left, which is what a long train should look like.
+    const noseX =
+      trainLen + 160 <= W ? (W + trainLen) / 2 : W * NOSE_X_FRAC;
+    const carX: number[] = [];
+    // Car 0 couples directly behind the locomotive; the rest trail leftward.
+    let right = noseX - LOCO_W - COUPLING;
+    for (let i = 0; i < n; i++) {
+      carX.push(right - CAR_W / 2);
+      right -= CAR_W + COUPLING;
+    }
+    return { noseX: noseX + surge, carX: carX.map((x) => x + surge) };
+  }
+
+  /** The bar position of a point on screen — the inverse of `barEdgeX`. Each
+   *  car reads the terrain at its OWN x, so a long train climbs a hill car by
+   *  car instead of teleporting onto it as a block. */
+  private barAtX(x: number): number {
+    return this.pos + (x - playheadX(this.view)) / this.view.barWidth;
+  }
+
   private layoutTrain(dist: number): void {
-    const total = this.cars.length;
-    if (total === 0) {
+    const n = this.cars.length;
+    if (n === 0) {
       for (const s of this.slots) s.hide();
+      this.loco?.setVisible(false);
+      this.locoShadow?.setVisible(false);
+      this.nowPost?.setVisible(false);
       return;
     }
-    const slots = visibleBars(this.pos, total, this.view);
-    const sounding = barAtPlayhead(this.pos);
+    const sounding = ((barAtPlayhead(this.pos) % n) + n) % n;
+    const frac = this.pos - Math.floor(this.pos);
+    // One forward surge per bar, returning to zero: real motion against the
+    // ground with no net drift, so the train never walks out of frame.
+    const surge = TRAIN_SURGE * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
+    const { noseX, carX } = this.consistLayout(surge);
     const bob = bobOffset(dist, this.speedBars);
     const angle = wheelAngle(dist, WHEEL_R);
     const span = this.span;
 
+    const place = (
+      x: number,
+      body: Phaser.GameObjects.Image,
+      shadow: Phaser.GameObjects.Image,
+      wheelbase: number,
+    ): { lift: number; tilt: number } => {
+      const pose = carPose(this.barAtX(x), wheelbase, span, this.view.barWidth);
+      const y = Math.round(RAIL_Y - pose.lift + bob);
+      body.setPosition(Math.round(x), y).setRotation(pose.angle);
+      shadow
+        .setVisible(true)
+        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
+        .setRotation(pose.angle)
+        .setScale(1 - Math.abs(bob) / 60, 1);
+      return { lift: pose.lift, tilt: pose.angle };
+    };
+
     this.slots.forEach((s, i) => {
-      const slot = slots[i];
-      const car = slot ? this.cars[slot.songBar] : undefined;
-      if (!slot || !car) {
+      const car = this.cars[i];
+      if (!car) {
         s.hide();
         return;
       }
-      // Posed off BOTH wheels, not off the car's middle: a rigid body on a
-      // curved surface cannot be placed from one sample without hovering over
-      // crests and cutting into dips.
-      const atBar = slot.absBar + 0.5;
-      const { lift, angle: tilt } = carPose(
-        atBar, WHEELBASE_BARS, span, this.view.barWidth,
-      );
-      const y = Math.round(RAIL_Y - lift + bob);
-
-      const isNow = slot.absBar === sounding;
+      const x = carX[i] as number;
+      const isNow = i === sounding;
       s.show();
-      s.root.setPosition(Math.round(slot.centreX), y);
-      s.root.setRotation(tilt);
-      s.root.setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
+      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      s.root
+        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
+        .setRotation(pose.angle)
+        .setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
       s.body.setTexture(CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar);
       s.label.setText(String(car.number));
-      // Repaint the flank only when something about it actually changed.
       if (s.liveryDrawn !== car.livery || s.soundingDrawn !== isNow) {
         s.liveryDrawn = car.livery;
         s.soundingDrawn = isNow;
@@ -541,42 +645,72 @@ export class TrackV3Scene extends Phaser.Scene {
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
-      // Law 2: the shadow says where the base meets the ground, so it has to
-      // ride the LIFTED surface too, and tighten as the body bounces off it.
-      s.shadow.setPosition(Math.round(slot.centreX), Math.round(RAIL_Y - lift + 10));
-      s.shadow.setRotation(tilt);
-      s.shadow.setScale(1 - Math.abs(bob) / 60, 1);
+      s.shadow
+        .setVisible(true)
+        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
+        .setRotation(pose.angle)
+        .setScale(1 - Math.abs(bob) / 60, 1);
     });
 
-    // A locomotive leads every repeat of the song. Travel is leftward, so it
-    // rides to the LEFT of bar 0 — the front of a train is the end that has
-    // already gone past the marker.
-    const heads = slots.filter((sl) => sl.songBar === 0);
-    while (this.locos.length < heads.length) {
-      this.locos.push(
-        this.add
-          .image(0, RAIL_Y, "trk-loco")
-          .setOrigin(0.5, 1)
-          .setDepth(DEPTH.train)
-          .setVisible(false),
+    if (this.loco && this.locoShadow) {
+      this.loco.setVisible(true);
+      place(
+        noseX - LOCO_W / 2,
+        this.loco,
+        this.locoShadow,
+        (LOCO_W * 0.56) / this.view.barWidth,
       );
     }
-    this.locos.forEach((loco, i) => {
-      const head = heads[i];
-      if (!head) {
-        loco.setVisible(false);
-        return;
-      }
-      const atLoco = head.absBar + 0.5 - LOCO_LEAD_BARS;
-      const pose = carPose(atLoco, WHEELBASE_BARS, span, this.view.barWidth);
-      loco
+
+    // The marker rides beside whichever car is sounding.
+    if (this.nowPost) {
+      const x = carX[sounding] as number;
+      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      this.nowPost
         .setVisible(true)
-        .setPosition(
-          Math.round(head.centreX - LOCO_LEAD_BARS * this.view.barWidth),
-          Math.round(RAIL_Y - pose.lift + bob),
-        )
-        .setRotation(pose.angle);
-    });
+        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 16));
+    }
+
+    this.puffSmoke(noseX, dist);
+  }
+
+  /**
+   * Chimney smoke, spawned per DISTANCE travelled rather than on a timer, so it
+   * thins out as the train slows and stops dead when it does (Law 6). This is
+   * the strongest single cue that the train — not the scenery — is the thing
+   * moving, which is exactly what the frieze version failed to say.
+   */
+  private puffSmoke(noseX: number, dist: number): void {
+    const EVERY = 46; // px of travel per puff
+    if (this.moving) {
+      this.smokeDebt += Math.abs(dist - this.smokeNext);
+      this.smokeNext = dist;
+    } else {
+      this.smokeNext = dist;
+      this.smokeDebt = 0;
+    }
+    while (this.smokeDebt >= EVERY) {
+      this.smokeDebt -= EVERY;
+      const puff = this.smoke.find((p) => !p.visible);
+      if (!puff) break;
+      puff
+        .setVisible(true)
+        .setPosition(noseX - LOCO_W * 0.34, RAIL_Y - 210)
+        .setScale(0.5)
+        .setAlpha(0.85);
+      this.tweens.add({
+        targets: puff,
+        // Drifts up and BACKWARD along the train — the direction it would go if
+        // the train were driving forward through still air.
+        x: puff.x - 300,
+        y: puff.y - 150,
+        scale: 1.6,
+        alpha: 0,
+        duration: 2100,
+        ease: "Quad.easeOut",
+        onComplete: () => puff.setVisible(false),
+      });
+    }
   }
 
   private layoutTerrain(): void {
@@ -661,7 +795,10 @@ export class TrackV3Scene extends Phaser.Scene {
       this.rainSheet.setSize(w, H);
       // Falls fast and drifts with the world, so it belongs to the scene rather
       // than sitting on the glass in front of it.
-      this.rainSheet.tilePositionY = Math.floor(this.time.now * 2.2);
+      // 0.45 px/ms, not 2.2. At 2.2 the 128 px sheet advanced ~35 px per frame
+      // — 27 % of the texture — which aliases into static rather than reading
+      // as falling rain. This is the rate that actually looks like weather.
+      this.rainSheet.tilePositionY = Math.floor(this.time.now * 0.45);
       this.rainSheet.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     }
   }
@@ -678,11 +815,14 @@ export class TrackV3Scene extends Phaser.Scene {
     terrain: { x: number; width: number; kind: string } | null;
   } {
     const dist = travelPx(this.pos, this.view);
-    const sounding = barAtPlayhead(this.pos);
-    const slots = visibleBars(this.pos, Math.max(1, this.cars.length), this.view);
-    const now = slots.find((s) => s.absBar === sounding);
-    const atBar = sounding + 0.5;
-    const pose = carPose(atBar, WHEELBASE_BARS, this.span, this.view.barWidth);
+    const n = Math.max(1, this.cars.length);
+    const sounding = ((barAtPlayhead(this.pos) % n) + n) % n;
+    const { carX } = this.consistLayout(0);
+    const now = this.cars.length > 0 ? { centreX: carX[sounding] as number } : null;
+    const pose = carPose(
+      this.barAtX(now ? now.centreX : playheadX(this.view)),
+      WHEELBASE_BARS, this.span, this.view.barWidth,
+    );
     const span = this.ride
       ? terrainSpanX(this.ride.startBar, this.ride.endBar, this.pos, this.view)
       : null;
@@ -698,12 +838,12 @@ export class TrackV3Scene extends Phaser.Scene {
   }
 
   /** One pooled body per visible slot; the pool only grows. */
+  /** Exactly one body per car in the Yard train — the consist IS the train the
+   *  kid built, so the pool is sized by that and nothing else. */
   private rebuildSlots(): void {
-    const needed = visibleBars(0, Math.max(1, this.cars.length), this.view).length + 2;
+    const needed = this.cars.length;
     while (this.slots.length < needed) this.slots.push(this.makeSlot());
-    for (let i = 0; i < this.slots.length; i++) {
-      if (i >= needed) this.slots[i]!.hide();
-    }
+    for (let i = needed; i < this.slots.length; i++) this.slots[i]!.hide();
   }
 
   private makeSlot(): SlotView {
@@ -886,6 +1026,14 @@ function makeGreyboxTextures(scene: Phaser.Scene, delivered: ReadonlySet<string>
         g.fillTriangle(x + 4, dy, x - 10, dy + 128, x - 14, dy + 128);
       }
     }
+  });
+
+  tex("trk-smoke", 96, 96, () => {
+    g.fillStyle(0xf2efe6, 1);
+    g.fillCircle(48, 52, 30);
+    g.fillCircle(28, 60, 20);
+    g.fillCircle(68, 60, 18);
+    g.fillCircle(44, 34, 20);
   });
 
   tex("trk-wheel", WHEEL_R * 2, WHEEL_R * 2, () => {

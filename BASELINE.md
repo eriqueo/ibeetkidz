@@ -765,3 +765,58 @@ with the ballast below it. Nothing needed fixing.
 Full verification table and two non-blocking art follow-ups (a +4.5 px offset on
 the hill silhouette, a tile seam on `trees.png`) are in `ART_REQUESTS.md` under
 "SIDE-SCROLLER BATCH — RECEIVED AND WIRED".
+
+---
+
+## Re-baseline — 2026-08-10, the Track carries ONE train
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 561 / 34 files, 0 skipped | unchanged |
+| E2E local | **43 passed**, 0 failed | unchanged |
+
+Eric on the shipped side-scroller: *"the train is staying still while the scenery
+moves, which should be opposite… there should really just be one train, with the
+looping of the music illustrated in a different way."*
+
+**He was right, and the cause was the repetition, not the scrolling.** The world
+was laid out in bar order forever, so a one-bar song drew loco/wagon/loco/wagon
+edge to edge. There was no train-shaped object on screen at all — just a
+repeating frieze with a moving background, which the eye reads exactly as
+"background moves, pattern static."
+
+Now there is **one consist**: a locomotive plus one car per car in the Yard,
+coupled bumper to bumper (`LOCO_W`, `CAR_W`, `COUPLING`), centred when it fits
+and nose-anchored when it is too long. The car count is the Yard train's, full
+stop.
+
+**The loop is drawn as motion, not as repetition.** The playhead marker walks
+back along the consist car by car and snaps to the front when the song comes
+round. That journey is the loop.
+
+**Three things now say "the train is moving", none of which existed before.**
+Chimney smoke spawned per distance travelled and drifting up and BACK along the
+train (Law 6 — it thins as the train slows and stops dead when it does); a
+per-bar forward surge of 30 px that returns to zero, so there is real motion
+against the ground with no net drift; and empty track visible ahead of and behind
+the train, which is what makes it read as a vehicle at all.
+
+*Why the surge returns to zero:* any persistent drift walks the train off screen
+within a few bars. A fixed consist with a scrolling world is the only stable
+configuration, so the motion has to be oscillating rather than net.
+
+**Each car reads the terrain at its own x** (`barAtX` inverts `barEdgeX`), so a
+long train climbs a hill car by car — loco cresting while the last wagon is still
+on the near slope — instead of teleporting onto it as a block.
+
+**Rain was animating all along, 5× too fast to see.** `tilePositionY` advanced at
+2.2 px/ms — ~35 px per frame through a 128 px sheet, a 27 % jump that aliases
+into static. At 0.45 px/ms it reads as falling weather.
+
+**The top bar is the same chrome as every other view**, loaded from the shared
+packed atlas (`btn-nav-map`, `btn-track-ride`, `btn-transport-stop`) and centred.
+It was three flat rectangles pinned to the left corner, which read as debug UI.
+
+Hill and bridge art are logged for revision as **AR-040** — the shapes are right,
+the materials and detail are not. `AR-009`'s stray keycap halo was raised to
+MEDIUM: it is now visible behind RIDE and STOP on the dark top bar.
