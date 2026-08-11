@@ -45,6 +45,22 @@ Every API named below was checked against `node_modules/phaser/src/`.
 | `TileSprite` repeats whole files only | Rewritten: supports **atlas frames**, adds `tileRotation`, drops texture cropping. | migration skill §11 |
 | `Camera#matrix` | Now includes scroll; new `matrixExternal` / `matrixCombined`. Only matters if you touched matrices. | migration skill §5 |
 
+### One more v4 removal, found the hard way (2026-08-10)
+
+**`BitmapMask` does not exist in Phaser 4.** `Phaser.Display.Masks` ships
+`GeometryMask` only, and `GameObject.createBitmapMask()` is gone — the typings
+carry no reference to either. So there is **no way to give a game object a soft
+or gradient-edged mask**; a mask is a hard-edged shape or nothing.
+
+This matters more than it sounds. Anything that wants a feathered edge — a
+weather front, a light cone, a vignette over part of the scene — has to be built
+some other way: bake the gradient into the texture's own alpha, stack strips at
+stepped alpha, or (usually best) reconsider whether the effect wanted a hard
+spatial boundary at all. On this project the rain was clipped to a bar span,
+which put a vertical cut down the middle of the sky; the fix was not a softer
+mask but realising that weather is a cloud that arrives, not a wall that stands
+on the track.
+
 ### Unchanged — the course's advice transfers directly
 
 All verified present in 4.2.0:

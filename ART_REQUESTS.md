@@ -1563,6 +1563,27 @@ material detail. It reads as a diagram.
 structure. The game draws a dark void behind it and clips that void to this
 image's height, so the piers must reach the bottom edge.
 
+### 040c · `raincloud.png` — NEW file, 512 × 256 → key `trk-raincloud`
+
+Rain is the one terrain that is **weather, not ground**, so what a kid sees
+coming is a storm cloud crossing the sky — not a wall of water standing on the
+rails. (Two passes clipped the rain to its bar span and both read as a grey box
+over the scene; Phaser 4 has no soft-edged mask, and a vertical wall of rain was
+the wrong idea regardless.) When the cloud reaches the train, rain falls across
+the whole screen and then passes.
+
+The cloud is currently a flat grey blob. It needs to be a proper 16-bit storm
+cloud: a heavy dark base with lighter piled tops, 2–3 tone shading, 1 px dark
+outline, transparent background, and enough character to read as *the thing that
+is about to rain on you* from across the room. It scrolls with the world at
+track speed, so it should tile-neutral (no hard left/right edge features).
+
+**Prompt:** "A 16-bit pixel-art storm cloud on a transparent background, warm
+Nintendo palette: dark heavy flat base, lighter billowing piled tops, 2-3 tone
+shading, 1 px dark-plum outline, no gradients or glow."
+
+---
+
 **Prompt:** "Detailed 16-bit pixel-art railway bridge seen from the side, warm
 Nintendo palette: stone abutments at each end, weathered timber trestle piers
 with cross-bracing and visible bolt plates, a beamed deck under the track, 2–3

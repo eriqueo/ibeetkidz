@@ -140,6 +140,8 @@ const RAIL_Y = 1010; // where wheels touch on FLAT ground
 const FORE_Y = 975;
 const FORE_H = 130;
 const TERRAIN_LABEL_Y = 330;
+/** How much larger than 1:1 the rain sheet is drawn. */
+const RAIN_TILE_SCALE = 3.5;
 
 /** Reference width every terrain texture is drawn at before being stretched to
  *  its span. Height is NEVER scaled — the profile is normalized across the span
@@ -211,7 +213,14 @@ export class TrackV3Scene extends Phaser.Scene {
    *  and view jitter does not earn an RngPort), and one object instead of
    *  hundreds — for a shaft of rain seen for two bars the read is identical. */
   private rainSheet?: Phaser.GameObjects.TileSprite;
-  private gloom?: Phaser.GameObjects.Rectangle;
+  private gloom?: Phaser.GameObjects.Image;
+  /** The approaching storm cloud. Rain is the one terrain that is WEATHER
+   *  rather than ground, so what you see coming is a cloud in the sky — not a
+   *  wall of water standing on the track. */
+  private cloud?: Phaser.GameObjects.Image;
+  private splashes: Phaser.GameObjects.Image[] = [];
+  private splashDebt = 0;
+  private splashSeed = 0;
   private terrainLabel?: Phaser.GameObjects.Text;
   private lastPos = 0;
   private speedBars = 0; // bars per second, smoothed
@@ -278,17 +287,39 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH.deck)
       .setVisible(false);
+    // A soft-edged, top-weighted wash — NOT a flat rectangle. A hard vertical
+    // edge is the single thing that made the first pass read as "a grey box
+    // over the scene" instead of as weather.
     this.gloom = this.add
-      .rectangle(0, 0, 0, H, 0x24303f, 0.22)
+      .image(0, 0, "trk-gloom")
       .setOrigin(0, 0)
       .setDepth(DEPTH.rain - 0.1)
       .setVisible(false);
+    this.cloud = this.add
+      .image(0, 250, "trk-raincloud")
+      .setOrigin(0.5, 0.5)
+      .setDepth(DEPTH.rain - 0.2)
+      .setVisible(false);
+
+    for (let i = 0; i < 18; i++) {
+      this.splashes.push(
+        this.add
+          .image(0, 0, "trk-splash")
+          .setOrigin(0.5, 1)
+          .setDepth(DEPTH.rain + 0.1)
+          .setVisible(false),
+      );
+    }
     this.rainSheet = this.add
       .tileSprite(0, 0, 10, H, "trk-rain")
       .setOrigin(0, 0)
       .setDepth(DEPTH.rain)
-      .setAlpha(0.75)
+      .setAlpha(0.6)
       .setVisible(false);
+    // The sheet is 128 px drawn across a 1440 px scene: at 1:1 each streak is a
+    // few pixels and the whole thing reads as film grain. Scaled up, the
+    // streaks are actual streaks.
+    this.rainSheet.setTileScale(RAIN_TILE_SCALE, RAIN_TILE_SCALE);
 
     this.terrainLabel = this.add
       .text(0, TERRAIN_LABEL_Y, "", {
@@ -675,6 +706,53 @@ export class TrackV3Scene extends Phaser.Scene {
   }
 
   /**
+   * How hard it is raining ON THE TRAIN, 0..1 — the overlap between the rain's
+   * bar span and the consist, ramped so the squall arrives and leaves instead
+   * of switching on. This is what replaces clipping the rain to a rectangle.
+   */
+  private wetness(span: { x: number; width: number } | null): number {
+    if (!span) return 0;
+    const { noseX } = this.consistLayout(0);
+    const t = noseX - LOCO_W / 2;
+    const d =
+      t < span.x ? span.x - t : t > span.x + span.width ? t - (span.x + span.width) : 0;
+    return Math.max(0, Math.min(1, 1 - d / 760));
+  }
+
+  /**
+   * Drops bursting on the ballast — the strongest single cue that it is
+   * actually raining rather than that a grey filter has been applied.
+   *
+   * Scattered with a small integer hash rather than `Math.random`, which the
+   * architecture guard bans in `src/`: view jitter does not earn an RngPort, and
+   * a hash gives the same look while staying replayable.
+   */
+  private splashRain(spanX: number, spanW: number, wet: number): void {
+    if (wet <= 0.15) return;
+    this.splashDebt += this.game.loop.delta * wet;
+    while (this.splashDebt > 55) {
+      this.splashDebt -= 55;
+      const sp = this.splashes.find((q) => !q.visible);
+      if (!sp) break;
+      this.splashSeed = (this.splashSeed * 1103515245 + 12345) & 0x7fffffff;
+      const across = (this.splashSeed >>> 8) % Math.max(1, Math.round(spanW));
+      sp.setVisible(true)
+        .setPosition(Math.round(spanX + across), RAIL_Y + 34)
+        .setAlpha(0.9)
+        .setScale(0.7);
+      this.tweens.add({
+        targets: sp,
+        scaleX: 1.7,
+        scaleY: 0.5,
+        alpha: 0,
+        duration: 300,
+        ease: "Quad.easeOut",
+        onComplete: () => sp.setVisible(false),
+      });
+    }
+  }
+
+  /**
    * Chimney smoke, spawned per DISTANCE travelled rather than on a timer, so it
    * thins out as the train slows and stops dead when it does (Law 6). This is
    * the strongest single cue that the train — not the scenery — is the thing
@@ -781,18 +859,30 @@ export class TrackV3Scene extends Phaser.Scene {
 
     // Rain: weather in a moving shaft, plus the sky going over.
     const isRain = ride.kind === "rain";
-    this.gloom?.setVisible(isRain);
-    if (isRain && this.gloom) {
-      // Full height, not stopping at the ground line: a squall that ends in a
-      // hard horizontal edge above bright grass reads as a rectangle, not
-      // weather. Alpha kept low enough that the train stays legible inside it.
-      this.gloom.setPosition(x, 0);
-      this.gloom.setSize(w, H);
+    // ── weather, not a wall ────────────────────────────────────────────────
+    // Two earlier passes clipped the rain to its bar span, which put a hard
+    // vertical cut down the middle of the sky and read as a grey box over the
+    // scene. Phaser 4 has no `BitmapMask` (only the hard-edged `GeometryMask`),
+    // so the edge cannot be feathered — and a wall of rain standing on the
+    // track was the wrong idea anyway. What you see coming is the CLOUD; when
+    // it arrives the rain falls across the whole screen and then passes.
+    const wet = isRain ? this.wetness(span) : 0;
+    this.cloud?.setVisible(isRain);
+    if (isRain && this.cloud) {
+      this.cloud.setPosition(Math.round(x + w / 2), 250);
+      this.cloud.setDisplaySize(Math.max(320, w * 0.9), 300);
     }
-    this.rainSheet?.setVisible(isRain);
-    if (isRain && this.rainSheet) {
-      this.rainSheet.setPosition(x, 0);
-      this.rainSheet.setSize(w, H);
+    this.gloom?.setVisible(wet > 0.01);
+    if (wet > 0.01 && this.gloom) {
+      this.gloom.setPosition(0, 0);
+      this.gloom.setDisplaySize(W, H);
+      this.gloom.setAlpha(wet);
+    }
+    this.rainSheet?.setVisible(wet > 0.01);
+    if (wet > 0.01 && this.rainSheet) {
+      this.rainSheet.setAlpha(0.62 * wet);
+      this.rainSheet.setPosition(0, 0);
+      this.rainSheet.setSize(W, H);
       // Falls fast and drifts with the world, so it belongs to the scene rather
       // than sitting on the glass in front of it.
       // 0.45 px/ms, not 2.2. At 2.2 the 128 px sheet advanced ~35 px per frame
@@ -800,6 +890,7 @@ export class TrackV3Scene extends Phaser.Scene {
       // as falling rain. This is the rate that actually looks like weather.
       this.rainSheet.tilePositionY = Math.floor(this.time.now * 0.45);
       this.rainSheet.tilePositionX = parallaxOffset(this.pos, this.view, 1);
+      this.splashRain(0, W, wet);
     }
   }
 
@@ -1026,6 +1117,39 @@ function makeGreyboxTextures(scene: Phaser.Scene, delivered: ReadonlySet<string>
         g.fillTriangle(x + 4, dy, x - 10, dy + 128, x - 14, dy + 128);
       }
     }
+  });
+
+  // Soft-edged, top-weighted rain wash. Built from strips because Graphics has
+  // no gradient fill — 48 columns is more than enough for the edges to stop
+  // reading as a cut.
+  // Vertical weighting only — heaviest at the cloud base, lightest at the
+  // ground. The horizontal fade is the mask's job.
+  tex("trk-gloom", 16, 256, () => {
+    const ROWS = 32;
+    for (let r = 0; r < ROWS; r++) {
+      const v = (r + 0.5) / ROWS;
+      g.fillStyle(0x24303f, 0.30 * (1 - v * 0.55));
+      g.fillRect(0, (r * 256) / ROWS, 16, 256 / ROWS + 1);
+    }
+  });
+
+  tex("trk-raincloud", 512, 256, () => {
+    g.fillStyle(0x5c6472, 1);
+    g.fillEllipse(150, 150, 240, 150);
+    g.fillEllipse(300, 130, 280, 170);
+    g.fillEllipse(420, 155, 200, 130);
+    g.fillStyle(0x757f90, 1);
+    g.fillEllipse(220, 110, 200, 110);
+    g.fillEllipse(360, 100, 170, 95);
+    g.fillStyle(0x434b58, 1).fillRect(40, 190, 440, 28);
+  });
+
+  tex("trk-splash", 40, 22, () => {
+    g.fillStyle(0xd8ecff, 0.95);
+    g.fillEllipse(20, 18, 34, 8);
+    g.fillRect(6, 6, 4, 10);
+    g.fillRect(30, 4, 4, 12);
+    g.fillRect(18, 0, 4, 9);
   });
 
   tex("trk-smoke", 96, 96, () => {

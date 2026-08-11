@@ -820,3 +820,41 @@ It was three flat rectangles pinned to the left corner, which read as debug UI.
 Hill and bridge art are logged for revision as **AR-040** — the shapes are right,
 the materials and detail are not. `AR-009`'s stray keycap halo was raised to
 MEDIUM: it is now visible behind RIDE and STOP on the dark top bar.
+
+---
+
+## Re-baseline — 2026-08-10, rain became weather
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 561 / 34 files, 0 skipped | unchanged |
+| E2E local | **43 passed** | unchanged |
+
+Eric, on the shipped rain: *"This is not rain."* Correct — it was a grey
+rectangle with film grain. Three separate faults, and the third one was a design
+error rather than a bug.
+
+1. **The streaks were drawn 1:1.** A 128 px sheet across a 1440 px scene put each
+   streak at a few pixels; the whole thing read as grain. Now drawn at 3.5×.
+2. **There were no splashes.** Drops bursting on the ballast are the single
+   strongest cue that it is raining rather than that a filter has been applied.
+   Scattered with a small integer hash, not `Math.random` — banned in `src/` by
+   `architecture.test.ts` rule 3, and view jitter does not earn an `RngPort`.
+3. **The rain was clipped to its bar span**, which put a hard vertical cut down
+   the middle of the sky. That is what made it read as a box over the scene.
+
+**Phaser 4 has no `BitmapMask`** — `Phaser.Display.Masks` ships `GeometryMask`
+only and `createBitmapMask()` is gone, so a feathered edge is not available at
+all. Recorded in `design/PHASER_PATTERNS.md`, because it rules out a whole class
+of effect (light cones, vignettes, weather fronts) that the Phaser 3 material
+takes for granted.
+
+**But the wall was the wrong idea anyway.** Rain is the one terrain that is
+weather rather than ground. What approaches now is a **cloud in the sky**, drawn
+at the bar span so it is still something you see coming; when it reaches the
+train the rain falls across the whole screen and then passes. `wetness()` ramps
+that over ~760 px so the squall arrives and leaves instead of switching on.
+
+`audio-output.spec.ts` went red in the full run and passed on its own (8.6 s) —
+the load-sensitivity this file has warned about since the first re-baseline.
+Recorded rather than quietly re-run.
