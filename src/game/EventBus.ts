@@ -74,6 +74,10 @@ export interface EventMap {
   "workshop-add-melody": [instrument: SynthInstrumentId];
   // Phaser -> React (Workshop): the kid picked a (cosmetic) car type.
   "workshop-car-type-changed": [carType: CarType];
+  // Phaser -> React (Workshop): the kid painted the car from the colour picker.
+  // Payload is a `CAR_COLORS` entry; the reducer refuses anything else and
+  // refuses a colour another car is already wearing (see `setCarColor`).
+  "workshop-car-color-picked": [color: string];
   // Tiled button -> WorkshopScene: SEND TO YARD — the scene plays the car
   // slide-out (+ whistle), THEN emits `workshop-car-departed` for React.
   "workshop-send-to-yard": [];

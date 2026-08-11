@@ -133,6 +133,9 @@ export const Workshop: FC = () => {
     // hardcoded "SONG 001" that nothing ever updated.
     carName: part.name,
     livery: carLiveries(project.parts).get(part.id) ?? 0,
+    // What the paint rack may NOT offer. Derived from the library rather than
+    // tracked, so it is right the moment a car is added, deleted or repainted.
+    takenColors: project.parts.filter((p) => p.id !== part.id).map((p) => p.color),
     selectedLayerId: selectedLayer,
     tempoBpm: project.tempoBpm,
     carCount: project.parts.length,
@@ -265,6 +268,8 @@ export const Workshop: FC = () => {
       sound.play({ id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label });
     };
     const onCarType = (carType: CarType): void => dispatch({ type: "setCarType", partId: activePart(projectRef.current).id, carType });
+    const onCarColor = (color: string): void =>
+      dispatch({ type: "setCarColor", partId: activePart(projectRef.current).id, color });
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
     const onPlay = (): void => engine.playLoop(projectRef.current);
     // LOOP hears the car you are working on, alone. `playCarLoop` has existed in
@@ -595,7 +600,8 @@ export const Workshop: FC = () => {
 
     const subs = [
       ["workshop-cell-toggled", onCell], ["workshop-instrument-added", onInstrument],
-      ["workshop-car-type-changed", onCarType], ["workshop-layer-selected", onSelect],
+      ["workshop-car-type-changed", onCarType], ["workshop-car-color-picked", onCarColor],
+      ["workshop-layer-selected", onSelect],
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
       ["workshop-loop-car", onLoopCar],
       ["tool-closed", onToolClosed],

@@ -25,6 +25,7 @@ import {
   type ParseError,
   type ParseResult,
 } from "../../src/core/project-schema.ts";
+import { CAR_COLORS, carLiveries } from "../../src/core/car-identity.ts";
 import {
   MAX_BPM,
   MAX_CARS,
@@ -902,6 +903,36 @@ describe("train assembly (the Yard)", () => {
     expect(s.parts.find((p) => p.id === "car-2")!.carType).toBe("flatcar");
     expect(reduce(s, { type: "setCarType", partId: "car-2", carType: "flatcar" })).toBe(s);
     expect(reduce(s, { type: "setCarType", partId: "ghost", carType: "tanker" })).toBe(s);
+  });
+
+  it("setCarColor repaints a car from the livery table", () => {
+    let s = threeCarLibrary();
+    const wanted = CAR_COLORS[7] as string; // orange — nobody in a 3-car yard has it
+    s = reduce(s, { type: "setCarColor", partId: "car-2", color: wanted });
+    expect(s.parts.find((p) => p.id === "car-2")!.color).toBe(wanted);
+    // …and the derived identity follows the paint, which is the whole point:
+    // the car's number is its livery index, so repainting renumbers it.
+    expect(carLiveries(s.parts).get("car-2")).toBe(7);
+  });
+
+  it("setCarColor refuses an off-table colour, an unknown car, and a no-op", () => {
+    const s = threeCarLibrary();
+    expect(reduce(s, { type: "setCarColor", partId: "car-2", color: "#123456" })).toBe(s);
+    expect(reduce(s, { type: "setCarColor", partId: "ghost", color: CAR_COLORS[7] as string })).toBe(s);
+    const own = s.parts.find((p) => p.id === "car-2")!.color;
+    expect(reduce(s, { type: "setCarColor", partId: "car-2", color: own })).toBe(s);
+  });
+
+  it("setCarColor refuses a colour another car is already wearing", () => {
+    // One colour per car is an INVARIANT, not a nicety: `carLiveries` resolves a
+    // car's livery index — and with it its spoken NUMBER — from where its colour
+    // sits in CAR_COLORS, and a duplicate would silently renumber the other car.
+    const s = threeCarLibrary();
+    const taken = s.parts.find((p) => p.id === "car-3")!.color;
+    expect(reduce(s, { type: "setCarColor", partId: "car-2", color: taken })).toBe(s);
+    // The guard is what keeps every car's number distinct.
+    const numbers = [...carLiveries(s.parts).values()];
+    expect(new Set(numbers).size).toBe(numbers.length);
   });
 
   it("songBars / carAtBar / liveTrain walk the assembled train (one bar per slot)", () => {

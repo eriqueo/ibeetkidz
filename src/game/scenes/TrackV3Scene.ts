@@ -52,7 +52,8 @@ import {
   liftSamples,
   type TerrainSpan,
 } from "../terrain-profile.ts";
-import { colorFor, hexToInt } from "../livery-style.ts";
+import { colorFor } from "../livery-style.ts";
+import { asLiveryOverlay, setLiveryColor } from "../car-tint.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
@@ -105,22 +106,9 @@ const CAR_BODY_KEY: Readonly<Record<CarType, string>> = {
 //   COLOUR  the WHOLE car wears its livery — the body's own silhouette drawn a
 //           second time in that colour and composited back over itself. Shading,
 //           not a repaint: every plank, rivet and shadow still reads underneath,
-//           and not one pixel of new art is needed.
+//           and not one pixel of new art is needed. `car-tint.ts` owns the
+//           technique, so the Workshop's car and this one cannot drift apart.
 //   NUMBER  small, on the blank nameplate all four bodies are drawn with.
-//
-// The mode is HARD_LIGHT, and that is the whole trick. `car-identity.ts` records
-// (twice, measured) that colour "must be painted BESIDE the sprite, never onto
-// it" — but that finding is about MULTIPLY, which is all `setTint` could do in
-// Phaser 3. These bodies are dark (mean RGB of the boxcar's opaque pixels is
-// 91,65,50); multiplying by any livery lands under a quarter brightness and
-// every car collapses into "dark thing". Phaser 4 exposes the other blend modes,
-// and hard light divides per channel — it multiplies where the livery is dark
-// and SCREENS where it is bright — so a dark body can wear a bright livery with
-// its material intact. The four techniques were composited over the delivered
-// art and compared before this number was picked; at 1.0 the detail flattens,
-// at 0.6 a blue car reads muddy brown, and 0.75 is legible on both the dark
-// boxcar and the near-white tanker.
-const LIVERY_STRENGTH = 0.75;
 /** The sounding car is lifted toward cream rather than ringed. Same technique,
  *  same silhouette, one more overlay — the era's own trick (a palette change),
  *  and it cannot cover the art the way a stroked outline around a plate did. */
@@ -760,7 +748,7 @@ export class TrackV3Scene extends Phaser.Scene {
       s.label.setText(String(car.number));
       if (s.liveryDrawn !== car.livery) {
         s.liveryDrawn = car.livery;
-        s.wash.setTint(hexToInt(colorFor(car.livery)));
+        setLiveryColor(s.wash, colorFor(car.livery));
       }
       if (s.soundingDrawn !== isNow) {
         s.soundingDrawn = isNow;
@@ -1045,13 +1033,11 @@ export class TrackV3Scene extends Phaser.Scene {
     // per-type offset table — the thing that goes stale the moment art changes.
     const body = this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1);
     // The livery: the body's own silhouette, hard-light tinted with the car's
-    // colour and composited back over it. See LIVERY_STRENGTH for why the mode
+    // colour and composited back over it. See `car-tint.ts` for why the mode
     // matters more than the number.
-    const wash = this.add
-      .image(0, 0, "trk-car-boxcar")
-      .setOrigin(0.5, 1)
-      .setAlpha(LIVERY_STRENGTH)
-      .setTintMode(Phaser.TintModes.HARD_LIGHT);
+    const wash = asLiveryOverlay(
+      this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1),
+    );
     const lift = this.add
       .image(0, 0, "trk-car-boxcar")
       .setOrigin(0.5, 1)

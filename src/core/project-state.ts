@@ -35,7 +35,7 @@ import {
   type VersionedSave,
 } from "./project-schema.ts";
 import { MELODY_ROWS, type ScaleId, type KeyId } from "./scale.ts";
-import { CAR_COLORS, nextCarColor } from "./car-identity.ts";
+import { CAR_COLORS, liveryIndexOf, nextCarColor } from "./car-identity.ts";
 import type { PitchPin } from "./types.ts";
 
 const clamp = (v: number, lo: number, hi: number): number =>
@@ -815,6 +815,36 @@ export function reduce(state: Project, cmd: Command): Project {
         return { ...p, carType: cmd.carType };
       });
       return changed ? { ...state, parts } : state;
+    }
+
+    /**
+     * Repaint a car — the Workshop's colour picker.
+     *
+     * One colour per car is an INVARIANT here, not a preference. `carLiveries`
+     * resolves each car's livery index from the position of its colour in
+     * `CAR_COLORS`, and the car's spoken NUMBER is that index + 1; if two cars
+     * wore the same colour, the second would be bumped to the lowest free index
+     * and silently renumber itself — a kid's "car 3" would become car 5 because
+     * somebody else picked red. So a colour already on another car is refused
+     * here rather than reconciled afterwards, and the picker greys taken swatches
+     * out so a kid never meets the refusal.
+     *
+     * Off-table colours are refused for the same reason: `liveryIndexOf` returns
+     * -1 for them, which is exactly the "unresolved" case the two-pass livery
+     * assignment exists to clean up after old saves.
+     */
+    case "setCarColor": {
+      const color = cmd.color.toLowerCase();
+      if (liveryIndexOf(color) < 0) return state;
+      const target = state.parts.find((p) => p.id === cmd.partId);
+      if (!target || target.color.toLowerCase() === color) return state;
+      if (state.parts.some((p) => p.id !== cmd.partId && p.color.toLowerCase() === color)) {
+        return state;
+      }
+      return {
+        ...state,
+        parts: state.parts.map((p) => (p.id === cmd.partId ? { ...p, color } : p)),
+      };
     }
 
     // ── Car library (Workshop) ───────────────────────────────────────────────

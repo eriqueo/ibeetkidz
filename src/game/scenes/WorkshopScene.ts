@@ -39,7 +39,9 @@ import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import { drawGlyph } from "../car-livery.ts";
 import { CHIP_EDGE, colorFor, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
+import { asLiveryOverlay, setLiveryColor } from "../car-tint.ts";
 import workshopMap from "../../assets/maps/workshop.json";
+import { CAR_COLORS } from "../../core/car-identity.ts";
 import { STEP_COUNT, CAR_TYPES, MAX_CARS, type CarType, type LaneKind } from "../../core/types.ts";
 import {
   BaseToolPanel,
@@ -72,6 +74,11 @@ export interface WorkshopModel {
    *  editing is what makes the mark mean something on a siding later. */
   readonly carName: string;
   readonly livery: number;
+  /** Livery colours the OTHER cars in the library are wearing. The paint rack
+   *  greys these out, because `setCarColor` refuses them: a car's spoken NUMBER
+   *  is derived from where its colour sits in `CAR_COLORS`, so two cars sharing
+   *  one would silently renumber the second. See the reducer. */
+  readonly takenColors: readonly string[];
   readonly selectedLayerId: string | null;
   readonly tempoBpm: number;
   /** How many cars the LIBRARY holds. The New Car picker needs it to tell a kid
@@ -102,6 +109,20 @@ function chalkTint(colorInt: number): number {
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
 
+// ── THE PAINT RACK ──────────────────────────────────────────────────────────
+// A kid picks a car's colour here, kidpix-style: a rack of chips that is always
+// on screen, not a menu you have to summon. Colour is the channel cars are told
+// apart BY in the Yard and on the Track, and until now it was assigned by
+// `addCar` and unchangeable — the one identity channel the kid had no say in.
+//
+// It hangs on the LEFT WALL because that is the only permanently free space in
+// this room: the header plate takes everything above y≈0.26, the instrument
+// characters stand from y≈0.635 down, the car fills the middle, and the
+// transport plate takes the floor. Fractions of the background rect, not pixels,
+// so it tracks the contain-fit letterbox the same way the Tiled chrome does.
+const RACK = { x0: 0.027, y0: 0.278, x1: 0.16, y1: 0.611 } as const;
+const RACK_COLS = 2;
+
 /** Captions under the New Car tiles. Phrased as the ACTION the tile performs,
  *  not the noun it depicts — the menu starts a car, it does not describe one. */
 const PICKER_CAPTIONS: Record<CarType, string> = {
@@ -122,6 +143,7 @@ const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
 const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
 const DEPTH_CAR = 0.4;
+const DEPTH_WASH = 0.5; // the livery, over the body and under the board
 const DEPTH_BOARD = 0.6;
 
 // LCD font shared by the SONG + TEMPO readouts. Dark plum on a cream chip drawn
@@ -150,7 +172,7 @@ interface LaneRow {
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], carType: "boxcar", carName: "Loop 1", livery: 0, selectedLayerId: null, tempoBpm: 120, carCount: 1 };
+  private model: WorkshopModel = { lanes: [], carType: "boxcar", carName: "Loop 1", livery: 0, takenColors: [], selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
   /** The empty-car prompt (hint + the SURPRISE ME chip), or undefined when
@@ -183,7 +205,16 @@ export class WorkshopScene extends BackgroundScene {
   // AR-016 layered field: the active car sprite + the chalkboard mounted in its
   // standardized interior void. The note grid draws on the board's slate.
   private car: Phaser.GameObjects.Image | undefined;
+  /** The car's livery, as an overlay of its own silhouette — see `car-tint.ts`.
+   *  This is what makes the paint rack visibly paint the car. */
+  private carWash: Phaser.GameObjects.Image | undefined;
   private board: Phaser.GameObjects.Image | undefined;
+  // The paint rack: one plate, one Graphics for all the chips (redrawn only on
+  // layout or model change), and an invisible hit zone per chip.
+  private rackPlate: Phaser.GameObjects.Graphics | undefined;
+  private rackChips: Phaser.GameObjects.Graphics | undefined;
+  private rackHits: Phaser.GameObjects.Rectangle[] = [];
+  private rackCells: { x: number; y: number; w: number; h: number }[] = [];
   /** The board's slate surface in screen px — the grid's mount rect. */
   private slateRect = { x: 0, y: 0, w: 0, h: 0 };
   private departing = false;
@@ -221,6 +252,7 @@ export class WorkshopScene extends BackgroundScene {
     this.addBackground("contain"); // never crop the top/bottom bars off-screen
     this.buildCarLayer();
     this.buildChrome();
+    this.buildColorRack();
     this.buildCarPicker();
     this.buildGrid();
     this.buildToolPanels();
@@ -271,6 +303,9 @@ export class WorkshopScene extends BackgroundScene {
     const asset = CAR_SIDE_SPRITES[type];
     if (this.textures.exists(asset.key)) {
       this.car?.setTexture(asset.key);
+      // The wash is the body's OWN silhouette — it has to follow the swap, or
+      // the livery ends up painted on the shape of the previous car type.
+      this.carWash?.setTexture(asset.key);
       return;
     }
     this.load.image(asset.key, asset.url);
@@ -279,6 +314,7 @@ export class WorkshopScene extends BackgroundScene {
       if (!this.car?.scene || this.model.carType !== type) return;
       if (!this.textures.exists(asset.key)) return;
       this.car.setTexture(asset.key);
+      this.carWash?.setTexture(asset.key);
       this.layoutFixtures();
     });
     this.load.start();
@@ -291,6 +327,9 @@ export class WorkshopScene extends BackgroundScene {
     this.car = this.add
       .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
+    this.carWash = asLiveryOverlay(
+      this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH),
+    );
     this.showCar(this.model.carType);
     this.board = this.add
       .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base)
@@ -315,6 +354,10 @@ export class WorkshopScene extends BackgroundScene {
     const s = this.car.scaleX;
     const contentBottom = this.car.y + (CAR_CONTENT[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
     this.car.y += target.y + target.height / 2 - contentBottom;
+    // Same texture, same transform — the wash IS the car, drawn once more.
+    this.carWash
+      ?.setPosition(this.car.x, this.car.y)
+      .setScale(this.car.scaleX, this.car.scaleY);
 
     // The car's canvas origin in screen px → the void rect in screen px.
     const canvasLeft = this.car.x - (CAR_SIDE_CANVAS.w / 2) * s;
@@ -509,6 +552,108 @@ export class WorkshopScene extends BackgroundScene {
     drawGlyph(g, glyphFor(this.model.livery), cx, cy, r * 0.82, inkOn(color));
   }
 
+  // ── the paint rack (colour picker) ─────────────────────────────────────────
+
+  /** Twelve chips on a board. One Graphics draws all of them — the rack only
+   *  redraws on a layout or a model push, so there is nothing per-frame here —
+   *  and each chip carries an invisible rectangle for the tap. */
+  private buildColorRack(): void {
+    this.rackPlate = this.add.graphics().setDepth(8);
+    this.rackChips = this.add.graphics().setDepth(9);
+    this.rackHits = CAR_COLORS.map((color) => {
+      const hit = this.add
+        .rectangle(0, 0, 10, 10, 0xffffff, 0.001)
+        .setDepth(10)
+        .setInteractive({ useHandCursor: true });
+      // Armed press, as everywhere else in this scene: Phaser delivers
+      // `pointerup` to whatever is under the pointer at release even when the
+      // press began elsewhere, so a bare `pointerup` here would repaint the car
+      // from a release that started on the car above.
+      let armed = false;
+      hit.on("pointerdown", () => { armed = true; });
+      hit.on("pointerout", () => { armed = false; });
+      hit.on("pointerup", () => {
+        if (!armed) return;
+        armed = false;
+        // A colour another car wears is refused by the reducer anyway; catching
+        // it here is what keeps the greyed-out chip honest rather than a chip
+        // that looks disabled and silently does nothing.
+        if (this.colorTaken(color)) return;
+        EventBus.emit("workshop-car-color-picked", color);
+      });
+      return hit;
+    });
+  }
+
+  private colorTaken(color: string): boolean {
+    const c = color.toLowerCase();
+    return this.model.takenColors.some((t) => t.toLowerCase() === c);
+  }
+
+  private layoutColorRack(): void {
+    const r = this.backgroundRect;
+    if (r.width === 0 || !this.rackPlate) return;
+    const x0 = r.x + r.width * RACK.x0;
+    const x1 = r.x + r.width * RACK.x1;
+    const y0 = r.y + r.height * RACK.y0;
+    const y1 = r.y + r.height * RACK.y1;
+    const rows = Math.ceil(CAR_COLORS.length / RACK_COLS);
+    const cw = (x1 - x0) / RACK_COLS;
+    const ch = (y1 - y0) / rows;
+    this.rackCells = CAR_COLORS.map((_, i) => ({
+      x: x0 + (i % RACK_COLS) * cw,
+      y: y0 + Math.floor(i / RACK_COLS) * ch,
+      w: cw,
+      h: ch,
+    }));
+    const pad = Math.min(cw, ch) * 0.3;
+    this.rackPlate
+      .clear()
+      .fillStyle(CHIP_EDGE, 0.94)
+      .fillRoundedRect(x0 - pad, y0 - pad, x1 - x0 + pad * 2, y1 - y0 + pad * 2, pad)
+      .lineStyle(Math.max(3, pad * 0.3), 0x8a6b3a, 1)
+      .strokeRoundedRect(x0 - pad, y0 - pad, x1 - x0 + pad * 2, y1 - y0 + pad * 2, pad);
+    this.rackHits.forEach((hit, i) => {
+      const c = this.rackCells[i];
+      if (c) hit.setPosition(c.x + c.w / 2, c.y + c.h / 2).setSize(c.w, c.h);
+    });
+    this.drawColorRack();
+  }
+
+  /** Chip states, and why each is drawn the way it is: the car's OWN colour
+   *  wears a cream ring (the same "this one" mark the sounding car wears on the
+   *  Track); a colour another car has is drawn faint, because it is not a
+   *  choice; everything else is a full-strength chip. No text — the player is
+   *  four. */
+  private drawColorRack(): void {
+    const g = this.rackChips;
+    if (!g || this.rackCells.length === 0) return;
+    const mine = colorFor(this.model.livery).toLowerCase();
+    g.clear();
+    CAR_COLORS.forEach((color, i) => {
+      const cell = this.rackCells[i];
+      if (!cell) return;
+      const inset = Math.min(cell.w, cell.h) * 0.16;
+      const x = cell.x + inset;
+      const y = cell.y + inset;
+      const w = cell.w - inset * 2;
+      const h = cell.h - inset * 2;
+      const rad = Math.min(w, h) * 0.24;
+      const edge = Math.max(3, Math.min(w, h) * 0.09);
+      const isMine = color.toLowerCase() === mine;
+      const taken = !isMine && this.colorTaken(color);
+      g.fillStyle(CHIP_EDGE, 1).fillRoundedRect(
+        x - edge, y - edge, w + edge * 2, h + edge * 2, rad + edge,
+      );
+      g.fillStyle(hexToInt(color), taken ? 0.28 : 1).fillRoundedRect(x, y, w, h, rad);
+      if (isMine) {
+        g.lineStyle(edge * 1.4, 0xffe9b0, 1).strokeRoundedRect(
+          x - edge * 2, y - edge * 2, w + edge * 4, h + edge * 4, rad + edge * 2,
+        );
+      }
+    });
+  }
+
   // ── car-type picker (toggled by the New Car button) ─────────────────────────
   private bindPickerToggle(): void {
     const onToggle = (): void => this.toggleCarPicker();
@@ -658,8 +803,16 @@ export class WorkshopScene extends BackgroundScene {
     }
     this.refreshSelection();
     this.refreshMutes();
+    this.refreshLivery();
     this.refreshLcd();
     this.maybeOfferEditOrNew();
+  }
+
+  /** The car's paint, everywhere it shows: the body wash, the LCD mark, and
+   *  which chip on the rack is ringed. One call so they cannot disagree. */
+  private refreshLivery(): void {
+    if (this.carWash) setLiveryColor(this.carWash, colorFor(this.model.livery));
+    this.drawColorRack();
   }
 
   private refreshLcd(): void {
@@ -980,6 +1133,7 @@ export class WorkshopScene extends BackgroundScene {
 
   private layoutFixtures(): void {
     this.layoutChrome();
+    this.layoutColorRack();
     this.layoutCarLayer(); // must precede the grid: it computes slateRect
     this.layoutGrid();
   }

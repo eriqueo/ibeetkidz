@@ -288,6 +288,11 @@ export type Command =
   | { readonly type: "reorderTrain"; readonly instanceIds: readonly string[] }
   | { readonly type: "muteCar"; readonly instanceId: string; readonly muted: boolean }
   | { readonly type: "setCarType"; readonly partId: string; readonly carType: CarType }
+  // Repaint a car. Colour is the channel a kid tells cars apart BY, so it is
+  // chosen in the Workshop rather than only assigned at `addCar`. `color` must
+  // be an entry of `CAR_COLORS` and must not already be on another car — see
+  // the reducer for why one-colour-per-car is an invariant and not a nicety.
+  | { readonly type: "setCarColor"; readonly partId: string; readonly color: string }
   // Per-lane numbered patterns (BeepBox 0-9). All target a lane on the active
   // car. `addPattern` copies the live pattern into a fresh slot and makes it
   // active; `selectPattern` swaps slot N live; `removePattern` drops slot N
