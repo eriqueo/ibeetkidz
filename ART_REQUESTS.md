@@ -1092,7 +1092,27 @@ future overworld.
 
 ---
 
-# SIDE-SCROLLER BATCH (added 2026-08-10) — AR-034 … AR-039
+# ✅ DONE — SIDE-SCROLLER BATCH (delivered 2026-08-10) — AR-034 … AR-039
+
+**All six entries delivered in one session.** Files in `src/assets/sprites/track3/`.
+Commits: AR-036 `37c02b2`, AR-034 `2961779`, AR-038 `c6114af`, AR-035 `a871eca`, AR-037 `c4eb8a0`, AR-039 `c2b3589`.
+
+**Drop-in slots (live immediately):** `sky.png`, `hills.png`, `trees.png`,
+`ground.png`, `fringe.png`, `mound.png`, `bridge.png`, `rain.png`, `wheel.png`.
+
+**Needs engineering wiring:** `loco.png`, `car-*.png` (×4), `shadow.png`,
+`btn-*.png` (×6), `legend-plate.png`, `now-post.png` — all loaded harmlessly,
+wire per `src/assets/sprites/track3/README.md`.
+
+**Hill profile:** mound.png verified against `terrain-profile.ts` table —
+all 21 sample points within 1px tolerance. Bottom edge = railhead.
+
+**Ground registration:** ground.png rail top confirmed at exactly y=30
+(640/640 grey pixels at that row).
+
+**Wheel symmetry:** wheel.png radially symmetric about (29.5, 29.5), 5 spokes.
+
+**Alpha:** all 20 files pass four-corner alpha=0 check.
 
 > **Read this header before starting any entry below.**
 >
