@@ -1600,3 +1600,90 @@ transport keycaps are now on the side-scrolling Track's top bar, over a dark
 panel, where the stray semi-opaque halo around the keycap art reads as a grey
 box behind each button. Same fix as originally described — true alpha 0 outside
 the keycap.
+
+**Measured 2026-08-11, and it is not just the RIDE keycap.** Flood-filling the
+background of every chrome sprite from its canvas border: **40 of 71 files**
+carry a near-uniform dark layer over the WHOLE canvas at alpha 15–163, covering
+33–58 % of each canvas. `btn-yard-totrack-pressed` corners sit at alpha 162;
+`btn-transport-stop-idle` at 135; even `panel-header.png` and
+`panel-transport-v2.png` carry it. It was invisible for months because every
+view that used those buttons sat them on a dark stone plate; the side-scrolling
+Track sits them on SKY, where each keycap draws a grey rectangle around itself.
+
+`scripts/build_ui_atlas.py` now keys it out at pack time (border flood below
+alpha 200, plus a dust sweep under alpha 40 for wash trapped inside a closed
+shape), which is what the contract at the top of this file says engineering does
+when a wash slips through. **The source files are still wrong** and should be
+re-exported — the packer is a net, not a fix, and every wash it removes is a
+wash that risks eating real art the next time the thresholds meet a sprite with
+genuine translucency in it.
+
+---
+
+## AR-041 · Track vehicles: drop the baked track slice, draw the wheels — MEDIUM
+
+The AR-036 side-on rolling stock is good art with two structural problems, both
+found by measuring the delivered files rather than looking at them.
+
+**1. Every vehicle carries a slice of track.** `loco.png` and all four
+`car-*.png` have ~20 px of rail, ballast and sleepers baked across the bottom of
+the canvas, with a ~7 px transparent gap between it and the vehicle's frame. The
+scene already draws ground, rails and ballast as its own scrolling layers, so
+each vehicle lays a second, non-scrolling rail on top of the real one. On flat
+ground the two coincide and it reads fine; on a hill each car tilts its private
+rail with it. **Please re-export each vehicle with its own frame at the bottom
+edge of the canvas and nothing below it.**
+
+**2. The locomotive's arches are empty.** `loco.png` draws two frame arches — a
+big one under the cab at x≈77, a small one behind the cowcatcher at x≈270 — and
+there is no wheel in either. It has been running on air since the side-scroller
+landed. Engineering now places `wheel.png` in both arches (a driver and a pilot
+wheel, each turning at its own radius), which is the right seam anyway because a
+baked-in wheel cannot rotate — but the ARCH SIZES should be checked against a
+60 px wheel: the front one is currently 28 px wide, so the pilot wheel is drawn
+at 0.62 scale to fit a hole that a real pilot wheel would fill.
+
+Same note for the cars: the arch centres measure at 24 % and 76 % of the canvas
+width, which is what the scene now uses. If a future export moves them, say so —
+that number lives in `TrackV3Scene.WHEEL_AT` and nothing else can detect a drift.
+
+**Retired by this round:** `legend-plate.png` (`trk-legend-plate`) from AR-039 is
+no longer loaded. The Track's job bar now mounts `panel-transport-v2`, the same
+plate the Workshop and Yard use, docked to the bottom edge — Eric's report was
+that the standalone plaque read as "superimposed onto the background as opposed
+to natively embedded", and a bar that runs off the frame edge is what reads as
+chrome. The three terrain picture buttons are unchanged and still in use.
+
+---
+
+## AR-042 · The crew, riding the cars — MEDIUM (new capability, not a fix)
+
+Eric's idea, in his words: *"once you click on a character, you edit their
+instrument for the loop, then you click okay when you're ready and instead of the
+chalkboard, you physically see the character on the train car! that would need
+new art for each character loaded onto each car, but i think that's cool and
+worth it. they can be hanging off the cars in different dynamic ways based on the
+image and construction of the cars themselves."*
+
+**This is already shipped in its interim form** and needs no art to work: each
+lane stands in the car's open interior drawn with that instrument's existing
+`inst-*-passive` sprite, and tapping one opens the sequencer popup. What is
+missing is the *riding* — right now every character stands upright in a row,
+because a shelf pose is all that exists.
+
+**What would earn new art**, in priority order:
+
+1. **A riding pose per character** (8 characters): leaning on the car's side rail,
+   sitting on the edge with legs over, holding the grab-iron. One pose each is
+   enough to break the row-of-statues look. Same 576 × 768 canvas as the existing
+   states so it is a texture swap with no reposition, named `inst-<id>-riding`.
+2. **Per-car-type variants** only if (1) proves it is worth it — a boxcar's open
+   side, a hopper's rim and a flatcar's bare deck each imply a different pose,
+   which is 8 × 4 = 32 files. Do not start here.
+
+Until then the interior the crew stands in is engine-drawn: a deep back wall and
+a lighter floor derived from the car's own livery colour. That is deliberate —
+`punch_void.py` cut a real hole in the car art so the chalkboard could show
+through, and no art has ever existed for the inside of the car. **A painted
+interior (three-quarter timber planking, a lit floor) would be a genuine
+improvement** and is the smallest art job on this list.

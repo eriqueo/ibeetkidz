@@ -25,3 +25,15 @@ jobs:
       # deploy's dependency chain and this needs no build to run.
       - name: sprite alpha export rule
         run: bash scripts/check-sprite-alpha.sh
+      # The packed chrome atlas is a GENERATED artifact that is committed, and
+      # the code loads the committed copy — so a sprite can be updated in
+      # src/assets/sprites/ and simply never reach the game. It also carries the
+      # de-wash step (see AR-009), which only runs at pack time: a hand-synced
+      # atlas would quietly reintroduce the grey boxes behind every keycap.
+      # Repack and diff. Byte-identical or it failed.
+      - name: ui atlas is regenerable from its sprites
+        run: |
+          python3 -m pip install --quiet pillow
+          python3 scripts/build_ui_atlas.py
+          git diff --exit-code -- public/assets/spritesheets \
+            || { echo "::error::ui-atlas is stale — run scripts/build_ui_atlas.py and commit the result"; exit 1; }
