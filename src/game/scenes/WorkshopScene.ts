@@ -36,10 +36,10 @@ import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, contentHitRect, hitRectContains, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import { drawGlyph } from "../car-livery.ts";
-import { CHIP_EDGE, colorFor, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
-import { asLiveryOverlay, setLiveryColor } from "../car-tint.ts";
+import { CHIP_EDGE, colorFor, darken, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
+import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import workshopMap from "../../assets/maps/workshop.json";
 import { CAR_COLORS } from "../../core/car-identity.ts";
 import { STEP_COUNT, CAR_TYPES, MAX_CARS, type CarType, type LaneKind } from "../../core/types.ts";
@@ -101,10 +101,31 @@ const CHALK_GRID_ALPHA = 0.16;
 
 /** A lane colour pushed toward chalk-white, so notes read as coloured chalk
  *  sticks on the slate rather than flat paint swatches. */
-function chalkTint(colorInt: number): number {
+function chalkTint(colorInt: number, amount = 0.45): number {
   const c = Phaser.Display.Color.IntegerToColor(colorInt);
-  const mix = (v: number): number => Math.round(v + (255 - v) * 0.45);
+  const mix = (v: number): number => Math.round(v + (255 - v) * amount);
   return Phaser.Display.Color.GetColor(mix(c.red), mix(c.green), mix(c.blue));
+}
+
+/**
+ * How a step cell is painted, in ONE place.
+ *
+ * `buildGrid` and `diffCells` used to spell the same fill/alpha pair out
+ * separately, so the on-state existed twice and could drift. It also had to:
+ * the note was a flat 95%-alpha bar with a hairline grid stroke, which is
+ * exactly the "little bars" Eric keeps reporting. A note now gets a CHALK-WHITE
+ * rim around a lane-coloured core — the two-tone edge is what makes a mark read
+ * as pressed chalk rather than as a rectangle — while an empty step stays a
+ * faint ruling, so the grid is legible without competing with the notes on it.
+ */
+function paintCell(
+  cell: Phaser.GameObjects.Rectangle,
+  colorInt: number,
+  on: boolean,
+  edgePx: number,
+): void {
+  cell.setFillStyle(on ? chalkTint(colorInt, 0.28) : OFF_FILL, on ? 1 : OFF_ALPHA);
+  cell.setStrokeStyle(on ? edgePx : 1, CHALK, on ? 0.92 : CHALK_GRID_ALPHA);
 }
 
 const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex).color;
@@ -143,8 +164,11 @@ const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
 const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
 const DEPTH_CAR = 0.4;
-const DEPTH_WASH = 0.5; // the livery, over the body and under the board
-const DEPTH_BOARD = 0.6;
+const DEPTH_WASH = 0.5; // the livery, over the body and under everything else
+const DEPTH_RIDER = 0.7; // the crew, standing in the car's open interior
+/** The board is a MODAL now — above the chrome, below the tool panels and the
+ *  edit-vs-new modal, both of which must be able to cover it. */
+const DEPTH_BOARD = 40;
 
 // LCD font shared by the SONG + TEMPO readouts. Dark plum on a cream chip drawn
 // over the transport panel (PROJECT_CHARTER: dark text on light "paper" panels).
@@ -205,10 +229,39 @@ export class WorkshopScene extends BackgroundScene {
   // AR-016 layered field: the active car sprite + the chalkboard mounted in its
   // standardized interior void. The note grid draws on the board's slate.
   private car: Phaser.GameObjects.Image | undefined;
-  /** The car's livery, as an overlay of its own silhouette — see `car-tint.ts`.
-   *  This is what makes the paint rack visibly paint the car. */
-  private carWash: Phaser.GameObjects.Image | undefined;
+  /** The car's livery, as two overlays of its own silhouette — see
+   *  `car-tint.ts`. This is what makes the paint rack visibly paint the car. */
+  private carCoat: LiveryCoat | undefined;
+  private carInterior: Phaser.GameObjects.Graphics | undefined;
+  // ── the crew and their board ───────────────────────────────────────────────
+  // The chalkboard used to be BOLTED to the car, filling its whole interior, and
+  // that was the problem: it hid the car art entirely, and the instrument
+  // characters standing on the workshop floor overlapped its lowest rows, so on
+  // a car with several lanes those rows could not be tapped at all — you hit a
+  // character instead. Eric reported both.
+  //
+  // So the board became a modal and the car got a CREW. Each lane is a rider
+  // standing in the open interior, drawn with that instrument's own character
+  // art — the same sprite the kid tapped on the shelf to make the lane. Tapping
+  // a rider opens the board over the whole screen, where nothing overlaps it.
+  // The payoff Eric asked for ("instead of the chalkboard you physically see the
+  // character on the train car") needs no new art at all in this form: the
+  // characters already exist, in three states each.
+  private riders: {
+    layerId: string;
+    img: Phaser.GameObjects.Image;
+    def: UiSpriteDef;
+    /** Where the character's visible art is centred, in scene px. The image's
+     *  own x/y is its CANVAS centre, which sits well off the art on these
+     *  heavily-padded sprites — a test tapping that would miss. */
+    cx: number;
+    cy: number;
+  }[] = [];
   private board: Phaser.GameObjects.Image | undefined;
+  private boardModal: Phaser.GameObjects.Container | undefined;
+  private boardBackdrop: Phaser.GameObjects.Rectangle | undefined;
+  private boardDone: Phaser.GameObjects.Container | undefined;
+  private boardOpen = false;
   // The paint rack: one plate, one Graphics for all the chips (redrawn only on
   // layout or model change), and an invisible hit zone per chip.
   private rackPlate: Phaser.GameObjects.Graphics | undefined;
@@ -217,6 +270,8 @@ export class WorkshopScene extends BackgroundScene {
   private rackCells: { x: number; y: number; w: number; h: number }[] = [];
   /** The board's slate surface in screen px — the grid's mount rect. */
   private slateRect = { x: 0, y: 0, w: 0, h: 0 };
+  /** The car's open interior in screen px — where the crew stands. */
+  private voidRect = { x: 0, y: 0, w: 0, h: 0 };
   private departing = false;
   // Edit-vs-New modal (AR-016): offered once per Workshop visit when the
   // active car already has lanes — keep working, or start a fresh car.
@@ -303,9 +358,9 @@ export class WorkshopScene extends BackgroundScene {
     const asset = CAR_SIDE_SPRITES[type];
     if (this.textures.exists(asset.key)) {
       this.car?.setTexture(asset.key);
-      // The wash is the body's OWN silhouette — it has to follow the swap, or
+      // The coat is the body's OWN silhouette — it has to follow the swap, or
       // the livery ends up painted on the shape of the previous car type.
-      this.carWash?.setTexture(asset.key);
+      if (this.carCoat) setLiveryTexture(this.carCoat, asset.key);
       return;
     }
     this.load.image(asset.key, asset.url);
@@ -314,7 +369,7 @@ export class WorkshopScene extends BackgroundScene {
       if (!this.car?.scene || this.model.carType !== type) return;
       if (!this.textures.exists(asset.key)) return;
       this.car.setTexture(asset.key);
-      this.carWash?.setTexture(asset.key);
+      if (this.carCoat) setLiveryTexture(this.carCoat, asset.key);
       this.layoutFixtures();
     });
     this.load.start();
@@ -322,26 +377,164 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── the layered field: car sprite + chalkboard in its void ─────────────────
   private buildCarLayer(): void {
+    // The car's interior, BEHIND the body. `punch_void.py` cut a real hole in
+    // the car art so the chalkboard could show through it; with the board gone,
+    // that hole shows the workshop's brick wall, and the crew stands in what
+    // reads as a black rectangle. This is the inside of the car — no art has
+    // ever existed for it, because it was covered from the day it was cut.
+    // Drawn behind the body so the car's own edges mask it and nothing has to
+    // match the hole's outline.
+    this.carInterior = this.add.graphics().setDepth(DEPTH_CAR - 0.05);
     // Always constructed on the preloaded default, then corrected by `showCar`:
     // the real car type arrives from React and may not be resident yet.
     this.car = this.add
       .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
-    this.carWash = asLiveryOverlay(
+    this.carCoat = asLiveryCoat(
       this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH),
+      this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH + 0.05),
     );
     this.showCar(this.model.carType);
-    this.board = this.add
-      .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base)
-      .setDepth(DEPTH_BOARD);
+    this.buildBoardModal();
   }
 
-  /** Place the car on its Tiled anchor (wheels on the rails), then mount the
-   *  chalkboard over the standardized interior void and derive the grid's
-   *  slate rect from the board's placement. */
+  /** The sequencer, as a popup: a dimmed backdrop, the chalkboard at full size,
+   *  and a DONE chip. The grid rows are added to this container as they are
+   *  built, so they ride above the backdrop without depth bookkeeping. */
+  private buildBoardModal(): void {
+    this.boardBackdrop = this.add
+      .rectangle(0, 0, 10, 10, 0x000000, 0.66)
+      .setOrigin(0)
+      .setInteractive();
+    // Tapping outside the board closes it — the forgiving way out, alongside
+    // the explicit chip. (Eric: "then you click okay when you're ready".)
+    this.boardBackdrop.on("pointerup", () => this.closeBoard());
+    this.board = this.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base);
+    this.boardDone = this.makeDoneChip();
+    this.boardModal = this.add
+      .container(0, 0, [this.boardBackdrop, this.board, this.boardDone])
+      .setDepth(DEPTH_BOARD)
+      .setVisible(false);
+  }
+
+  /** "DONE" on the cream chip this app uses for every affirmative — the same
+   *  face/edge pair as the LCD, the undo offer and the empty prompt. */
+  private makeDoneChip(): Phaser.GameObjects.Container {
+    const chip = this.add.graphics();
+    const label = this.add
+      .text(0, 0, "DONE", { ...LCD_STYLE, fontSize: "20px" })
+      .setOrigin(0.5);
+    const hit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    let armed = false;
+    hit.on("pointerdown", () => { armed = true; label.setScale(0.94); });
+    hit.on("pointerout", () => { armed = false; label.setScale(1); });
+    hit.on("pointerup", () => {
+      label.setScale(1);
+      if (!armed) return;
+      armed = false;
+      this.closeBoard();
+    });
+    return this.add.container(0, 0, [chip, label, hit]);
+  }
+
+  /** Open the board on a lane. Selecting it is what makes "tap the drummer, edit
+   *  the drums" true rather than "tap anyone, get the same board". */
+  private openBoard(layerId: string | null): void {
+    this.boardOpen = true;
+    this.boardModal?.setVisible(true);
+    if (layerId) EventBus.emit("workshop-layer-selected", layerId);
+    this.layoutBoard();
+    this.layoutGrid();
+  }
+
+  /** Hiding the container is enough to disarm everything on it: Phaser's
+   *  `InputManager.inputCandidate` skips an invisible Game Object *and* any
+   *  object with an invisible parent, so the full-screen backdrop stops
+   *  swallowing taps on the car the moment the popup closes. */
+  private closeBoard(): void {
+    this.boardOpen = false;
+    this.boardModal?.setVisible(false);
+  }
+
+  /** Exposed for the e2e bridge: is the sequencer popup on screen? */
+  get boardVisible(): boolean {
+    return this.boardOpen;
+  }
+
+  /** Exposed for the e2e bridge: the centre of each rider's ART, in scene px.
+   *  A real tap on one of these is the only thing that proves the crew is
+   *  reachable — geometry alone never has been (see the chrome hit-test spec). */
+  get riderPoints(): { layerId: string; x: number; y: number }[] {
+    return this.riders.map((r) => ({ layerId: r.layerId, x: r.cx, y: r.cy }));
+  }
+
+  /**
+   * Size the board to the VIEWPORT, not to a slot on the car.
+   *
+   * That is the whole point of the move: mounted in the car's interior void the
+   * board was ~1600x430 of a 2560x1440 scene, so eight lanes of sixteen steps
+   * had 54 px rows and the label column's ✕ / mute / edit glyphs were 11 px —
+   * under a fingertip, and half-covered by the characters on the floor.
+   */
+  private layoutBoard(): void {
+    const b = this.board;
+    if (!b || !this.boardBackdrop || !this.boardDone) return;
+    const { width, height } = this.scale.gameSize;
+    this.boardBackdrop.setSize(width, height);
+
+    const def = UI_SPRITES["sequencer-chalkboard"]!;
+    const [x0, y0, x1, y1] = def.content;
+    // The board is registered as a stretching panel; feed it a rect at its own
+    // aspect so the stretch is a no-op and the frame stays square-cornered.
+    const aspect = ((y1 - y0) * b.height) / ((x1 - x0) * b.width);
+    let w = width * 0.84;
+    let h = w * aspect;
+    // Capped so the DONE chip below the board still clears the transport plate
+    // at the bottom of the screen — the board is big, not maximal.
+    if (h > height * 0.6) {
+      h = height * 0.6;
+      w = h / aspect;
+    }
+    const cy = height * 0.41;
+    placeUiSprite(b, def, { x: width / 2, y: cy, width: w, height: h });
+
+    const bs = b.scaleX;
+    const bLeft = b.x - (b.width / 2) * bs;
+    const bTop = b.y - (b.height / 2) * b.scaleY;
+    const [sx0, sy0, sx1, sy1] = CHALKBOARD_SLATE;
+    this.slateRect = {
+      x: bLeft + sx0 * b.width * bs,
+      y: bTop + sy0 * b.height * b.scaleY,
+      w: (sx1 - sx0) * b.width * bs,
+      h: (sy1 - sy0) * b.height * b.scaleY,
+    };
+
+    // The DONE chip sits under the board, clear of the chalk tray.
+    const [chipG, label, hit] = this.boardDone.list as [
+      Phaser.GameObjects.Graphics,
+      Phaser.GameObjects.Text,
+      Phaser.GameObjects.Rectangle,
+    ];
+    const cw = Math.max(180, w * 0.16);
+    const ch = Math.max(64, h * 0.11);
+    const dx = width / 2;
+    const dy = cy + h / 2 + ch * 0.85;
+    label.setFontSize(Math.max(14, Math.round(ch * 0.34))).setPosition(dx, dy);
+    hit.setPosition(dx, dy).setSize(cw * 1.15, ch * 1.25);
+    chipG
+      .clear()
+      .fillStyle(LCD_CREAM, 1)
+      .fillRoundedRect(dx - cw / 2, dy - ch / 2, cw, ch, Math.min(ch * 0.3, 18))
+      .lineStyle(Math.max(2, ch * 0.06), 0x2b2440, 1)
+      .strokeRoundedRect(dx - cw / 2, dy - ch / 2, cw, ch, Math.min(ch * 0.3, 18));
+    this.boardModal?.bringToTop(this.boardDone);
+  }
+
+  /** Place the car on its Tiled anchor (wheels on the rails), then stand the
+   *  crew in its standardized interior void. */
   private layoutCarLayer(): void {
     const r = this.backgroundRect;
-    if (r.width === 0 || !this.car || !this.board) return;
+    if (r.width === 0 || !this.car) return;
     const { width, height } = this.scale.gameSize;
     const anchor = this.chromeSpawns.find((s) => s.id === "car-anchor");
     if (!anchor) return;
@@ -354,43 +547,107 @@ export class WorkshopScene extends BackgroundScene {
     const s = this.car.scaleX;
     const contentBottom = this.car.y + (CAR_CONTENT[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
     this.car.y += target.y + target.height / 2 - contentBottom;
-    // Same texture, same transform — the wash IS the car, drawn once more.
-    this.carWash
-      ?.setPosition(this.car.x, this.car.y)
-      .setScale(this.car.scaleX, this.car.scaleY);
+    // Same texture, same transform — the coat IS the car, drawn twice more.
+    for (const layer of [this.carCoat?.shade, this.carCoat?.fill]) {
+      layer?.setPosition(this.car.x, this.car.y).setScale(this.car.scaleX, this.car.scaleY);
+    }
 
-    // The car's canvas origin in screen px → the void rect in screen px.
-    const canvasLeft = this.car.x - (CAR_SIDE_CANVAS.w / 2) * s;
-    const canvasTop = this.car.y - (CAR_SIDE_CANVAS.h / 2) * s;
-    const voidX = canvasLeft + CAR_SIDE_VOID.x * s;
-    const voidY = canvasTop + CAR_SIDE_VOID.y * s;
-    const voidW = CAR_SIDE_VOID.w * s;
+    this.voidRect = this.carVoidRect();
+    this.drawCarInterior();
+    this.layoutRiders();
+  }
 
-    // The board fills the void's width at its OWN aspect (top-aligned to the
-    // void), extending down over the car's open side — per the approved
-    // chalkboard concept (the board spans the car body, not just the slot).
-    // Aspect comes from the atlas FRAME the image carries (a standalone
-    // textures.get() lookup misses atlas frames and silently squashed it).
-    const boardDef = UI_SPRITES["sequencer-chalkboard"]!;
-    const [bx0, by0, bx1, by1] = boardDef.content;
-    const bAspect = ((by1 - by0) * this.board.height) / ((bx1 - bx0) * this.board.width);
-    const boardH = voidW * bAspect;
-    placeUiSprite(this.board, boardDef, {
-      x: voidX + voidW / 2, y: voidY + boardH / 2, width: voidW, height: boardH,
-    });
+  /** A lit interior in the car's own colour: a deep back wall and a lighter
+   *  floor the crew stands on. Two flat bands is all it needs — the car's art
+   *  frames it, and anything more detailed would compete with the characters. */
+  private drawCarInterior(): void {
+    const g = this.carInterior;
+    const v = this.voidRect;
+    if (!g || v.w === 0) return;
+    const color = colorFor(this.model.livery);
+    const pad = Math.max(6, v.h * 0.04); // bleed under the car's own edges
+    g.clear()
+      .fillStyle(darken(color, 0.74), 1)
+      .fillRect(v.x - pad, v.y - pad, v.w + pad * 2, v.h + pad * 2)
+      .fillStyle(darken(color, 0.52), 1)
+      .fillRect(v.x - pad, v.y + v.h * 0.8, v.w + pad * 2, v.h * 0.2 + pad);
+  }
 
-    // The grid mounts on the slate surface inside the board's frame.
-    const bs = this.board.scaleX;
-    const bTexW = this.board.width, bTexH = this.board.height;
-    const bLeft = this.board.x - (bTexW / 2) * bs;
-    const bTop = this.board.y - (bTexH / 2) * this.board.scaleY;
-    const [sx0, sy0, sx1, sy1] = CHALKBOARD_SLATE;
-    this.slateRect = {
-      x: bLeft + sx0 * bTexW * bs,
-      y: bTop + sy0 * bTexH * this.board.scaleY,
-      w: (sx1 - sx0) * bTexW * bs,
-      h: (sy1 - sy0) * bTexH * this.board.scaleY,
+  /** The car's standardized interior void, in screen px — where the crew
+   *  stands and, when the car is empty, where the prompt goes. */
+  private carVoidRect(): { x: number; y: number; w: number; h: number } {
+    const car = this.car;
+    if (!car) return { x: 0, y: 0, w: 0, h: 0 };
+    const sx = car.scaleX;
+    const sy = car.scaleY;
+    const canvasLeft = car.x - (CAR_SIDE_CANVAS.w / 2) * sx;
+    const canvasTop = car.y - (CAR_SIDE_CANVAS.h / 2) * sy;
+    return {
+      x: canvasLeft + CAR_SIDE_VOID.x * sx,
+      y: canvasTop + CAR_SIDE_VOID.y * sy,
+      w: CAR_SIDE_VOID.w * sx,
+      h: CAR_SIDE_VOID.h * sy,
     };
+  }
+
+  /**
+   * One rider per lane, spread across the car's interior.
+   *
+   * Sized so a full car still gives each character a real touch target: the
+   * void is split into equal slots and the character is contain-fitted into its
+   * slot, which is the same rule the instrument shelf uses, so a rider and the
+   * shelf character it came from read as the same creature at two sizes.
+   */
+  private layoutRiders(): void {
+    const v = this.voidRect;
+    if (v.w === 0 || this.riders.length === 0) return;
+    const n = this.riders.length;
+    const slotW = v.w / n;
+    // Feet on the interior floor, not centred in the box: a character standing
+    // ON something reads as riding it, and the slight overflow past the car's
+    // open side is what makes the crew look like passengers rather than cargo.
+    const h = v.h * 0.98;
+    this.riders.forEach((rider, i) => {
+      rider.cx = v.x + (i + 0.5) * slotW;
+      rider.cy = v.y + v.h * 0.9 - h / 2;
+      placeUiSprite(rider.img, rider.def, {
+        x: rider.cx,
+        y: rider.cy,
+        width: Math.min(slotW * 0.94, v.h * 0.9),
+        height: h,
+      });
+      // Hit the CHARACTER, not the transparent padding around it — these
+      // canvases run to roughly twice their content box, and at eight riders
+      // the padding of one would swallow taps meant for its neighbour.
+      rider.img.setInteractive({
+        hitArea: contentHitRect(rider.def, rider.img.width || 1, rider.img.height || 1),
+        hitAreaCallback: hitRectContains,
+        useHandCursor: true,
+      });
+    });
+  }
+
+  /** Rebuild the crew from the model. Cheap and rare — it runs on the same lane
+   *  SET change that rebuilds the grid, never per frame. */
+  private buildRiders(): void {
+    this.riders.forEach((r) => r.img.destroy());
+    this.riders = [];
+    const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
+    lanes.forEach((lane) => {
+      const key = lane.icon && UI_SPRITES[lane.icon] ? lane.icon : "inst-pads";
+      const def = UI_SPRITES[key]!;
+      const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base).setDepth(DEPTH_RIDER);
+      let armed = false;
+      img.on("pointerdown", () => { armed = true; img.setFrame(def.states["hover"] ?? def.base); });
+      img.on("pointerout", () => { armed = false; img.setFrame(def.base); });
+      img.on("pointerup", () => {
+        img.setFrame(def.base);
+        if (!armed) return;
+        armed = false;
+        this.openBoard(lane.id);
+      });
+      this.riders.push({ layerId: lane.id, img, def, cx: 0, cy: 0 });
+    });
   }
 
   // ── Edit-vs-New modal (AR-016): shown when arriving at a non-empty car ─────
@@ -464,13 +721,15 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   private departCar(): void {
-    if (this.departing || !this.car || !this.board) return;
+    if (this.departing || !this.car) return;
     this.departing = true;
-    const targets: Phaser.GameObjects.GameObject[] = [this.car, this.board];
-    this.rows.forEach((row) => {
-      targets.push(row.band, row.label, row.del, row.mute, ...row.cells);
-      if (row.edit) targets.push(row.edit);
-    });
+    // What leaves is the CAR and everyone riding it. The board is a popup over
+    // the whole screen now, so sliding it sideways would read as the furniture
+    // falling off the wall; it is simply closed.
+    this.closeBoard();
+    const targets: Phaser.GameObjects.GameObject[] = [this.car];
+    if (this.carCoat) targets.push(this.carCoat.shade, this.carCoat.fill);
+    this.riders.forEach((rider) => targets.push(rider.img));
     if (this.emptyText) targets.push(this.emptyText);
     this.playhead?.setVisible(false);
     const dx = this.scale.gameSize.width - (this.car.x - (this.car.displayWidth / 2));
@@ -811,7 +1070,8 @@ export class WorkshopScene extends BackgroundScene {
   /** The car's paint, everywhere it shows: the body wash, the LCD mark, and
    *  which chip on the rack is ringed. One call so they cannot disagree. */
   private refreshLivery(): void {
-    if (this.carWash) setLiveryColor(this.carWash, colorFor(this.model.livery));
+    if (this.carCoat) setLiveryColor(this.carCoat, colorFor(this.model.livery));
+    this.drawCarInterior();
     this.drawColorRack();
   }
 
@@ -833,7 +1093,7 @@ export class WorkshopScene extends BackgroundScene {
 
   update(): void {
     if (!this.playhead) return;
-    if (this.playStep < 0 || this.rows.length === 0) {
+    if (!this.boardOpen || this.playStep < 0 || this.rows.length === 0) {
       this.playhead.setVisible(false);
       return;
     }
@@ -844,6 +1104,7 @@ export class WorkshopScene extends BackgroundScene {
   protected onResize(): void {
     if (!this.scene.isActive()) return;
     this.layoutFixtures();
+    if (this.boardOpen) this.layoutBoard();
     if (this.pickerOpen) this.layoutCarPicker();
     if (this.editOrNew?.visible) this.layoutEditOrNew();
     if (this.activeTool) {
@@ -886,8 +1147,13 @@ export class WorkshopScene extends BackgroundScene {
 
     const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
     this.structKey = lanes.map((l) => l.id).join("|");
+    this.buildRiders();
 
     if (lanes.length === 0) {
+      // Nothing to edit, so the board cannot be reached and must not be left
+      // open — a kid who deletes their last lane would otherwise be staring at
+      // an empty slate with the car hidden behind it.
+      this.closeBoard();
       this.emptyText = this.makeEmptyPrompt();
       this.layoutGrid();
       return;
@@ -925,12 +1191,9 @@ export class WorkshopScene extends BackgroundScene {
       const on: boolean[] = [];
       for (let i = 0; i < STEP_COUNT; i++) {
         const isOn = lane.cells[i] ?? false;
-        const cell = this.add
-          .rectangle(0, 0, 10, 10, isOn ? chalkTint(colorInt) : OFF_FILL, isOn ? 0.95 : OFF_ALPHA)
-          .setOrigin(0.5)
-          .setStrokeStyle(1, CHALK, CHALK_GRID_ALPHA)
-          .setDepth(5)
-          .setInteractive({ useHandCursor: true });
+        const cell = this.add.rectangle(0, 0, 10, 10).setOrigin(0.5).setDepth(5);
+        paintCell(cell, colorInt, isOn, this.cellEdgePx());
+        cell.setInteractive({ useHandCursor: true });
         const stepIndex = i;
         cell
           .on("pointerdown", () => {
@@ -949,8 +1212,23 @@ export class WorkshopScene extends BackgroundScene {
     // The playhead is a full-height chalk line sweeping the board (one cell
     // wide). Sits below the cells (depth 4) so notes still read on top.
     this.playhead = this.add.rectangle(0, 0, 10, 10, CHALK, 0.22).setOrigin(0, 0).setDepth(4).setVisible(false);
+    // Everything drawn on the slate belongs to the popup, so it rides above the
+    // backdrop. Order inside a Container is z-order, so the DONE chip is lifted
+    // back to the top afterwards (`layoutBoard`).
+    const onBoard: Phaser.GameObjects.GameObject[] = [this.playhead];
+    this.rows.forEach((row) => {
+      onBoard.push(row.band, row.label, row.del, row.mute, ...row.cells);
+      if (row.edit) onBoard.push(row.edit);
+    });
+    this.boardModal?.add(onBoard);
     this.layoutGrid();
     this.refreshSelection();
+  }
+
+  /** The chalk rim's thickness, scaled to the cell so it stays a rim rather
+   *  than becoming the whole note on a small screen. */
+  private cellEdgePx(): number {
+    return Math.max(2, Math.round(Math.min(this.cellW, this.cellH) * 0.09));
   }
 
   private rowOn(layerId: string, step: number): boolean {
@@ -968,7 +1246,8 @@ export class WorkshopScene extends BackgroundScene {
         const isOn = lane.cells[i] ?? false;
         if (isOn !== row.on[i]) {
           row.on[i] = isOn;
-          row.cells[i]?.setFillStyle(isOn ? chalkTint(row.colorInt) : OFF_FILL, isOn ? 0.95 : OFF_ALPHA);
+          const cell = row.cells[i];
+          if (cell) paintCell(cell, row.colorInt, isOn, this.cellEdgePx());
         }
       }
     });
@@ -1077,11 +1356,16 @@ export class WorkshopScene extends BackgroundScene {
 
   private layoutGrid(): void {
     const r = this.backgroundRect;
+    // The empty prompt lives in the CAR now, not on the board: with no lanes
+    // there is no board to open, and "tap an instrument below" belongs where
+    // the kid is looking.
+    if (this.emptyText) {
+      const v = this.voidRect;
+      if (v.w > 0) this.layoutEmptyPrompt(v.x + v.w / 2, v.y + v.h / 2, v.w, v.h);
+    }
     if (r.width === 0 || this.slateRect.w === 0) return;
-    // The grid mounts on the chalkboard's slate (layoutCarLayer computed it).
+    // The grid mounts on the chalkboard's slate (layoutBoard computed it).
     const { x: gx, y: gy, w: gw, h: gh } = this.slateRect;
-
-    if (this.emptyText) this.layoutEmptyPrompt(gx + gw / 2, gy + gh / 2, gw, gh);
 
     const laneCount = Math.max(WORKSHOP_GRID_V2.minRows, this.rows.length);
     const labelW = gw * WORKSHOP_GRID_V2.labelFrac;
@@ -1121,9 +1405,14 @@ export class WorkshopScene extends BackgroundScene {
       growHit(row.del);
       if (row.edit) growHit(row.edit);
       growHit(row.mute);
+      const edge = this.cellEdgePx();
       row.cells.forEach((cell, i) => {
         cell.setPosition(this.gridLeft + (i + 0.5) * this.cellW, cy);
         cell.setSize(Math.max(2, this.cellW - pad), Math.max(2, this.cellH - pad));
+        // The chalk rim is sized from the cell, and the cell's size is only
+        // known here — so the paint is re-applied rather than left at whatever
+        // `buildGrid` could compute before any layout had happened.
+        paintCell(cell, row.colorInt, row.on[i] ?? false, edge);
       });
     });
 
@@ -1134,7 +1423,8 @@ export class WorkshopScene extends BackgroundScene {
   private layoutFixtures(): void {
     this.layoutChrome();
     this.layoutColorRack();
-    this.layoutCarLayer(); // must precede the grid: it computes slateRect
+    this.layoutCarLayer(); // computes voidRect (the crew + the empty prompt)
+    this.layoutBoard(); // computes slateRect — must precede the grid
     this.layoutGrid();
   }
 }

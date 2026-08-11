@@ -53,7 +53,7 @@ import {
   type TerrainSpan,
 } from "../terrain-profile.ts";
 import { colorFor } from "../livery-style.ts";
-import { asLiveryOverlay, setLiveryColor } from "../car-tint.ts";
+import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
@@ -442,8 +442,12 @@ export class TrackV3Scene extends Phaser.Scene {
    * lying on the field.
    */
   private buildTopBar(): void {
-    this.plate("panel-header-v2", { x: W / 2, y: 195, width: 1980, height: 350 });
-    const cy = 195;
+    // Overhangs the screen edge on purpose. A plate with sky visible all round
+    // it is an object floating in the world; a plate running off the top of the
+    // frame is the frame — that is the whole difference Eric is pointing at
+    // when he says the bars are "superimposed" rather than "natively embedded".
+    this.plate("panel-header-v2", { x: W / 2, y: 160, width: 1980, height: 360 });
+    const cy = 170;
     this.placeButton("btn-nav-map", { x: COLUMN_X[0], y: cy, width: 470, height: 165 },
       () => void EventBus.emit("track-nav", "map"), "MAP");
     this.placeButton("btn-track-ride", { x: COLUMN_X[1], y: cy, width: 205, height: 205 },
@@ -572,8 +576,9 @@ export class TrackV3Scene extends Phaser.Scene {
    *  retired with the floating plaque it was drawn for (ART_REQUESTS AR-041). */
   private buildLegend(): void {
     const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
-    const cy = H - 150;
-    this.plate("panel-transport-v2", { x: W / 2, y: cy, width: 1980, height: 250 });
+    const cy = H - 125;
+    // Runs off the bottom edge, for the reason `buildTopBar` gives.
+    this.plate("panel-transport-v2", { x: W / 2, y: H - 105, width: 1980, height: 270 });
 
     kinds.forEach((kind, i) => {
       const cx = COLUMN_X[i] as number;
@@ -737,18 +742,18 @@ export class TrackV3Scene extends Phaser.Scene {
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
         .setRotation(pose.angle)
         .setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
-      // The wash and the lift are the SAME silhouette as the body, so a car-type
-      // swap has to move all three or the colour ends up on last frame's shape.
+      // The coat and the lift are the SAME silhouette as the body, so a car-type
+      // swap has to move all of them or the colour ends up on last frame's shape.
       const tex = CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar;
       if (s.body.texture.key !== tex) {
         s.body.setTexture(tex);
-        s.wash.setTexture(tex);
+        setLiveryTexture(s.coat, tex);
         s.lift.setTexture(tex);
       }
       s.label.setText(String(car.number));
       if (s.liveryDrawn !== car.livery) {
         s.liveryDrawn = car.livery;
-        setLiveryColor(s.wash, colorFor(car.livery));
+        setLiveryColor(s.coat, colorFor(car.livery));
       }
       if (s.soundingDrawn !== isNow) {
         s.soundingDrawn = isNow;
@@ -1032,10 +1037,10 @@ export class TrackV3Scene extends Phaser.Scene {
     // Origin (0.5, 1): the art's bottom edge IS the railhead, so a body needs no
     // per-type offset table — the thing that goes stale the moment art changes.
     const body = this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1);
-    // The livery: the body's own silhouette, hard-light tinted with the car's
-    // colour and composited back over it. See `car-tint.ts` for why the mode
-    // matters more than the number.
-    const wash = asLiveryOverlay(
+    // The livery: two overlays of the body's own silhouette. `car-tint.ts` owns
+    // what they are and why there are two of them.
+    const coat = asLiveryCoat(
+      this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1),
       this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1),
     );
     const lift = this.add
@@ -1057,9 +1062,9 @@ export class TrackV3Scene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setFontSize(NAMEPLATE.fontPx);
-    root.add([body, wash, lift, wheelA, wheelB, label]);
+    root.add([body, coat.shade, coat.fill, lift, wheelA, wheelB, label]);
     const view: SlotView = {
-      root, body, wash, lift, wheelA, wheelB, label, shadow,
+      root, body, coat, lift, wheelA, wheelB, label, shadow,
       liveryDrawn: -1,
       soundingDrawn: false,
       show: () => {
@@ -1079,8 +1084,8 @@ export class TrackV3Scene extends Phaser.Scene {
 interface SlotView {
   readonly root: Phaser.GameObjects.Container;
   readonly body: Phaser.GameObjects.Image;
-  /** The livery wash — the body's silhouette, flooded with the car's colour. */
-  readonly wash: Phaser.GameObjects.Image;
+  /** The livery coat — two overlays of the body's own silhouette. */
+  readonly coat: LiveryCoat;
   /** The sounding-car lift — the same silhouette, flooded cream. */
   readonly lift: Phaser.GameObjects.Image;
   readonly wheelA: Phaser.GameObjects.Image;

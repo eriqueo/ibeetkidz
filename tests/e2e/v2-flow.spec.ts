@@ -145,6 +145,61 @@ test("Workshop chrome hit-tests its art, not its transparent padding", async ({ 
   }
 });
 
+test("Workshop: a lane rides the car, and tapping it opens the sequencer", async ({ page }) => {
+  // The chalkboard used to be bolted across the car's whole interior: it hid the
+  // art, and the instrument characters on the workshop floor overlapped its
+  // lowest rows so those lanes could not be tapped at all. It is a popup now,
+  // and each lane stands in the car as its own character.
+  //
+  // This taps a rider with a REAL canvas click, at the centre of its art. That
+  // is the part no unit test reaches: the crew is built, placed and given a
+  // content-box hit area in three different places, and any one of them coming
+  // loose leaves a car full of characters that do nothing.
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  const scene = () => page.evaluate(() => {
+    const s = (window as any).__ibeetkidz_test__.getScene();
+    return { open: s.boardVisible as boolean, riders: s.riderPoints as { x: number; y: number }[] };
+  });
+
+  // An empty car has no crew and no board to open.
+  expect((await scene()).riders).toHaveLength(0);
+  await emit(page, "workshop-add-melody", "guitar");
+  // …which also opens the note editor on the new lane, and that panel covers
+  // the car. Put it away first, or this is a test of the panel.
+  await emit(page, "tool-closed");
+  await expect.poll(async () => (await scene()).riders.length).toBe(1);
+  expect((await scene()).open).toBe(false);
+
+  // Scene space is a fixed 2560x1440 FIT into the canvas, so a tap has to be
+  // converted through the canvas's own box — not the viewport's.
+  const point = await page.evaluate(() => {
+    const s = (window as any).__ibeetkidz_test__.getScene();
+    const canvas = s.game.canvas as HTMLCanvasElement;
+    const box = canvas.getBoundingClientRect();
+    const r = s.riderPoints[0];
+    return {
+      x: box.left + (r.x * box.width) / s.scale.gameSize.width,
+      y: box.top + (r.y * box.height) / s.scale.gameSize.height,
+    };
+  });
+  await page.mouse.click(point.x, point.y);
+  await expect.poll(async () => (await scene()).open).toBe(true);
+
+  // …and deleting the last lane puts the car back on screen rather than leaving
+  // a kid staring at an empty slate.
+  const layerId = await page.evaluate(() => {
+    const p = (window as any).__ibeetkidz_test__.getProject();
+    const part = p.parts.find((q: any) => q.id === p.activePartId) ?? p.parts[0];
+    return part.layers[0].id as string;
+  });
+  await emit(page, "workshop-layer-delete", layerId);
+  await expect.poll(async () => (await scene()).open).toBe(false);
+  expect((await scene()).riders).toHaveLength(0);
+});
+
 test("My Voice: hold-to-record captures real, non-silent audio (fake mic)", async ({ page }) => {
   // Real-audio fidelity proof (mic edition): on GitHub runners chromium's
   // MediaRecorder emits blobs its own decodeAudioData rejects

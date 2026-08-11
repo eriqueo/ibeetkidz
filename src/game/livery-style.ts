@@ -65,6 +65,25 @@ export function hexToInt(hex: string): number {
   return Number.parseInt(hex.replace("#", ""), 16) | 0;
 }
 
+/** `#rrggbb` mixed `amount` of the way toward white, as 0xrrggbb. The MULTIPLY
+ *  half of a livery coat needs this: multiplying dark car art by a saturated
+ *  colour lands under a quarter brightness, and lightening the multiplier is
+ *  what buys the brightness back without losing the hue (see `car-tint.ts`). */
+export function lighten(hex: string, amount: number): number {
+  const v = hexToInt(hex);
+  const t = Math.min(1, Math.max(0, amount));
+  const up = (c: number): number => Math.round(c + (255 - c) * t);
+  return (up((v >> 16) & 0xff) << 16) | (up((v >> 8) & 0xff) << 8) | up(v & 0xff);
+}
+
+/** `#rrggbb` mixed `amount` of the way toward black, as 0xrrggbb. */
+export function darken(hex: string, amount: number): number {
+  const v = hexToInt(hex);
+  const t = 1 - Math.min(1, Math.max(0, amount));
+  const down = (c: number): number => Math.round(c * t);
+  return (down((v >> 16) & 0xff) << 16) | (down((v >> 8) & 0xff) << 8) | down(v & 0xff);
+}
+
 /** Rec. 601 luma of a `#rrggbb` colour, 0..1 — "how bright does this look" for
  *  a flat fill. */
 export function luma(hex: string): number {
