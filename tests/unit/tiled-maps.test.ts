@@ -6,7 +6,7 @@ import YARD from "../../src/assets/maps/yard.json";
 import TRACK from "../../src/assets/maps/track.json";
 import WORKSHOP from "../../src/assets/maps/workshop.json";
 import MAP from "../../src/assets/maps/map.json";
-import { INSTRUMENTS } from "../../src/core/instruments.ts";
+import { isMelodyStation } from "../../src/game/instrument-station.ts";
 
 // The Three-Zone maps (UI_REFACTOR_DELEGATION Phase 2). These are the contracts
 // the generic ui-scene engine relies on: every `sprite` key must resolve in the
@@ -99,14 +99,20 @@ describe.each([
     }
   });
 
-  it("emits only instruments the catalog actually has", () => {
-    // `workshop-add-melody` takes a `SynthInstrumentId`. A Tiled `arg` is an
-    // untyped string, so an id that is not in INSTRUMENTS silently falls back to
-    // the default synth and the lane is labelled "Melody" — no error anywhere.
-    const ids = new Set(INSTRUMENTS.map((i) => i.id as string));
+  it("emits only melody stations the shelf knows, named after their own art", () => {
+    // `workshop-add-melody` carries the STATION — the character the kid tapped —
+    // not the synth it happens to be voiced with. A Tiled `arg` is an untyped
+    // string, so a station missing from `STATION_VOICE` silently falls back to
+    // the default synth AND loses which character made the lane, which is
+    // exactly how an alien with a violin arrived in the car as a bear with a
+    // toy keyboard.
     for (const s of spawns) {
       if (s.action !== "workshop-add-melody") continue;
-      expect(ids.has(String(s.arg)), `${s.id} names instrument "${String(s.arg)}"`).toBe(true);
+      const arg = String(s.arg);
+      expect(isMelodyStation(arg), `${s.id} names station "${arg}"`).toBe(true);
+      // …and the station must be the object's OWN character, or the lane would
+      // wear a picture the kid never tapped.
+      expect(`inst-${arg}`, `${s.id} emits a different character`).toBe(s.sprite);
     }
   });
 });

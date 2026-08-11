@@ -120,6 +120,25 @@ export interface Layer {
    *  saved before instruments existed — `resolveInstrument` derives one from
    *  `wave` so they sound unchanged. Ignored by drum lanes. */
   readonly instrument?: InstrumentId;
+  /**
+   * WHICH instrument character made this lane — the workshop station's id
+   * ("mic", "guitar", "magic", …). Optional: absent on every save written
+   * before it existed, and the views fall back to guessing from the lane's
+   * kind and clip, which is what they used to do all the time.
+   *
+   * It exists because that guess is not recoverable. Two different characters
+   * produce identical lanes: Voice Keys and My Voice both make a melody lane
+   * voiced by `voice:<buffer>`, and the Sound Pads and the Beat Maker both make
+   * a drum lane over a built-in clip. And a third case is not even ambiguous,
+   * just lossy — the violin character voices its lane with the `pluck` synth,
+   * so a lane made by the alien with the violin came back as "keys". Eric
+   * reported exactly that: "i chose the alien violin, the theremin wolf, and
+   * the chipmunk, and bear with piano showed up on the car".
+   *
+   * The station is the kid's actual choice, so it is recorded rather than
+   * reconstructed. `game/instrument-station.ts` owns the id → art mapping.
+   */
+  readonly station?: string;
   /** Per-lane echo send, 0..1 (0 = dry). */
   readonly echo: number;
   /** Per-lane tone/brightness, 0..1 (1 = fully open/bright, lower = darker). */

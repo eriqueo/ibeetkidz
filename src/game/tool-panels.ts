@@ -761,9 +761,12 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private toggleRest = { x: 0, y: 0, scale: 1 };
   private values = { wobble: 0, crunch: 0, volume: 1 };
   private draggingKnob: string | null = null;
-  /** ×2 mode: while armed, tapping an existing note toggles its double-beat
-   *  roll instead of removing it. */
+  /** ×2 mode: while armed, tapping a note doubles it, and tapping a doubled
+   *  note removes it — so a note is never stuck, whichever way the lever is. */
   private doubleMode = false;
+  /** The armed readout drawn over the switch's baked OFF plaque. */
+  private armedChip!: Phaser.GameObjects.Graphics;
+  private armedLabel!: Phaser.GameObjects.Text;
   private faderTrack = { y0: 0, y1: 0, x: 0 };
 
   constructor(scene: Phaser.Scene) { super(scene, "🎹 Melody"); }
@@ -776,11 +779,21 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // were erased from the plate (the sprites replace them 1:1).
     knobWobble: { cx: 0.1665, cy: 0.76, w: 0.185 },
     knobCrunch: { cx: 0.399, cy: 0.76, w: 0.185 },
-    fader: { x: 0.5985, y0: 0.695, y1: 0.838, w: 0.1 },
-    // 0.12 left the switch adrift in a recess 0.22 wide — half the visual
-    // weight of the two knobs beside it, on the one control that has to read
-    // as a THING YOU THROW.
-    toggle: { cx: 0.82, cy: 0.775, w: 0.16 },
+    // MEASURED off the plate, not eyeballed. The deck's four tiles are found by
+    // their gold corner rivets (centres 0.173 / 0.396 / 0.611 / 0.8325 of the
+    // art's width), and the LEVEL tile's baked slot by its dark column
+    // (centre 0.6042, width 0.0304). Two of these were out:
+    //   • the fader rode at 0.5985 with a handle 0.1 wide — over three times
+    //     the width of the slot it is supposed to sit IN, which is what makes
+    //     it read as a gold brick lying on the plate;
+    //   • the ×2 switch sat at 0.82 against a tile centred on 0.8325, i.e.
+    //     ~14 px left of its own recess.
+    fader: { x: 0.6042, y0: 0.695, y1: 0.838, w: 0.062, slotW: 0.024 },
+    toggle: { cx: 0.8325, cy: 0.775, w: 0.16 },
+    /** The baked OFF plaque on `toggle-double`, as fractions of its 512 canvas.
+     *  The switch has ONE frame (AR-026), so an armed ×2 still says OFF — the
+     *  armed chip is drawn over exactly this box. */
+    togglePlaque: { x0: 0.336, y0: 0.223, x1: 0.664, y1: 0.336 },
   } as const;
 
   protected buildContent(): void {
@@ -862,16 +875,44 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // that began somewhere else can never reach a down-handler.
     this.toggleLever = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base);
     this.toggleLever.setCrop(LEVER_COLUMN.x, LEVER_COLUMN.y, LEVER_COLUMN.w, LEVER_COLUMN.h);
+    // The switch's plaque says OFF in the ART (AR-026: one frame), so an armed
+    // ×2 was a control stating the opposite of the truth — and since arming it
+    // takes the delete away from every note (see `onMelodyDouble`), a kid who
+    // could not tell it was on could not remove a note at all. Eric hit exactly
+    // that. The chip covers the baked word while armed; it is a readout in the
+    // app's own cream-chip language, not a repaint of the switch.
+    this.armedChip = this.scene.add.graphics().setVisible(false);
+    this.armedLabel = this.scene.add
+      .text(0, 0, "x2", { fontFamily: FONT, fontSize: "12px", color: "#2b2440" })
+      .setOrigin(0.5)
+      .setVisible(false);
     this.toggle.on("pointerdown", () => {
-      this.doubleMode = !this.doubleMode;
-      this.toggle.setTint(this.doubleMode ? 0xffd166 : 0xffffff);
-      this.toggleLever.setTint(this.doubleMode ? 0xffd166 : 0xffffff);
+      this.setDoubleMode(!this.doubleMode);
       this.kickToggle();
-      this.refreshSplits();
-      EventBus.emit("tool-melody-twice-mode", this.doubleMode);
     });
-    this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle, this.toggleLever]);
+    this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle, this.toggleLever, this.armedChip, this.armedLabel]);
     this.bringToTop(this.closeBtn.container);
+  }
+
+  /** The one place ×2 is armed or disarmed, so the lever pose, the tint, the
+   *  readout chip, the note ghosts and the audible demo can never disagree. */
+  private setDoubleMode(on: boolean): void {
+    this.doubleMode = on;
+    this.toggle?.setTint(on ? 0xffd166 : 0xffffff);
+    this.toggleLever?.setTint(on ? 0xffd166 : 0xffffff);
+    this.armedChip?.setVisible(on);
+    this.armedLabel?.setVisible(on);
+    this.renderToggle();
+    this.refreshSplits();
+    EventBus.emit("tool-melody-twice-mode", on);
+  }
+
+  /** A mode nobody can see is a trap, so it never survives the panel closing:
+   *  ×2 armed in one lane used to still be armed the next time the editor
+   *  opened, on a different instrument, with the switch reading OFF. */
+  override setVisible(value: boolean): this {
+    if (value && this.doubleMode) this.setDoubleMode(false);
+    return super.setVisible(value);
   }
 
   /** Throw the lever: it snaps to its other pose immediately and the switch
@@ -1047,9 +1088,25 @@ export class MelodyEditorPanel extends BaseToolPanel {
       y1: art.y + art.h * A.fader.y1,
     };
     // Match the baked slot's width so the fill reads as the track filling up
-    // rather than as a bar painted over it.
-    this.levelFillW = Math.max(2, art.w * 0.014);
+    // rather than as a hairline drawn beside it.
+    this.levelFillW = Math.max(2, art.w * A.fader.slotW);
     this.placeFader();
+
+    // The armed chip, over the baked OFF plaque.
+    const tw = this.toggle.width * this.toggle.scaleX;
+    const th = this.toggle.height * this.toggle.scaleY;
+    const P = A.togglePlaque;
+    const px = this.toggle.x + (((P.x0 + P.x1) / 2) - 0.5) * tw;
+    const py = this.toggle.y + (((P.y0 + P.y1) / 2) - 0.5) * th;
+    const pw = (P.x1 - P.x0) * tw;
+    const ph = (P.y1 - P.y0) * th;
+    this.armedChip
+      .clear()
+      .fillStyle(0xffd166, 1)
+      .fillRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph * 0.35)
+      .lineStyle(Math.max(2, ph * 0.12), 0x2b2440, 1)
+      .strokeRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph * 0.35);
+    this.armedLabel.setPosition(px, py).setFontSize(Math.max(8, Math.round(ph * 0.55)));
   }
 
   apply(model: ToolModel): void {

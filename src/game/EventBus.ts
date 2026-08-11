@@ -6,7 +6,6 @@
 // sides.
 import Phaser from "phaser";
 import type { LaneKind, CarType, EffectId, ThereminWave, AppView } from "../core/types.ts";
-import type { SynthInstrumentId } from "../core/instruments.ts";
 
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
@@ -69,9 +68,13 @@ export interface EventMap {
   "workshop-cell-toggled": [cell: { layerId: string; stepIndex: number; on: boolean }];
   // Phaser -> React (Workshop): an instrument icon was tapped to add a lane.
   "workshop-instrument-added": [kind: LaneKind, instrumentId: string];
-  // Phaser -> React (Workshop): a melody instrument (guitar/piano) was tapped —
-  // create a melody lane voiced by that synth and open the note editor on it.
-  "workshop-add-melody": [instrument: SynthInstrumentId];
+  // Phaser -> React (Workshop): a melody CHARACTER was tapped (guitar / violin /
+  // piano) — create a melody lane voiced by that character's synth and open the
+  // note editor on it. The payload is the STATION id, not the synth id: the
+  // violin's voice is `pluck`, and passing the synth through lost which
+  // character the kid actually chose. `game/instrument-station.ts` maps one to
+  // the other.
+  "workshop-add-melody": [station: string];
   // Phaser -> React (Workshop): the kid picked a (cosmetic) car type.
   "workshop-car-type-changed": [carType: CarType];
   // Phaser -> React (Workshop): the kid painted the car from the colour picker.

@@ -1037,10 +1037,10 @@ export class TrackV3Scene extends Phaser.Scene {
     // Origin (0.5, 1): the art's bottom edge IS the railhead, so a body needs no
     // per-type offset table — the thing that goes stale the moment art changes.
     const body = this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1);
-    // The livery: two overlays of the body's own silhouette. `car-tint.ts` owns
-    // what they are and why there are two of them.
+    // The livery: the body itself, tinted, plus ONE overlay of its own
+    // silhouette. `car-tint.ts` owns what they are and why there are two passes.
     const coat = asLiveryCoat(
-      this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1),
+      body,
       this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1),
     );
     const lift = this.add
@@ -1062,7 +1062,7 @@ export class TrackV3Scene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setFontSize(NAMEPLATE.fontPx);
-    root.add([body, coat.shade, coat.fill, lift, wheelA, wheelB, label]);
+    root.add([body, coat.fill, lift, wheelA, wheelB, label]);
     const view: SlotView = {
       root, body, coat, lift, wheelA, wheelB, label, shadow,
       liveryDrawn: -1,

@@ -59,6 +59,9 @@ export interface WorkshopLane {
   readonly id: string;
   readonly label: string; // emoji / short tag for the row (icon fallback)
   readonly icon: string | null; // UI_SPRITES key of the row's instrument sprite
+  /** The SOUND's own emoji, when the character alone cannot name it — eight
+   *  drum lanes share one drummer, so the board needs to say which drum. */
+  readonly badge: string | null;
   readonly color: string; // laneColor() — the lane-group colour
   readonly kind: LaneKind; // melody lanes get a piano-roll edit button
   readonly cells: readonly boolean[]; // length STEP_COUNT
@@ -186,6 +189,7 @@ interface LaneRow {
   band: Phaser.GameObjects.Rectangle; // full-width lane-colour band (separates lanes)
   label: Phaser.GameObjects.Text | Phaser.GameObjects.Image; // instrument sprite (emoji fallback)
   del: Phaser.GameObjects.Text; // ✕ remove this lane
+  badge: Phaser.GameObjects.Text | null; // the sound's own emoji, when it has one
   edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
   mute: Phaser.GameObjects.Text; // 🔇 mute toggle
   colorInt: number;
@@ -390,9 +394,11 @@ export class WorkshopScene extends BackgroundScene {
     this.car = this.add
       .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
+    // The body IS the coat's shade pass — see `car-tint.ts`. One extra
+    // full-scene draw, not two.
     this.carCoat = asLiveryCoat(
+      this.car,
       this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH),
-      this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH + 0.05),
     );
     this.showCar(this.model.carType);
     this.buildBoardModal();
@@ -547,10 +553,8 @@ export class WorkshopScene extends BackgroundScene {
     const s = this.car.scaleX;
     const contentBottom = this.car.y + (CAR_CONTENT[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
     this.car.y += target.y + target.height / 2 - contentBottom;
-    // Same texture, same transform — the coat IS the car, drawn twice more.
-    for (const layer of [this.carCoat?.shade, this.carCoat?.fill]) {
-      layer?.setPosition(this.car.x, this.car.y).setScale(this.car.scaleX, this.car.scaleY);
-    }
+    // Same texture, same transform — the fill IS the car, drawn once more.
+    this.carCoat?.fill.setPosition(this.car.x, this.car.y).setScale(this.car.scaleX, this.car.scaleY);
 
     this.voidRect = this.carVoidRect();
     this.drawCarInterior();
@@ -728,7 +732,7 @@ export class WorkshopScene extends BackgroundScene {
     // falling off the wall; it is simply closed.
     this.closeBoard();
     const targets: Phaser.GameObjects.GameObject[] = [this.car];
-    if (this.carCoat) targets.push(this.carCoat.shade, this.carCoat.fill);
+    if (this.carCoat) targets.push(this.carCoat.fill);
     this.riders.forEach((rider) => targets.push(rider.img));
     if (this.emptyText) targets.push(this.emptyText);
     this.playhead?.setVisible(false);
@@ -881,9 +885,10 @@ export class WorkshopScene extends BackgroundScene {
 
   /** Chip states, and why each is drawn the way it is: the car's OWN colour
    *  wears a cream ring (the same "this one" mark the sounding car wears on the
-   *  Track); a colour another car has is drawn faint, because it is not a
-   *  choice; everything else is a full-strength chip. No text — the player is
-   *  four. */
+   *  Track); a colour another car has is dimmed AND struck through, because
+   *  dimming alone did not read — Eric's note was "there is no way to see what
+   *  color has been used yet, there should be an x or something"; everything
+   *  else is a full-strength chip. No text — the player is four. */
   private drawColorRack(): void {
     const g = this.rackChips;
     if (!g || this.rackCells.length === 0) return;
@@ -905,6 +910,18 @@ export class WorkshopScene extends BackgroundScene {
         x - edge, y - edge, w + edge * 2, h + edge * 2, rad + edge,
       );
       g.fillStyle(hexToInt(color), taken ? 0.28 : 1).fillRoundedRect(x, y, w, h, rad);
+      if (taken) {
+        // A cross, drawn corner to corner inside the chip. Two strokes, kid-thick.
+        const inx = w * 0.18;
+        const iny = h * 0.22;
+        g.lineStyle(edge * 1.3, CHIP_EDGE, 0.85);
+        g.beginPath();
+        g.moveTo(x + inx, y + iny);
+        g.lineTo(x + w - inx, y + h - iny);
+        g.moveTo(x + w - inx, y + iny);
+        g.lineTo(x + inx, y + h - iny);
+        g.strokePath();
+      }
       if (isMine) {
         g.lineStyle(edge * 1.4, 0xffe9b0, 1).strokeRoundedRect(
           x - edge * 2, y - edge * 2, w + edge * 4, h + edge * 4, rad + edge * 2,
@@ -1135,6 +1152,7 @@ export class WorkshopScene extends BackgroundScene {
       r.band.destroy();
       r.label.destroy();
       r.del.destroy();
+      r.badge?.destroy();
       r.edit?.destroy();
       r.mute.destroy();
       r.cells.forEach((c) => c.destroy());
@@ -1181,6 +1199,11 @@ export class WorkshopScene extends BackgroundScene {
         : this.makeIconText(lane.label, () => EventBus.emit("workshop-layer-selected", lane.id));
       const del = this.makeIconText("✕", () => EventBus.emit("workshop-layer-delete", lane.id));
       del.setColor("#ff6b6b");
+      // The sound's own emoji, in the slot the piano-roll button leaves empty on
+      // a drum lane — which is exactly the lane that needs it.
+      const badge = lane.badge
+        ? this.makeIconText(lane.badge, () => EventBus.emit("workshop-layer-selected", lane.id))
+        : null;
       const edit = lane.kind === "melody"
         ? this.makeIconText("🎹", () => EventBus.emit("workshop-edit-melody", lane.id))
         : null;
@@ -1206,7 +1229,7 @@ export class WorkshopScene extends BackgroundScene {
         cells.push(cell);
         on.push(isOn);
       }
-      this.rows.push({ layerId: lane.id, band, label, del, edit, mute, colorInt, cells, on });
+      this.rows.push({ layerId: lane.id, band, label, del, badge, edit, mute, colorInt, cells, on });
     });
 
     // The playhead is a full-height chalk line sweeping the board (one cell
@@ -1218,6 +1241,7 @@ export class WorkshopScene extends BackgroundScene {
     const onBoard: Phaser.GameObjects.GameObject[] = [this.playhead];
     this.rows.forEach((row) => {
       onBoard.push(row.band, row.label, row.del, row.mute, ...row.cells);
+      if (row.badge) onBoard.push(row.badge);
       if (row.edit) onBoard.push(row.edit);
     });
     this.boardModal?.add(onBoard);
@@ -1400,9 +1424,13 @@ export class WorkshopScene extends BackgroundScene {
         const s = Math.min((this.cellH * 0.92) / row.label.height, (labelW * 0.3) / row.label.width);
         row.label.setScale(s);
       }
+      // The badge and the piano roll share a slot: a drum lane has no roll, a
+      // melody lane's sound is named by its own character.
+      row.badge?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
       row.edit?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
       row.mute.setPosition(gx + labelW * 0.86, cy).setFontSize(iconPx);
       growHit(row.del);
+      if (row.badge) growHit(row.badge);
       if (row.edit) growHit(row.edit);
       growHit(row.mute);
       const edge = this.cellEdgePx();

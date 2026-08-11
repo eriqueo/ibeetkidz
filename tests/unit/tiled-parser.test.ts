@@ -147,13 +147,15 @@ describe("field instrument objects", () => {
     expect(need("inst-keys").arg).toBe("voice-keys");
     expect(need("inst-guitar").action).toBe("workshop-add-melody");
     expect(need("inst-guitar").arg).toBe("guitar");
-    // The violin SPRITE has no matching sound: there is no bowed-string voice in
-    // INSTRUMENTS. It used to emit "violin", which is not a SynthInstrumentId at
-    // all, so `resolveInstrument` fell through to the default synth and the lane
-    // was labelled "Melody" — a wrong sound with no error anywhere.
-    // `pluck` at least keeps the sprite and the sound in the string family
-    // (pizzicato). Swapping it for a real bowed voice is an art/audio call.
-    expect(need("inst-violin").arg).toBe("pluck");
+    // The violin emits its own name. There is still no bowed-string voice in
+    // INSTRUMENTS, so the lane is VOICED with `pluck` (pizzicato — the same
+    // family, and swapping it for a real bowed voice is an art/audio call) —
+    // but the voice is now looked up from the station in
+    // `instrument-station.ts` instead of being what the map emits. Emitting
+    // `pluck` here made the character unrecoverable downstream: the lane could
+    // no longer say which of the three melody characters had made it, and it
+    // came back as the toy-keyboard bear.
+    expect(need("inst-violin").arg).toBe("violin");
     expect(need("inst-piano").action).toBe("workshop-add-melody");
     expect(need("inst-piano").arg).toBe("piano");
   });

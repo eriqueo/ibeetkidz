@@ -107,18 +107,24 @@ test("Melody Editor: notes, the ×2 roll, and the deck knobs all reach the lane"
   // ×2 sets the double-beat roll on an EXISTING note…
   await emit(page, "tool-melody-double", 2, 5);
   await expect.poll(async () => (await noteAt(2, 5))?.roll).toBe(2);
-  // …and toggles back off, KEEPING the note. Note the canonical form: clearing
-  // a roll drops the field rather than storing 1 (`setRoll` does
-  // `roll === 1 ? undefined : roll`), so an absent `roll` means one hit. This
-  // test asserted `roll === 1` first and read the resulting `undefined` as a
-  // deleted note — the model was right and the assertion was wrong.
+  // …and a second ×2 on an ALREADY-DOUBLED note takes it away, so the cell
+  // cycles empty → single → doubled → empty.
+  //
+  // This assertion used to say the opposite ("toggling ×2 off must leave the
+  // note"), and that is the bug Eric reported as "i can't unclick a note in the
+  // guitar": while the lever is armed, a tap on a note routes here instead of to
+  // the toggle, so single ⇄ doubled was the WHOLE cycle and the note could not
+  // be removed at all. The switch's plaque reads OFF in the art whichever way it
+  // is thrown (AR-026), so there was no way to see you were in that mode either.
   await emit(page, "tool-melody-double", 2, 5);
   await expect
-    .poll(async () => {
-      const n = await noteAt(2, 5);
-      return n ? (n.roll ?? 1) : null;
-    }, { message: "toggling ×2 off must leave the note, not remove it" })
-    .toBe(1);
+    .poll(async () => (await noteAt(2, 5)) ?? null, {
+      message: "×2 on a doubled note must remove it — a note is never stuck",
+    })
+    .toBeNull();
+  // Put it back for the rest of the test.
+  await emit(page, "tool-melody-toggle", 2, 5);
+  await expect.poll(async () => !!(await noteAt(2, 5))).toBe(true);
 
   // The deck writes onto the lane being edited, not onto the song.
   await emit(page, "tool-lane-wobble", 0.7);

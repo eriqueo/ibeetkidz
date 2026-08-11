@@ -24,22 +24,27 @@
 // exists rather than a one-line `setTintMode` at each call site.
 //
 // ── WHAT IS USED INSTEAD ───────────────────────────────────────────────────
-// Two overlays of the body's OWN silhouette, over the untouched body:
+// Two passes over the body's own art:
 //
-//   SHADE  MULTIPLY by the livery lightened toward white by `SHADE_LIFT`.
-//          Carries every plank, rivet and shadow (it is the art, scaled per
-//          channel) and swings the hue, but on its own it is too dark — the
-//          measurement above.
-//   FILL   the flat livery at `FILL_ALPHA`. Pure hue, no detail at all.
+//   SHADE  the BODY ITSELF, tinted MULTIPLY by the livery lightened toward
+//          white by `SHADE_LIFT`. Carries every plank, rivet and shadow (it is
+//          the art, scaled per channel) and swings the hue, but on its own it
+//          is too dark — the measurement above.
+//   FILL   ONE overlay of the same silhouette, flat livery at `FILL_ALPHA`.
+//          Pure hue, no detail at all.
 //
-// Note that these do NOT compose the way blend layers would: a Phaser tint mode
-// transforms the sprite's own texture, not the framebuffer under it, so two
-// stacked overlays are a LINEAR MIX of two independent transforms —
+// The shade is the body rather than a third sprite over it because a MULTIPLY
+// tint is opaque wherever the texture is: an untouched body underneath is a
+// full-scene draw that is covered in every pixel it occupies. On the Workshop's
+// car — a 2560x1440 canvas — that is a whole screen of fill rate for nothing.
+//
+// Note that the two passes do NOT compose the way blend layers would: a Phaser
+// tint mode transforms the sprite's own texture, not the framebuffer under it,
+// so shade+fill is a LINEAR MIX of two independent transforms of the same art —
 // `(1-a)·(base·m) + a·livery`. Getting that backwards is what makes a
 // multiply-then-screen stack look like mud; it was modelled over the delivered
 // art both ways before these numbers were chosen. At FILL_ALPHA 0.65 the detail
-// flattens, at 0.35 a blue car still reads slate-brown, and 0.5 is vivid and
-// legible on both the dark boxcar and the near-white tanker.
+// flattens and at 0.2 a blue car still reads slate-brown.
 //
 // This module exists so the Track and the Workshop cannot disagree about what
 // "car 3 is blue" looks like. Phaser-side on purpose — `livery-style.ts` stays
@@ -49,22 +54,31 @@ import Phaser from "phaser";
 import { hexToInt, lighten } from "./livery-style.ts";
 
 /** How far the MULTIPLY pass's tint is lightened toward white. */
-export const SHADE_LIFT = 0.35;
-/** How much of the flat livery is mixed over that. */
-export const FILL_ALPHA = 0.5;
+export const SHADE_LIFT = 0.42;
+/**
+ * How much of the flat livery is mixed over that.
+ *
+ * Backed off from 0.5 on Eric's note — "the colors are a little too saturated,
+ * it's not terrible but I'd like it to be more subtle". At 0.36 the hue is
+ * still named at a glance from across the room (which is the whole job: telling
+ * twelve cars apart) while the plank grain, the rivets and the painted
+ * nameplate come back up through it.
+ */
+export const FILL_ALPHA = 0.36;
 
 /**
- * The two overlays that dress one body. Both must carry the SAME texture as the
- * body they sit on — they are its silhouette, not decals — which is why
- * `setLiveryTexture` exists rather than each caller remembering three swaps.
+ * The two passes that dress one body: the body itself, and one overlay of the
+ * SAME texture over it (it is the body's silhouette, not a decal), which is why
+ * `setLiveryTexture` exists rather than each caller remembering both swaps.
  */
 export interface LiveryCoat {
+  /** The car body, tinted. */
   readonly shade: Phaser.GameObjects.Image;
   readonly fill: Phaser.GameObjects.Image;
 }
 
-/** Wire two freshly-made overlays into a coat. Order matters at the call site:
- *  `shade` must be added under `fill`. */
+/** Wire a body and one overlay into a coat. Order matters at the call site:
+ *  `fill` must be drawn over `shade`. */
 export function asLiveryCoat(
   shade: Phaser.GameObjects.Image,
   fill: Phaser.GameObjects.Image,

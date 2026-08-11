@@ -255,6 +255,12 @@ const LayerV1Schema = z
     notes: z.array(z.array(StepNoteSchema)),
     wave: WaveSchema,
     instrument: InstrumentIdSchema.optional(),
+    // Which instrument character made the lane (see `Layer.station`). Free-form
+    // on purpose, exactly like `activeMachineId` above: the station set is art
+    // that comes and goes, and an id this app no longer draws must cost a kid
+    // nothing — the views fall back to deriving an icon, which is all they ever
+    // did before this field existed.
+    station: z.string().optional(),
     echo: z.number(),
     tone: z.number(),
     swing: z.number().optional(),

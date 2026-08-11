@@ -296,12 +296,18 @@ export function makeLayer(partial: LayerInit): Layer {
     partial.instrument === undefined
       ? withSwing
       : { ...withSwing, instrument: partial.instrument };
+  // The station that made the lane — see `Layer.station`. Absent on old saves,
+  // so it is attached only when a caller supplies one.
+  const withStation =
+    partial.station === undefined
+      ? withInstrument
+      : { ...withInstrument, station: partial.station };
   // The silliness knobs are optional too (absent = dry/clean) — pass them
   // through so a saved lane keeps its wobble/crunch across reloads.
   const withWobble =
     partial.wobble === undefined
-      ? withInstrument
-      : { ...withInstrument, wobble: clamp(partial.wobble, 0, 1) };
+      ? withStation
+      : { ...withStation, wobble: clamp(partial.wobble, 0, 1) };
   const withCrunch =
     partial.crunch === undefined
       ? withWobble

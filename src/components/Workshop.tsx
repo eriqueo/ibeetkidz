@@ -17,9 +17,9 @@ import {
   resolveInstrument,
   isVoiceInstrument,
   INSTRUMENTS,
-  type SynthInstrumentId,
   type InstrumentId,
 } from "../core/instruments.ts";
+import { STATION_LABEL, STATION_VOICE, laneSprite } from "../game/instrument-station.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
 import { carLiveries } from "../core/car-identity.ts";
 import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
@@ -97,34 +97,29 @@ export const Workshop: FC = () => {
       const cells = Array.from({ length: STEP_COUNT }, (_, i) =>
         layer.kind === "drum" ? layer.steps[i] != null : (layer.notes[i]?.length ?? 0) > 0,
       );
-      let label = "🎵";
-      // The lane's row icon on the chalkboard: the instrument's OWN character
-      // sprite (design doc §2 — per-track art on the board), emoji fallback.
-      let icon: string | null = null;
+      // The lane's picture: the CHARACTER THE KID TAPPED, recorded on the lane
+      // at creation (`Layer.station`). Lanes made before that field existed
+      // fall back to their family's picture — one guess, in one place, instead
+      // of the five-branch ladder that used to live here and got the violin,
+      // Voice Keys and the Sound Pads wrong.
+      const icon = laneSprite(layer.station, laneGroup(layer.kind, clip));
+      // A BADGE for the sound itself. Eight drum lanes all show the same frog
+      // with the same kit, so on the board there was no way to tell the kick
+      // row from the cymbal row — Eric's report. The built-in catalogue already
+      // names every sound with an emoji; that is the badge.
+      const builtin = clip?.source.kind === "builtin"
+        ? BUILTIN_SOUNDS.find((s) => s.assetId === (clip.source as { assetId: string }).assetId)
+        : undefined;
       const melodyInst = layer.kind === "melody" ? layer.instrument : undefined;
-      if (melodyInst && isVoiceInstrument(melodyInst)) {
-        label = "🎤"; // a recording played chromatically (Voice Keys / Send as Notes)
-        icon = "inst-mic";
-      } else if (melodyInst) {
-        label = INSTRUMENTS.find((i) => i.id === melodyInst)?.emoji ?? "🎵";
-        // Runtime ids can exceed the synth union (the Tiled violin arg), so
-        // map by string.
-        icon = ({ guitar: "inst-guitar", piano: "inst-piano", violin: "inst-violin" } as Record<string, string>)[melodyInst] ?? "inst-keys";
-      } else if (clip?.source.kind === "builtin") {
-        const assetId = clip.source.assetId;
-        label = BUILTIN_SOUNDS.find((s) => s.assetId === assetId)?.emoji ?? "🎵";
-        // A pitched blip (Do/Re/Mi) is not percussion — showing it the drum kit
-        // character contradicts the lane's own colour, which `laneColor` already
-        // paints blue for the tone family.
-        icon = laneGroup(layer.kind, clip) === "tone" ? "inst-piano" : "inst-drums";
-      } else if (clip?.source.kind === "recording") {
-        label = "🎤";
-        icon = "inst-mic";
-      } else if (layer.kind === "drum") {
-        label = "🥁";
-        icon = "inst-drums";
-      }
-      return { id: layer.id, label, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
+      const label = builtin?.emoji
+        ?? (melodyInst && isVoiceInstrument(melodyInst) ? "🎤" : undefined)
+        ?? (melodyInst ? INSTRUMENTS.find((i) => i.id === melodyInst)?.emoji : undefined)
+        ?? (clip?.source.kind === "recording" ? "🎤" : undefined)
+        ?? (layer.kind === "drum" ? "🥁" : "🎵");
+      // …but only worth drawing when the picture alone cannot tell two lanes
+      // apart, i.e. for the built-in sounds that share one character.
+      const badge = builtin ? builtin.emoji : null;
+      return { id: layer.id, label, badge, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
     carType: part.carType,
     // The LCD shows WHICH car this is — its name and its livery mark, the same
@@ -315,15 +310,21 @@ export const Workshop: FC = () => {
     // Guitar/Piano (and any synth melody instrument): make a fresh melody lane
     // voiced by that synth, seed a gentle starter melody so it's immediately
     // playable, then open the note editor on it.
-    const onAddMelody = (instrument: SynthInstrumentId): void => {
+    const onAddMelody = (station: string): void => {
+      // The payload is the CHARACTER, and its synth is looked up — the violin's
+      // is `pluck`, so passing the synth through (as this used to) threw away
+      // which of the three the kid tapped.
+      const instrument = STATION_VOICE[station as keyof typeof STATION_VOICE] ?? "soft";
       const ts = Date.now();
-      const clipId = `clip-melody-${instrument}-${ts}`;
-      const layerId = `layer-melody-${instrument}-${ts}`;
-      const label = INSTRUMENTS.find((i) => i.id === instrument)?.label ?? "Melody";
+      const clipId = `clip-melody-${station}-${ts}`;
+      const layerId = `layer-melody-${station}-${ts}`;
+      // Named after the CHARACTER, not the synth: a violin lane titled "Pluck"
+      // names the voice the kid never picked.
+      const label = STATION_LABEL[station as keyof typeof STATION_LABEL] ?? "Melody";
       const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
       ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
       dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId: "note-do" }, effects: [], color: "#06d6a0", label } });
-      dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind: "melody", instrument, notes }) });
+      dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind: "melody", instrument, station, notes }) });
       setSelectedLayer(layerId);
       setEditMelodyId(layerId);
       setOpenTool("melody-editor");
@@ -342,13 +343,21 @@ export const Workshop: FC = () => {
     };
     // Instrument editor (AR-016): ×2 toggles an existing note's double-beat
     // roll; the deck knobs/fader write straight onto the lane being edited.
+    // While ×2 is armed a cell cycles single → doubled → GONE. It used to cycle
+    // single → doubled → single, which meant that with the lever on there was
+    // no way at all to remove a note — and the switch's plaque says OFF in the
+    // art whichever way it is thrown (AR-026), so a kid could be stuck in that
+    // mode without knowing it. Eric was. The editor now also disarms the lever
+    // every time it opens; this is the other half, so being armed can never
+    // take the delete away.
     const onMelodyDouble = (step: number, row: number): void => {
       const id = editMelodyRef.current;
       if (!id) return;
       const layer = activeLayers(getProject()).find((l) => l.id === id);
       const note = layer?.notes[step]?.find((n) => n.row === row);
       if (!note) return;
-      dispatch({ type: "setRoll", layerId: id, index: step, row, roll: (note.roll ?? 1) > 1 ? 1 : 2 });
+      if ((note.roll ?? 1) > 1) dispatch({ type: "removeNote", layerId: id, index: step, row });
+      else dispatch({ type: "setRoll", layerId: id, index: step, row, roll: 2 });
     };
     const onLaneWobble = (value: number): void => {
       const id = editMelodyRef.current;
@@ -454,11 +463,11 @@ export const Workshop: FC = () => {
         if (as === "beat") {
           const steps = new Array<boolean>(STEP_COUNT).fill(false);
           steps[0] = true;
-          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", steps }) });
+          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "mic", steps }) });
         } else if (clip.source.kind === "recording") {
           const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
           ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
-          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(clip.source.bufferId), notes }) });
+          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(clip.source.bufferId), station: "mic", notes }) });
         }
       }
       setOpenTool(null);
@@ -492,7 +501,7 @@ export const Workshop: FC = () => {
       if (!activeLayers(p).some((l) => l.id === id)) {
         const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
         ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
-        dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(c.source.bufferId), notes }) });
+        dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(c.source.bufferId), station: "keys", notes }) });
       }
       setOpenTool(null);
     };
@@ -522,7 +531,7 @@ export const Workshop: FC = () => {
       if (!alreadyHasClip) cmds.push({ type: "addClip", clip });
       cmds.push({
         type: "addLayer",
-        layer: makeLayer({ id: clipId, clipId, kind: "drum", steps: firstStepOnly() }),
+        layer: makeLayer({ id: clipId, clipId, kind: "drum", station: "pads", steps: firstStepOnly() }),
       });
       dispatchAll(cmds);
     };
@@ -555,7 +564,7 @@ export const Workshop: FC = () => {
       const clip: Clip = { id, source: { kind: "builtin", assetId: drumId }, effects: [], color: drum?.color ?? "#888", label: drum?.label ?? drumId };
       if (!p.clips[id]) dispatch({ type: "addClip", clip });
       const layer = activeLayers(p).find((l) => l.id === id);
-      if (!layer) dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum" }) });
+      if (!layer) dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "drums" }) });
       const wasOn = (layer?.steps[step] ?? null) != null;
       dispatch({ type: "toggleStep", layerId: id, index: step });
       if (!wasOn) sound.play(clip);
@@ -594,7 +603,7 @@ export const Workshop: FC = () => {
       if (!id || !p.clips[id] || activeLayers(p).some((l) => l.id === id)) return;
       const steps = new Array<boolean>(STEP_COUNT).fill(false);
       steps[0] = true;
-      dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", steps }) });
+      dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "magic", steps }) });
       setOpenTool(null);
     };
 
