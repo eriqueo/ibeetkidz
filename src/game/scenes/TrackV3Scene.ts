@@ -52,7 +52,7 @@ import {
   liftSamples,
   type TerrainSpan,
 } from "../terrain-profile.ts";
-import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
+import { colorFor, hexToInt } from "../livery-style.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
@@ -94,11 +94,40 @@ const CAR_BODY_KEY: Readonly<Record<CarType, string>> = {
   flatcar: "trk-car-flatcar",
 };
 
-/** Where the blank flank panel sits on a car body, per AR-036: 170 x 68,
- *  centred horizontally, centred 110 px above the railhead. The livery plate and
- *  the car's number go here — the same identity language `car-livery.ts` paints
- *  in the Yard and on the oval. */
-const FLANK = { w: 170, h: 68, cy: -110 } as const;
+// ── HOW A CAR SAYS WHICH CAR IT IS ─────────────────────────────────────────
+// It used to say it with a 170 x 68 rounded slab of livery colour and a 44 px
+// number stamped on the flank. That is 30 % of a 300 px car: it covered the
+// door, the ironwork and the painted nameplate the art already carries, so the
+// only thing you could see of a boxcar was the sticker on it.
+//
+// The channels are now the ones the ART already offers:
+//
+//   COLOUR  the WHOLE car wears its livery — the body's own silhouette drawn a
+//           second time in that colour and composited back over itself. Shading,
+//           not a repaint: every plank, rivet and shadow still reads underneath,
+//           and not one pixel of new art is needed.
+//   NUMBER  small, on the blank nameplate all four bodies are drawn with.
+//
+// The mode is HARD_LIGHT, and that is the whole trick. `car-identity.ts` records
+// (twice, measured) that colour "must be painted BESIDE the sprite, never onto
+// it" — but that finding is about MULTIPLY, which is all `setTint` could do in
+// Phaser 3. These bodies are dark (mean RGB of the boxcar's opaque pixels is
+// 91,65,50); multiplying by any livery lands under a quarter brightness and
+// every car collapses into "dark thing". Phaser 4 exposes the other blend modes,
+// and hard light divides per channel — it multiplies where the livery is dark
+// and SCREENS where it is bright — so a dark body can wear a bright livery with
+// its material intact. The four techniques were composited over the delivered
+// art and compared before this number was picked; at 1.0 the detail flattens,
+// at 0.6 a blue car reads muddy brown, and 0.75 is legible on both the dark
+// boxcar and the near-white tanker.
+const LIVERY_STRENGTH = 0.75;
+/** The sounding car is lifted toward cream rather than ringed. Same technique,
+ *  same silhouette, one more overlay — the era's own trick (a palette change),
+ *  and it cannot cover the art the way a stroked outline around a plate did. */
+const SOUNDING_LIFT = 0.16;
+/** The blank nameplate every body carries, measured off the delivered art: all
+ *  four types put a ~104 x 45 panel a little over 100 px above the railhead. */
+const NAMEPLATE = { cy: -108, fontPx: 30 } as const;
 
 // ── THE TRAIN IS ONE TRAIN ──────────────────────────────────────────────────
 // It was a repeating frieze: the world was laid out in bar order forever, so a
@@ -139,7 +168,12 @@ const GROUND_Y = 980; // top of the ground slab
 const RAIL_Y = 1010; // where wheels touch on FLAT ground
 const FORE_Y = 975;
 const FORE_H = 130;
-const TERRAIN_LABEL_Y = 330;
+/** Clear of the top plate (which hangs to y=370), so the caption for an
+ *  approaching terrain is never half-behind the nav bar. */
+const TERRAIN_LABEL_Y = 430;
+/** The three control columns, shared by the nav bar and the job bar so a
+ *  terrain button sits directly under the button above it. */
+const COLUMN_X = [720, 1280, 1840] as const;
 /** How much larger than 1:1 the rain sheet is drawn. */
 const RAIN_TILE_SCALE = 3.5;
 
@@ -170,10 +204,28 @@ const DEPTH = {
 } as const;
 
 const CAR_W = 300;
-/** Distance between the axles, as a fraction of a bar. The car is 300 px wide
- *  with its wheels at ±28% of that, in a 640 px bar. */
-const WHEELBASE_BARS = (CAR_W * 0.56) / 640;
+/** Where the axles sit in a car body, as a fraction of its width — measured off
+ *  the arches the frame art is drawn with (centres at 24% and 76% of a 300 px
+ *  canvas) rather than guessed. It was 0.28, which stood the wheels a little
+ *  outside their own arches. */
+const WHEEL_AT = 0.258;
+/** Distance between the axles, as a fraction of a bar, in a 640 px bar. */
+const WHEELBASE_BARS = (CAR_W * WHEEL_AT * 2) / 640;
 const WHEEL_R = 30;
+
+/**
+ * The locomotive's wheels, as offsets from its centre in its own 380 px art.
+ *
+ * The engine has been running on air since the side-scroller landed: `loco.png`
+ * draws two frame arches — a big one under the cab, a small one behind the
+ * cowcatcher — and the scene put nothing in either, while every wagon got two.
+ * These are the arch centres measured off the file, so a driver and a pilot
+ * wheel land in the holes the art already cut for them.
+ */
+const LOCO_WHEELS: readonly { dx: number; r: number }[] = [
+  { dx: -112, r: 30 },
+  { dx: 80, r: 19 },
+];
 
 const TERRAIN_PAINT: Record<TerrainKind, number> = {
   hill: 0x4f8f38,
@@ -199,7 +251,10 @@ export class TrackV3Scene extends Phaser.Scene {
   private fore?: Phaser.GameObjects.TileSprite;
 
   private slots: SlotView[] = [];
-  private loco?: Phaser.GameObjects.Image;
+  /** The locomotive is a container for the same reason a car is: its wheels
+   *  have to tilt with it when it climbs, and a loose Image cannot carry them. */
+  private locoRoot?: Phaser.GameObjects.Container;
+  private locoWheels: Phaser.GameObjects.Image[] = [];
   private locoShadow?: Phaser.GameObjects.Image;
   private nowPost?: Phaser.GameObjects.Image;
   private smoke: Phaser.GameObjects.Image[] = [];
@@ -357,9 +412,13 @@ export class TrackV3Scene extends Phaser.Scene {
       );
     }
 
-    this.loco = this.add
-      .image(0, RAIL_Y, "trk-loco")
-      .setOrigin(0.5, 1)
+    // The engine, with wheels in the arches its own art draws for them.
+    const locoBody = this.add.image(0, 0, "trk-loco").setOrigin(0.5, 1);
+    this.locoWheels = LOCO_WHEELS.map((w) =>
+      this.add.image(w.dx, -w.r, "trk-wheel").setScale(w.r / WHEEL_R),
+    );
+    this.locoRoot = this.add
+      .container(0, RAIL_Y, [locoBody, ...this.locoWheels])
       .setDepth(DEPTH.train)
       .setVisible(false);
     this.locoShadow = this.add
@@ -375,51 +434,81 @@ export class TrackV3Scene extends Phaser.Scene {
     EventBus.emit("current-scene-ready", this);
   }
 
-  /** Nav + transport. The oval gets these from Tiled chrome authored against its
-   *  plate; the greybox has no plate, so it draws its own. */
+  /**
+   * The two control decks — the SAME plates, at the SAME size, as every other
+   * view.
+   *
+   * What was here: a full-width `0x1a1526` rectangle at 72 % alpha with three
+   * keycaps floating on it, and a second plaque lying in the grass. Next to the
+   * Workshop's brass-and-wood header it read as debug chrome, and it is the
+   * complaint Eric has now filed twice. The buttons themselves were never the
+   * problem — they are the identical atlas frames the Workshop uses.
+   *
+   * So the Track stops inventing chrome. `panel-header-v2` and
+   * `panel-transport-v2` are the plates the Workshop's Tiled map mounts, both
+   * views lay out in the same fixed 2560x1440 space, and the rects below are
+   * that map's rects (`assets/maps/workshop.json`) narrowed to this view's
+   * three-across content. Same art, same proportions, same docking — the top
+   * plate hangs off the top edge and the bottom one off the bottom edge, which
+   * is what makes a bar read as the frame of the game instead of as an object
+   * lying on the field.
+   */
   private buildTopBar(): void {
-    const items = [
-      { sprite: "btn-nav-map", label: "MAP", fire: () => void EventBus.emit("track-nav", "map") },
-      { sprite: "btn-track-ride", label: "RIDE", fire: () => void EventBus.emit("transport-play", "ride") },
-      { sprite: "btn-transport-stop", label: "STOP", fire: () => void EventBus.emit("transport-stop") },
-    ];
-    const SLOT = 300;
-    const GAP = 60;
-    const total = items.length * SLOT + (items.length - 1) * GAP;
-    // CENTRED. They were pinned to the left corner, which read as debug chrome
-    // rather than as the same control deck the other three views carry.
-    const x0 = (W - total) / 2 + SLOT / 2;
-    const cy = 120;
+    this.plate("panel-header-v2", { x: W / 2, y: 195, width: 1980, height: 350 });
+    const cy = 195;
+    this.placeButton("btn-nav-map", { x: COLUMN_X[0], y: cy, width: 470, height: 165 },
+      () => void EventBus.emit("track-nav", "map"), "MAP");
+    this.placeButton("btn-track-ride", { x: COLUMN_X[1], y: cy, width: 205, height: 205 },
+      () => void EventBus.emit("transport-play", "ride"), "RIDE");
+    this.placeButton("btn-transport-stop", { x: COLUMN_X[2], y: cy, width: 205, height: 205 },
+      () => void EventBus.emit("transport-stop"), "STOP");
+  }
 
-    this.add.rectangle(W / 2, cy, W, 240, 0x1a1526, 0.72).setDepth(DEPTH.hud);
+  /** One of the shared stretched zone plates, or nothing at all if the atlas is
+   *  still in flight. Deliberately NOT a coloured rectangle fallback: a slab of
+   *  flat colour over the sky is precisely the thing being removed here, and
+   *  the buttons are legible on their own. */
+  private plate(sprite: string, rect: { x: number; y: number; width: number; height: number }): void {
+    const def = UI_SPRITES[sprite];
+    if (!def || !this.textures.exists(UI_ATLAS_KEY)) return;
+    const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base).setOrigin(0.5).setDepth(DEPTH.hud);
+    placeUiSprite(img, def, rect);
+  }
 
-    items.forEach((item, i) => {
-      const cx = x0 + i * (SLOT + GAP);
-      const def = UI_SPRITES[item.sprite];
-      if (def && this.textures.exists(UI_ATLAS_KEY)) {
-        const img = this.add
-          .image(0, 0, UI_ATLAS_KEY, def.base)
-          .setOrigin(0.5)
-          .setDepth(DEPTH.hud + 1);
-        // Content-fit through the shared helper, so these sit at the same
-        // optical size as the identical buttons in every other scene.
-        placeUiSprite(img, def, { x: cx, y: cy, width: SLOT, height: 190 });
-        this.pressableAtlas(img, def, item.fire);
-        return;
-      }
-      this.pressable(
-        this.add.rectangle(cx, cy, 250, 110, 0x3a3350, 1).setDepth(DEPTH.hud + 1),
-        item.fire,
-      );
-      this.add
-        .text(cx, cy, item.label, {
-          fontFamily: "'Press Start 2P', monospace",
-          color: "#ffe9b0",
-        })
+  /** A chrome button on a plate: the real atlas art contain-fitted into its
+   *  slot, or a labelled keycap when the atlas has not arrived. */
+  private placeButton(
+    sprite: string,
+    rect: { x: number; y: number; width: number; height: number },
+    fire: () => void,
+    caption: string,
+  ): void {
+    const def = UI_SPRITES[sprite];
+    if (def && this.textures.exists(UI_ATLAS_KEY)) {
+      const img = this.add
+        .image(0, 0, UI_ATLAS_KEY, def.base)
         .setOrigin(0.5)
-        .setFontSize(28)
-        .setDepth(DEPTH.hud + 2);
-    });
+        .setDepth(DEPTH.hud + 1);
+      // Content-fit through the shared helper, so these sit at the same
+      // optical size as the identical buttons in every other scene.
+      placeUiSprite(img, def, rect);
+      this.pressableAtlas(img, def, fire);
+      return;
+    }
+    this.pressable(
+      this.add
+        .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x3a3350, 1)
+        .setDepth(DEPTH.hud + 1),
+      fire,
+    );
+    this.add
+      .text(rect.x, rect.y, caption, {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+      })
+      .setOrigin(0.5)
+      .setFontSize(28)
+      .setDepth(DEPTH.hud + 2);
   }
 
   /** Armed press on an atlas button, swapping to its `-pressed` frame when the
@@ -490,25 +579,16 @@ export class TrackV3Scene extends Phaser.Scene {
     });
   }
 
-  /** The Lemmings job bar. */
+  /** The Lemmings job bar — on the shared transport plate, docked to the bottom
+   *  edge and column-aligned with the nav bar above it. `legend-plate.png` is
+   *  retired with the floating plaque it was drawn for (ART_REQUESTS AR-041). */
   private buildLegend(): void {
     const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
-    const bw = 260;
-    const gap = 40;
-    const total = kinds.length * bw + (kinds.length - 1) * gap;
-    const x0 = (W - total) / 2;
-    const y = H - 210;
-
-    if (this.textures.exists("trk-legend-plate")) {
-      this.add.image(W / 2, y + 90, "trk-legend-plate").setDepth(DEPTH.hud);
-    } else {
-      this.add
-        .rectangle(W / 2, y + 90, total + 80, 220, 0x1a1526, 0.78)
-        .setDepth(DEPTH.hud);
-    }
+    const cy = H - 150;
+    this.plate("panel-transport-v2", { x: W / 2, y: cy, width: 1980, height: 250 });
 
     kinds.forEach((kind, i) => {
-      const cx = x0 + i * (bw + gap) + bw / 2;
+      const cx = COLUMN_X[i] as number;
       const idle = `trk-btn-${kind}`;
       const down = `trk-btn-${kind}-pressed`;
       const fire = (): void => void EventBus.emit("terrain-picked", kind);
@@ -516,15 +596,18 @@ export class TrackV3Scene extends Phaser.Scene {
       if (this.textures.exists(idle)) {
         // Picture buttons: the player is four and cannot read. The caption is
         // for the adult, so it is only drawn when there is no picture.
-        const btn = this.add.image(cx, y + 60, idle).setDepth(DEPTH.hud + 1);
+        const btn = this.add
+          .image(cx, cy, idle)
+          .setDepth(DEPTH.hud + 1)
+          .setScale(1.45); // 260x120 art in a 380x175 slot
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
         return;
       }
       const swatch = this.add
-        .rectangle(cx, y + 60, bw, 120, TERRAIN_PAINT[kind], 1)
+        .rectangle(cx, cy - 30, 260, 120, TERRAIN_PAINT[kind], 1)
         .setDepth(DEPTH.hud + 1);
       this.add
-        .text(cx, y + 130, kind.toUpperCase(), {
+        .text(cx, cy + 40, kind.toUpperCase(), {
           fontFamily: "'Press Start 2P', monospace",
           color: "#ffe9b0",
         })
@@ -620,7 +703,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const n = this.cars.length;
     if (n === 0) {
       for (const s of this.slots) s.hide();
-      this.loco?.setVisible(false);
+      this.locoRoot?.setVisible(false);
       this.locoShadow?.setVisible(false);
       this.nowPost?.setVisible(false);
       return;
@@ -637,7 +720,7 @@ export class TrackV3Scene extends Phaser.Scene {
 
     const place = (
       x: number,
-      body: Phaser.GameObjects.Image,
+      body: Phaser.GameObjects.Container,
       shadow: Phaser.GameObjects.Image,
       wheelbase: number,
     ): { lift: number; tilt: number } => {
@@ -666,12 +749,22 @@ export class TrackV3Scene extends Phaser.Scene {
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
         .setRotation(pose.angle)
         .setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
-      s.body.setTexture(CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar);
+      // The wash and the lift are the SAME silhouette as the body, so a car-type
+      // swap has to move all three or the colour ends up on last frame's shape.
+      const tex = CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar;
+      if (s.body.texture.key !== tex) {
+        s.body.setTexture(tex);
+        s.wash.setTexture(tex);
+        s.lift.setTexture(tex);
+      }
       s.label.setText(String(car.number));
-      if (s.liveryDrawn !== car.livery || s.soundingDrawn !== isNow) {
+      if (s.liveryDrawn !== car.livery) {
         s.liveryDrawn = car.livery;
+        s.wash.setTint(hexToInt(colorFor(car.livery)));
+      }
+      if (s.soundingDrawn !== isNow) {
         s.soundingDrawn = isNow;
-        paintFlank(s, car.livery, isNow);
+        s.lift.setAlpha(isNow ? SOUNDING_LIFT : 0);
       }
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
@@ -683,13 +776,18 @@ export class TrackV3Scene extends Phaser.Scene {
         .setScale(1 - Math.abs(bob) / 60, 1);
     });
 
-    if (this.loco && this.locoShadow) {
-      this.loco.setVisible(true);
+    if (this.locoRoot && this.locoShadow) {
+      this.locoRoot.setVisible(true);
       place(
         noseX - LOCO_W / 2,
-        this.loco,
+        this.locoRoot,
         this.locoShadow,
         (LOCO_W * 0.56) / this.view.barWidth,
+      );
+      // Each wheel turns at its OWN radius, so the little pilot wheel spins
+      // faster than the driver over the same ground — Law 4 again.
+      this.locoWheels.forEach((w, i) =>
+        w.setRotation(wheelAngle(dist, LOCO_WHEELS[i]?.r ?? WHEEL_R)),
       );
     }
 
@@ -946,20 +1044,36 @@ export class TrackV3Scene extends Phaser.Scene {
     // Origin (0.5, 1): the art's bottom edge IS the railhead, so a body needs no
     // per-type offset table — the thing that goes stale the moment art changes.
     const body = this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1);
-    // The livery plate, painted on the blank flank the art leaves for it.
-    const plate = this.add.graphics();
-    const wheelA = this.add.image(-CAR_W * 0.28, -WHEEL_R, "trk-wheel");
-    const wheelB = this.add.image(CAR_W * 0.28, -WHEEL_R, "trk-wheel");
+    // The livery: the body's own silhouette, hard-light tinted with the car's
+    // colour and composited back over it. See LIVERY_STRENGTH for why the mode
+    // matters more than the number.
+    const wash = this.add
+      .image(0, 0, "trk-car-boxcar")
+      .setOrigin(0.5, 1)
+      .setAlpha(LIVERY_STRENGTH)
+      .setTintMode(Phaser.TintModes.HARD_LIGHT);
+    const lift = this.add
+      .image(0, 0, "trk-car-boxcar")
+      .setOrigin(0.5, 1)
+      .setAlpha(0)
+      .setTint(0xffe9b0)
+      .setTintMode(Phaser.TintModes.FILL);
+    // Wheels go on AFTER the wash: they are iron on every car, and a red or
+    // yellow wheel would be the one part of the tint that reads as a mistake.
+    const wheelA = this.add.image(-CAR_W * WHEEL_AT, -WHEEL_R, "trk-wheel");
+    const wheelB = this.add.image(CAR_W * WHEEL_AT, -WHEEL_R, "trk-wheel");
     const label = this.add
-      .text(0, FLANK.cy, "1", {
+      .text(0, NAMEPLATE.cy, "1", {
         fontFamily: "'Press Start 2P', monospace",
-        color: "#1a1526",
+        color: "#ffe9b0",
+        stroke: "#1a1526",
+        strokeThickness: 6,
       })
       .setOrigin(0.5)
-      .setFontSize(44);
-    root.add([body, wheelA, wheelB, plate, label]);
+      .setFontSize(NAMEPLATE.fontPx);
+    root.add([body, wash, lift, wheelA, wheelB, label]);
     const view: SlotView = {
-      root, body, plate, wheelA, wheelB, label, shadow,
+      root, body, wash, lift, wheelA, wheelB, label, shadow,
       liveryDrawn: -1,
       soundingDrawn: false,
       show: () => {
@@ -979,45 +1093,20 @@ export class TrackV3Scene extends Phaser.Scene {
 interface SlotView {
   readonly root: Phaser.GameObjects.Container;
   readonly body: Phaser.GameObjects.Image;
-  readonly plate: Phaser.GameObjects.Graphics;
+  /** The livery wash — the body's silhouette, flooded with the car's colour. */
+  readonly wash: Phaser.GameObjects.Image;
+  /** The sounding-car lift — the same silhouette, flooded cream. */
+  readonly lift: Phaser.GameObjects.Image;
   readonly wheelA: Phaser.GameObjects.Image;
   readonly wheelB: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly shadow: Phaser.GameObjects.Image;
-  /** Last livery painted, so the plate is redrawn only when it changes rather
+  /** Last livery applied, so the tint is re-set only when it changes rather
    *  than every frame for every car. */
   liveryDrawn: number;
   soundingDrawn: boolean;
   readonly show: () => void;
   readonly hide: () => void;
-}
-
-/**
- * Paint the livery plate and outline on the blank flank the car art leaves.
- *
- * Same three channels the Yard and the oval use (`car-livery.ts`): a flat
- * colour panel, an ink that is contrast-checked against it, and the car's
- * NUMBER. Never a tint — `setTint` is a multiply and these bodies are dark, so
- * every livery would collapse into "dark thing" (measured, twice).
- */
-function paintFlank(s: SlotView, livery: number, sounding: boolean): void {
-  const color = colorFor(livery);
-  const g = s.plate;
-  const { w, h, cy } = FLANK;
-  const edge = 5;
-  g.clear();
-  g.fillStyle(0x2b2440, 1).fillRoundedRect(
-    -w / 2 - edge, cy - h / 2 - edge, w + edge * 2, h + edge * 2, 14,
-  );
-  g.fillStyle(hexToInt(color), 1).fillRoundedRect(-w / 2, cy - h / 2, w, h, 10);
-  // The sounding car is a palette change, not new art — the era's own technique
-  // and the reason this is a drawn ring rather than a second sprite.
-  if (sounding) {
-    g.lineStyle(7, 0xffe9b0, 1).strokeRoundedRect(
-      -w / 2 - edge - 4, cy - h / 2 - edge - 4, w + edge * 2 + 8, h + edge * 2 + 8, 18,
-    );
-  }
-  s.label.setColor(inkOnCss(color));
 }
 
 /**
