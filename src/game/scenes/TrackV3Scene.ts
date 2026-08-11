@@ -55,6 +55,7 @@ import {
 } from "../terrain-profile.ts";
 import { colorFor, hexToInt, inkOnCss } from "../livery-style.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
+import type { CarType } from "../../core/types.ts";
 
 /**
  * Real art, if any has been delivered. Vite resolves this at build time, so an
@@ -79,8 +80,28 @@ export interface V3Car {
   /** The car's spoken name: "car 3". Stable across every view. */
   readonly number: number;
   readonly livery: number;
+  readonly carType: CarType;
   readonly muted: boolean;
 }
+
+/** Body art per car type. The art is drawn WITHOUT wheels so they can turn, and
+ *  with its bottom edge on the railhead — so a body is placed by putting its
+ *  origin at (0.5, 1) on the contact point and nothing has to be measured. */
+const CAR_BODY_KEY: Readonly<Record<CarType, string>> = {
+  boxcar: "trk-car-boxcar",
+  tanker: "trk-car-tanker",
+  hopper: "trk-car-hopper",
+  flatcar: "trk-car-flatcar",
+};
+
+/** Where the blank flank panel sits on a car body, per AR-036: 170 x 68,
+ *  centred horizontally, centred 110 px above the railhead. The livery plate and
+ *  the car's number go here — the same identity language `car-livery.ts` paints
+ *  in the Yard and on the oval. */
+const FLANK = { w: 170, h: 68, cy: -110 } as const;
+
+/** How far ahead of bar 0 the locomotive rides, in bars. */
+const LOCO_LEAD_BARS = 0.55;
 
 /** A terrain the transport has committed to, in absolute bars. */
 export interface V3TerrainRide {
@@ -132,7 +153,6 @@ const CAR_W = 300;
 /** Distance between the axles, as a fraction of a bar. The car is 300 px wide
  *  with its wheels at ±28% of that, in a 640 px bar. */
 const WHEELBASE_BARS = (CAR_W * 0.56) / 640;
-const CAR_H = 190;
 const WHEEL_R = 30;
 
 const TERRAIN_PAINT: Record<TerrainKind, number> = {
@@ -159,6 +179,11 @@ export class TrackV3Scene extends Phaser.Scene {
   private fore?: Phaser.GameObjects.TileSprite;
 
   private slots: SlotView[] = [];
+  /** One locomotive per visible song cycle, pooled like the cars.
+   *  A single shared loco was wrong: the song repeats every `cars.length` bars,
+   *  so a short song puts several bar-0s on screen at once and `find()` picked
+   *  the leftmost — which was usually off-screen (measured at x = -933). */
+  private locos: Phaser.GameObjects.Image[] = [];
   private mound?: Phaser.GameObjects.Image;
   private deck?: Phaser.GameObjects.Image;
   private gap?: Phaser.GameObjects.Rectangle;
@@ -232,12 +257,12 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.deck)
       .setVisible(false);
     this.gloom = this.add
-      .rectangle(0, 0, 0, GROUND_Y, 0x24303f, 0.34)
+      .rectangle(0, 0, 0, H, 0x24303f, 0.22)
       .setOrigin(0, 0)
       .setDepth(DEPTH.rain - 0.1)
       .setVisible(false);
     this.rainSheet = this.add
-      .tileSprite(0, 0, 10, GROUND_Y, "trk-rain")
+      .tileSprite(0, 0, 10, H, "trk-rain")
       .setOrigin(0, 0)
       .setDepth(DEPTH.rain)
       .setAlpha(0.75)
@@ -271,16 +296,25 @@ export class TrackV3Scene extends Phaser.Scene {
       .rectangle(px, 0, 5, H, 0xffe9b0, 0.55)
       .setOrigin(0.5, 0)
       .setDepth(DEPTH.playhead);
-    this.add
-      .text(px, 210, "NOW", {
-        fontFamily: "'Press Start 2P', monospace",
-        color: "#ffe9b0",
-        stroke: "#1a1526",
-        strokeThickness: 6,
-      })
-      .setOrigin(0.5, 0)
-      .setFontSize(28)
-      .setDepth(DEPTH.playhead);
+    if (this.textures.exists("trk-now-post")) {
+      // A real trackside signal post standing on the ground beside the rails,
+      // in FRONT of the near fringe so it is never half-swallowed by grass.
+      this.add
+        .image(px, RAIL_Y + 16, "trk-now-post")
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.playhead);
+    } else {
+      this.add
+        .text(px, 210, "NOW", {
+          fontFamily: "'Press Start 2P', monospace",
+          color: "#ffe9b0",
+          stroke: "#1a1526",
+          strokeThickness: 6,
+        })
+        .setOrigin(0.5, 0)
+        .setFontSize(28)
+        .setDepth(DEPTH.playhead);
+    }
 
     this.buildTopBar();
     this.buildLegend();
@@ -336,6 +370,32 @@ export class TrackV3Scene extends Phaser.Scene {
     });
   }
 
+  /** Armed press on a two-state sprite: the pressed art IS the feedback, so
+   *  there is no scale tween fighting it. */
+  private pressableImage(
+    img: Phaser.GameObjects.Image,
+    idle: string,
+    pressed: string,
+    fire: () => void,
+  ): void {
+    let armed = false;
+    img.setInteractive({ useHandCursor: true });
+    img.on("pointerdown", () => {
+      armed = true;
+      img.setTexture(pressed);
+    });
+    img.on("pointerout", () => {
+      armed = false;
+      img.setTexture(idle);
+    });
+    img.on("pointerup", () => {
+      img.setTexture(idle);
+      if (!armed) return;
+      armed = false;
+      fire();
+    });
+  }
+
   /** The Lemmings job bar. */
   private buildLegend(): void {
     const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
@@ -345,12 +405,27 @@ export class TrackV3Scene extends Phaser.Scene {
     const x0 = (W - total) / 2;
     const y = H - 210;
 
-    this.add
-      .rectangle(W / 2, y + 90, total + 80, 220, 0x1a1526, 0.78)
-      .setDepth(DEPTH.hud);
+    if (this.textures.exists("trk-legend-plate")) {
+      this.add.image(W / 2, y + 90, "trk-legend-plate").setDepth(DEPTH.hud);
+    } else {
+      this.add
+        .rectangle(W / 2, y + 90, total + 80, 220, 0x1a1526, 0.78)
+        .setDepth(DEPTH.hud);
+    }
 
     kinds.forEach((kind, i) => {
       const cx = x0 + i * (bw + gap) + bw / 2;
+      const idle = `trk-btn-${kind}`;
+      const down = `trk-btn-${kind}-pressed`;
+      const fire = (): void => void EventBus.emit("terrain-picked", kind);
+
+      if (this.textures.exists(idle)) {
+        // Picture buttons: the player is four and cannot read. The caption is
+        // for the adult, so it is only drawn when there is no picture.
+        const btn = this.add.image(cx, y + 60, idle).setDepth(DEPTH.hud + 1);
+        this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
+        return;
+      }
       const swatch = this.add
         .rectangle(cx, y + 60, bw, 120, TERRAIN_PAINT[kind], 1)
         .setDepth(DEPTH.hud + 1);
@@ -364,7 +439,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setDepth(DEPTH.hud + 2);
       // Law 8: the response happens THIS frame, even though the sound lands on
       // the next bar.
-      this.pressable(swatch, () => void EventBus.emit("terrain-picked", kind));
+      this.pressable(swatch, fire);
     });
   }
 
@@ -450,22 +525,57 @@ export class TrackV3Scene extends Phaser.Scene {
       );
       const y = Math.round(RAIL_Y - lift + bob);
 
+      const isNow = slot.absBar === sounding;
       s.show();
       s.root.setPosition(Math.round(slot.centreX), y);
       s.root.setRotation(tilt);
-      s.body.setFillStyle(hexToInt(colorFor(car.livery)), car.muted ? 0.35 : 1);
+      s.root.setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
+      s.body.setTexture(CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar);
       s.label.setText(String(car.number));
-      s.label.setColor(inkOnCss(colorFor(car.livery)));
+      // Repaint the flank only when something about it actually changed.
+      if (s.liveryDrawn !== car.livery || s.soundingDrawn !== isNow) {
+        s.liveryDrawn = car.livery;
+        s.soundingDrawn = isNow;
+        paintFlank(s, car.livery, isNow);
+      }
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
-      // The sounding bar is a palette change, not new art (the era's technique).
-      s.roof.setFillStyle(slot.absBar === sounding ? 0xffe9b0 : 0x2b2440, 1);
       // Law 2: the shadow says where the base meets the ground, so it has to
       // ride the LIFTED surface too, and tighten as the body bounces off it.
-      s.shadow.setPosition(Math.round(slot.centreX), Math.round(RAIL_Y - lift + 34));
+      s.shadow.setPosition(Math.round(slot.centreX), Math.round(RAIL_Y - lift + 10));
       s.shadow.setRotation(tilt);
       s.shadow.setScale(1 - Math.abs(bob) / 60, 1);
+    });
+
+    // A locomotive leads every repeat of the song. Travel is leftward, so it
+    // rides to the LEFT of bar 0 — the front of a train is the end that has
+    // already gone past the marker.
+    const heads = slots.filter((sl) => sl.songBar === 0);
+    while (this.locos.length < heads.length) {
+      this.locos.push(
+        this.add
+          .image(0, RAIL_Y, "trk-loco")
+          .setOrigin(0.5, 1)
+          .setDepth(DEPTH.train)
+          .setVisible(false),
+      );
+    }
+    this.locos.forEach((loco, i) => {
+      const head = heads[i];
+      if (!head) {
+        loco.setVisible(false);
+        return;
+      }
+      const atLoco = head.absBar + 0.5 - LOCO_LEAD_BARS;
+      const pose = carPose(atLoco, WHEELBASE_BARS, span, this.view.barWidth);
+      loco
+        .setVisible(true)
+        .setPosition(
+          Math.round(head.centreX - LOCO_LEAD_BARS * this.view.barWidth),
+          Math.round(RAIL_Y - pose.lift + bob),
+        )
+        .setRotation(pose.angle);
     });
   }
 
@@ -520,25 +630,35 @@ export class TrackV3Scene extends Phaser.Scene {
     if (isBridge && this.gap && this.deck) {
       // Inset by the shoulder so the dark gap starts where the ground actually
       // drops, rather than squarely at the bar line.
-      const drop = groundDrop((ride.startBar + ride.endBar) / 2, ride);
+      // Girder immediately under the wheels, piers hanging into the void.
+      const deckH = 170;
+      this.deck.setPosition(x, RAIL_Y);
+      this.deck.setDisplaySize(w, deckH);
+      // The void is clipped to the STRUCTURE, not to the profile's full drop:
+      // `groundDrop` is how far the ground falls away in the physics, but a
+      // void drawn past the bottom of the trestle just reads as a grey box.
+      const drop = Math.min(
+        groundDrop((ride.startBar + ride.endBar) / 2, ride),
+        deckH - 26,
+      );
       this.gap.setPosition(x, RAIL_Y + 26);
       this.gap.setSize(w, Math.max(1, drop));
-      // Girder immediately under the wheels, piers hanging into the void.
-      this.deck.setPosition(x, RAIL_Y);
-      this.deck.setDisplaySize(w, 170);
     }
 
     // Rain: weather in a moving shaft, plus the sky going over.
     const isRain = ride.kind === "rain";
     this.gloom?.setVisible(isRain);
     if (isRain && this.gloom) {
+      // Full height, not stopping at the ground line: a squall that ends in a
+      // hard horizontal edge above bright grass reads as a rectangle, not
+      // weather. Alpha kept low enough that the train stays legible inside it.
       this.gloom.setPosition(x, 0);
-      this.gloom.setSize(w, GROUND_Y);
+      this.gloom.setSize(w, H);
     }
     this.rainSheet?.setVisible(isRain);
     if (isRain && this.rainSheet) {
       this.rainSheet.setPosition(x, 0);
-      this.rainSheet.setSize(w, GROUND_Y);
+      this.rainSheet.setSize(w, H);
       // Falls fast and drifts with the world, so it belongs to the scene rather
       // than sitting on the glass in front of it.
       this.rainSheet.tilePositionY = Math.floor(this.time.now * 2.2);
@@ -588,23 +708,29 @@ export class TrackV3Scene extends Phaser.Scene {
 
   private makeSlot(): SlotView {
     const shadow = this.add
-      .ellipse(0, 0, CAR_W * 0.92, 34, 0x000000, 0.32)
+      .image(0, 0, "trk-shadow")
+      .setOrigin(0.5, 0.5)
       .setDepth(DEPTH.shadow);
     const root = this.add.container(0, 0).setDepth(DEPTH.train);
-    const body = this.add.rectangle(0, -CAR_H / 2, CAR_W, CAR_H, 0xc4453a, 1);
-    const roof = this.add.rectangle(0, -CAR_H - 10, CAR_W * 0.86, 26, 0x2b2440, 1);
+    // Origin (0.5, 1): the art's bottom edge IS the railhead, so a body needs no
+    // per-type offset table — the thing that goes stale the moment art changes.
+    const body = this.add.image(0, 0, "trk-car-boxcar").setOrigin(0.5, 1);
+    // The livery plate, painted on the blank flank the art leaves for it.
+    const plate = this.add.graphics();
     const wheelA = this.add.image(-CAR_W * 0.28, -WHEEL_R, "trk-wheel");
     const wheelB = this.add.image(CAR_W * 0.28, -WHEEL_R, "trk-wheel");
     const label = this.add
-      .text(0, -CAR_H / 2, "1", {
+      .text(0, FLANK.cy, "1", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#1a1526",
       })
       .setOrigin(0.5)
-      .setFontSize(64);
-    root.add([body, roof, wheelA, wheelB, label]);
+      .setFontSize(44);
+    root.add([body, wheelA, wheelB, plate, label]);
     const view: SlotView = {
-      root, body, roof, wheelA, wheelB, label, shadow,
+      root, body, plate, wheelA, wheelB, label, shadow,
+      liveryDrawn: -1,
+      soundingDrawn: false,
       show: () => {
         root.setVisible(true);
         shadow.setVisible(true);
@@ -621,14 +747,46 @@ export class TrackV3Scene extends Phaser.Scene {
 
 interface SlotView {
   readonly root: Phaser.GameObjects.Container;
-  readonly body: Phaser.GameObjects.Rectangle;
-  readonly roof: Phaser.GameObjects.Rectangle;
+  readonly body: Phaser.GameObjects.Image;
+  readonly plate: Phaser.GameObjects.Graphics;
   readonly wheelA: Phaser.GameObjects.Image;
   readonly wheelB: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
-  readonly shadow: Phaser.GameObjects.Ellipse;
+  readonly shadow: Phaser.GameObjects.Image;
+  /** Last livery painted, so the plate is redrawn only when it changes rather
+   *  than every frame for every car. */
+  liveryDrawn: number;
+  soundingDrawn: boolean;
   readonly show: () => void;
   readonly hide: () => void;
+}
+
+/**
+ * Paint the livery plate and outline on the blank flank the car art leaves.
+ *
+ * Same three channels the Yard and the oval use (`car-livery.ts`): a flat
+ * colour panel, an ink that is contrast-checked against it, and the car's
+ * NUMBER. Never a tint — `setTint` is a multiply and these bodies are dark, so
+ * every livery would collapse into "dark thing" (measured, twice).
+ */
+function paintFlank(s: SlotView, livery: number, sounding: boolean): void {
+  const color = colorFor(livery);
+  const g = s.plate;
+  const { w, h, cy } = FLANK;
+  const edge = 5;
+  g.clear();
+  g.fillStyle(0x2b2440, 1).fillRoundedRect(
+    -w / 2 - edge, cy - h / 2 - edge, w + edge * 2, h + edge * 2, 14,
+  );
+  g.fillStyle(hexToInt(color), 1).fillRoundedRect(-w / 2, cy - h / 2, w, h, 10);
+  // The sounding car is a palette change, not new art — the era's own technique
+  // and the reason this is a drawn ring rather than a second sprite.
+  if (sounding) {
+    g.lineStyle(7, 0xffe9b0, 1).strokeRoundedRect(
+      -w / 2 - edge - 4, cy - h / 2 - edge - 4, w + edge * 2 + 8, h + edge * 2 + 8, 18,
+    );
+  }
+  s.label.setColor(inkOnCss(color));
 }
 
 /**

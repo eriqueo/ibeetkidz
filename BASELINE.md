@@ -725,3 +725,43 @@ the mechanic was asked for.
 
 The terrain caption is also clamped to the screen now — a terrain scrolling off
 the left edge used to leave a stray letter behind.
+
+---
+
+## Re-baseline — 2026-08-10, side-scroller art landed and wired
+
+| Fact | Value | Previous |
+|---|---|---|
+| Unit tests | 561 / 34 files, 0 skipped | unchanged |
+| E2E local | **43 passed**, 0 failed | unchanged |
+
+Twenty PNGs delivered against AR-034 … AR-039. **The nine drop-in slots took
+effect with no code change at all** — the `import.meta.glob` drop folder worked
+exactly as designed, which is the first time an art delivery in this project has
+needed zero engineering to become visible.
+
+The other eleven are now wired: car bodies per `carType`, a locomotive leading
+every song cycle, the contact shadow, the legend plate, six button states and the
+NOW post. The livery plate + car number are painted onto the blank flank the art
+leaves for them, so identity still comes from the one producer
+(`core/car-identity.ts`) and the Track speaks the same language as the Yard.
+
+**Three defects found by measuring, not by looking:**
+
+- **The locomotive was off-screen at x = -933.** One shared loco was wrong: the
+  song repeats every `cars.length` bars, so a short song puts several bar-0s on
+  screen at once and `find()` returned the leftmost. Pooled per visible cycle.
+- **The bridge void ran 116 px past the bottom of the trestle**, reading as a
+  grey box. Clipped to the structure rather than to the profile's full drop.
+- **Rain washed the train out** and stopped in a hard horizontal edge at the
+  ground line. Gloom 0.34 → 0.22 and taken full-height, so it reads as a squall.
+
+**And one thing I was wrong about, recorded because the correction is the
+lesson:** the cars looked like they floated above the sleepers, and the ground
+art looked wrong for having no sleeper texture near the rail. Measuring showed
+the art is correct — in a true side elevation a rail IS a flat horizontal line,
+with the ballast below it. Nothing needed fixing.
+
+Full verification table and two non-blocking art follow-ups (a +4.5 px offset on
+the hill silhouette, a tile seam on `trees.png`) are in `ART_REQUESTS.md` under
+"SIDE-SCROLLER BATCH — RECEIVED AND WIRED".

@@ -1461,3 +1461,51 @@ shadows, no gradients or glow."
 
 Any single file can land on its own and be visible immediately. Nothing here
 blocks anything else.
+
+---
+
+## SIDE-SCROLLER BATCH — RECEIVED AND WIRED (2026-08-10)
+
+All 20 files landed. **All are in the build and visible.** The nine drop-in slots
+took effect with no code change, exactly as designed; the other eleven are now
+wired (car bodies per type, locomotive, contact shadow, legend plate, six button
+states, NOW post).
+
+### Verification, measured rather than assumed
+
+| Check | Result |
+|---|---|
+| Dimensions vs spec | **20/20 exact.** |
+| Alpha channel present | **20/20** (PNG colour type 6). |
+| Alpha 0 outside the art | Correct on every sprite. `sky`, `ground` and `mound` have opaque corners, which is *right* — they are full-bleed / ground-based plates, not sprites on a transparent surround. A blanket four-corner rule mis-flags them. |
+| Hill profile vs `terrain-profile.ts` | Shape correct — matches the raised cosine at all 21 sample points. |
+| `ground.png` railhead at row 30 | Correct. |
+| `wheel.png` centring | **Exact**: opaque bbox centred on (29.5, 29.5) in a 60×60 canvas. |
+| `fringe.png` transparent band | Exact: 0 % opaque above row 78, 53 % below. |
+| Tiling seams | `sky`, `rain` (both axes), `ground`, `fringe` all clean. |
+
+### Two findings worth a follow-up — neither blocking, both shipped as-is
+
+**AR-038a hill: a uniform +4.5 px offset.** The drawn surface sits ~4.5 px above
+the mathematical curve across the whole span (a base plinth/outline), and because
+the summit would then exceed the 120 px canvas it is clipped, making the crest
+~4 px *flatter* than the physics. Worst-case disagreement between where the train
+is and where the ground is drawn: **5 px on a 120 px hill (4 %)**, roughly 2–3
+device pixels on screen. Below the threshold that made the oval look broken, so
+it is accepted. If `mound.png` is ever revised: draw the curve with its baseline
+ON the bottom edge, and let the summit reach exactly 120.
+
+**AR-034 `trees.png` has a visible horizontal tile seam.** Wrap-around column
+difference is **6.5×** the image's own typical adjacent-column difference (~22
+levels per channel). It will show as a faint vertical line every 640 px as the
+treeline scrolls. `hills.png` scores 8× on the same metric but its absolute delta
+is ~1.6 levels per channel — imperceptible, and not worth touching. **Only
+`trees.png` is worth a re-export.**
+
+### One spec correction for next time
+
+`ground.png` was checked for sleeper texture near the railhead and has none — the
+rows around the rail are flat horizontal bands. **That turned out to be correct**
+and the request was wrong to ask for it: in a true side elevation a rail *is* a
+flat horizontal line, and the ballast texture belongs below it, which is exactly
+what was delivered. Recorded so a future reviewer does not "fix" it.

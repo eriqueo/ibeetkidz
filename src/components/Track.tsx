@@ -57,6 +57,7 @@ export const Track: FC = () => {
         id: c.instanceId,
         number: id?.number ?? 1,
         livery: id?.liveryIndex ?? 0,
+        carType: id?.carType ?? "boxcar",
         muted: c.muted,
       };
     });
