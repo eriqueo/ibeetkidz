@@ -20,7 +20,7 @@ function wantsV3(): boolean {
 }
 
 export const Track: FC = () => {
-  const { dispatch, engine, sound, getProject } = useApp();
+  const { dispatch, dispatchAll, engine, sound, getProject } = useApp();
   const project = useProject();
   const v3 = useMemo(wantsV3, []);
   const sceneRef = useRef<TrackScene | null>(null);
@@ -109,6 +109,26 @@ export const Track: FC = () => {
       const slot = liveTrain(projectRef.current).find((c) => c.instanceId === instanceId);
       if (slot) dispatch({ type: "muteCar", instanceId, muted: !slot.muted });
     };
+    // Tap a car on the side-scroller → edit THAT car in the Workshop. The ride
+    // keeps playing (nothing here stops the transport), so a kid can fix a
+    // lane and hear the change on the song's next pass — edit on the fly.
+    const onCarEdit = (instanceId: string) => {
+      const slot = liveTrain(projectRef.current).find((c) => c.instanceId === instanceId);
+      if (!slot) return;
+      dispatch({ type: "selectCar", partId: slot.partId });
+      dispatch({ type: "setActiveView", view: "workshop" });
+    };
+    // CLEAR → empty the whole train as ONE undo step, with the "put it back"
+    // chip (removing the kid's whole build is exactly what the chip is for).
+    // The ride stops too: with no train there is nothing to ride.
+    const onClearTrain = () => {
+      const cmds = liveTrain(projectRef.current).map(
+        (c) => ({ type: "removeFromTrain", instanceId: c.instanceId }) as const,
+      );
+      if (cmds.length === 0) return;
+      engine.stop();
+      dispatchAll(cmds, "The whole train");
+    };
     // Terrain: a physical thing the train rides through, heard as a change to
     // the song. The bar it lands on is resolved from the TRANSPORT inside the
     // adapter — never from where the train happens to be drawn (charter A4).
@@ -126,6 +146,8 @@ export const Track: FC = () => {
     EventBus.on("tempo-changed", onTempo);
     EventBus.on("track-nav", onNav);
     EventBus.on("track-car-mute-toggled", onMuteToggle);
+    EventBus.on("track-car-edit", onCarEdit);
+    EventBus.on("track-clear-train", onClearTrain);
     EventBus.on("terrain-picked", onTerrain);
     return () => {
       EventBus.off("transport-play", onPlay);
@@ -133,9 +155,11 @@ export const Track: FC = () => {
       EventBus.off("tempo-changed", onTempo);
       EventBus.off("track-nav", onNav);
       EventBus.off("track-car-mute-toggled", onMuteToggle);
+      EventBus.off("track-car-edit", onCarEdit);
+      EventBus.off("track-clear-train", onClearTrain);
       EventBus.off("terrain-picked", onTerrain);
     };
-  }, [dispatch, engine]);
+  }, [dispatch, dispatchAll, engine]);
 
   // SEND flow: the scene owns the plaque + result panel (in-scene, charter-
   // styled); this side owns the audio render and the share/download side

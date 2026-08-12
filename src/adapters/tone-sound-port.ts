@@ -71,26 +71,33 @@ type MelodyVoice = Tone.Synth | Tone.FMSynth | Tone.MonoSynth | Tone.Sampler | T
 /** Build a fresh voice for an instrument id. The recipe (oscillator + envelope
  *  + modulation/filter) lives HERE — it's the vendor detail the core delegates.
  *  Adding a timbre = one case here + one entry in `INSTRUMENTS` (core). */
-function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
+function makeMelodyVoice(
+  instrument: InstrumentId,
+  context: ReturnType<typeof Tone.getContext>,
+): MelodyVoice {
   switch (instrument) {
     case "smooth":
       return new Tone.Synth({
+        context,
         oscillator: { type: "sine" },
         envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.2 },
       });
     case "buzzy":
       return new Tone.Synth({
+        context,
         oscillator: { type: "square" },
         envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
       });
     case "sharp":
       return new Tone.Synth({
+        context,
         oscillator: { type: "sawtooth" },
         envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
       });
     case "piano":
       // FM electric-piano: instant attack, plucky decay, low sustain.
       return new Tone.FMSynth({
+        context,
         harmonicity: 2,
         modulationIndex: 6,
         oscillator: { type: "sine" },
@@ -101,6 +108,7 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
     case "bells":
       // Bright inharmonic FM → bell / music box (no sustain, long ring).
       return new Tone.FMSynth({
+        context,
         harmonicity: 3.01,
         modulationIndex: 12,
         oscillator: { type: "sine" },
@@ -111,12 +119,14 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
     case "organ":
       // Held, fat, no decay → sustained organ pad.
       return new Tone.Synth({
+        context,
         oscillator: { type: "fatsawtooth" },
         envelope: { attack: 0.02, decay: 0.0, sustain: 1, release: 0.12 },
       });
     case "pluck":
       // Filtered short pluck (guitar-ish) via a fast filter envelope.
       return new Tone.MonoSynth({
+        context,
         oscillator: { type: "sawtooth" },
         envelope: { attack: 0.005, decay: 0.25, sustain: 0, release: 0.2 },
         filterEnvelope: {
@@ -127,6 +137,7 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
     case "brass":
       // Reedy sustained lead with a slower filter sweep.
       return new Tone.MonoSynth({
+        context,
         oscillator: { type: "sawtooth" },
         envelope: { attack: 0.06, decay: 0.2, sustain: 0.7, release: 0.2 },
         filterEnvelope: {
@@ -139,6 +150,7 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
       // string-like decay + ring. No `.frequency` signal (so bend degrades to a
       // flat note, like the Voice Keys sampler).
       return new Tone.PluckSynth({
+        context,
         attackNoise: 1.2,
         dampening: 4500,
         resonance: 0.93,
@@ -147,6 +159,7 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
     case "soft":
     default:
       return new Tone.Synth({
+        context,
         oscillator: { type: "triangle" },
         envelope: { attack: 0.01, decay: 0.18, sustain: 0.18, release: 0.18 },
       });
@@ -156,12 +169,50 @@ function makeMelodyVoice(instrument: InstrumentId): MelodyVoice {
 export class ToneSoundPort implements SoundPort {
   private analyser!: AnalyserNode;
   private ctx!: AudioContext;
+  /** The context the app PLAYS through, captured once at `resume`.
+   *
+   *  Live paths must never read Tone's GLOBAL accessors: `Tone.Offline` (the
+   *  fx bake) swaps the global context synchronously and restores it only
+   *  after its callback settles, so a `Tone.getTransport()` — or a bare node
+   *  constructor — on a live path during that window binds to a throwaway
+   *  offline context: the voice schedules into the void and the car is
+   *  silently dead. Worse, two overlapping bakes restore each other's
+   *  contexts and strand the whole app on a dead context until reload. Both
+   *  were measured on a real ride (2026-08-12); `tests/unit/architecture.test.ts`
+   *  rule 9 pins this. Everything below goes through `liveTransport` /
+   *  `liveDestination` / `liveCtx`, and scheduled nodes pass
+   *  `context: this.liveCtx` explicitly. */
+  private live?: ReturnType<typeof Tone.getContext> | undefined;
+
+  private get liveCtx(): ReturnType<typeof Tone.getContext> {
+    return this.live ?? Tone.getContext();
+  }
+
+  private get liveTransport(): ReturnType<typeof Tone.getTransport> {
+    // The one sanctioned global read (pre-boot fallback; no bake can be in
+    // flight before `resume` has run).
+    return this.live ? this.live.transport : Tone.getTransport();
+  }
+
+  private get liveDestination(): ReturnType<typeof Tone.getDestination> {
+    // The one sanctioned global read — same pre-boot fallback as above.
+    return this.live ? this.live.destination : Tone.getDestination();
+  }
   /** Decoded audio data keyed by buffer id (builtins, recordings, baked). */
   private readonly buffers = new Map<BufferId, AudioBuffer>();
   /** Encoded recording bytes, kept so the app can persist them. */
   private readonly recordingBlobs = new Map<BufferId, Blob>();
   /** Baked effect-chain results, keyed by source+chain signature. */
   private readonly bakedCache = new Map<string, AudioBuffer>();
+  /** In-flight bakes by the same key — a twin request (the same clip riding
+   *  two train slots) awaits the one render instead of launching a double. */
+  private readonly pendingBakes = new Map<string, Promise<AudioBuffer>>();
+  /** Bakes run STRICTLY one at a time. `Tone.Offline` swaps the global
+   *  context, and two overlapping swaps restore each other's throwaway
+   *  contexts — measured stranding the app on a dead context until reload.
+   *  Unbounded by design: at most one entry per un-baked clip+fx signature,
+   *  each render bounded by MAX_RECORD_SEC plus the effect tail. */
+  private bakeQueue: Promise<unknown> = Promise.resolve();
   /** Beat-snapped (looped/trimmed) buffers, keyed by source+chain+beats@bpm. */
   private readonly loopCache = new Map<string, AudioBuffer>();
   /** Silence-trimmed copies of recordings, keyed by buffer id, used as the
@@ -243,13 +294,12 @@ export class ToneSoundPort implements SoundPort {
   private static readonly LOOKAHEAD_MAX_SEC = 0.3;
 
   private adaptLookAhead(): void {
-    if (this.schedStats.late20 < 3) return;
-    const ctx = Tone.getContext();
+    if (this.schedStats.late20 < 3 || !this.live) return;
     const next = Math.min(
       ToneSoundPort.LOOKAHEAD_MAX_SEC,
       0.1 + 0.05 * (this.schedStats.late20 - 2),
     );
-    if (next > ctx.lookAhead) ctx.lookAhead = next;
+    if (next > this.live.lookAhead) this.live.lookAhead = next;
   }
 
   // Live one-shot + scheduled players, tracked for cleanup.
@@ -292,12 +342,15 @@ export class ToneSoundPort implements SoundPort {
     // session (iOS 16.4+) makes our sound ignore the silent switch. No-op on
     // platforms that don't expose `navigator.audioSession`.
     setAudioSession("playback");
-    this.ctx = Tone.getContext().rawContext as AudioContext;
+    // Pin the booted context NOW — every later read goes through the pin, so
+    // an in-flight `Tone.Offline` swap can never redirect a live path.
+    this.live = Tone.getContext();
+    this.ctx = this.live.rawContext as AudioContext;
     // A raw AnalyserNode tapped off the master output feeds the visualizer —
     // it sees every real voice (builtins, recordings, theremin), never a fake.
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
-    Tone.getDestination().connect(this.analyser);
+    this.liveDestination.connect(this.analyser);
     this.installKeepAlive();
     // Build the terrain insert now, while we are already in the boot await:
     // `Tone.Reverb` renders an impulse response asynchronously, and the Track
@@ -340,21 +393,21 @@ export class ToneSoundPort implements SoundPort {
       for (const v of data) peak = Math.max(peak, Math.abs(v - 128));
       masterPeak = peak / 128;
     }
-    const dest = Tone.getDestination();
+    const dest = this.liveDestination;
     return {
       contextState: this.ctx ? this.ctx.state : "unbooted",
       currentTime: this.ctx ? this.ctx.currentTime : -1,
-      transportState: Tone.getTransport().state,
+      transportState: this.liveTransport.state,
       destinationMute: dest.mute,
       destinationVolumeDb: dest.volume.value,
       masterPeak,
-      transportBpm: Tone.getTransport().bpm.value,
+      transportBpm: this.liveTransport.bpm.value,
       terrainScale: this.tempoScale,
       schedEvents: this.schedStats.events,
       schedLate: this.schedStats.late,
       schedLate20: this.schedStats.late20,
       schedWorstLateMs: this.schedStats.worstMs,
-      lookAheadSec: Tone.getContext().lookAhead,
+      lookAheadSec: this.liveCtx.lookAhead,
     };
   }
 
@@ -579,10 +632,24 @@ export class ToneSoundPort implements SoundPort {
   ): Promise<BufferId> {
     const src = this.buffers.get(source);
     if (!src) throw new Error(`unknown buffer: ${source}`);
-    const baked = await this.renderChain(src, effects);
+    const baked = await this.queueRender(src, effects);
     const id = `baked-${this.bufferSeq++}`;
     this.buffers.set(id, baked);
     return id;
+  }
+
+  /** The ONLY entrance to `renderChain`: bakes queue single-file (see
+   *  `bakeQueue`). A failed bake breaks its caller, never the queue. */
+  private queueRender(
+    src: AudioBuffer,
+    effects: readonly EffectDescriptor[],
+  ): Promise<AudioBuffer> {
+    const run = this.bakeQueue.then(() => this.renderChain(src, effects));
+    this.bakeQueue = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 
   /** Offline-render `src` through the effect chain into a new AudioBuffer. */
@@ -639,8 +706,17 @@ export class ToneSoundPort implements SoundPort {
       const cached = this.bakedCache.get(key);
       if (cached) buf = cached;
       else {
-        buf = await this.renderChain(base, clip.effects);
-        this.bakedCache.set(key, buf);
+        let pending = this.pendingBakes.get(key);
+        if (!pending) {
+          pending = this.queueRender(base, clip.effects).then((b) => {
+            this.bakedCache.set(key, b);
+            return b;
+          });
+          this.pendingBakes.set(key, pending);
+          // Cleanup on a side chain so a rejection still reaches the awaiters.
+          void pending.catch(() => undefined).then(() => this.pendingBakes.delete(key));
+        }
+        buf = await pending;
       }
     }
 
@@ -686,7 +762,7 @@ export class ToneSoundPort implements SoundPort {
   play(clip: Clip): void {
     void this.resolveClip(clip, this.tempoBpm).then((buf) => {
       if (!buf) return;
-      const player = new Tone.Player(buf).toDestination();
+      const player = new Tone.Player({ url: buf, context: this.liveCtx }).toDestination();
       this.liveVoices.add(player);
       player.onstop = () => {
         this.liveVoices.delete(player);
@@ -701,7 +777,7 @@ export class ToneSoundPort implements SoundPort {
    *  guard avoids an audible stall when the next grid line is essentially now. */
   private startQuantized(player: Tone.Player): void {
     const subdivision = gridSubdivision(this.quantizeGrid);
-    const transport = Tone.getTransport();
+    const transport = this.liveTransport;
     if (subdivision === null || transport.state !== "started") {
       player.start();
       return;
@@ -723,10 +799,10 @@ export class ToneSoundPort implements SoundPort {
     const bufId = voiceBufferId(instrument);
     if (bufId !== null) {
       const sample = this.voiceSample(bufId);
-      if (sample) return new Tone.Sampler({ urls: { C4: sample } });
-      return makeMelodyVoice("soft"); // buffer not ready → still make sound
+      if (sample) return new Tone.Sampler({ urls: { C4: sample }, context: this.liveCtx });
+      return makeMelodyVoice("soft", this.liveCtx); // buffer not ready → still make sound
     }
-    return makeMelodyVoice(instrument);
+    return makeMelodyVoice(instrument, this.liveCtx);
   }
 
   /** The silence-trimmed sampler buffer for a recording, built (and cached) on
@@ -769,14 +845,18 @@ export class ToneSoundPort implements SoundPort {
     setTimeout(() => synth.dispose(), holdMs);
   }
 
-  /** Duration of one bar (measure) in seconds at the live tempo. */
+  /** Duration of one bar (measure) in seconds at the live tempo. Computed off
+   *  the PINNED transport — `Tone.Time("1m")` reads the global one, which mid-
+   *  bake is the offline default (120), not the song. */
   private barSec(): number {
-    return Tone.Time("1m").toSeconds();
+    const t = this.liveTransport;
+    const beats = typeof t.timeSignature === "number" ? t.timeSignature : 4;
+    return (60 / t.bpm.value) * beats;
   }
 
   /** Duration of one step in seconds at the live tempo. */
   private stepDurationSec(totalSteps: number): number {
-    return Tone.Time("1m").toSeconds() / Math.max(1, totalSteps);
+    return this.barSec() / Math.max(1, totalSteps);
   }
 
   /** Seconds-into-the-bar a step fires, with swing leaning the off-beats late. */
@@ -798,13 +878,14 @@ export class ToneSoundPort implements SoundPort {
     const cached = opts.laneKey ? this.laneChains.get(opts.laneKey) : undefined;
     if (cached) return cached;
     // Build back-to-front so each stage targets the next; default = master out.
-    let head: Tone.ToneAudioNode = Tone.getDestination();
+    let head: Tone.ToneAudioNode = this.liveDestination;
 
     if (opts.echo > 0) {
       const delay = new Tone.FeedbackDelay({
         delayTime: "8n",
         feedback: 0.2 + opts.echo * 0.5,
         wet: Math.min(0.6, opts.echo),
+        context: this.liveCtx,
       }).toDestination();
       this.scheduledFx.push(delay);
       head = delay;
@@ -813,7 +894,7 @@ export class ToneSoundPort implements SoundPort {
     if (opts.tone < 0.999) {
       // tone 1 → ~14 kHz (open); tone 0 → ~500 Hz (muffled). Log-ish mapping.
       const cutoff = 500 + opts.tone * opts.tone * 13500;
-      const filter = new Tone.Filter(cutoff, "lowpass");
+      const filter = new Tone.Filter({ frequency: cutoff, type: "lowpass", context: this.liveCtx });
       filter.connect(head);
       this.scheduledFx.push(filter);
       head = filter;
@@ -824,7 +905,10 @@ export class ToneSoundPort implements SoundPort {
     // chorus whose depth/mix track the knob (the offline "robot"/wobble family).
     if ((opts.crunch ?? 0) > 0.01) {
       const crunch = opts.crunch ?? 0;
-      const crusher = new Tone.BitCrusher(Math.round(8 - crunch * 5)); // 8→3 bits
+      const crusher = new Tone.BitCrusher({
+        bits: Math.round(8 - crunch * 5), // 8→3 bits
+        context: this.liveCtx,
+      });
       crusher.wet.value = Math.min(1, 0.3 + crunch * 0.7);
       crusher.connect(head);
       this.scheduledFx.push(crusher);
@@ -836,6 +920,7 @@ export class ToneSoundPort implements SoundPort {
         frequency: 1.5 + wobble * 4.5, // gentle shimmer → seasick wobble
         depth: 0.3 + wobble * 0.7,
         wet: Math.min(1, 0.35 + wobble * 0.65),
+        context: this.liveCtx,
       }).start();
       chorus.connect(head);
       this.scheduledFx.push(chorus);
@@ -887,12 +972,13 @@ export class ToneSoundPort implements SoundPort {
         roll > 1
           ? defDur
           : Math.max(defDur, Math.min(lengthSteps, totalSteps) * stepDur);
-      const player = new Tone.Player(
-        this.drumBuffer(kind, durationSec, pitch),
-      ).connect(this.scheduledDestination(opts));
+      const player = new Tone.Player({
+        url: this.drumBuffer(kind, durationSec, pitch),
+        context: this.liveCtx,
+      }).connect(this.scheduledDestination(opts));
       player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => {
+      this.liveTransport.scheduleRepeat((time) => {
         this.recordSchedTiming(time);
         startAll(player, time);
       }, interval, offset);
@@ -902,12 +988,12 @@ export class ToneSoundPort implements SoundPort {
     const gen = this.scheduleGen;
     void this.resolveClip(clip, this.tempoBpm).then((buf) => {
       if (!buf || gen !== this.scheduleGen) return;
-      const player = new Tone.Player(buf).connect(
+      const player = new Tone.Player({ url: buf, context: this.liveCtx }).connect(
         this.scheduledDestination(opts),
       );
       player.playbackRate = this.tempoScale; // join a terrain already underway
       this.scheduledVoices.push(player);
-      Tone.getTransport().scheduleRepeat((time) => {
+      this.liveTransport.scheduleRepeat((time) => {
         this.recordSchedTiming(time);
         startAll(player, time);
       }, interval, offset);
@@ -955,7 +1041,7 @@ export class ToneSoundPort implements SoundPort {
     const voiceDur = synth instanceof Tone.Sampler
       ? this.voiceSampleDuration(instrument)
       : null;
-    Tone.getTransport().scheduleRepeat(
+    this.liveTransport.scheduleRepeat(
       (time) => {
         this.recordSchedTiming(time);
         const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
@@ -1001,9 +1087,13 @@ export class ToneSoundPort implements SoundPort {
 
   thereminOn(): void {
     if (this.theremin) return;
-    const osc = new Tone.Oscillator(440, this.thereminWave);
-    const filter = new Tone.Filter(1200, "lowpass");
-    const gain = new Tone.Gain(0).toDestination();
+    const osc = new Tone.Oscillator({
+      frequency: 440,
+      type: this.thereminWave,
+      context: this.liveCtx,
+    });
+    const filter = new Tone.Filter({ frequency: 1200, type: "lowpass", context: this.liveCtx });
+    const gain = new Tone.Gain({ gain: 0, context: this.liveCtx }).toDestination();
     osc.connect(filter);
     filter.connect(gain);
     // While a performance is being captured, also feed this voice to the
@@ -1093,7 +1183,7 @@ export class ToneSoundPort implements SoundPort {
   private async openMasterTap(): Promise<StreamTap> {
     // The bridge node lives in Tone's graph; its .stream is a real MediaStream
     // the generic stream tap can consume.
-    const dest = Tone.getDestination(); // same tap point as the visualizer
+    const dest = this.liveDestination; // same tap point as the visualizer
     const bridge = this.ctx.createMediaStreamDestination();
     dest.connect(bridge as unknown as AudioNode);
     const tap = await this.openStreamTap(bridge.stream).catch((err: unknown) => {
@@ -1203,7 +1293,7 @@ export class ToneSoundPort implements SoundPort {
   }
 
   async captureBars(bars: number): Promise<Blob> {
-    const transport = Tone.getTransport();
+    const transport = this.liveTransport;
     transport.stop(); // also rewinds the playhead to bar 0
     const tap = await this.openMasterTap();
     try {
@@ -1242,7 +1332,7 @@ export class ToneSoundPort implements SoundPort {
     this.tempoBpm = normalizeBpm(bpm);
     // An active terrain scales the LIVE transport but never `tempoBpm`, so the
     // bake cache stays keyed on the base tempo and cannot grow per terrain.
-    Tone.getTransport().bpm.value = bpm * this.tempoScale;
+    this.liveTransport.bpm.value = bpm * this.tempoScale;
   }
 
   /** Build the master-bus terrain insert. Called once, at boot, because
@@ -1255,15 +1345,15 @@ export class ToneSoundPort implements SoundPort {
     if (this.terrainFx) return;
     this.terrainChainReady ??= (async () => {
       try {
-        const reverb = new Tone.Reverb({ decay: 2.4, wet: 0 });
+        const reverb = new Tone.Reverb({ decay: 2.4, wet: 0, context: this.liveCtx });
         await reverb.ready;
         // Waveshaper, NOT BitCrusher. Tone's BitCrusher is an AudioWorklet, and
         // `new AudioWorkletNode` throws outside a secure context — constructing
         // one at boot took the whole page down on a plain-http origin (caught by
         // `tests/e2e/built-artifact.spec.ts`, which serves the build over http).
         // Distortion is a plain WaveShaperNode: no worklet, works anywhere.
-        const grit = new Tone.Distortion({ distortion: 0.85, wet: 0 });
-        Tone.getDestination().chain(grit, reverb);
+        const grit = new Tone.Distortion({ distortion: 0.85, wet: 0, context: this.liveCtx });
+        this.liveDestination.chain(grit, reverb);
         this.terrainFx = { reverb, grit };
       } catch {
         // Terrain is a garnish; booting the app is not. If this environment
@@ -1286,7 +1376,7 @@ export class ToneSoundPort implements SoundPort {
   private applyTerrainNow(effect: TerrainEffect, sendRamp: number): void {
     const scale = clampTempoScale(effect.tempoScale);
     this.tempoScale = scale;
-    Tone.getTransport().bpm.value = this.tempoBpm * scale;
+    this.liveTransport.bpm.value = this.tempoBpm * scale;
     // Baked loops are fixed buffers: they follow a tempo change only if their
     // playback rate follows too. This is what makes terrain free — no re-bake,
     // no new cache entries, no reschedule.
@@ -1297,12 +1387,20 @@ export class ToneSoundPort implements SoundPort {
     fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp);
   }
 
+  /** Ticks → seconds on the PINNED transport. `Tone.Ticks(...).toSeconds()`
+   *  reads the GLOBAL transport's PPQ + tempo, which mid-bake is the offline
+   *  one; same conversion, pinned clock. */
+  private ticksToSec(ticks: number): number {
+    const t = this.liveTransport;
+    return (ticks / t.PPQ) * (60 / t.bpm.value);
+  }
+
   scheduleTerrain(
     effect: TerrainEffect,
     holdBars: number,
     bpm: number,
   ): { startBar: number; endBar: number } | null {
-    const transport = Tone.getTransport();
+    const transport = this.liveTransport;
     if (transport.state !== "started") return null; // no ride, no terrain
     const gen = ++this.terrainGen;
     const hold = Math.max(1, Math.round(holdBars));
@@ -1319,11 +1417,11 @@ export class ToneSoundPort implements SoundPort {
     transport.scheduleOnce(() => {
       if (gen !== this.terrainGen) return;
       this.applyTerrainNow(effect, sendRamp);
-    }, Tone.Ticks(startTicks).toSeconds());
+    }, this.ticksToSec(startTicks));
     transport.scheduleOnce(() => {
       if (gen !== this.terrainGen) return;
       this.applyTerrainNow(NEUTRAL_TERRAIN, sendRamp);
-    }, Tone.Ticks(endTicks).toSeconds());
+    }, this.ticksToSec(endTicks));
     return { startBar: startTicks / tpb, endBar: endTicks / tpb };
   }
 
@@ -1333,10 +1431,10 @@ export class ToneSoundPort implements SoundPort {
     this.applyTerrainNow(NEUTRAL_TERRAIN, 0.05);
   }
   startTransport(): void {
-    Tone.getTransport().start();
+    this.liveTransport.start();
   }
   stopTransport(): void {
-    Tone.getTransport().stop();
+    this.liveTransport.stop();
   }
   /** Cancel scheduled repeats + dispose loop voices, but leave the transport
    *  running. Re-scheduling continues on the next bar, so editing a loop while
@@ -1347,7 +1445,7 @@ export class ToneSoundPort implements SoundPort {
     // terrain's revert — which would strand the song slowed or drenched
     // forever. Editing while riding therefore ends the terrain, deliberately.
     this.clearTerrain();
-    Tone.getTransport().cancel();
+    this.liveTransport.cancel();
     for (const p of this.scheduledVoices) p.dispose();
     this.scheduledVoices.length = 0;
     for (const s of this.scheduledSynths) s.dispose();
@@ -1358,7 +1456,7 @@ export class ToneSoundPort implements SoundPort {
   }
 
   stopAll(): void {
-    Tone.getTransport().stop();
+    this.liveTransport.stop();
     this.clearScheduled();
   }
 
@@ -1375,13 +1473,13 @@ export class ToneSoundPort implements SoundPort {
    *  it belongs to was audible. `immediate()` is the same clock without the
    *  lead, which is the position a viewer is actually hearing. */
   private audibleTicks(): number {
-    const t = Tone.getTransport();
+    const t = this.liveTransport;
     if (t.state !== "started") return -1;
-    return Math.max(0, t.getTicksAtTime(Tone.getContext().immediate()));
+    return Math.max(0, t.getTicksAtTime(this.liveCtx.immediate()));
   }
 
   private get ticksPerBar(): number {
-    const t = Tone.getTransport();
+    const t = this.liveTransport;
     const beatsPerBar = typeof t.timeSignature === "number" ? t.timeSignature : 4;
     return t.PPQ * beatsPerBar;
   }

@@ -1687,3 +1687,36 @@ a lighter floor derived from the car's own livery colour. That is deliberate —
 through, and no art has ever existed for the inside of the car. **A painted
 interior (three-quarter timber planking, a lit floor) would be a genuine
 improvement** and is the smallest art job on this list.
+
+## AR-043 · Track v3: a painted CLEAR plaque for the top bar — LOW
+
+The side-scroller's top bar gained a fourth control (2026-08-12): **CLEAR**,
+which empties the train (undoable — the "put it back" chip answers it). It
+renders as the engine-drawn keycap fallback today, sitting at design-space
+(1930, 170) on the header plate's parchment, sized 260 × 140.
+
+Wanted: a chrome button in the same family as `btn-transport-stop` /
+`btn-track-ride` (idle + pressed states), reading as "clear the train" to a
+non-reader — e.g. an empty coupling hook, or a car being lifted away. Name it
+`btn-track-clear` / `btn-track-clear-pressed` in the UI atlas and the code
+finds it; the keycap is only the fallback.
+
+## AR-044 · Tanker source alpha: interior pixels were half-transparent — FIXED IN REPO, RE-EXPORT WANTED
+
+Eric's report (2026-08-12): "there are pixels missing for the three car" — on
+the v3 Track the tanker's mid band showed the forest through the metal.
+
+Measured on `src/assets/sprites/track3/car-tanker.png`: interior body pixels
+carried alpha ≈ 140–228 where boxcar/hopper carry a clean 255 — the same
+export disease as AR-009's background wash, but INSIDE the silhouette, where
+the atlas packer's keying can't reach (track3 art loads directly, unpacked).
+
+**The repo copy is repaired programmatically** (flood-fill from the borders;
+every semi-alpha pixel not connected nor adjacent to the outside was
+solidified to 255 — 5,589 pixels; antialiased edges and the genuine gaps under
+the chassis were left untouched). The car now renders solid.
+
+Still wanted from the artist, eventually: a clean re-export of the tanker (and
+a check of `loco.png`, whose cab region also reads semi — possibly deliberate
+window glass, so it was NOT auto-repaired). The programmatic fix is faithful
+to the delivered shapes; a re-export is the honest source.

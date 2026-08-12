@@ -210,6 +210,24 @@ describe("architecture guards (source text over src/**)", () => {
     );
   });
 
+  // 9. The adapter reads the transport/destination through its pinned live-
+  // context getters, never the global accessors. `Tone.Offline` (the fx bake)
+  // SWAPS the global context synchronously and restores it only after its
+  // callback settles — a live-path `Tone.getTransport()` during that window
+  // schedules onto a throwaway offline transport (a silently dead car), and
+  // two overlapping bakes restore each other's contexts and strand the app
+  // deaf until reload (both measured, 2026-08-12). Exactly one occurrence of
+  // each accessor may exist: the fallback inside the pinned getter itself.
+  it("pins the live transport/destination in the Tone adapter", () => {
+    const adapter = SOURCES.filter(([p]) => p === "src/adapters/tone-sound-port.ts");
+    expect(adapter.length).toBe(1);
+    expect(offenders(/Tone\.getTransport\s*\(/, adapter).length).toBe(1);
+    expect(offenders(/Tone\.getDestination\s*\(/, adapter).length).toBe(1);
+    // `Tone.Time`/`Tone.Ticks` conversions read the GLOBAL transport's tempo,
+    // so they are banned outright — tempo math derives from the pinned one.
+    expect(offenders(/Tone\.(Time|Ticks)\s*\(/, adapter)).toEqual([]);
+  });
+
   // The editor is only worth guarding if it is actually there.
   it("has an editor to guard", () => {
     const files = SOURCES.filter(([p]) => p.startsWith("src/editor/")).map(([p]) => p);

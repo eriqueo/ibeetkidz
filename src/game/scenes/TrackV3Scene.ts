@@ -54,6 +54,7 @@ import {
 } from "../terrain-profile.ts";
 import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
+import { attachUndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
 import type { TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
@@ -418,6 +419,9 @@ export class TrackV3Scene extends Phaser.Scene {
     this.buildTopBar();
     this.buildLegend();
     this.rebuildSlots();
+    // CLEAR empties the whole train, so this view must be able to show the
+    // "put it back" chip the Workshop and Yard already carry.
+    attachUndoToast(this);
     this.ready = true;
     EventBus.emit("current-scene-ready", this);
   }
@@ -448,12 +452,21 @@ export class TrackV3Scene extends Phaser.Scene {
     // when he says the bars are "superimposed" rather than "natively embedded".
     this.plate("panel-header-v2", { x: W / 2, y: 160, width: 1980, height: 360 });
     const cy = 170;
-    this.placeButton("btn-nav-map", { x: COLUMN_X[0], y: cy, width: 470, height: 165 },
+    // Four across now, so the columns are this row's own rather than
+    // `COLUMN_X` (the legend keeps three-across). All four sit on the plate's
+    // parchment field (~400..2064) — a control past the gear medallion floats
+    // on the sky, which is the exact "superimposed chrome" this bar replaced.
+    this.placeButton("btn-nav-map", { x: 660, y: cy, width: 470, height: 165 },
       () => void EventBus.emit("track-nav", "map"), "MAP");
-    this.placeButton("btn-track-ride", { x: COLUMN_X[1], y: cy, width: 205, height: 205 },
+    this.placeButton("btn-track-ride", { x: 1160, y: cy, width: 205, height: 205 },
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
-    this.placeButton("btn-transport-stop", { x: COLUMN_X[2], y: cy, width: 205, height: 205 },
+    this.placeButton("btn-transport-stop", { x: 1560, y: cy, width: 205, height: 205 },
       () => void EventBus.emit("transport-stop"), "STOP");
+    // Empty the train and start the build over. No painted sprite yet
+    // (ART_REQUESTS AR-043) — placeButton's keycap fallback carries it until
+    // then, the same greybox-then-art seam every other slot uses.
+    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 260, height: 140 },
+      () => void EventBus.emit("track-clear-train"), "CLEAR");
   }
 
   /** One of the shared stretched zone plates, or nothing at all if the atlas is
@@ -1024,11 +1037,11 @@ export class TrackV3Scene extends Phaser.Scene {
    *  kid built, so the pool is sized by that and nothing else. */
   private rebuildSlots(): void {
     const needed = this.cars.length;
-    while (this.slots.length < needed) this.slots.push(this.makeSlot());
+    while (this.slots.length < needed) this.slots.push(this.makeSlot(this.slots.length));
     for (let i = needed; i < this.slots.length; i++) this.slots[i]!.hide();
   }
 
-  private makeSlot(): SlotView {
+  private makeSlot(index: number): SlotView {
     const shadow = this.add
       .image(0, 0, "trk-shadow")
       .setOrigin(0.5, 0.5)
@@ -1076,6 +1089,29 @@ export class TrackV3Scene extends Phaser.Scene {
         shadow.setVisible(false);
       },
     };
+    // Tap a car → edit it in the Workshop, mid-ride included. Armed press like
+    // every other control; the press feedback borrows the sounding lift (the
+    // cream flood), so no new art channel is invented. Slots are pooled by
+    // INDEX and cars are laid out by index, so `this.cars[index]` is always
+    // the car this slot is currently wearing.
+    const restLift = (): number => (view.soundingDrawn ? SOUNDING_LIFT : 0);
+    let armed = false;
+    body.setInteractive({ useHandCursor: true });
+    body.on("pointerdown", () => {
+      armed = true;
+      lift.setAlpha(Math.max(lift.alpha, 0.4));
+    });
+    body.on("pointerout", () => {
+      armed = false;
+      lift.setAlpha(restLift());
+    });
+    body.on("pointerup", () => {
+      lift.setAlpha(restLift());
+      if (!armed) return;
+      armed = false;
+      const car = this.cars[index];
+      if (car) EventBus.emit("track-car-edit", car.id);
+    });
     view.hide();
     return view;
   }

@@ -48,6 +48,12 @@ export interface EventMap {
   // Phaser -> React (Track): a car on the oval was tapped — toggle its tarp
   // (mute). The payload is the train slot's instanceId.
   "track-car-mute-toggled": [instanceId: string];
+  // Phaser -> React (Track v3): a car on the side-scroller was tapped — select
+  // that car and open the Workshop on it (edit on the fly, mid-ride included).
+  "track-car-edit": [instanceId: string];
+  // Phaser -> React (Track v3): the CLEAR plaque — empty the whole train.
+  // Destructive, so React answers with ONE undo step and a "put it back" chip.
+  "track-clear-train": [];
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.

@@ -56,6 +56,12 @@ interface TestBridge {
   // (read off the visualizer analyser). Lets e2e assert "samples actually
   // reached the destination", not just "the transport clock ran".
   audioDiag: () => ReturnType<ToneSoundPort["getAudioDiag"]>;
+  // Absolute transport bar (-1 stopped) — lets a test bucket what it hears by
+  // the bar the transport says is sounding, not by wall-clock guesswork.
+  transportBar: () => number;
+  // Whether the boot gesture completed (engine.start resolved) — distinguishes
+  // "play refused because unbooted" from "transport started then died".
+  engineStarted: () => boolean;
   // Recording probes: decoded length + peak |sample| of a held buffer. The
   // peak is how e2e proves a mic take is REAL AUDIO, not silently-empty (the
   // iOS session-flip bug's failure mode).
@@ -88,6 +94,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     getScene: () => lastScene,
     dispatch: (cmd) => dispatch(cmd),
     audioDiag: () => toneSound.getAudioDiag(),
+    transportBar: () => engine.getTransportBar(),
+    engineStarted: () => engine.isStarted,
     bufferDuration: (bufferId) => toneSound.getBufferDuration(bufferId),
     bufferPeak: (bufferId) => toneSound.getBufferPeak(bufferId),
   };

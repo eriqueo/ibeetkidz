@@ -142,6 +142,12 @@ Ticket S3 fixed `resolveClip`'s cache key: it now takes `bpm` as an explicit
 argument, captured from the adapter's own `tempoBpm` (written only by `setTempo`)
 at call time, instead of reading `Tone.getTransport().bpm` back after the bake
 `await`. Reading it back could key a wrong-length baked buffer under a stale bpm.
+S3's bigger sibling (2026-08-12): `Tone.Offline` SWAPS the global context while a
+bake renders, so any live-path `Tone.getTransport()`/bare constructor during that
+window bound to a throwaway offline context (a silently dead car; two overlapping
+bakes could strand the app deaf). The adapter now pins the booted context
+(`liveTransport`/`liveDestination`/`liveCtx`, architecture guard rule 9) and
+bakes run single-file, deduped by bake key (`bakeQueue`/`pendingBakes`).
 
 Known follow-ups: `robot` is a comb-delay approximation (not vocoded);
 `scheduleStep` only resolves un-effected source buffers synchronously (beat-grid

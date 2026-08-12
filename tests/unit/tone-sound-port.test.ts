@@ -56,13 +56,27 @@ const h = vi.hoisted(() => {
     stop: () => {},
   };
 
+  /** One destination, shared — the adapter pins `context.destination` at boot
+   *  and must see the same node `getDestination()` names. */
+  const destination = {
+    connect: () => {},
+    chain: () => {},
+    mute: false,
+    volume: { value: 0 },
+  };
+
   /** Every buffer a Player was constructed with, in order. */
   const played: FakeBuffer[] = [];
 
   class FakePlayer {
     onstop: (() => void) | undefined;
-    constructor(readonly buffer: FakeBuffer) {
-      played.push(buffer);
+    readonly buffer: FakeBuffer;
+    // The adapter constructs players as `new Player(buffer)` inside the bake
+    // and `new Player({ url, context })` on live paths — record the buffer
+    // either way, like the real Player accepts both shapes.
+    constructor(arg: FakeBuffer | { url: FakeBuffer }) {
+      this.buffer = "url" in arg ? arg.url : arg;
+      played.push(this.buffer);
     }
     toDestination(): this {
       return this;
@@ -84,7 +98,7 @@ const h = vi.hoisted(() => {
     return { get: () => baked };
   };
 
-  return { SR, ctx, transport, played, FakePlayer, Offline, makeBuffer };
+  return { SR, ctx, transport, destination, played, FakePlayer, Offline, makeBuffer };
 });
 
 vi.mock("tone", async (importOriginal) => {
@@ -92,8 +106,17 @@ vi.mock("tone", async (importOriginal) => {
   return {
     ...actual,
     start: async () => {},
-    getContext: () => ({ rawContext: h.ctx }),
-    getDestination: () => ({ connect: () => {}, mute: false, volume: { value: 0 } }),
+    // The context carries transport/destination now: the adapter pins them off
+    // the booted context (see `live` in the adapter) instead of re-reading the
+    // global accessors that `Tone.Offline` swaps.
+    getContext: () => ({
+      rawContext: h.ctx,
+      transport: h.transport,
+      destination: h.destination,
+      lookAhead: 0.1,
+      immediate: () => 0,
+    }),
+    getDestination: () => h.destination,
     getTransport: () => h.transport,
     Player: h.FakePlayer,
     Offline: h.Offline,
