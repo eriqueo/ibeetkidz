@@ -1520,7 +1520,21 @@ what was delivered. Recorded so a future reviewer does not "fix" it.
 
 ---
 
-## AR-040 · Hill and bridge: revise for detail and fit — HIGH
+## ✅ DONE — AR-040 · Hill and bridge: revise for detail and fit — HIGH
+
+**Delivered 2026-08-12 as three independently pushed commits.**
+
+| Sub-item | Production file | Delivery commit | Verified result |
+|---|---|---|---|
+| 040a hill revision | `track3/mound.png` | `791f877` | 1280 × 120. Exact raised-cosine profile verified at all 21 required samples within 1px; baseline stays on the bottom edge; crest reaches 120px. Rebuilt with rail, beat-spaced sleepers, ballast, grass/earth material bands, and sparse terrain detail. |
+| 040b bridge revision | `track3/bridge.png` | `4e95294` | 1280 × 170. Top edge remains railhead-registered; transparent support bays retained; stone abutments, timber bents, two-bay cross-bracing, deck beams, bolt plates, and weathering now provide readable structure. Piers reach the bottom edge. |
+| 040c storm cloud | `track3/raincloud.png` | `28b5e93` | New 512 × 256 `trk-raincloud` asset. Heavy plum base and piled blue-grey tops; opaque content bbox `x=21, y=39, w=468, h=175`; every canvas-edge pixel and all corners are alpha 0. |
+
+All three exports have real RGBA alpha and pass `scripts/check-sprite-alpha.sh`. The cloud key is already loaded and placed by `TrackV3Scene`; it needs no engineering wiring.
+
+---
+
+## AR-040 · Hill and bridge: revise for detail and fit — HIGH (ORIGINAL SPEC)
 
 **Eric on the shipped batch:** *"the bridge animation isn't detailed enough, it
 doesn't fit with the rest of the art."* The same is true of the hill. Everything
