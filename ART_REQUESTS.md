@@ -1904,7 +1904,22 @@ no engineering change.
 
 ---
 
-## AR-048 · The BACKWARDS switch — a painted lever for the Track's job bar — MEDIUM
+## ✅ DONE — AR-048 · The BACKWARDS switch — a painted lever for the Track's job bar — MEDIUM
+
+**Delivered 2026-08-13 in `b2094a0`.** The Track sprite folder now contains
+`btn-backwards.png` and `btn-backwards-pressed.png`, both 260 × 120 with true
+hard alpha. The pictogram combines tape reels, a strongly leftward gold arrow,
+and a reverse-facing little locomotive, so a non-reader can infer the mode.
+The paired recessed state preserves the same canvas for a texture swap; the
+sprite-alpha gate and dark-composite export check pass.
+
+**Engineering handoff:** the current `TrackV3Scene` still renders its rectangle
+and text fallback, so wire these two assets at the existing BACKWARDS button
+site. They are delivered and ready; the art does not require a new scene seam.
+
+---
+
+## AR-048 · The BACKWARDS switch — a painted lever for the Track's job bar — MEDIUM (ORIGINAL SPEC)
 
 > Numbered AR-048 after a mid-air collision: the art agent minted AR-047 for
 > the bridge rebuild above while this entry was still unpushed as "AR-047".
