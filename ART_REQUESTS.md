@@ -1814,6 +1814,16 @@ aviator goggles, black-and-cream face pattern, and red neckerchief at Track
 scale. A true-scale composite check confirms their paws and compact seated pose
 land on the corresponding roofline, rim, barrel, and deck seams.
 
+### ✅ Fourth delivery complete — Violin (2026-08-13, `2cd10e6`)
+
+`ride-violin-boxcar.png`, `ride-violin-hopper.png`,
+`ride-violin-tanker.png`, and `ride-violin-flatcar.png` now make the lime-green
+three-eyed alien, purple-and-gold suit, antenna bulbs, orange bowed string
+instrument, and bow read at Track scale. Each pose was reviewed at the real
+Track peek line: roofline lean, rim grip, barrel-top peek, and deck-anchored
+flatcar performance. The tanker crop intentionally hides the lower body behind
+the barrel rather than showing a full sprite floating over it.
+
 ### ✅ Third delivery complete — Guitar (2026-08-12, `2b7ddef`)
 
 `ride-guitar-boxcar.png`, `ride-guitar-hopper.png`,
@@ -1822,7 +1832,7 @@ tabby’s black jacket and blue bass-guitar identity into distinct roofline, rim
 barrel, and deck interactions. Exports were rechecked after a strict
 checker-matte cleanup; all have true hard alpha and bottom-row contacts.
 
-The remaining 16 per-car rider files retain the delivery order below.
+The remaining 12 per-car rider files retain the delivery order below.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
