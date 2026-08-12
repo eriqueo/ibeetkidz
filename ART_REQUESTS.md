@@ -1814,7 +1814,15 @@ aviator goggles, black-and-cream face pattern, and red neckerchief at Track
 scale. A true-scale composite check confirms their paws and compact seated pose
 land on the corresponding roofline, rim, barrel, and deck seams.
 
-The remaining 20 per-car rider files retain the delivery order below.
+### ✅ Third delivery complete — Guitar (2026-08-12, `2b7ddef`)
+
+`ride-guitar-boxcar.png`, `ride-guitar-hopper.png`,
+`ride-guitar-tanker.png`, and `ride-guitar-flatcar.png` now carry the orange
+tabby’s black jacket and blue bass-guitar identity into distinct roofline, rim,
+barrel, and deck interactions. Exports were rechecked after a strict
+checker-matte cleanup; all have true hard alpha and bottom-row contacts.
+
+The remaining 16 per-car rider files retain the delivery order below.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
