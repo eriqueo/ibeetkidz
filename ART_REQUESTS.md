@@ -1926,7 +1926,22 @@ way, or the little loco mirrored driving in reverse. Name it
 LATCHED (on) state variant `btn-backwards-on.png` if a third frame is cheap —
 the code currently shows the latch as a gold wash.
 
-## AR-049 · The mode switches: NIGHT / TUNNEL / TINY / GIANT — buttons + world washes — HIGH
+## ✅ DONE — AR-049 · The mode switches: NIGHT / TUNNEL / TINY / GIANT — buttons + world washes — HIGH
+
+**Button delivery complete 2026-08-13 in `62760ca`.** Eight matched 260 × 120
+true-alpha assets now provide idle and pressed states for NIGHT, TUNNEL, TINY,
+and GIANT. Each uses the existing terrain-button brass/steel picture-button
+language and a non-reader pictogram: moon/pines, tunnel mouth, little
+loco/mouse, and giant loco/dinosaur. State pairs share an exact canvas and the
+sprite-alpha gate passes; the current Track drop-a-PNG seam requires no wiring.
+
+**Deferred by design:** painted NIGHT sky and TUNNEL world treatments remain a
+separate world-art round; the controls are complete without baking a flat overlay
+into an art sprite.
+
+---
+
+## AR-049 · The mode switches: NIGHT / TUNNEL / TINY / GIANT — buttons + world washes — HIGH (ORIGINAL SPEC)
 
 The Track's job bar is eight latching, STACKING switches now (2026-08-13):
 the geometry trio, then NIGHT, TUNNEL, TINY, GIANT, then BACKWARDS (AR-048).
