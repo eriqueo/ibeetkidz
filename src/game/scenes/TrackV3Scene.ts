@@ -606,8 +606,8 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Every mode switch on the job bar, keyed by kind, so a LATCHED mode can
    *  visibly hold its gold wash whatever art it currently wears. */
   private modeBtns: Record<string, { setLatched: (on: boolean) => void }> = {};
-  private backwardsBtn?: Phaser.GameObjects.Rectangle | undefined;
-  private backwardsLabel?: Phaser.GameObjects.Text | undefined;
+  /** The BACKWARDS switch's latched look — picture or keycap alike. */
+  private backwardsLatch: (on: boolean) => void = () => {};
 
   /** The Lemmings job bar — on the shared transport plate, docked to the
    *  bottom edge. EIGHT switches now (geometry trio + night/tunnel/tiny/giant
@@ -671,19 +671,37 @@ export class TrackV3Scene extends Phaser.Scene {
     });
 
     // The BACKWARDS switch — reverses every sampled voice; its own latch,
-    // stacks with everything above. Keycap until AR-048 paints it.
-    this.backwardsBtn = this.add
-      .rectangle(slotX(7), cy - 20, 186, 110, 0x3a3350, 1)
+    // stacks with everything above. AR-048's painted pair when delivered,
+    // keycap when not — the same seam as every other slot.
+    const bCx = slotX(7);
+    const bFire = (): void => void EventBus.emit("track-backwards-toggled");
+    const bIdle = "trk-btn-backwards";
+    const bDown = "trk-btn-backwards-pressed";
+    if (this.textures.exists(bIdle)) {
+      const btn = this.add
+        .image(bCx, cy, bIdle)
+        .setDepth(DEPTH.hud + 1)
+        .setScale(0.72);
+      this.pressableImage(btn, bIdle, this.textures.exists(bDown) ? bDown : bIdle, bFire);
+      this.backwardsLatch = (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
+      return;
+    }
+    const bSwatch = this.add
+      .rectangle(bCx, cy - 20, 186, 110, 0x3a3350, 1)
       .setDepth(DEPTH.hud + 1);
-    this.backwardsLabel = this.add
-      .text(slotX(7), cy - 20, "⏪ BACK", {
+    const bCap = this.add
+      .text(bCx, cy - 20, "⏪ BACK", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
       })
       .setOrigin(0.5)
       .setFontSize(17)
       .setDepth(DEPTH.hud + 2);
-    this.pressable(this.backwardsBtn, () => void EventBus.emit("track-backwards-toggled"));
+    this.pressable(bSwatch, bFire);
+    this.backwardsLatch = (on) => {
+      bSwatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
+      bCap.setColor(on ? "#2b2440" : "#ffe9b0");
+    };
   }
 
   /** React → scene: the set of LATCHED modes. Every latched switch holds a
@@ -697,8 +715,7 @@ export class TrackV3Scene extends Phaser.Scene {
 
   /** React → scene: the BACKWARDS switch's latched look. */
   setBackwards(on: boolean): void {
-    this.backwardsBtn?.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
-    this.backwardsLabel?.setColor(on ? "#2b2440" : "#ffe9b0");
+    this.backwardsLatch(on);
   }
 
   /** React → scene: the NIGHT and TUNNEL shades — full-scene washes under the
