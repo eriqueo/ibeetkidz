@@ -710,25 +710,11 @@ const MELODY_MODAL = { x: 0.02, y: 0.03, w: 0.96, h: 0.94 } as const;
  *  close button off the top of the canvas. */
 const MELODY_HEADER_FRAC = 0.09;
 
-/**
- * The ×2 lever's own column inside `toggle-double`'s 512² canvas.
- *
- * The atlas ships ONE frame for this switch (verified: `toggle-double` is the
- * only matching frame in `ui-atlas.json`) with the lever baked pointing DOWN
- * and an "OFF" plaque — so there is no on/off pair to swap and the control
- * could only ever tint. Measured off the PNG: the brass housing spans y
- * 200..370 and the ball hangs BELOW it at y 372..416. Drawing this column a
- * second time, mirrored about y = `axis`, throws the ball from under the
- * housing to the top of it — a real lever throw out of the one frame we have.
- *
- * The column is opaque plate from edge to edge, so the mirrored copy always
- * fully covers the baked lever underneath; there is never a hole. AR-026 asks
- * for the proper ON art (lever up + "ON" plaque), which turns this into a
- * plain frame swap.
- */
-const LEVER_COLUMN = { x: 216, y: 175, w: 80, h: 262, axis: 306 } as const;
-/** `toggle-double`'s canvas is square; the mirror maths needs its centre. */
-const TOGGLE_TEX = 512;
+// The ×2 switch is an ordinary two-frame control now. It spent a while as ONE
+// frame (lever down, "OFF" plaque) with a cropped, mirrored copy of its own
+// column drawn over it to fake the throw, plus a cream chip covering the baked
+// word while armed — AR-026 delivered `toggle-double-idle`/`-on` (2026-08-12)
+// and all three compensations retired together.
 
 export class MelodyEditorPanel extends BaseToolPanel {
   private rowLabels: Phaser.GameObjects.Text[] = [];
@@ -750,8 +736,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private levelFill!: Phaser.GameObjects.Rectangle;
   private levelFillW = 2;
   private toggle!: Phaser.GameObjects.Image;
-  /** The mirrored lever column drawn over `toggle` — see `LEVER_COLUMN`. */
-  private toggleLever!: Phaser.GameObjects.Image;
   /** 0 = at rest, 1 = fully compressed. Drives the throw's squash-and-spring;
    *  Back.easeOut carries it slightly negative, which stretches. */
   private toggleSquash = 0;
@@ -764,9 +748,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
   /** ×2 mode: while armed, tapping a note doubles it, and tapping a doubled
    *  note removes it — so a note is never stuck, whichever way the lever is. */
   private doubleMode = false;
-  /** The armed readout drawn over the switch's baked OFF plaque. */
-  private armedChip!: Phaser.GameObjects.Graphics;
-  private armedLabel!: Phaser.GameObjects.Text;
   private faderTrack = { y0: 0, y1: 0, x: 0 };
 
   constructor(scene: Phaser.Scene) { super(scene, "🎹 Melody"); }
@@ -790,10 +771,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
     //     ~14 px left of its own recess.
     fader: { x: 0.6042, y0: 0.695, y1: 0.838, w: 0.062, slotW: 0.024 },
     toggle: { cx: 0.8325, cy: 0.775, w: 0.16 },
-    /** The baked OFF plaque on `toggle-double`, as fractions of its 512 canvas.
-     *  The switch has ONE frame (AR-026), so an armed ×2 still says OFF — the
-     *  armed chip is drawn over exactly this box. */
-    togglePlaque: { x0: 0.336, y0: 0.223, x1: 0.664, y1: 0.336 },
   } as const;
 
   protected buildContent(): void {
@@ -868,40 +845,22 @@ export class MelodyEditorPanel extends BaseToolPanel {
       (v) => EventBus.emit("tool-lane-volume-done", v),
     );
     this.toggle = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base).setInteractive({ useHandCursor: true });
-    // The moving lever. Same frame, cropped to the switch's own column, drawn
-    // over the base — mirrored when armed. NOT interactive: the base takes the
-    // tap, so this cannot swallow it. Acting on pointerDOWN (rather than the
-    // scenes' armed press/release pair) is deliberate and unchanged: a pointerup
-    // that began somewhere else can never reach a down-handler.
-    this.toggleLever = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["toggle-double"]!.base);
-    this.toggleLever.setCrop(LEVER_COLUMN.x, LEVER_COLUMN.y, LEVER_COLUMN.w, LEVER_COLUMN.h);
-    // The switch's plaque says OFF in the ART (AR-026: one frame), so an armed
-    // ×2 was a control stating the opposite of the truth — and since arming it
-    // takes the delete away from every note (see `onMelodyDouble`), a kid who
-    // could not tell it was on could not remove a note at all. Eric hit exactly
-    // that. The chip covers the baked word while armed; it is a readout in the
-    // app's own cream-chip language, not a repaint of the switch.
-    this.armedChip = this.scene.add.graphics().setVisible(false);
-    this.armedLabel = this.scene.add
-      .text(0, 0, "x2", { fontFamily: FONT, fontSize: "12px", color: "#2b2440" })
-      .setOrigin(0.5)
-      .setVisible(false);
+    // Acting on pointerDOWN (rather than the scenes' armed press/release pair)
+    // is deliberate: a pointerup that began somewhere else can never reach a
+    // down-handler.
     this.toggle.on("pointerdown", () => {
       this.setDoubleMode(!this.doubleMode);
       this.kickToggle();
     });
-    this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle, this.toggleLever, this.armedChip, this.armedLabel]);
+    this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle]);
     this.bringToTop(this.closeBtn.container);
   }
 
-  /** The one place ×2 is armed or disarmed, so the lever pose, the tint, the
-   *  readout chip, the note ghosts and the audible demo can never disagree. */
+  /** The one place ×2 is armed or disarmed, so the lever frame, the note
+   *  ghosts and the audible demo can never disagree. The art itself carries
+   *  the state now — lever up + ON plaque against lever down + OFF (AR-026). */
   private setDoubleMode(on: boolean): void {
     this.doubleMode = on;
-    this.toggle?.setTint(on ? 0xffd166 : 0xffffff);
-    this.toggleLever?.setTint(on ? 0xffd166 : 0xffffff);
-    this.armedChip?.setVisible(on);
-    this.armedLabel?.setVisible(on);
     this.renderToggle();
     this.refreshSplits();
     EventBus.emit("tool-melody-twice-mode", on);
@@ -942,26 +901,16 @@ export class MelodyEditorPanel extends BaseToolPanel {
     });
   }
 
-  /**
-   * Pose both halves of the ×2 switch from `doubleMode` + `toggleSquash`.
-   *
-   * The lever half is the SAME texture, cropped to `LEVER_COLUMN` and drawn with
-   * a NEGATIVE scaleY when armed. Negative scale is a plain transform (unlike
-   * `setFlipY`, which also rewrites the crop's UVs), so it mirrors the drawn
-   * quad about the frame's centre — which moves the column by
-   * `2·scale·(axis − texCentre)`. Adding that back keeps the column exactly over
-   * the base's, mirrored in place: the ball travels from below the housing to
-   * the top of it, and the opaque plate underneath is never exposed.
-   */
+  /** Pose the ×2 switch from `doubleMode` + `toggleSquash`: the right frame
+   *  for the mode, squashed while the throw's spring settles. */
   private renderToggle(): void {
     if (!this.toggle) return;
+    const def = UI_SPRITES["toggle-double"]!;
+    this.toggle.setFrame(def.states[this.doubleMode ? "on" : "idle"] ?? def.base);
     const squash = 1 - this.toggleSquash * 0.22;
-    const sy = this.toggleRest.scale * squash;
-    this.toggle.setScale(this.toggleRest.scale, sy).setPosition(this.toggleRest.x, this.toggleRest.y);
-    const mirror = this.doubleMode ? 2 * sy * (LEVER_COLUMN.axis - TOGGLE_TEX / 2) : 0;
-    this.toggleLever
-      .setScale(this.toggleRest.scale, this.doubleMode ? -sy : sy)
-      .setPosition(this.toggleRest.x, this.toggleRest.y + mirror);
+    this.toggle
+      .setScale(this.toggleRest.scale, this.toggleRest.scale * squash)
+      .setPosition(this.toggleRest.x, this.toggleRest.y);
   }
 
   private makeKnob(frame: string, key: "wobble" | "crunch", emit: (v: number) => void): Phaser.GameObjects.Image {
@@ -1074,7 +1023,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
     this.knobCrunch.setRotation((this.values.crunch - 0.5) * 4.2);
     const toggleW = art.w * A.toggle.w;
     placeUiSprite(this.toggle, UI_SPRITES["toggle-double"]!, { x: art.x + art.w * A.toggle.cx, y: art.y + art.h * A.toggle.cy, width: toggleW, height: toggleW * 1.6 });
-    // The lever half re-derives its whole transform from the base's rest pose.
+    // The throw animation re-derives its transform from this rest pose.
     this.toggleRest = { x: this.toggle.x, y: this.toggle.y, scale: this.toggle.scaleX };
     this.renderToggle();
     const faderW = art.w * A.fader.w;
@@ -1091,22 +1040,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // rather than as a hairline drawn beside it.
     this.levelFillW = Math.max(2, art.w * A.fader.slotW);
     this.placeFader();
-
-    // The armed chip, over the baked OFF plaque.
-    const tw = this.toggle.width * this.toggle.scaleX;
-    const th = this.toggle.height * this.toggle.scaleY;
-    const P = A.togglePlaque;
-    const px = this.toggle.x + (((P.x0 + P.x1) / 2) - 0.5) * tw;
-    const py = this.toggle.y + (((P.y0 + P.y1) / 2) - 0.5) * th;
-    const pw = (P.x1 - P.x0) * tw;
-    const ph = (P.y1 - P.y0) * th;
-    this.armedChip
-      .clear()
-      .fillStyle(0xffd166, 1)
-      .fillRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph * 0.35)
-      .lineStyle(Math.max(2, ph * 0.12), 0x2b2440, 1)
-      .strokeRoundedRect(px - pw / 2, py - ph / 2, pw, ph, ph * 0.35);
-    this.armedLabel.setPosition(px, py).setFontSize(Math.max(8, Math.round(ph * 0.55)));
   }
 
   apply(model: ToolModel): void {

@@ -287,13 +287,10 @@ const melodyPanel = (page: Page) =>
     return {
       game: { w: s.scale.gameSize.width, h: s.scale.gameSize.height },
       art: { w: artW, h: artH, top: p.panelImg.y - artH / 2, bottom: p.panelImg.y + artH / 2 },
-      toggle: { x: p.toggle.x, y: p.toggle.y, scale: p.toggle.scaleX },
-      lever: { y: p.toggleLever.y, scaleY: p.toggleLever.scaleY },
-      // Where the lever's BALL is drawn. The switch ships as ONE atlas frame, so
-      // the "thrown" pose is that frame's own lever column mirrored in place —
-      // this is the pixel row the ball's centre lands on, which is the only
-      // honest way to assert "the switch moved".
-      ballY: p.toggleLever.y + (393 - 256) * p.toggleLever.scaleY,
+      // AR-026 delivered a real idle/on pair, so "the switch moved" is now the
+      // frame being drawn — the mirrored-column ballY arithmetic retired with
+      // the interim it measured.
+      toggle: { x: p.toggle.x, y: p.toggle.y, scale: p.toggle.scaleX, frame: p.toggle.frame.name },
       levelFill: { h: p.levelFill.height, visible: p.levelFill.visible },
       splits: p.cellSplits.map((row: any[]) =>
         row.map((c) => (c.visible ? Number(c.alpha.toFixed(2)) : 0))),
@@ -321,26 +318,22 @@ test("Melody Editor: the ×2 lever visibly THROWS, and stays on the canvas", asy
   // on screen (growing the art into the whole region once pushed ✕ off the top).
   expect(off.art.top, "the header band above the art must stay on canvas").toBeGreaterThan(40);
   expect(off.art.bottom).toBeLessThan(off.game.h);
-  expect(off.lever.scaleY, "the lever rests un-mirrored").toBeGreaterThan(0);
+  // The switch rests on its real OFF art (lever down, "OFF" plaque) — AR-026's
+  // frame pair replaced the mirrored-column interim this test used to measure.
+  expect(off.toggle.frame, "the switch rests on its OFF frame").toBe("toggle-double-idle");
 
   await tapGame(page, off.toggle.x, off.toggle.y);
   await expect
-    .poll(async () => (await melodyPanel(page)).lever.scaleY < 0, {
-      message: "throwing ×2 must mirror the lever column, not just tint it",
+    .poll(async () => (await melodyPanel(page)).toggle.frame, {
+      message: "throwing ×2 must draw the ON art, not just tint the OFF frame",
     })
-    .toBe(true);
-
-  // The visible outcome: the ball travels from BELOW the housing to the top of
-  // it. A tint-only "fix" passes the sign check above and fails this one.
-  const on = await melodyPanel(page);
-  expect(off.ballY - on.ballY, "the switch itself must move up the plate").toBeGreaterThan(
-    off.toggle.scale * 60,
-  );
+    .toBe("toggle-double-on");
 
   // …and back down again.
   await tapGame(page, off.toggle.x, off.toggle.y);
-  await expect.poll(async () => (await melodyPanel(page)).lever.scaleY > 0).toBe(true);
-  expect(Math.abs((await melodyPanel(page)).ballY - off.ballY)).toBeLessThan(2);
+  await expect
+    .poll(async () => (await melodyPanel(page)).toggle.frame)
+    .toBe("toggle-double-idle");
 
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });

@@ -145,7 +145,9 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "panel-editor": { states: { base: "panel-editor" }, base: "panel-editor", content: [0.03, 0.023, 0.969, 0.973], stretch: false },
   "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
   "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
-  "toggle-double": { states: { base: "toggle-double" }, base: "toggle-double", content: [0.199, 0.102, 0.799, 0.865], stretch: false },
+  // AR-026 delivered the pair: idle = lever down + OFF plaque, on = lever up +
+  // ON plaque. The melody editor swaps frames; no mirrored-lever overlay left.
+  "toggle-double": { states: { idle: "toggle-double-idle", on: "toggle-double-on" }, base: "toggle-double-idle", content: [0.199, 0.102, 0.799, 0.865], stretch: false },
   "fader-handle": { states: { base: "fader-handle" }, base: "fader-handle", content: [0.189, 0.316, 0.811, 0.662], stretch: false },
   // AR-016 edit-vs-new modal (baked KEEP EDITING / NEW CAR buttons — the scene
   // lays transparent hits over the two plaques).

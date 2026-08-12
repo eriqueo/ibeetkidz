@@ -175,7 +175,7 @@ position in `CAR_COLORS`, which is already persisted.
 
 **Delivered 2026-08-12.** `toggle-double-idle.png` preserves the existing down/OFF state and `toggle-double-on.png` supplies the up/ON state, both **512 × 512 RGBA** with true alpha-0 corners. `panel-editor.png` has been re-rendered at its unchanged **1152 × 1536** canvas with the four visual captions required for non-readers: wavy line, jagged line, quiet→loud speaker, and two equal notes. The green note board, control geometry, and outer hardware were preserved.
 
-**Engineering handoff:** update `UI_SPRITES["toggle-double"]` to expose the `idle` and `on` frames, then replace `MelodyEditorPanel.renderToggle`’s mirrored lever overlay with the ordinary frame swap. A compatibility copy remains at `toggle-double.png` until that code update lands.
+**Engineering handoff:** ✅ landed 2026-08-12 — `UI_SPRITES["toggle-double"]` exposes `idle`/`on`, `MelodyEditorPanel` does the ordinary frame swap (the mirrored-lever overlay, the gold arming tint AND the cream armed chip all retired — the ON plaque now states the truth the chip existed to patch over). The compatibility copy `toggle-double.png` is deleted and the UI atlas regenerated.
 
 ---
 
