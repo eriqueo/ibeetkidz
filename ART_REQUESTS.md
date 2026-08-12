@@ -2010,7 +2010,22 @@ all four corners are exact alpha 0, and `scripts/check-sprite-alpha.sh` passes.
 It remains a separate transparent parallax strip; the near treeline and ground
 continue to layer independently.
 
-## AR-050 · The Percussion Editor's painted plate — the frog's drum machine — HIGH
+## ✅ DONE — AR-050 · The Percussion Editor's painted plate — the frog's drum machine — HIGH
+
+**Delivered 2026-08-13 in `5ab9a59`.** `panel-percussion.png` is a 1536 × 1152
+true-alpha steel-and-wood drum-machine plate. Its low-contrast recessed grid
+field retains the plain left row-head rail for engine-drawn emoji/mute/delete
+controls, while the lower shelf contains ten distinct square recesses for the
+engine-drawn drum pads. This makes the controls look embedded rather than
+stickered, without competing with colored active cells.
+
+**Engineering handoff:** rebuild the sprite atlas, mount `panel-percussion.png`
+for `PercussionToolPanel`, then retain the current row/cell/pad code over the
+matching clear zones. No behavior changes are required.
+
+---
+
+## AR-050 · The Percussion Editor's painted plate — the frog's drum machine — HIGH (ORIGINAL SPEC)
 
 The frog's tool (2026-08-13 revamp) is the busiest new surface in the app and
 the barest: rows of engine-drawn cells on the generic parchment panel. It
