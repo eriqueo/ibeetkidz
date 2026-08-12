@@ -171,7 +171,15 @@ position in `CAR_COLORS`, which is already persisted.
 
 ---
 
-## AR-026 · ×2 lever ON state + deck labels a non-reader can read — HIGH
+## ✅ DONE — AR-026 · ×2 lever ON state + deck labels a non-reader can read — HIGH
+
+**Delivered 2026-08-12.** `toggle-double-idle.png` preserves the existing down/OFF state and `toggle-double-on.png` supplies the up/ON state, both **512 × 512 RGBA** with true alpha-0 corners. `panel-editor.png` has been re-rendered at its unchanged **1152 × 1536** canvas with the four visual captions required for non-readers: wavy line, jagged line, quiet→loud speaker, and two equal notes. The green note board, control geometry, and outer hardware were preserved.
+
+**Engineering handoff:** update `UI_SPRITES["toggle-double"]` to expose the `idle` and `on` frames, then replace `MelodyEditorPanel.renderToggle`’s mirrored lever overlay with the ordinary frame swap. A compatibility copy remains at `toggle-double.png` until that code update lands.
+
+---
+
+## AR-026 · ×2 lever ON state + deck labels a non-reader can read — HIGH (ORIGINAL SPEC)
 
 **Target files:** `src/assets/sprites/panels/toggle-double.png` (needs a SECOND
 state) and `panel-editor.png` (four baked captions).
