@@ -1755,8 +1755,14 @@ to the delivered shapes; a re-export is the honest source.
 `inst-conductor-passive.png`, `inst-conductor-hover.png`, and
 `inst-conductor-active.png`. It depicts a round, mustachioed human who reads as both an orchestra conductor and a train conductor: navy cap with brass badge, tailcoat, red neckerchief, baton, and pocket watch. Hover is a brighter attentive state; active is a larger raised-baton performance cue. Each export is hard-alpha, palette-limited, and has true alpha-0 corners.
 
-**Engineering handoff:** swap the retired `inst-pads` Workshop floor slot to
-`inst-conductor`. Its existing `workshop-open-board` behavior already opens the whole-train chalkboard; no new tool-panel behavior is required.
+**Engineering handoff:** ✅ landed 2026-08-12 — `UI_SPRITES["inst-conductor"]`
+declared (content box measured: bbox 393×591+92+81 of 576×768), the Workshop
+map's floor slot (object 41) renamed and repointed to `inst-conductor`, and
+the UI atlas regenerated (75 sprites, now 4 pages — the multiatlas loader
+takes its page list from the JSON, so no code change). The tap still routes
+to the whole-train chalkboard. `inst-pads` stays in the atlas: it remains the
+tone-family fallback picture (`livery-style.ts`) and the icon on lanes made
+by the retired Sound Pads panel.
 
 ---
 

@@ -33,6 +33,11 @@ export const STATIONS = [
   "guitar",
   "violin",
   "piano",
+  // AR-045: the conductor holds the retired Sound Pads slot. Not an
+  // instrument — tapping him opens the whole-train chalkboard, and no lane
+  // ever records him — but he IS a character standing on the Workshop floor,
+  // which is what this registry is.
+  "conductor",
 ] as const;
 export type StationId = typeof STATIONS[number];
 
@@ -94,4 +99,5 @@ export const STATION_LABEL: Readonly<Record<StationId, string>> = {
   guitar: "Guitar",
   violin: "Violin",
   piano: "Piano",
+  conductor: "Conductor",
 };

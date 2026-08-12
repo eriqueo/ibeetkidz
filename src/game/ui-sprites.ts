@@ -128,6 +128,9 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "inst-magic": instrumentDef("inst-magic", [0.038, 0.34, 0.972, 0.97]),
   "inst-mic": instrumentDef("inst-mic", [0.094, 0.285, 0.866, 0.902]),
   "inst-pads": instrumentDef("inst-pads", [0.04, 0.257, 0.958, 0.876]),
+  // AR-045: the conductor — the whole-train view's character. Content box
+  // measured off inst-conductor-passive.png (bbox 393x591+92+81 on 576x768).
+  "inst-conductor": instrumentDef("inst-conductor", [0.16, 0.105, 0.842, 0.875]),
   "inst-violin": instrumentDef("inst-violin", [0.092, 0.26, 0.858, 0.898]),
   "inst-piano": instrumentDef("inst-piano", [0.031, 0.23, 0.939, 0.794]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).

@@ -399,7 +399,7 @@
         },
         {
           "id": 41,
-          "name": "inst-pads",
+          "name": "inst-conductor",
           "rotation": 0,
           "type": "instrument",
           "visible": true,
@@ -421,7 +421,7 @@
             {
               "name": "sprite",
               "type": "string",
-              "value": "inst-pads"
+              "value": "inst-conductor"
             }
           ]
         },
