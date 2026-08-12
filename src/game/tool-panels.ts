@@ -602,6 +602,20 @@ export class PadsToolPanel extends BaseToolPanel {
 // Everything routes through the SAME events the chalkboard already emits, so
 // this panel adds zero new reducers and cannot disagree with the board.
 export class PercussionToolPanel extends BaseToolPanel {
+  /** AR-050's painted drum-machine plate. Regions MEASURED off the delivered
+   *  PNG (1536×1152): the recessed grid field inside the wooden frame, and
+   *  the ten-recess drum shelf strip — the engine controls mount INTO them.
+   *  The plate's own row rail sits at 16% of the field, matching `HEAD_FRAC`. */
+  private static readonly PLATE = {
+    field: { x0: 0.0768, y0: 0.1024, x1: 0.927, y1: 0.7188 },
+    shelf: { x0: 0.058, y0: 0.777, x1: 0.941, y1: 0.894 },
+  } as const;
+
+  private plateImg?: Phaser.GameObjects.Image | undefined;
+  /** Empty cells are pale chalk on the plate's dark field — the parchment
+   *  era's dark-plum-on-dark cells were invisible the moment AR-050 landed. */
+  private static readonly CELL_OFF = 0xf6efdc;
+  private static readonly CELL_OFF_ALPHA = 0.1;
   private rows: {
     id: string;
     label: Phaser.GameObjects.Text;
@@ -621,6 +635,16 @@ export class PercussionToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "🥁 Drums"); }
 
   protected buildContent(): void {
+    // The painted plate replaces the generic parchment when the atlas has it
+    // (same mount the melody editor's panel-editor uses).
+    const def = UI_SPRITES["panel-percussion"];
+    if (def && this.scene.textures.exists(UI_ATLAS_KEY)) {
+      this.frame.setVisible(false);
+      this.shadow.setVisible(false);
+      this.titleText.setColor("#ffd166");
+      this.plateImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, def.base);
+      this.add(this.plateImg);
+    }
     this.hint = this.scene.add
       .text(0, 0, "TAP A DRUM BELOW TO ADD IT", { fontFamily: FONT, fontSize: "12px", color: "#e8dcc8" })
       .setOrigin(0.5);
@@ -662,14 +686,17 @@ export class PercussionToolPanel extends BaseToolPanel {
       const view = { id: row.id, label, mute, del, cells, on, muted: row.muted, color };
       for (let s = 0; s < STEP_COUNT; s++) {
         const cell = this.scene.add
-          .rectangle(0, 0, 10, 10, PANEL_EDGE, 0.12)
-          .setStrokeStyle(1, PANEL_EDGE, 0.4)
+          .rectangle(0, 0, 10, 10, PercussionToolPanel.CELL_OFF, PercussionToolPanel.CELL_OFF_ALPHA)
+          .setStrokeStyle(1, PercussionToolPanel.CELL_OFF, 0.35)
           .setInteractive({ useHandCursor: true });
         const step = s;
         const paint = (to: boolean): void => {
           if (view.on[step] === to) return;
           view.on[step] = to; // optimistic — the model echo confirms it
-          cell.setFillStyle(to ? view.color : PANEL_EDGE, to ? 1 : 0.12);
+          cell.setFillStyle(
+            to ? view.color : PercussionToolPanel.CELL_OFF,
+            to ? 1 : PercussionToolPanel.CELL_OFF_ALPHA,
+          );
           EventBus.emit("workshop-cell-toggled", { layerId: view.id, stepIndex: step, on: to });
         };
         cell.on("pointerdown", () => {
@@ -689,30 +716,56 @@ export class PercussionToolPanel extends BaseToolPanel {
   }
 
   protected layoutContent(): void {
-    const i = this.inner;
-    const shelfH = i.h * 0.16;
-    const gridH = i.h - shelfH;
+    // With the painted plate: the grid mounts INTO its recessed field and the
+    // pads INTO its ten shelf recesses. Without it (atlas not yet loaded),
+    // the generic parchment's inner box carries the same proportions.
+    let grid: Box;
+    let shelf: Box;
+    const def = UI_SPRITES["panel-percussion"];
+    if (this.plateImg && def) {
+      const f = this.frame; // laid out by BaseToolPanel just before this call
+      placeUiSprite(this.plateImg, def, {
+        x: f.x + f.width / 2,
+        y: f.y + f.height / 2,
+        width: f.width,
+        height: f.height * 1.06, // the plate carries its own header band
+      });
+      const img = this.plateImg;
+      const left = img.x - (img.width / 2) * img.scaleX;
+      const top = img.y - (img.height / 2) * img.scaleY;
+      const iw = img.width * img.scaleX;
+      const ih = img.height * img.scaleY;
+      const P = PercussionToolPanel.PLATE;
+      grid = { x: left + P.field.x0 * iw, y: top + P.field.y0 * ih, w: (P.field.x1 - P.field.x0) * iw, h: (P.field.y1 - P.field.y0) * ih };
+      shelf = { x: left + P.shelf.x0 * iw, y: top + P.shelf.y0 * ih, w: (P.shelf.x1 - P.shelf.x0) * iw, h: (P.shelf.y1 - P.shelf.y0) * ih };
+    } else {
+      const i = this.inner;
+      const shelfH = i.h * 0.16;
+      grid = { x: i.x, y: i.y, w: i.w, h: i.h - shelfH };
+      shelf = { x: i.x, y: i.y + i.h - shelfH, w: i.w, h: shelfH };
+    }
+
     const n = Math.max(1, this.rows.length);
-    const rowH = Math.min(gridH / n, gridH / 4); // ≤4 rows: keep them chunky
-    const headW = i.w * 0.16;
-    const cellW = (i.w - headW) / STEP_COUNT;
+    const rowH = Math.min(grid.h / n, grid.h / 4); // ≤4 rows: keep them chunky
+    const headW = grid.w * 0.16; // the plate's row rail is drawn at this split
+    const cellW = (grid.w - headW) / STEP_COUNT;
     const pad = Math.min(cellW, rowH) * 0.12;
     this.rows.forEach((row, r) => {
-      const cy = i.y + (r + 0.5) * rowH;
-      row.del.setPosition(i.x + headW * 0.16, cy).setFontSize(Math.max(10, rowH * 0.34));
-      row.label.setPosition(i.x + headW * 0.5, cy).setFontSize(Math.max(12, rowH * 0.5));
-      row.mute.setPosition(i.x + headW * 0.84, cy).setFontSize(Math.max(10, rowH * 0.38));
+      const cy = grid.y + (r + 0.5) * rowH;
+      row.del.setPosition(grid.x + headW * 0.16, cy).setFontSize(Math.max(10, rowH * 0.34));
+      row.label.setPosition(grid.x + headW * 0.5, cy).setFontSize(Math.max(12, rowH * 0.5));
+      row.mute.setPosition(grid.x + headW * 0.84, cy).setFontSize(Math.max(10, rowH * 0.38));
       row.cells.forEach((cell, s) => {
-        cell.setPosition(i.x + headW + (s + 0.5) * cellW, cy);
+        cell.setPosition(grid.x + headW + (s + 0.5) * cellW, cy);
         cell.setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
       });
     });
-    // The drum shelf, along the bottom.
-    const bw = i.w / this.addButtons.length;
+    // The drum shelf: one pad per recess.
+    const bw = shelf.w / this.addButtons.length;
     this.addButtons.forEach((btn, k) => {
-      btn.place({ x: i.x + k * bw + bw * 0.06, y: i.y + gridH + shelfH * 0.18, w: bw * 0.88, h: shelfH * 0.78 }, Math.max(12, shelfH * 0.3));
+      btn.place({ x: shelf.x + k * bw + bw * 0.1, y: shelf.y + shelf.h * 0.1, w: bw * 0.8, h: shelf.h * 0.8 }, Math.max(12, shelf.h * 0.3));
     });
-    this.hint.setPosition(i.x + i.w / 2, i.y + gridH * 0.5).setFontSize(Math.max(11, i.h * 0.035));
+    this.hint.setPosition(grid.x + grid.w / 2, grid.y + grid.h * 0.5).setFontSize(Math.max(11, grid.h * 0.05));
   }
 
   apply(model: ToolModel): void {
@@ -734,7 +787,10 @@ export class PercussionToolPanel extends BaseToolPanel {
         const isOn = row.cells[s] ?? false;
         if (isOn !== view.on[s]) {
           view.on[s] = isOn;
-          view.cells[s]?.setFillStyle(isOn ? view.color : PANEL_EDGE, isOn ? 1 : 0.12);
+          view.cells[s]?.setFillStyle(
+            isOn ? view.color : PercussionToolPanel.CELL_OFF,
+            isOn ? 1 : PercussionToolPanel.CELL_OFF_ALPHA,
+          );
         }
         view.cells[s]?.setAlpha(rowAlpha);
       }

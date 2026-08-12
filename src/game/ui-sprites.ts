@@ -146,6 +146,9 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // AR-016 instrument editor: the framed panel (note canvas + baked control
   // deck) and its movable controls. Placed by the editor tool panel, not Tiled.
   "panel-editor": { states: { base: "panel-editor" }, base: "panel-editor", content: [0.03, 0.023, 0.969, 0.973], stretch: false },
+  // AR-050: the frog's drum-machine plate. Content box measured off the
+  // delivered PNG (bbox 1466x1074+35+36 on 1536x1152).
+  "panel-percussion": { states: { base: "panel-percussion" }, base: "panel-percussion", content: [0.0228, 0.0313, 0.977, 0.964], stretch: false },
   "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
   "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
   // AR-026 delivered the pair: idle = lever down + OFF plaque, on = lever up +
