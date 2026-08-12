@@ -1999,3 +1999,57 @@ The source was checked against a dark composite, chroma-key residue was removed,
 all four corners are exact alpha 0, and `scripts/check-sprite-alpha.sh` passes.
 It remains a separate transparent parallax strip; the near treeline and ground
 continue to layer independently.
+
+## AR-050 · The Percussion Editor's painted plate — the frog's drum machine — HIGH
+
+The frog's tool (2026-08-13 revamp) is the busiest new surface in the app and
+the barest: rows of engine-drawn cells on the generic parchment panel. It
+deserves the `panel-editor` treatment (AR-016's melody plate is the quality
+bar and the family to match).
+
+**One landscape plate** for the tool region (the panel contain-fits it, so a
+~1536 × 1152 canvas works; match `panel-editor`'s pixel density and steel/
+wood/brass family):
+
+- a recessed GRID FIELD occupying the upper ~84% of the inner area, with a
+  row-head rail down its left ~16% (the sound emojis, mute and ✕ sit on it —
+  engine-drawn over the plate, so leave the rail plain);
+- a DRUM SHELF strip along the bottom ~16%: ten shallow square recesses in a
+  row (the ten coloured drum pads sit IN them; today they read as stickers);
+- keep the field itself dark and low-contrast — the cells tint per drum
+  colour and must stay the loudest thing on the plate.
+
+Name it `panel-percussion.png` under `src/assets/sprites/panels/`, rebuild
+contract as usual (engineering regenerates the atlas and mounts it; the cell
+grid stays engine-drawn over the plate exactly like the melody editor's).
+
+## AR-051 · Painted plates for My Voice, Voice Keys and the Magic Pad — MEDIUM
+
+Same treatment, one plate each (`panel-voice.png`, `panel-keys.png`,
+`panel-magic.png`): the three remaining tools still sit on the generic
+parchment rectangle. Reads to hit — My Voice: a big mic mount + an FX tile
+rack; Voice Keys: a keyboard ledge; Magic Pad: a large XY pad face with a
+wave-picker rail. Engineering will measure each plate's recesses on delivery
+and mount the existing controls into them (same flow AR-016 used); deliver
+one at a time, My Voice first.
+
+## AR-052 · The Workshop car's painted interior — MEDIUM (smallest job)
+
+Lifted from AR-042's closing note so it stops hiding inside a DONE entry:
+the car interior the crew stands in is still engine-drawn (a flat back wall
++ floor derived from the livery colour). One painted interior — three-quarter
+timber planking, a lit floor — for the void `punch_void.py` cut
+(x=474 y=280 w=1612 h=430 on the 2560×1440 car canvas), all four car types
+can share it. The crew and chalkboard draw over it unchanged.
+
+## AR-053 · Track garnish: smoke, splashes, and the NIGHT sky — LOW
+
+Measured leftovers (2026-08-13 audit — these are the last engine-drawn
+textures on the v3 Track): `trk-smoke` (chimney puffs) and `trk-splash`
+(rain hitting the ballast) are procedural blobs; a painted puff and splash
+(one small canvas each, ~64px, the engine scales/fades them) finishes the
+weather. And the NIGHT mode currently darkens the world with a flat blue
+rectangle — a painted `trk-sky-night` band (moon + stars, same 512-wide
+tiling contract as `trk-sky`) upgrades it properly. The TUNNEL treatment
+stays parked pending a design round (per AR-049). `trk-gloom` stays
+engine-drawn on purpose — it is a wash and should look like one.
