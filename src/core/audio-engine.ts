@@ -11,6 +11,8 @@ import { activeLayers, liveTrain, partForCar } from "./project-state.ts";
 import { resolveInstrument } from "./instruments.ts";
 import {
   DEFAULT_HOLD_BARS,
+  LATCH_HOLD_BARS,
+  NEUTRAL_TERRAIN,
   terrainEffect,
   type TerrainKind,
   type TerrainRide,
@@ -44,6 +46,9 @@ export class AudioEngine {
     this.sound.setTempo(bpm);
   }
 
+  /** The terrain currently LATCHED on, or null on flat ground. */
+  private latchedTerrain: TerrainKind | null = null;
+
   /** Ride through a terrain: it lands on the NEXT bar, holds for `holdBars`,
    *  then the world goes back to normal. Ephemeral by design — no `Command`, no
    *  reducer entry, no undo history: this is a performance, not a composition.
@@ -63,10 +68,56 @@ export class AudioEngine {
     return span ? { kind, ...span } : null;
   }
 
+  /** LATCH a terrain: tap it on, tap it off (Eric, 2026-08-13 — terrains used
+   *  to expire after two bars). On = the effect lands on the next bar and
+   *  holds until toggled (the revert event sits `LATCH_HOLD_BARS` out, and a
+   *  later toggle's generation supersedes it). Tapping the latched kind puts
+   *  the world back to flat at the next bar; tapping a different kind
+   *  switches to it. Returns the new latch state plus where the change lands,
+   *  so the Track can draw it — the bar always comes FROM the transport
+   *  (charter A4), never from where the train is drawn. */
+  toggleTerrain(
+    kind: TerrainKind,
+    project: Project,
+  ): { active: TerrainKind | null; atBar: number | null } {
+    if (!this.started || !this.playing) return { active: this.latchedTerrain, atBar: null };
+    const turningOff = this.latchedTerrain === kind;
+    const span = this.sound.scheduleTerrain(
+      turningOff ? NEUTRAL_TERRAIN : terrainEffect(kind),
+      LATCH_HOLD_BARS,
+      project.tempoBpm,
+    );
+    if (!span) return { active: this.latchedTerrain, atBar: null };
+    this.latchedTerrain = turningOff ? null : kind;
+    return { active: this.latchedTerrain, atBar: span.startBar };
+  }
+
+  get terrainLatched(): TerrainKind | null {
+    return this.latchedTerrain;
+  }
+
   /** Drop any terrain and return to flat ground now. */
   clearTerrain(): void {
     if (!this.started) return;
+    this.latchedTerrain = null;
     this.sound.clearTerrain();
+  }
+
+  /** BACKWARDS mode: everything sampled plays tape-reversed. Toggling while
+   *  the song runs reconciles in place, so the flip is heard on the very next
+   *  scheduled pass without stopping the groove. Like terrain, this is a
+   *  performance — no Command, no history, never saved. */
+  private reversed = false;
+
+  toggleReversed(project: Project): boolean {
+    this.reversed = !this.reversed;
+    this.sound.setReversed(this.reversed);
+    if (this.playing) this.reconcile(project);
+    return this.reversed;
+  }
+
+  get isReversed(): boolean {
+    return this.reversed;
   }
 
   /** Set the global on-beat snap grid for one-off triggers. */
@@ -225,6 +276,8 @@ export class AudioEngine {
   stop(): void {
     this.sound.stopTransport();
     this.playing = false;
+    // A latch is a property of the RIDE; stopping the ride is flat ground.
+    this.latchedTerrain = null;
   }
 
   /** Alias for `stop()` — reads clearer at call sites that mean "silence all". */

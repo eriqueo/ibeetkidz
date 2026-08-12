@@ -10,6 +10,7 @@ import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 import { laneGroup } from "../core/lane-color.ts";
 import { laneSprite } from "../game/instrument-station.ts";
+import { LATCH_UNIT_BARS, type TerrainRide } from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
@@ -82,6 +83,11 @@ export const Track: FC = () => {
   const projectRef = useRef(project);
   projectRef.current = project;
 
+  // The latched terrain's CURRENT visual unit span. Audio holds by itself
+  // (the latch's revert sits far out); this is only which mound/deck/squall
+  // is drawn, advanced unit by unit in the tick below while the latch holds.
+  const latchedRideRef = useRef<TerrainRide | null>(null);
+
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     if (scene instanceof TrackV3Scene) {
       v3Ref.current = scene;
@@ -113,7 +119,12 @@ export const Track: FC = () => {
       engine.setTempo(bpm);
     };
     const onPlay = () => engine.playRide(projectRef.current);
-    const onStop = () => engine.stop();
+    const onStop = () => {
+      engine.stop(); // also drops any terrain latch — flat ground on stop
+      latchedRideRef.current = null;
+      v3Ref.current?.setTerrainLatched(null);
+      v3Ref.current?.setTerrainRide(null);
+    };
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
     const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
     // Tap a car on the oval → toggle its tarp (mute). The tarp visual follows
@@ -143,16 +154,40 @@ export const Track: FC = () => {
       dispatchAll(cmds, "The whole train");
     };
     // Terrain: a physical thing the train rides through, heard as a change to
-    // the song. The bar it lands on is resolved from the TRANSPORT inside the
-    // adapter — never from where the train happens to be drawn (charter A4).
+    // the song. LATCHED now — tap on, tap off (Eric: "last for longer, or
+    // have the option to toggle"). The bar a change lands on is resolved from
+    // the TRANSPORT inside the adapter — never from where the train happens
+    // to be drawn (charter A4). The oval keeps its momentary flash.
     const onTerrain = (kind: string) => {
       if (!isTerrainKind(kind)) return;
-      const ride = engine.applyTerrain(kind, projectRef.current);
-      sceneRef.current?.showTerrain?.(kind);
-      // The bar span comes back FROM the transport, so the side-scroller draws
-      // the hill exactly where the audio will make it happen — it never works
-      // the bar out from where the train is on screen (charter A4).
-      if (ride) v3Ref.current?.setTerrainRide(ride);
+      if (v3Ref.current) {
+        const { active, atBar } = engine.toggleTerrain(kind, projectRef.current);
+        if (atBar === null) return; // not riding — a terrain needs a train
+        if (active) {
+          // On (or switched): a fresh unit span from the landing bar; the
+          // tick below keeps re-arming units while the latch holds.
+          const ride = { kind: active, startBar: atBar, endBar: atBar + LATCH_UNIT_BARS };
+          latchedRideRef.current = ride;
+          v3Ref.current.setTerrainRide(ride);
+        } else {
+          // Off: close the visible span at the bar flat ground lands on, so
+          // the mound's tail scrolls away instead of vanishing.
+          const open = latchedRideRef.current;
+          latchedRideRef.current = null;
+          if (open) v3Ref.current.setTerrainRide({ ...open, endBar: atBar });
+        }
+        v3Ref.current.setTerrainLatched(active);
+        return;
+      }
+      // The oval: the original momentary flash, unchanged.
+      if (engine.applyTerrain(kind, projectRef.current)) {
+        sceneRef.current?.showTerrain?.(kind);
+      }
+    };
+    // BACKWARDS: everything sampled plays tape-reversed until toggled again.
+    const onBackwards = () => {
+      const on = engine.toggleReversed(projectRef.current);
+      v3Ref.current?.setBackwards(on);
     };
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
@@ -162,6 +197,7 @@ export const Track: FC = () => {
     EventBus.on("track-car-edit", onCarEdit);
     EventBus.on("track-clear-train", onClearTrain);
     EventBus.on("terrain-picked", onTerrain);
+    EventBus.on("track-backwards-toggled", onBackwards);
     return () => {
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
@@ -171,6 +207,7 @@ export const Track: FC = () => {
       EventBus.off("track-car-edit", onCarEdit);
       EventBus.off("track-clear-train", onClearTrain);
       EventBus.off("terrain-picked", onTerrain);
+      EventBus.off("track-backwards-toggled", onBackwards);
     };
   }, [dispatch, dispatchAll, engine]);
 
@@ -252,7 +289,22 @@ export const Track: FC = () => {
           // ABSOLUTE bars, not a normalized lap: the side-scroller lays the
           // world out in bar order and never wraps its own position, so a
           // terrain scheduled at bar 37 is drawn at bar 37.
-          v3scene.setSongPosition((engine.getTransportBar?.() ?? 0) + frac);
+          const bar = engine.getTransportBar?.() ?? 0;
+          v3scene.setSongPosition(bar + frac);
+          // A LATCHED terrain re-arms its visual unit as the train crosses
+          // each span boundary: mound after mound is a mountain range, deck
+          // after deck a viaduct. The profile returns to ground at every unit
+          // edge, so the handoff between units is seamless.
+          const open = latchedRideRef.current;
+          if (open && engine.terrainLatched === open.kind && bar >= open.endBar) {
+            const next = {
+              kind: open.kind,
+              startBar: open.endBar,
+              endBar: open.endBar + LATCH_UNIT_BARS,
+            };
+            latchedRideRef.current = next;
+            v3scene.setTerrainRide(next);
+          }
         }
       }
       const scene = sceneRef.current;

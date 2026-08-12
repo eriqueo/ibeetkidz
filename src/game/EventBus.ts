@@ -54,6 +54,9 @@ export interface EventMap {
   // Phaser -> React (Track v3): the CLEAR plaque — empty the whole train.
   // Destructive, so React answers with ONE undo step and a "put it back" chip.
   "track-clear-train": [];
+  // Phaser -> React (Track v3): the BACKWARDS switch — everything sampled
+  // plays tape-reversed until toggled again. A performance, never saved.
+  "track-backwards-toggled": [];
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.

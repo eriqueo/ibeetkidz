@@ -65,8 +65,21 @@ export const TERRAIN: Readonly<Record<TerrainKind, TerrainEffect>> = {
   // A bridge is a big empty space under a hard deck: the song opens out.
   bridge: { tempoScale: 1, reverb: 0.62, grit: 0, rampBeats: 0.25 },
   // Rain roughs the signal up, with just enough space to sound weather-y.
-  rain: { tempoScale: 1, reverb: 0.12, grit: 0.65, rampBeats: 0.5 },
+  // Grit backed off from 0.65 (2026-08-13): at 0.65 into the master shaper the
+  // full mix broke up into aliasing crackle that Eric reported as "audio
+  // skipping, especially with the rain" — the distortion node now oversamples
+  // (see the adapter) and the send sits where rough stays musical.
+  rain: { tempoScale: 1, reverb: 0.22, grit: 0.42, rampBeats: 0.5 },
 };
+
+/** A latched terrain's audio hold: far enough out that it never expires in a
+ *  session (~6h of 4/4 at 100bpm), superseded the moment the kid toggles.
+ *  The VISUAL span stays short and slides while latched — see Track.tsx. */
+export const LATCH_HOLD_BARS = 9999;
+
+/** The visual unit a latched terrain repeats in, in bars: mound after mound
+ *  reads as a mountain range, deck after deck as a viaduct. */
+export const LATCH_UNIT_BARS = 4;
 
 export const TERRAIN_KINDS: readonly TerrainKind[] = ["hill", "bridge", "rain"];
 

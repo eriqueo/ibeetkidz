@@ -313,6 +313,33 @@ export class ToneSoundPort implements SoundPort {
    *  of that lane's scheduled cells. Cleared with `clearScheduled`. */
   private readonly laneChains = new Map<string, Tone.ToneAudioNode>();
 
+  // BACKWARDS mode (the Track's tape-reverse switch): every SCHEDULED sample
+  // voice plays its buffer reversed. One flag + a cache of reversed copies —
+  // the caches of forward buffers are never mutated (Tone's `Player.reverse`
+  // flips the SHARED ToneAudioBuffer in place, which would reverse every
+  // other player on the same cached buffer, so it is deliberately not used).
+  // Melody synths have no buffer to reverse and keep playing forward — drums
+  // and takes carry the effect, which is what reads as "backwards".
+  private reversedMode = false;
+  private readonly reversedCache = new WeakMap<AudioBuffer, AudioBuffer>();
+
+  setReversed(on: boolean): void {
+    this.reversedMode = on;
+  }
+
+  /** The buffer to schedule: itself, or its cached reversed copy in
+   *  backwards mode. The engine reconciles on toggle, so voices pick the
+   *  right copy at (re)schedule time — nothing is flipped mid-flight. */
+  private playable(buf: AudioBuffer): AudioBuffer {
+    if (!this.reversedMode) return buf;
+    let rev = this.reversedCache.get(buf);
+    if (!rev) {
+      rev = reverseBuffer(this.ctx, buf);
+      this.reversedCache.set(buf, rev);
+    }
+    return rev;
+  }
+
   // Terrain (Track ride): a master-bus insert plus a momentary tempo scale.
   // `tempoScale` is deliberately SEPARATE from `tempoBpm` — the bake cache keys
   // off `tempoBpm`, so scaling here can never mint a new cache entry.
@@ -973,7 +1000,7 @@ export class ToneSoundPort implements SoundPort {
           ? defDur
           : Math.max(defDur, Math.min(lengthSteps, totalSteps) * stepDur);
       const player = new Tone.Player({
-        url: this.drumBuffer(kind, durationSec, pitch),
+        url: this.playable(this.drumBuffer(kind, durationSec, pitch)),
         context: this.liveCtx,
       }).connect(this.scheduledDestination(opts));
       player.playbackRate = this.tempoScale; // join a terrain already underway
@@ -988,7 +1015,7 @@ export class ToneSoundPort implements SoundPort {
     const gen = this.scheduleGen;
     void this.resolveClip(clip, this.tempoBpm).then((buf) => {
       if (!buf || gen !== this.scheduleGen) return;
-      const player = new Tone.Player({ url: buf, context: this.liveCtx }).connect(
+      const player = new Tone.Player({ url: this.playable(buf), context: this.liveCtx }).connect(
         this.scheduledDestination(opts),
       );
       player.playbackRate = this.tempoScale; // join a terrain already underway
@@ -1352,7 +1379,15 @@ export class ToneSoundPort implements SoundPort {
         // one at boot took the whole page down on a plain-http origin (caught by
         // `tests/e2e/built-artifact.spec.ts`, which serves the build over http).
         // Distortion is a plain WaveShaperNode: no worklet, works anywhere.
-        const grit = new Tone.Distortion({ distortion: 0.85, wet: 0, context: this.liveCtx });
+        // OVERSAMPLED, and gentler than the original 0.85: waveshaping a full
+        // mix without oversampling aliases, and aliasing crackle is what
+        // "audio skipping, especially with the rain" turned out to be.
+        const grit = new Tone.Distortion({
+          distortion: 0.6,
+          oversample: "4x",
+          wet: 0,
+          context: this.liveCtx,
+        });
         this.liveDestination.chain(grit, reverb);
         this.terrainFx = { reverb, grit };
       } catch {

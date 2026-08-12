@@ -166,7 +166,6 @@ const FORE_H = 130;
 const TERRAIN_LABEL_Y = 430;
 /** The three control columns, shared by the nav bar and the job bar so a
  *  terrain button sits directly under the button above it. */
-const COLUMN_X = [720, 1280, 1840] as const;
 /** How much larger than 1:1 the rain sheet is drawn. */
 const RAIN_TILE_SCALE = 3.5;
 
@@ -456,10 +455,10 @@ export class TrackV3Scene extends Phaser.Scene {
     // when he says the bars are "superimposed" rather than "natively embedded".
     this.plate("panel-header-v2", { x: W / 2, y: 160, width: 1980, height: 360 });
     const cy = 170;
-    // Four across now, so the columns are this row's own rather than
-    // `COLUMN_X` (the legend keeps three-across). All four sit on the plate's
-    // parchment field (~400..2064) — a control past the gear medallion floats
-    // on the sky, which is the exact "superimposed chrome" this bar replaced.
+    // Four across, on the plate's parchment field (~400..2064) — a control
+    // past the gear medallion floats on the sky, which is the exact
+    // "superimposed chrome" this bar replaced. The legend row below uses the
+    // same columns so the two decks read as one frame.
     this.placeButton("btn-nav-map", { x: 660, y: cy, width: 470, height: 165 },
       () => void EventBus.emit("track-nav", "map"), "MAP");
     this.placeButton("btn-track-ride", { x: 1160, y: cy, width: 205, height: 205 },
@@ -588,8 +587,14 @@ export class TrackV3Scene extends Phaser.Scene {
     });
   }
 
+  /** The terrain buttons, so a LATCHED job can visibly stay pressed. */
+  private legendBtns: Partial<Record<TerrainKind, Phaser.GameObjects.Image>> = {};
+  private backwardsBtn?: Phaser.GameObjects.Rectangle | undefined;
+  private backwardsLabel?: Phaser.GameObjects.Text | undefined;
+
   /** The Lemmings job bar — on the shared transport plate, docked to the bottom
-   *  edge and column-aligned with the nav bar above it. `legend-plate.png` is
+   *  edge. Four across now (the BACKWARDS switch joined), on the same columns
+   *  as the top bar so both rows read as one frame. `legend-plate.png` is
    *  retired with the floating plaque it was drawn for (ART_REQUESTS AR-041). */
   private buildLegend(): void {
     const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
@@ -598,7 +603,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.plate("panel-transport-v2", { x: W / 2, y: H - 105, width: 1980, height: 270 });
 
     kinds.forEach((kind, i) => {
-      const cx = COLUMN_X[i] as number;
+      const cx = [660, 1160, 1560][i] as number;
       const idle = `trk-btn-${kind}`;
       const down = `trk-btn-${kind}-pressed`;
       const fire = (): void => void EventBus.emit("terrain-picked", kind);
@@ -611,6 +616,7 @@ export class TrackV3Scene extends Phaser.Scene {
           .setDepth(DEPTH.hud + 1)
           .setScale(1.45); // 260x120 art in a 380x175 slot
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
+        this.legendBtns[kind] = btn;
         return;
       }
       const swatch = this.add
@@ -628,6 +634,39 @@ export class TrackV3Scene extends Phaser.Scene {
       // the next bar.
       this.pressable(swatch, fire);
     });
+
+    // The BACKWARDS switch — a mode, not a job: it latches like a terrain but
+    // touches every sampled voice. Keycap fallback until AR-048 paints it.
+    this.backwardsBtn = this.add
+      .rectangle(1930, cy - 20, 300, 120, 0x3a3350, 1)
+      .setDepth(DEPTH.hud + 1);
+    this.backwardsLabel = this.add
+      .text(1930, cy - 20, "⏪ BACKWARDS", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+      })
+      .setOrigin(0.5)
+      .setFontSize(24)
+      .setDepth(DEPTH.hud + 2);
+    this.pressable(this.backwardsBtn, () => void EventBus.emit("track-backwards-toggled"));
+  }
+
+  /** React → scene: which terrain is LATCHED (null = flat ground). The latched
+   *  job's button holds a gold wash so the mode is visible from across the
+   *  room — a latch nobody can see is the ×2-lever trap all over again. */
+  setTerrainLatched(kind: TerrainKind | null): void {
+    (Object.keys(this.legendBtns) as TerrainKind[]).forEach((k) => {
+      const btn = this.legendBtns[k];
+      if (!btn) return;
+      if (k === kind) btn.setTint(0xffd166);
+      else btn.clearTint();
+    });
+  }
+
+  /** React → scene: the BACKWARDS switch's latched look. */
+  setBackwards(on: boolean): void {
+    this.backwardsBtn?.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
+    this.backwardsLabel?.setColor(on ? "#2b2440" : "#ffe9b0");
   }
 
   // ── React → scene ────────────────────────────────────────────────────────

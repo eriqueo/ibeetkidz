@@ -176,6 +176,12 @@ export interface SoundPort {
   /** Drop any armed terrain and return to flat ground immediately. */
   clearTerrain(): void;
 
+  /** BACKWARDS mode: while on, every scheduled sample voice plays its buffer
+   *  reversed (melody synths keep playing forward — they have no tape to
+   *  flip). Takes effect at the next (re)schedule; the engine reconciles on
+   *  toggle so a playing song flips without stopping. */
+  setReversed(on: boolean): void;
+
   /** Tear down scheduled loop voices WITHOUT stopping the transport, so the
    *  loop keeps playing across edits. Reconcile re-schedules right after. */
   clearScheduled(): void;

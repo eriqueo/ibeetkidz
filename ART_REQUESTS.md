@@ -1857,7 +1857,6 @@ files are the ask; do not spend the generic set first.
 **Unblocks when it lands:** each file replaces its interim the moment it is
 committed — no code change, the same drop-a-PNG seam as every track3 slot.
 
-
 ---
 
 ## ✅ DONE — AR-047 · Track runtime bridge rebuild — HIGH
@@ -1875,3 +1874,27 @@ stone/grass end landings.
 content bbox is `x=3 y=0 w=1274 h=168`; all four corners are exact alpha 0;
 `scripts/check-sprite-alpha.sh` passes. The existing `trk-bridge` loader needs
 no engineering change.
+
+---
+
+## AR-048 · The BACKWARDS switch — a painted lever for the Track's job bar — MEDIUM
+
+> Numbered AR-048 after a mid-air collision: the art agent minted AR-047 for
+> the bridge rebuild above while this entry was still unpushed as "AR-047".
+> The agent's number stands (it is already in its delivery ledger); this is
+> the same request, renumbered.
+
+The Track's bottom bar gained a fourth control (2026-08-13): **BACKWARDS**,
+which plays every sampled voice tape-reversed until toggled again (melody
+synths keep playing forward; the drums-and-takes flip is what reads as
+backwards). It latches like the terrains, and shows as a keycap fallback at
+design-space (1930, H−145), 300 × 120, until painted.
+
+Wanted: a picture button in the same family as `btn-hill`/`btn-bridge`/
+`btn-rain` (260 × 120 idle + pressed), readable by a non-reader as
+"everything runs backwards" — e.g. a tape reel with arrows running the wrong
+way, or the little loco mirrored driving in reverse. Name it
+`btn-backwards.png` / `btn-backwards-pressed.png` in
+`src/assets/sprites/track3/` and the scene's drop-a-PNG seam takes it; add a
+LATCHED (on) state variant `btn-backwards-on.png` if a third frame is cheap —
+the code currently shows the latch as a gold wash.

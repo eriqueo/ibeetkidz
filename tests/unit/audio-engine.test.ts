@@ -7,7 +7,7 @@ import {
 } from "../../src/core/project-state.ts";
 import type { Clip, Project } from "../../src/core/types.ts";
 import type { SoundPort } from "../../src/ports/sound-port.ts";
-import { TERRAIN, type TerrainEffect } from "../../src/core/terrain.ts";
+import { LATCH_HOLD_BARS, NEUTRAL_TERRAIN, TERRAIN, type TerrainEffect } from "../../src/core/terrain.ts";
 
 /** A SoundPort that records the (cycleBars, barOffset) of every scheduled voice,
  *  so we can assert the Song Train lays cars out across the right bars without
@@ -61,6 +61,12 @@ class FakeSoundPort implements SoundPort {
   }
   clearTerrain(): void {
     this.terrainClears++;
+  }
+
+  /** BACKWARDS toggles received, latest state last. */
+  readonly reversedStates: boolean[] = [];
+  setReversed(on: boolean): void {
+    this.reversedStates.push(on);
   }
 
   // ── inert stubs ──────────────────────────────────────────────────────────
@@ -315,5 +321,61 @@ describe("AudioEngine terrain", () => {
     const engine = await booted(sound);
     engine.clearTerrain();
     expect(sound.terrainClears).toBe(1);
+  });
+
+  it("toggleTerrain latches: on, off at the next bar, and switch", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    engine.playRide(project);
+
+    // On: the effect itself, held effectively forever (the latch).
+    const on = engine.toggleTerrain("hill", project);
+    expect(on).toEqual({ active: "hill", atBar: 8 });
+    expect(sound.terrains[0]?.effect).toEqual(TERRAIN.hill);
+    expect(sound.terrains[0]?.holdBars).toBe(LATCH_HOLD_BARS);
+
+    // Same kind again: OFF — flat ground scheduled, not a second hill.
+    const off = engine.toggleTerrain("hill", project);
+    expect(off).toEqual({ active: null, atBar: 8 });
+    expect(sound.terrains[1]?.effect).toEqual(NEUTRAL_TERRAIN);
+
+    // A different kind while another is latched: switches, no explicit off.
+    engine.toggleTerrain("rain", project);
+    const sw = engine.toggleTerrain("bridge", project);
+    expect(sw.active).toBe("bridge");
+    expect(sound.terrains[3]?.effect).toEqual(TERRAIN.bridge);
+  });
+
+  it("a latch needs a ride, and stopping the ride drops it", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+
+    // Not playing: refused, nothing scheduled.
+    expect(engine.toggleTerrain("hill", project)).toEqual({ active: null, atBar: null });
+    expect(sound.terrains).toHaveLength(0);
+
+    engine.playRide(project);
+    engine.toggleTerrain("hill", project);
+    expect(engine.terrainLatched).toBe("hill");
+    engine.stop();
+    expect(engine.terrainLatched).toBeNull();
+  });
+
+  it("toggleReversed flips the port and reconciles a playing song in place", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    engine.playRide(project);
+    const clearsBefore = sound.clears;
+
+    expect(engine.toggleReversed(project)).toBe(true);
+    expect(sound.reversedStates).toEqual([true]);
+    // The flip is HEARD without stopping: a reconcile, not a stop/start.
+    expect(sound.clears).toBe(clearsBefore + 1);
+
+    expect(engine.toggleReversed(project)).toBe(false);
+    expect(sound.reversedStates).toEqual([true, false]);
   });
 });
