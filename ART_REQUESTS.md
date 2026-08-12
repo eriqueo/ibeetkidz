@@ -1806,7 +1806,15 @@ bottom anchor on the scene’s corresponding measured peek line. The poses are
 specific to the car construction: roofline lean, hopper-rim grip,
 barrel-top peek, and seated flatcar-deck pose. A true-scale composite check
 confirmed all four land against the supplied car bodies with no code changes.
-The remaining 24 per-car rider files retain the delivery order below.
+### ✅ Second delivery complete — Piano (2026-08-12, `1c247d1`)
+
+`ride-piano-boxcar.png`, `ride-piano-hopper.png`,
+`ride-piano-tanker.png`, and `ride-piano-flatcar.png` now retain the husky’s
+aviator goggles, black-and-cream face pattern, and red neckerchief at Track
+scale. A true-scale composite check confirms their paws and compact seated pose
+land on the corresponding roofline, rim, barrel, and deck seams.
+
+The remaining 20 per-car rider files retain the delivery order below.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
