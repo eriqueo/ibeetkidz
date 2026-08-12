@@ -56,7 +56,7 @@ import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
-import type { TerrainKind } from "../../core/terrain.ts";
+import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
 
 /**
@@ -219,12 +219,6 @@ const LOCO_WHEELS: readonly { dx: number; r: number }[] = [
   { dx: 80, r: 19 },
 ];
 
-const TERRAIN_PAINT: Record<TerrainKind, number> = {
-  hill: 0x4f8f38,
-  bridge: 0x8a7a5c,
-  rain: 0x3a6fa5,
-};
-
 export class TrackV3Scene extends Phaser.Scene {
   static readonly KEY = "TrackV3Scene";
 
@@ -234,7 +228,15 @@ export class TrackV3Scene extends Phaser.Scene {
   private pos = 0; // song position in ABSOLUTE bars, fed from the transport
   private moving = false;
   private cars: V3Car[] = [];
-  private ride: V3TerrainRide | null = null;
+  /** Every geometry mode's committed span, keyed by kind — modes STACK, so a
+   *  mound, a deck and a squall can all be in the world at once. The newest
+   *  toggle is remembered for the caption and the debug probe. */
+  private readonly rides = new Map<TerrainKind, V3TerrainRide>();
+  private newestRide: V3TerrainRide | null = null;
+  /** The tiny/giant switches' train size (1 = normal). */
+  private trainScale = 1;
+  private nightShade?: Phaser.GameObjects.Rectangle | undefined;
+  private tunnelShade?: Phaser.GameObjects.Rectangle | undefined;
 
   private sky?: Phaser.GameObjects.TileSprite;
   private hills?: Phaser.GameObjects.TileSprite;
@@ -419,6 +421,20 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.shadow)
       .setVisible(false);
 
+    // The NIGHT and TUNNEL washes: full-scene shades under the HUD (the job
+    // bar must stay daylight-legible whatever the world is doing). AR-049's
+    // painted night sky / tunnel walls replace these flat rects.
+    this.nightShade = this.add
+      .rectangle(0, 0, W, H, 0x141c4a, 0.42)
+      .setOrigin(0)
+      .setDepth(DEPTH.hud - 1)
+      .setVisible(false);
+    this.tunnelShade = this.add
+      .rectangle(0, 0, W, H, 0x08060f, 0.55)
+      .setOrigin(0)
+      .setDepth(DEPTH.hud - 1)
+      .setVisible(false);
+
     this.buildTopBar();
     this.buildLegend();
     this.rebuildSlots();
@@ -587,86 +603,116 @@ export class TrackV3Scene extends Phaser.Scene {
     });
   }
 
-  /** The terrain buttons, so a LATCHED job can visibly stay pressed. */
-  private legendBtns: Partial<Record<TerrainKind, Phaser.GameObjects.Image>> = {};
+  /** Every mode switch on the job bar, keyed by kind, so a LATCHED mode can
+   *  visibly hold its gold wash whatever art it currently wears. */
+  private modeBtns: Record<string, { setLatched: (on: boolean) => void }> = {};
   private backwardsBtn?: Phaser.GameObjects.Rectangle | undefined;
   private backwardsLabel?: Phaser.GameObjects.Text | undefined;
 
-  /** The Lemmings job bar — on the shared transport plate, docked to the bottom
-   *  edge. Four across now (the BACKWARDS switch joined), on the same columns
-   *  as the top bar so both rows read as one frame. `legend-plate.png` is
-   *  retired with the floating plaque it was drawn for (ART_REQUESTS AR-041). */
+  /** The Lemmings job bar — on the shared transport plate, docked to the
+   *  bottom edge. EIGHT switches now (geometry trio + night/tunnel/tiny/giant
+   *  + BACKWARDS), all latching, all stacking. Keycaps stand in wherever
+   *  AR-048/AR-049 have not painted a picture button yet. */
   private buildLegend(): void {
-    const kinds: TerrainKind[] = ["hill", "bridge", "rain"];
     const cy = H - 125;
     // Runs off the bottom edge, for the reason `buildTopBar` gives.
     this.plate("panel-transport-v2", { x: W / 2, y: H - 105, width: 1980, height: 270 });
 
-    kinds.forEach((kind, i) => {
-      const cx = [660, 1160, 1560][i] as number;
+    // Eight equal slots across the plate's parchment (~400..2064).
+    const slotX = (i: number): number => Math.round(400 + (i + 0.5) * (1664 / 8));
+
+    const modes: { kind: ModeKind; label: string }[] = [
+      { kind: "hill", label: "HILL" },
+      { kind: "bridge", label: "BRIDGE" },
+      { kind: "rain", label: "RAIN" },
+      { kind: "night", label: "🌙 NIGHT" },
+      { kind: "tunnel", label: "⛰ TUNNEL" },
+      { kind: "tiny", label: "🐭 TINY" },
+      { kind: "giant", label: "🦖 GIANT" },
+    ];
+    modes.forEach(({ kind, label }, i) => {
+      const cx = slotX(i);
+      const fire = (): void => void EventBus.emit("track-mode-toggled", kind);
       const idle = `trk-btn-${kind}`;
       const down = `trk-btn-${kind}-pressed`;
-      const fire = (): void => void EventBus.emit("terrain-picked", kind);
-
       if (this.textures.exists(idle)) {
         // Picture buttons: the player is four and cannot read. The caption is
         // for the adult, so it is only drawn when there is no picture.
         const btn = this.add
           .image(cx, cy, idle)
           .setDepth(DEPTH.hud + 1)
-          .setScale(1.45); // 260x120 art in a 380x175 slot
+          .setScale(0.72); // 260x120 art in a ~200px slot
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
-        this.legendBtns[kind] = btn;
+        this.modeBtns[kind] = {
+          setLatched: (on) => (on ? btn.setTint(0xffd166) : btn.clearTint()),
+        };
         return;
       }
       const swatch = this.add
-        .rectangle(cx, cy - 30, 260, 120, TERRAIN_PAINT[kind], 1)
+        .rectangle(cx, cy - 20, 186, 110, 0x3a3350, 1)
         .setDepth(DEPTH.hud + 1);
-      this.add
-        .text(cx, cy + 40, kind.toUpperCase(), {
+      const cap = this.add
+        .text(cx, cy - 20, label, {
           fontFamily: "'Press Start 2P', monospace",
           color: "#ffe9b0",
         })
-        .setOrigin(0.5, 0)
-        .setFontSize(30)
+        .setOrigin(0.5)
+        .setFontSize(17)
         .setDepth(DEPTH.hud + 2);
       // Law 8: the response happens THIS frame, even though the sound lands on
       // the next bar.
       this.pressable(swatch, fire);
+      this.modeBtns[kind] = {
+        setLatched: (on) => {
+          swatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
+          cap.setColor(on ? "#2b2440" : "#ffe9b0");
+        },
+      };
     });
 
-    // The BACKWARDS switch — a mode, not a job: it latches like a terrain but
-    // touches every sampled voice. Keycap fallback until AR-048 paints it.
+    // The BACKWARDS switch — reverses every sampled voice; its own latch,
+    // stacks with everything above. Keycap until AR-048 paints it.
     this.backwardsBtn = this.add
-      .rectangle(1930, cy - 20, 300, 120, 0x3a3350, 1)
+      .rectangle(slotX(7), cy - 20, 186, 110, 0x3a3350, 1)
       .setDepth(DEPTH.hud + 1);
     this.backwardsLabel = this.add
-      .text(1930, cy - 20, "⏪ BACKWARDS", {
+      .text(slotX(7), cy - 20, "⏪ BACK", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
       })
       .setOrigin(0.5)
-      .setFontSize(24)
+      .setFontSize(17)
       .setDepth(DEPTH.hud + 2);
     this.pressable(this.backwardsBtn, () => void EventBus.emit("track-backwards-toggled"));
   }
 
-  /** React → scene: which terrain is LATCHED (null = flat ground). The latched
-   *  job's button holds a gold wash so the mode is visible from across the
-   *  room — a latch nobody can see is the ×2-lever trap all over again. */
-  setTerrainLatched(kind: TerrainKind | null): void {
-    (Object.keys(this.legendBtns) as TerrainKind[]).forEach((k) => {
-      const btn = this.legendBtns[k];
-      if (!btn) return;
-      if (k === kind) btn.setTint(0xffd166);
-      else btn.clearTint();
-    });
+  /** React → scene: the set of LATCHED modes. Every latched switch holds a
+   *  gold wash so what is on is visible from across the room — a latch nobody
+   *  can see is the ×2-lever trap all over again. */
+  setModeLatched(kinds: ReadonlySet<string>): void {
+    for (const [k, btn] of Object.entries(this.modeBtns)) {
+      btn.setLatched(kinds.has(k));
+    }
   }
 
   /** React → scene: the BACKWARDS switch's latched look. */
   setBackwards(on: boolean): void {
     this.backwardsBtn?.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
     this.backwardsLabel?.setColor(on ? "#2b2440" : "#ffe9b0");
+  }
+
+  /** React → scene: the NIGHT and TUNNEL shades — full-scene washes under the
+   *  HUD, dark blue for night and near-black for the tunnel, stacked when
+   *  both are on. The painted versions are AR-049's. */
+  setNightTunnel(night: boolean, tunnel: boolean): void {
+    this.nightShade?.setVisible(night);
+    this.tunnelShade?.setVisible(tunnel);
+  }
+
+  /** React → scene: the tiny/giant switches' train size. The whole consist —
+   *  spacing included — scales, which IS the joke. */
+  setTrainScale(scale: number): void {
+    this.trainScale = scale;
   }
 
   // ── React → scene ────────────────────────────────────────────────────────
@@ -686,9 +732,13 @@ export class TrackV3Scene extends Phaser.Scene {
     if (!moving) this.speedBars = 0;
   }
 
-  /** The transport committed a terrain to a bar span; build it there. */
-  setTerrainRide(ride: V3TerrainRide | null): void {
-    this.ride = ride;
+  /** The transport committed these geometry spans; build them there. One per
+   *  kind, stacked freely; order carries recency (last = newest toggle, which
+   *  is what the caption follows). */
+  setTerrainRides(rides: readonly V3TerrainRide[]): void {
+    this.rides.clear();
+    for (const ride of rides) this.rides.set(ride.kind, ride);
+    this.newestRide = rides.length > 0 ? (rides[rides.length - 1] as V3TerrainRide) : null;
   }
 
   // ── frame ────────────────────────────────────────────────────────────────
@@ -717,8 +767,11 @@ export class TrackV3Scene extends Phaser.Scene {
     this.layoutTrain(travelPx(this.pos, this.view));
   }
 
+  /** The span that LIFTS the train — only a hill does (the bridge deck keeps
+   *  the rails level and rain is weather), so the pose follows the hill's
+   *  ride alone however many modes are stacked. */
   private get span(): TerrainSpan | null {
-    return this.ride;
+    return this.rides.get("hill") ?? null;
   }
 
   /** Screen x of the consist's nose, and each car's centre, left to right.
@@ -726,17 +779,20 @@ export class TrackV3Scene extends Phaser.Scene {
    *  one object now rather than a bar-indexed frieze. */
   private consistLayout(surge: number): { noseX: number; carX: number[] } {
     const n = this.cars.length;
-    const trainLen = LOCO_W + n * (CAR_W + COUPLING);
+    // The tiny/giant switches scale the WHOLE consist — bodies and spacing
+    // together, or a small train would ride with huge gaps between cars.
+    const S = this.trainScale;
+    const trainLen = (LOCO_W + n * (CAR_W + COUPLING)) * S;
     // Centre a short train; anchor a long one by the nose and let its tail run
     // off the left, which is what a long train should look like.
     const noseX =
       trainLen + 160 <= W ? (W + trainLen) / 2 : W * NOSE_X_FRAC;
     const carX: number[] = [];
     // Car 0 couples directly behind the locomotive; the rest trail leftward.
-    let right = noseX - LOCO_W - COUPLING;
+    let right = noseX - (LOCO_W + COUPLING) * S;
     for (let i = 0; i < n; i++) {
-      carX.push(right - CAR_W / 2);
-      right -= CAR_W + COUPLING;
+      carX.push(right - (CAR_W * S) / 2);
+      right -= (CAR_W + COUPLING) * S;
     }
     return { noseX: noseX + surge, carX: carX.map((x) => x + surge) };
   }
@@ -767,6 +823,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const angle = wheelAngle(dist, WHEEL_R);
     const span = this.span;
 
+    const S = this.trainScale;
     const place = (
       x: number,
       body: Phaser.GameObjects.Container,
@@ -775,12 +832,12 @@ export class TrackV3Scene extends Phaser.Scene {
     ): { lift: number; tilt: number } => {
       const pose = carPose(this.barAtX(x), wheelbase, span, this.view.barWidth);
       const y = Math.round(RAIL_Y - pose.lift + bob);
-      body.setPosition(Math.round(x), y).setRotation(pose.angle);
+      body.setPosition(Math.round(x), y).setRotation(pose.angle).setScale(S);
       shadow
         .setVisible(true)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
         .setRotation(pose.angle)
-        .setScale(1 - Math.abs(bob) / 60, 1);
+        .setScale(S * (1 - Math.abs(bob) / 60), S);
       return { lift: pose.lift, tilt: pose.angle };
     };
 
@@ -797,6 +854,7 @@ export class TrackV3Scene extends Phaser.Scene {
       s.root
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
         .setRotation(pose.angle)
+        .setScale(S)
         .setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
       // The coat and the lift are the SAME silhouette as the body, so a car-type
       // swap has to move all of them or the colour ends up on last frame's shape.
@@ -823,7 +881,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setVisible(true)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
         .setRotation(pose.angle)
-        .setScale(1 - Math.abs(bob) / 60, 1);
+        .setScale(S * (1 - Math.abs(bob) / 60), S);
     });
 
     if (this.locoRoot && this.locoShadow) {
@@ -940,56 +998,57 @@ export class TrackV3Scene extends Phaser.Scene {
   }
 
   private layoutTerrain(): void {
-    const ride = this.ride;
-    const span = ride
-      ? terrainSpanX(ride.startBar, ride.endBar, this.pos, this.view)
-      : null;
+    // Modes STACK: every geometry kind lays out from its own span, so a
+    // mound, a deck and a squall can all be in the world at once.
+    const spanOf = (kind: TerrainKind): { ride: V3TerrainRide; span: { x: number; width: number } } | null => {
+      const ride = this.rides.get(kind);
+      if (!ride) return null;
+      const span = terrainSpanX(ride.startBar, ride.endBar, this.pos, this.view);
+      return span && span.width > 0 ? { ride, span } : null;
+    };
+    const hill = spanOf("hill");
+    const bridge = spanOf("bridge");
+    const rain = spanOf("rain");
 
-    if (!ride || !span || span.width <= 0) {
-      this.mound?.setVisible(false);
-      this.deck?.setVisible(false);
-      this.gap?.setVisible(false);
-      this.gloom?.setVisible(false);
-      this.rainSheet?.setVisible(false);
-      this.terrainLabel?.setVisible(false);
-      return;
-    }
-
-    const x = Math.round(span.x);
-    const w = Math.round(span.width);
-
-    // Keep the caption over its own span but inside the screen, so a terrain
-    // half off the edge still reads instead of leaving a stray letter behind.
+    // Keep the caption over the NEWEST span but inside the screen, so a
+    // terrain half off the edge still reads instead of leaving a stray letter.
     const label = this.terrainLabel;
+    const newest =
+      this.newestRide && this.rides.get(this.newestRide.kind) === this.newestRide
+        ? spanOf(this.newestRide.kind)
+        : null;
     if (label) {
-      label.setText(ride.kind.toUpperCase()).setVisible(true);
-      const halfText = label.width / 2 + 20;
-      const wanted = span.x + span.width / 2;
-      const lo = Math.max(halfText, span.x + halfText);
-      const hi = Math.min(W - halfText, span.x + span.width - halfText);
-      label.setPosition(
-        Math.round(hi >= lo ? Math.min(hi, Math.max(lo, wanted)) : wanted),
-        TERRAIN_LABEL_Y,
-      );
+      if (newest) {
+        const span = newest.span;
+        label.setText(newest.ride.kind.toUpperCase()).setVisible(true);
+        const halfText = label.width / 2 + 20;
+        const wanted = span.x + span.width / 2;
+        const lo = Math.max(halfText, span.x + halfText);
+        const hi = Math.min(W - halfText, span.x + span.width - halfText);
+        label.setPosition(
+          Math.round(hi >= lo ? Math.min(hi, Math.max(lo, wanted)) : wanted),
+          TERRAIN_LABEL_Y,
+        );
+      } else {
+        label.setVisible(false);
+      }
     }
 
     // A hill: a real mound the train stands on. Stretched in x only — the
     // profile is normalized across the span, so the silhouette still matches
     // `railLift` at every point.
-    const isHill = ride.kind === "hill";
-    this.mound?.setVisible(isHill);
-    if (isHill && this.mound) {
-      this.mound.setPosition(x, RAIL_Y);
-      this.mound.setDisplaySize(w, HILL_PEAK);
+    this.mound?.setVisible(!!hill);
+    if (hill && this.mound) {
+      this.mound.setPosition(Math.round(hill.span.x), RAIL_Y);
+      this.mound.setDisplaySize(Math.round(hill.span.width), HILL_PEAK);
     }
 
     // A bridge: the ground falls away and a deck carries the rails across it.
-    const isBridge = ride.kind === "bridge";
-    this.gap?.setVisible(isBridge);
-    this.deck?.setVisible(isBridge);
-    if (isBridge && this.gap && this.deck) {
-      // Inset by the shoulder so the dark gap starts where the ground actually
-      // drops, rather than squarely at the bar line.
+    this.gap?.setVisible(!!bridge);
+    this.deck?.setVisible(!!bridge);
+    if (bridge && this.gap && this.deck) {
+      const x = Math.round(bridge.span.x);
+      const w = Math.round(bridge.span.width);
       // Girder immediately under the wheels, piers hanging into the void.
       const deckH = 170;
       this.deck.setPosition(x, RAIL_Y);
@@ -998,7 +1057,7 @@ export class TrackV3Scene extends Phaser.Scene {
       // `groundDrop` is how far the ground falls away in the physics, but a
       // void drawn past the bottom of the trestle just reads as a grey box.
       const drop = Math.min(
-        groundDrop((ride.startBar + ride.endBar) / 2, ride),
+        groundDrop((bridge.ride.startBar + bridge.ride.endBar) / 2, bridge.ride),
         deckH - 26,
       );
       this.gap.setPosition(x, RAIL_Y + 26);
@@ -1006,7 +1065,6 @@ export class TrackV3Scene extends Phaser.Scene {
     }
 
     // Rain: weather in a moving shaft, plus the sky going over.
-    const isRain = ride.kind === "rain";
     // ── weather, not a wall ────────────────────────────────────────────────
     // Two earlier passes clipped the rain to its bar span, which put a hard
     // vertical cut down the middle of the sky and read as a grey box over the
@@ -1014,11 +1072,11 @@ export class TrackV3Scene extends Phaser.Scene {
     // so the edge cannot be feathered — and a wall of rain standing on the
     // track was the wrong idea anyway. What you see coming is the CLOUD; when
     // it arrives the rain falls across the whole screen and then passes.
-    const wet = isRain ? this.wetness(span) : 0;
-    this.cloud?.setVisible(isRain);
-    if (isRain && this.cloud) {
-      this.cloud.setPosition(Math.round(x + w / 2), 250);
-      this.cloud.setDisplaySize(Math.max(320, w * 0.9), 300);
+    const wet = rain ? this.wetness(rain.span) : 0;
+    this.cloud?.setVisible(!!rain);
+    if (rain && this.cloud) {
+      this.cloud.setPosition(Math.round(rain.span.x + rain.span.width / 2), 250);
+      this.cloud.setDisplaySize(Math.max(320, rain.span.width * 0.9), 300);
     }
     this.gloom?.setVisible(wet > 0.01);
     if (wet > 0.01 && this.gloom) {
@@ -1062,8 +1120,11 @@ export class TrackV3Scene extends Phaser.Scene {
       this.barAtX(now ? now.centreX : playheadX(this.view)),
       WHEELBASE_BARS, this.span, this.view.barWidth,
     );
-    const span = this.ride
-      ? terrainSpanX(this.ride.startBar, this.ride.endBar, this.pos, this.view)
+    // The probe reports the NEWEST ride — with stacking there can be several,
+    // and "the one the kid just picked" is what the tests reason about.
+    const newest = this.newestRide;
+    const span = newest
+      ? terrainSpanX(newest.startBar, newest.endBar, this.pos, this.view)
       : null;
     return {
       pos: this.pos,
@@ -1072,7 +1133,7 @@ export class TrackV3Scene extends Phaser.Scene {
       soundingCarX: now ? now.centreX : null,
       soundingCarY: now ? RAIL_Y - pose.lift : null,
       soundingCarAngle: pose.angle,
-      terrain: span && this.ride ? { ...span, kind: this.ride.kind } : null,
+      terrain: span && newest ? { ...span, kind: newest.kind } : null,
     };
   }
 

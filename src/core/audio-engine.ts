@@ -12,8 +12,9 @@ import { resolveInstrument } from "./instruments.ts";
 import {
   DEFAULT_HOLD_BARS,
   LATCH_HOLD_BARS,
-  NEUTRAL_TERRAIN,
+  combineModes,
   terrainEffect,
+  type ModeKind,
   type TerrainKind,
   type TerrainRide,
 } from "./terrain.ts";
@@ -46,8 +47,10 @@ export class AudioEngine {
     this.sound.setTempo(bpm);
   }
 
-  /** The terrain currently LATCHED on, or null on flat ground. */
-  private latchedTerrain: TerrainKind | null = null;
+  /** Every ride mode currently LATCHED on — they STACK (a night ride through
+   *  rain on a hill in a tiny train is one combined effect). Empty = flat,
+   *  dry, normal ground. */
+  private readonly latched = new Set<ModeKind>();
 
   /** Ride through a terrain: it lands on the NEXT bar, holds for `holdBars`,
    *  then the world goes back to normal. Ephemeral by design — no `Command`, no
@@ -68,38 +71,45 @@ export class AudioEngine {
     return span ? { kind, ...span } : null;
   }
 
-  /** LATCH a terrain: tap it on, tap it off (Eric, 2026-08-13 — terrains used
-   *  to expire after two bars). On = the effect lands on the next bar and
-   *  holds until toggled (the revert event sits `LATCH_HOLD_BARS` out, and a
-   *  later toggle's generation supersedes it). Tapping the latched kind puts
-   *  the world back to flat at the next bar; tapping a different kind
-   *  switches to it. Returns the new latch state plus where the change lands,
-   *  so the Track can draw it — the bar always comes FROM the transport
-   *  (charter A4), never from where the train is drawn. */
-  toggleTerrain(
-    kind: TerrainKind,
+  /** LATCH a ride mode: tap it on, tap it off, stack as many as you like
+   *  (Eric, 2026-08-13). Each toggle recomputes the ONE combined effect from
+   *  everything still latched (`combineModes` — tempo scales multiply, sends
+   *  take the max) and lands it on the next bar; the hold sits
+   *  `LATCH_HOLD_BARS` out and each toggle's generation supersedes the last,
+   *  so toggling the final mode off IS the revert (the empty set combines to
+   *  neutral). Returns whether the toggled kind is now on, plus where the
+   *  change lands — the bar always comes FROM the transport (charter A4),
+   *  never from where the train is drawn. */
+  toggleMode(
+    kind: ModeKind,
     project: Project,
-  ): { active: TerrainKind | null; atBar: number | null } {
-    if (!this.started || !this.playing) return { active: this.latchedTerrain, atBar: null };
-    const turningOff = this.latchedTerrain === kind;
+  ): { on: boolean; atBar: number | null } {
+    if (!this.started || !this.playing) return { on: this.latched.has(kind), atBar: null };
+    const wasOn = this.latched.has(kind);
+    if (wasOn) this.latched.delete(kind);
+    else this.latched.add(kind);
     const span = this.sound.scheduleTerrain(
-      turningOff ? NEUTRAL_TERRAIN : terrainEffect(kind),
+      combineModes(this.latched, kind),
       LATCH_HOLD_BARS,
       project.tempoBpm,
     );
-    if (!span) return { active: this.latchedTerrain, atBar: null };
-    this.latchedTerrain = turningOff ? null : kind;
-    return { active: this.latchedTerrain, atBar: span.startBar };
+    if (!span) {
+      // The transport refused (not started): undo the flip so state stays true.
+      if (wasOn) this.latched.add(kind);
+      else this.latched.delete(kind);
+      return { on: this.latched.has(kind), atBar: null };
+    }
+    return { on: !wasOn, atBar: span.startBar };
   }
 
-  get terrainLatched(): TerrainKind | null {
-    return this.latchedTerrain;
+  get latchedModes(): ReadonlySet<ModeKind> {
+    return this.latched;
   }
 
   /** Drop any terrain and return to flat ground now. */
   clearTerrain(): void {
     if (!this.started) return;
-    this.latchedTerrain = null;
+    this.latched.clear();
     this.sound.clearTerrain();
   }
 
@@ -276,8 +286,8 @@ export class AudioEngine {
   stop(): void {
     this.sound.stopTransport();
     this.playing = false;
-    // A latch is a property of the RIDE; stopping the ride is flat ground.
-    this.latchedTerrain = null;
+    // Latches are a property of the RIDE; stopping the ride is flat ground.
+    this.latched.clear();
   }
 
   /** Alias for `stop()` — reads clearer at call sites that mean "silence all". */

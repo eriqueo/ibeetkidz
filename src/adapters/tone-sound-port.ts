@@ -50,6 +50,10 @@ import { encodeWav } from "./wav.ts";
  *  discarded — see startRecording: the kid still gets the sound they made. */
 export const MAX_RECORD_SEC = 30;
 
+/** The tunnel low-pass's travel: fully open (audibly absent) to shut. */
+const MUFFLE_OPEN_HZ = 18000;
+const MUFFLE_SHUT_HZ = 600;
+
 /** A raw-sample recorder over a MediaStream (see openStreamTap): start/stop
  *  gates collection; stop returns the gathered stereo frames at `sampleRate`. */
 interface StreamTap {
@@ -345,7 +349,12 @@ export class ToneSoundPort implements SoundPort {
   // off `tempoBpm`, so scaling here can never mint a new cache entry.
   private tempoScale = 1;
   private terrainFx?:
-    | { reverb: Tone.Reverb; grit: Tone.Distortion }
+    | {
+        reverb: Tone.Reverb;
+        grit: Tone.Distortion;
+        muffle: Tone.Filter;
+        echo: Tone.FeedbackDelay;
+      }
     | undefined;
   private terrainChainReady?: Promise<void> | undefined;
   /** Bumped per `scheduleTerrain` so a superseded ride's revert can't fire. */
@@ -1388,8 +1397,22 @@ export class ToneSoundPort implements SoundPort {
           wet: 0,
           context: this.liveCtx,
         });
-        this.liveDestination.chain(grit, reverb);
-        this.terrainFx = { reverb, grit };
+        // The tunnel pair: a low-pass that starts fully open, and a slap echo
+        // that starts dry. Muffle sits FIRST so the tunnel's echoes come back
+        // muffled too — a tunnel answers in its own voice.
+        const muffle = new Tone.Filter({
+          frequency: MUFFLE_OPEN_HZ,
+          type: "lowpass",
+          context: this.liveCtx,
+        });
+        const echo = new Tone.FeedbackDelay({
+          delayTime: "8n",
+          feedback: 0.35,
+          wet: 0,
+          context: this.liveCtx,
+        });
+        this.liveDestination.chain(muffle, echo, grit, reverb);
+        this.terrainFx = { reverb, grit, muffle, echo };
       } catch {
         // Terrain is a garnish; booting the app is not. If this environment
         // can't give us a reverb or an AudioWorklet, the kid still gets the
@@ -1420,6 +1443,11 @@ export class ToneSoundPort implements SoundPort {
     if (!fx) return;
     fx.reverb.wet.rampTo(clampSend(effect.reverb), sendRamp);
     fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp);
+    // Muffle maps 0..1 onto an open→shut low-pass sweep (quadratic, so the
+    // first half of the knob is gentle and the tunnel end really closes down).
+    const open = 1 - clampSend(effect.muffle);
+    fx.muffle.frequency.rampTo(MUFFLE_SHUT_HZ + open * open * (MUFFLE_OPEN_HZ - MUFFLE_SHUT_HZ), sendRamp);
+    fx.echo.wet.rampTo(clampSend(effect.echo) * 0.5, sendRamp);
   }
 
   /** Ticks → seconds on the PINNED transport. `Tone.Ticks(...).toSeconds()`

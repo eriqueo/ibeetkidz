@@ -10,7 +10,13 @@ import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 import { laneGroup } from "../core/lane-color.ts";
 import { laneSprite } from "../game/instrument-station.ts";
-import { LATCH_UNIT_BARS, type TerrainRide } from "../core/terrain.ts";
+import {
+  LATCH_UNIT_BARS,
+  TERRAIN_KINDS,
+  isModeKind,
+  type TerrainKind,
+  type TerrainRide,
+} from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
@@ -83,10 +89,13 @@ export const Track: FC = () => {
   const projectRef = useRef(project);
   projectRef.current = project;
 
-  // The latched terrain's CURRENT visual unit span. Audio holds by itself
-  // (the latch's revert sits far out); this is only which mound/deck/squall
-  // is drawn, advanced unit by unit in the tick below while the latch holds.
-  const latchedRideRef = useRef<TerrainRide | null>(null);
+  // Each latched GEOMETRY mode's current visual unit span (hill/bridge/rain —
+  // the modes with world geometry; night/tunnel/tiny/giant are shades and
+  // scale, not spans). Audio holds by itself (the latch's revert sits far
+  // out); these are only which mound/deck/squall is drawn, advanced unit by
+  // unit in the tick below while latched. A toggled-off kind keeps a CLOSED
+  // span here briefly so its tail scrolls away; the tick prunes it.
+  const latchedRidesRef = useRef(new Map<TerrainKind, TerrainRide>());
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     if (scene instanceof TrackV3Scene) {
@@ -118,12 +127,24 @@ export const Track: FC = () => {
       dispatch({ type: "setTempo", bpm });
       engine.setTempo(bpm);
     };
+    // Push the whole latched-mode picture into the v3 scene in one place, so
+    // the buttons, the shades, the train's size and the drawn spans can never
+    // disagree about what is on.
+    const pushModesToScene = () => {
+      const v3 = v3Ref.current;
+      if (!v3) return;
+      const modes = engine.latchedModes;
+      v3.setTerrainRides([...latchedRidesRef.current.values()]);
+      v3.setModeLatched(new Set(modes));
+      v3.setNightTunnel(modes.has("night"), modes.has("tunnel"));
+      v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
+    };
+
     const onPlay = () => engine.playRide(projectRef.current);
     const onStop = () => {
-      engine.stop(); // also drops any terrain latch — flat ground on stop
-      latchedRideRef.current = null;
-      v3Ref.current?.setTerrainLatched(null);
-      v3Ref.current?.setTerrainRide(null);
+      engine.stop(); // also drops every mode latch — flat ground on stop
+      latchedRidesRef.current.clear();
+      pushModesToScene();
     };
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
     const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
@@ -153,33 +174,38 @@ export const Track: FC = () => {
       engine.stop();
       dispatchAll(cmds, "The whole train");
     };
-    // Terrain: a physical thing the train rides through, heard as a change to
-    // the song. LATCHED now — tap on, tap off (Eric: "last for longer, or
-    // have the option to toggle"). The bar a change lands on is resolved from
-    // the TRANSPORT inside the adapter — never from where the train happens
-    // to be drawn (charter A4). The oval keeps its momentary flash.
+    // A ride mode toggled: LATCHED, STACKING — every mode is independent, tap
+    // on, tap off, pile them up (Eric, 2026-08-13). The bar a change lands on
+    // is resolved from the TRANSPORT inside the adapter — never from where
+    // the train happens to be drawn (charter A4).
+    const onMode = (kind: string) => {
+      if (!isModeKind(kind) || !v3Ref.current) return;
+      const { on, atBar } = engine.toggleMode(kind, projectRef.current);
+      if (atBar === null) return; // not riding — a mode needs a train
+      if ((TERRAIN_KINDS as readonly string[]).includes(kind)) {
+        const geo = kind as TerrainKind;
+        const rides = latchedRidesRef.current;
+        if (on) {
+          // A fresh unit span from the landing bar; the tick below keeps
+          // re-arming units while the latch holds.
+          rides.set(geo, { kind: geo, startBar: atBar, endBar: atBar + LATCH_UNIT_BARS });
+        } else {
+          // Off: close the visible span at the bar the change lands, so the
+          // mound's tail scrolls away instead of vanishing; the tick prunes.
+          const open = rides.get(geo);
+          if (open) rides.set(geo, { ...open, endBar: Math.min(open.endBar, atBar) });
+        }
+      }
+      pushModesToScene();
+    };
+    // Terrain events from chrome that predates modes: the oval's momentary
+    // flash. The v3 job bar emits `track-mode-toggled` instead.
     const onTerrain = (kind: string) => {
       if (!isTerrainKind(kind)) return;
       if (v3Ref.current) {
-        const { active, atBar } = engine.toggleTerrain(kind, projectRef.current);
-        if (atBar === null) return; // not riding — a terrain needs a train
-        if (active) {
-          // On (or switched): a fresh unit span from the landing bar; the
-          // tick below keeps re-arming units while the latch holds.
-          const ride = { kind: active, startBar: atBar, endBar: atBar + LATCH_UNIT_BARS };
-          latchedRideRef.current = ride;
-          v3Ref.current.setTerrainRide(ride);
-        } else {
-          // Off: close the visible span at the bar flat ground lands on, so
-          // the mound's tail scrolls away instead of vanishing.
-          const open = latchedRideRef.current;
-          latchedRideRef.current = null;
-          if (open) v3Ref.current.setTerrainRide({ ...open, endBar: atBar });
-        }
-        v3Ref.current.setTerrainLatched(active);
+        onMode(kind);
         return;
       }
-      // The oval: the original momentary flash, unchanged.
       if (engine.applyTerrain(kind, projectRef.current)) {
         sceneRef.current?.showTerrain?.(kind);
       }
@@ -197,6 +223,7 @@ export const Track: FC = () => {
     EventBus.on("track-car-edit", onCarEdit);
     EventBus.on("track-clear-train", onClearTrain);
     EventBus.on("terrain-picked", onTerrain);
+    EventBus.on("track-mode-toggled", onMode);
     EventBus.on("track-backwards-toggled", onBackwards);
     return () => {
       EventBus.off("transport-play", onPlay);
@@ -207,6 +234,7 @@ export const Track: FC = () => {
       EventBus.off("track-car-edit", onCarEdit);
       EventBus.off("track-clear-train", onClearTrain);
       EventBus.off("terrain-picked", onTerrain);
+      EventBus.off("track-mode-toggled", onMode);
       EventBus.off("track-backwards-toggled", onBackwards);
     };
   }, [dispatch, dispatchAll, engine]);
@@ -291,20 +319,29 @@ export const Track: FC = () => {
           // terrain scheduled at bar 37 is drawn at bar 37.
           const bar = engine.getTransportBar?.() ?? 0;
           v3scene.setSongPosition(bar + frac);
-          // A LATCHED terrain re-arms its visual unit as the train crosses
-          // each span boundary: mound after mound is a mountain range, deck
-          // after deck a viaduct. The profile returns to ground at every unit
-          // edge, so the handoff between units is seamless.
-          const open = latchedRideRef.current;
-          if (open && engine.terrainLatched === open.kind && bar >= open.endBar) {
-            const next = {
-              kind: open.kind,
-              startBar: open.endBar,
-              endBar: open.endBar + LATCH_UNIT_BARS,
-            };
-            latchedRideRef.current = next;
-            v3scene.setTerrainRide(next);
+          // Each LATCHED geometry mode re-arms its visual unit as the train
+          // crosses its span boundary: mound after mound is a mountain range,
+          // deck after deck a viaduct. The profile returns to ground at every
+          // unit edge, so the handoff between units is seamless. Closed spans
+          // (toggled off) are pruned once they have scrolled well past.
+          const rides = latchedRidesRef.current;
+          let changed = false;
+          for (const [geo, open] of rides) {
+            if (engine.latchedModes.has(geo)) {
+              if (bar >= open.endBar) {
+                rides.set(geo, {
+                  kind: geo,
+                  startBar: open.endBar,
+                  endBar: open.endBar + LATCH_UNIT_BARS,
+                });
+                changed = true;
+              }
+            } else if (bar > open.endBar + 4) {
+              rides.delete(geo);
+              changed = true;
+            }
           }
+          if (changed) v3scene.setTerrainRides([...rides.values()]);
         }
       }
       const scene = sceneRef.current;

@@ -57,6 +57,10 @@ export interface EventMap {
   // Phaser -> React (Track v3): the BACKWARDS switch — everything sampled
   // plays tape-reversed until toggled again. A performance, never saved.
   "track-backwards-toggled": [];
+  // Phaser -> React (Track v3): a ride-mode switch on the job bar — the
+  // geometry trio plus night/tunnel/tiny/giant. Latching and STACKING; the
+  // payload is a `ModeKind`. A performance, never saved.
+  "track-mode-toggled": [kind: string];
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.

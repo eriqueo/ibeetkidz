@@ -1925,3 +1925,30 @@ way, or the little loco mirrored driving in reverse. Name it
 `src/assets/sprites/track3/` and the scene's drop-a-PNG seam takes it; add a
 LATCHED (on) state variant `btn-backwards-on.png` if a third frame is cheap —
 the code currently shows the latch as a gold wash.
+
+## AR-049 · The mode switches: NIGHT / TUNNEL / TINY / GIANT — buttons + world washes — HIGH
+
+The Track's job bar is eight latching, STACKING switches now (2026-08-13):
+the geometry trio, then NIGHT, TUNNEL, TINY, GIANT, then BACKWARDS (AR-048).
+The four new modes render as keycap fallbacks; the bar sits eight-across on
+`panel-transport-v2`'s parchment (slots ≈ 208 px wide, centres at
+x = 400 + (i + 0.5)·1664/8, i = 3..6).
+
+**1. Four picture buttons**, same family and size as `btn-hill`/`btn-bridge`/
+`btn-rain` (260 × 120, idle + pressed), named `btn-night`, `btn-tunnel`,
+`btn-tiny`, `btn-giant` (+ `-pressed`) in `src/assets/sprites/track3/` — the
+drop-a-PNG seam takes them, and they will draw at ~0.72 scale in the slot.
+Non-reader reads: a moon-and-stars sky (night), a tunnel mouth in a hillside
+(tunnel), the loco drawn wee with a mouse beside it (tiny), the loco drawn
+huge with a dino silhouette (giant). NOTE the buttons latch: the code holds a
+gold wash on a latched switch, so keep the idle art readable under tint.
+
+**2. World washes (lower priority, replaces flat rects):** while NIGHT is
+latched the scene shows a flat dark-blue full-screen rectangle, and TUNNEL a
+near-black one. Painted versions would be: a night sky band (stars, a moon —
+same 512-wide tiling contract as `trk-sky`, key `trk-sky-night`) and a tunnel
+treatment (a scrolling rock-wall foreground strip + roof band). Ask before
+building the tunnel one — it may want its own design round with Eric.
+
+Reminder that **AR-048 (the BACKWARDS lever)** is already queued and unblocks
+the eighth slot's art; nothing about it changed.

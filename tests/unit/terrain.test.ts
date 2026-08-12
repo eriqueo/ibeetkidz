@@ -7,6 +7,7 @@ import {
   beatSeconds,
   clampSend,
   clampTempoScale,
+  combineModes,
   isTerrainKind,
   rampSeconds,
   terrainEffect,
@@ -106,5 +107,46 @@ describe("terrain guards", () => {
       expect(clampSend(e.reverb)).toBe(e.reverb);
       expect(clampSend(e.grit)).toBe(e.grit);
     }
+  });
+});
+
+describe("combineModes (stacking latches)", () => {
+  it("the empty set is exactly flat, dry, normal ground", () => {
+    expect(combineModes([])).toEqual(NEUTRAL_TERRAIN);
+  });
+
+  it("tempo scales MULTIPLY and sends take the MAX", () => {
+    const both = combineModes(["hill", "rain"], "rain");
+    expect(both.tempoScale).toBeCloseTo(TERRAIN.hill.tempoScale * TERRAIN.rain.tempoScale);
+    expect(both.reverb).toBe(Math.max(TERRAIN.hill.reverb, TERRAIN.rain.reverb));
+    expect(both.grit).toBe(Math.max(TERRAIN.hill.grit, TERRAIN.rain.grit));
+  });
+
+  it("a stacked tempo stays inside the transport-safe clamp", () => {
+    // night × giant × hill multiplies well under the floor; the clamp holds.
+    const slow = combineModes(["night", "giant", "hill"], "hill");
+    expect(slow.tempoScale).toBe(clampTempoScale(TERRAIN.night.tempoScale * TERRAIN.giant.tempoScale * TERRAIN.hill.tempoScale));
+    expect(slow.tempoScale).toBeGreaterThanOrEqual(0.25);
+  });
+
+  it("tiny against a hill cancels toward normal — the joke is deliberate", () => {
+    const funny = combineModes(["tiny", "hill"], "tiny");
+    expect(funny.tempoScale).toBeCloseTo(TERRAIN.tiny.tempoScale * TERRAIN.hill.tempoScale);
+  });
+
+  it("the ramp is the TOGGLED kind's own, whatever else is latched", () => {
+    expect(combineModes(["hill", "bridge"], "bridge").rampBeats).toBe(TERRAIN.bridge.rampBeats);
+    expect(combineModes(["hill", "bridge"], "hill").rampBeats).toBe(TERRAIN.hill.rampBeats);
+    // Toggling the last mode OFF still ramps at that mode's pace.
+    expect(combineModes([], "tunnel").rampBeats).toBe(TERRAIN.tunnel.rampBeats);
+  });
+
+  it("the tunnel actually muffles and echoes; night rolls the top off gently", () => {
+    const tunnel = combineModes(["tunnel"], "tunnel");
+    expect(tunnel.muffle).toBeGreaterThan(0.5);
+    expect(tunnel.echo).toBeGreaterThan(0);
+    const night = combineModes(["night"], "night");
+    expect(night.muffle).toBeGreaterThan(0);
+    expect(night.muffle).toBeLessThan(tunnel.muffle);
   });
 });
