@@ -58,29 +58,35 @@ async function openWorkshop(page: Page): Promise<string[]> {
   return crashes;
 }
 
-test("Beat Maker: tapping a step creates that drum's lane and lands the note", async ({ page }) => {
+test("Percussion editor: the frog's grid works the car's REAL drum lanes", async ({ page }) => {
+  // The old Beat Maker kept ten fixed rows over synthetic `beat-*` lanes — a
+  // second percussion surface that could disagree with the car. The revamp's
+  // whole contract is that the grid IS the car: its shelf adds real lanes and
+  // its cells write through the same event the chalkboard uses.
   const crashes = await openWorkshop(page);
   await emit(page, "workshop-open-tool", "beat-grid");
   await expect.poll(() => activeTool(page)).toBe("beat-grid");
 
-  // First tap on a drum that has no lane yet must CREATE the lane (clip + layer)
-  // and set the step — not silently do half of it.
-  await emit(page, "tool-beat-toggle", "kick", 0);
-  await expect.poll(async () => (await layers(page)).some((l) => l.id === "beat-kick")).toBe(true);
-  let kick = (await layers(page)).find((l) => l.id === "beat-kick");
-  expect(kick.steps[0], "the tap that made the lane must also land its note").not.toBeNull();
+  const drumLanes = async () => (await layers(page)).filter((l: any) => l.kind === "drum");
+
+  // The drum shelf adds a REAL lane to the car (same event as the floor frog).
+  await emit(page, "workshop-instrument-added", "drum", "kick");
+  await expect.poll(async () => (await drumLanes()).length).toBe(1);
+  const kickId = (await drumLanes())[0].id;
+
+  // A cell toggle reaches the lane through the chalkboard's own vocabulary.
+  await emit(page, "workshop-cell-toggled", { layerId: kickId, stepIndex: 0, on: true });
+  await expect.poll(async () => (await layers(page)).find((l) => l.id === kickId).steps[0] != null).toBe(true);
 
   // A second drum gets its OWN lane rather than joining the first.
-  await emit(page, "tool-beat-toggle", "snare", 4);
-  await expect.poll(async () => (await layers(page)).some((l) => l.id === "beat-snare")).toBe(true);
-  expect((await layers(page)).find((l) => l.id === "beat-snare").steps[4]).not.toBeNull();
+  await emit(page, "workshop-instrument-added", "drum", "snare");
+  await expect.poll(async () => (await drumLanes()).length).toBe(2);
 
-  // Toggling the same cell again clears it, and does NOT delete the lane —
-  // an emptied drum row the kid is still editing must stay on the board.
-  await emit(page, "tool-beat-toggle", "kick", 0);
-  kick = (await layers(page)).find((l) => l.id === "beat-kick");
-  expect(kick, "clearing the last step must not remove the lane").toBeDefined();
-  expect(kick.steps[0]).toBeNull();
+  // Clearing the cell does NOT delete the lane — an emptied drum row the kid
+  // is still editing must stay on the board.
+  await emit(page, "workshop-cell-toggled", { layerId: kickId, stepIndex: 0, on: false });
+  await expect.poll(async () => (await layers(page)).find((l) => l.id === kickId).steps[0] == null).toBe(true);
+  expect((await layers(page)).some((l) => l.id === kickId)).toBe(true);
 
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
@@ -150,13 +156,20 @@ test("every instrument character's panel opens and closes cleanly", async ({ pag
   // tool-opening ones in sequence, which is the state machine most likely to
   // strand a panel open behind another.
   const crashes = await openWorkshop(page);
-  for (const tool of ["beat-grid", "record-voicefx", "voice-keys", "sound-pads", "theremin-xy"]) {
+  for (const tool of ["beat-grid", "record-voicefx", "voice-keys", "theremin-xy"]) {
     await emit(page, "workshop-open-tool", tool);
     await expect.poll(() => activeTool(page), { message: `${tool} did not open` }).toBe(tool);
   }
   // Whatever is open closes on the shared `tool-closed` signal.
   await emit(page, "tool-closed");
   await expect.poll(() => activeTool(page)).toBeNull();
+
+  // The conductor's slot is NOT a panel: it opens the whole-train chalkboard
+  // (the meta view), which is the raccoon-to-conductor rework's contract.
+  await emit(page, "workshop-open-tool", "sound-pads");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible))
+    .toBe(true);
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 
@@ -166,9 +179,11 @@ test("Sound Pads: a pad tap puts that sound in the car, as ONE undo step", async
   // Pads the only Workshop instrument whose panel could not put anything in the
   // car — so nothing a kid tapped in here ever looped, or survived the panel
   // closing. Runs everywhere: the outcome is Project state, not sound.
+  //
+  // The PANEL is parked (the conductor took its slot), but the pad HANDLER —
+  // and its one-undo-step guarantee — still stands and still needs this pin
+  // until the sound library finds its new home (AR-045's engineering note).
   const crashes = await openWorkshop(page);
-  await emit(page, "workshop-open-tool", "sound-pads");
-  await expect.poll(() => activeTool(page)).toBe("sound-pads");
 
   const laneIds = async (): Promise<string[]> => (await layers(page)).map((l) => l.id);
 
@@ -218,8 +233,6 @@ test("Sound Pads: refuses to add a lane the chalkboard cannot show", async ({ pa
   // itself, not to enforce it — the reducer does that for all ten `addLayer`
   // call sites — but so the kid is TOLD the car is full before they tap.
   const crashes = await openWorkshop(page);
-  await emit(page, "workshop-open-tool", "sound-pads");
-  await expect.poll(() => activeTool(page)).toBe("sound-pads");
 
   for (const id of ["kick", "snare", "hihat", "clap", "tom", "cowbell", "openhat", "rim"]) {
     await emit(page, "tool-pads-play", `builtin:${id}`);
@@ -243,8 +256,6 @@ test("Sound Pads and the Magic Pad reach the speakers", async ({ page }) => {
   const peak = () =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.audioDiag().masterPeak as number);
 
-  await emit(page, "workshop-open-tool", "sound-pads");
-  await expect.poll(() => activeTool(page)).toBe("sound-pads");
   const drum = await page.evaluate(() => {
     const p = (window as any).__ibeetkidz_test__.getProject();
     return p ? "builtin:kick" : "";
@@ -255,7 +266,6 @@ test("Sound Pads and the Magic Pad reach the speakers", async ({ page }) => {
     .toBeGreaterThan(0);
 
   // Magic Pad: dragging voices a live theremin.
-  await emit(page, "workshop-open-tool", "sound-pads"); // close
   await emit(page, "workshop-open-tool", "theremin-xy");
   await emit(page, "tool-magic-pointer", "down", 0.5, 0.5);
   await emit(page, "tool-magic-pointer", "move", 0.7, 0.3);

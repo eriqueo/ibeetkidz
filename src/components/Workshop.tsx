@@ -22,11 +22,11 @@ import {
 import { STATION_LABEL, STATION_VOICE, laneSprite } from "../game/instrument-station.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
 import { carLiveries } from "../core/car-identity.ts";
-import { BUILTIN_SOUNDS, DRUM_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
+import { BUILTIN_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { WORKSHOP_GRID_V2 } from "../game/scene-layout.ts";
-import { WorkshopScene, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
+import { WorkshopScene, type WorkshopCrewMember, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
 import { type ToolModel } from "../game/tool-panels.ts";
 
 type RecPhase = "idle" | "opening" | "recording" | "stopping";
@@ -121,6 +121,26 @@ export const Workshop: FC = () => {
       const badge = builtin ? builtin.emoji : null;
       return { id: layer.id, label, badge, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
+    // The crew: ONE character per instrument, not one per lane. All drum lanes
+    // fold into the frog (its tap opens the percussion grid, which shows them
+    // all); each melody character rides once and its tap opens ITS editor.
+    crew: (() => {
+      const crew: WorkshopCrewMember[] = [];
+      for (const layer of layers.slice(0, VISIBLE_LANE_CAP)) {
+        if (layer.kind === "drum") {
+          if (!crew.some((c) => c.action.kind === "percussion")) {
+            crew.push({ key: "inst-drums", action: { kind: "percussion" } });
+          }
+          continue;
+        }
+        const clip = project.clips[layer.clipId];
+        const key = laneSprite(layer.station, laneGroup(layer.kind, clip));
+        if (!crew.some((c) => c.key === key)) {
+          crew.push({ key, action: { kind: "melody", layerId: layer.id } });
+        }
+      }
+      return crew;
+    })(),
     carType: part.carType,
     // The LCD shows WHICH car this is — its name and its livery mark, the same
     // mark the Yard paints on its flank. That pairing is the only thing that
@@ -181,11 +201,26 @@ export const Workshop: FC = () => {
         inCar: inCar.has(c.id),
       })),
     ];
-    const beat = DRUM_SOUNDS.map((d) => {
-      const layer = layers.find((l) => l.id === `beat-${d.assetId}`);
-      const cells = Array.from({ length: STEP_COUNT }, (_, i) => (layer?.steps[i] ?? null) != null);
-      return { id: d.assetId, emoji: d.emoji, cells };
-    });
+    // The percussion editor's rows ARE the car's drum lanes — same cells, same
+    // ids, same badge emojis as the chalkboard, one producer for both.
+    const percussion = {
+      rows: layers
+        .filter((l) => l.kind === "drum")
+        .map((l) => {
+          const clip = project.clips[l.clipId];
+          const builtin = clip?.source.kind === "builtin"
+            ? BUILTIN_SOUNDS.find((s) => s.assetId === (clip.source as { assetId: string }).assetId)
+            : undefined;
+          return {
+            id: l.id,
+            emoji: builtin?.emoji ?? (clip?.source.kind === "recording" ? "🎤" : "🥁"),
+            color: laneColor(l.kind, clip),
+            cells: Array.from({ length: STEP_COUNT }, (_, i) => l.steps[i] != null),
+            muted: l.muted ?? false,
+          };
+        }),
+      canAdd: layers.length < VISIBLE_LANE_CAP,
+    };
     const keyLabels = Array.from({ length: MELODY_ROWS }, (_, row) =>
       degreeToNote(project.scaleId, project.keyId, row).replace(/\d/, ""));
     const editLayer = editMelodyId ? layers.find((l) => l.id === editMelodyId) : undefined;
@@ -196,7 +231,7 @@ export const Workshop: FC = () => {
       keys: { hasClip: has(keysClipId), status: keysStatus, keyLabels, onHome: onHome(keysClipId) },
       pads,
       padsFull: layers.length >= VISIBLE_LANE_CAP,
-      beat,
+      percussion,
       magic: { recording: magicRecording, hasClip: has(magicClipId), onHome: onHome(magicClipId), status: magicStatus },
       melody: {
         active: !!editLayer,
@@ -282,7 +317,19 @@ export const Workshop: FC = () => {
     const onToolClosed = (): void => { setOpenTool(null); setEditMelodyId(null); };
 
     // Painted toolbar: nav + new car + surprise + open a tool panel.
-    const onOpenTool = (toolId: string | null): void => setOpenTool((cur) => (cur === toolId ? null : toolId));
+    //
+    // "sound-pads" is the CONDUCTOR's slot now (Eric, 2026-08-12): the raccoon
+    // becomes a train conductor whose tap opens the whole-train chalkboard —
+    // the meta view — while every instrument character opens its own editor.
+    // The Sound Pads panel this retires was the only surface listing PAST
+    // recordings; that gap is logged in ART_REQUESTS AR-045's note.
+    const onOpenTool = (toolId: string | null): void => {
+      if (toolId === "sound-pads") {
+        EventBus.emit("workshop-open-board");
+        return;
+      }
+      setOpenTool((cur) => (cur === toolId ? null : toolId));
+    };
     const onNav = (view: AppView): void => dispatch({ type: "setActiveView", view });
     // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
     const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
@@ -556,20 +603,6 @@ export const Workshop: FC = () => {
       }
     };
 
-    // Beat Maker ───────────────────────────────────────────
-    const onBeatToggle = (drumId: string, step: number): void => {
-      const id = `beat-${drumId}`;
-      const drum = DRUM_SOUNDS.find((d) => d.assetId === drumId);
-      const p = getProject();
-      const clip: Clip = { id, source: { kind: "builtin", assetId: drumId }, effects: [], color: drum?.color ?? "#888", label: drum?.label ?? drumId };
-      if (!p.clips[id]) dispatch({ type: "addClip", clip });
-      const layer = activeLayers(p).find((l) => l.id === id);
-      if (!layer) dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "drums" }) });
-      const wasOn = (layer?.steps[step] ?? null) != null;
-      dispatch({ type: "toggleStep", layerId: id, index: step });
-      if (!wasOn) sound.play(clip);
-    };
-
     // Magic Pad ────────────────────────────────────────────
     const onMagicPointer = (phase: "down" | "move" | "up", x: number, y: number): void => {
       if (phase === "down") { sound.thereminOn(); sound.setThereminXY(x, 1 - y); }
@@ -627,7 +660,7 @@ export const Workshop: FC = () => {
       ["tool-lane-volume", onLaneVolume], ["tool-lane-volume-done", onLaneVolumeDone],
       ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],
-      ["tool-pads-play", onPadsPlay], ["tool-beat-toggle", onBeatToggle],
+      ["tool-pads-play", onPadsPlay],
       ["tool-magic-pointer", onMagicPointer], ["tool-magic-wave", onMagicWave],
       ["tool-magic-record", onMagicRecord], ["tool-magic-send", onMagicSend],
     ] as const;

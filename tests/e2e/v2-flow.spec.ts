@@ -145,11 +145,11 @@ test("Workshop chrome hit-tests its art, not its transparent padding", async ({ 
   }
 });
 
-test("Workshop: a lane rides the car, and tapping it opens the sequencer", async ({ page }) => {
-  // The chalkboard used to be bolted across the car's whole interior: it hid the
-  // art, and the instrument characters on the workshop floor overlapped its
-  // lowest rows so those lanes could not be tapped at all. It is a popup now,
-  // and each lane stands in the car as its own character.
+test("Workshop: a character rides the car, and tapping it opens ITS editor", async ({ page }) => {
+  // One character per instrument, and a tap goes STRAIGHT to that character's
+  // editor (Eric: "when I click the husky, I should be taken to the husky's
+  // instrument editor" — not the whole-train board). The board is the
+  // CONDUCTOR's view now, from the floor slot the raccoon used to hold.
   //
   // This taps a rider with a REAL canvas click, at the centre of its art. That
   // is the part no unit test reaches: the crew is built, placed and given a
@@ -161,7 +161,11 @@ test("Workshop: a lane rides the car, and tapping it opens the sequencer", async
 
   const scene = () => page.evaluate(() => {
     const s = (window as any).__ibeetkidz_test__.getScene();
-    return { open: s.boardVisible as boolean, riders: s.riderPoints as { x: number; y: number }[] };
+    return {
+      open: s.boardVisible as boolean,
+      tool: (s.activeTool ?? null) as string | null,
+      riders: s.riderPoints as { key: string; x: number; y: number }[],
+    };
   });
 
   // An empty car has no crew and no board to open.
@@ -186,6 +190,11 @@ test("Workshop: a lane rides the car, and tapping it opens the sequencer", async
     };
   });
   await page.mouse.click(point.x, point.y);
+  await expect.poll(async () => (await scene()).tool).toBe("melody-editor");
+  await emit(page, "tool-closed");
+
+  // The conductor's slot opens the whole-train chalkboard.
+  await emit(page, "workshop-open-tool", "sound-pads");
   await expect.poll(async () => (await scene()).open).toBe(true);
 
   // …and deleting the last lane puts the car back on screen rather than leaving

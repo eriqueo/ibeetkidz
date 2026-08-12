@@ -84,6 +84,10 @@ export interface V3Car {
   readonly livery: number;
   readonly carType: CarType;
   readonly muted: boolean;
+  /** The crew riding this car — UI_SPRITES keys, one character per instrument
+   *  (same collapse rule the Workshop crew uses: all percussion = the frog).
+   *  Drawn standing on the roof until AR-042's riding poses land. */
+  readonly crew: readonly string[];
 }
 
 /** Body art per car type. The art is drawn WITHOUT wheels so they can turn, and
@@ -768,6 +772,7 @@ export class TrackV3Scene extends Phaser.Scene {
         s.liveryDrawn = car.livery;
         setLiveryColor(s.coat, colorFor(car.livery));
       }
+      this.drawCrew(s, car);
       if (s.soundingDrawn !== isNow) {
         s.soundingDrawn = isNow;
         s.lift.setAlpha(isNow ? SOUNDING_LIFT : 0);
@@ -1041,6 +1046,37 @@ export class TrackV3Scene extends Phaser.Scene {
     for (let i = needed; i < this.slots.length; i++) this.slots[i]!.hide();
   }
 
+  /** Stand the car's crew on its roof — Eric's ask made literal: "you see the
+   *  character actually riding the train". As children of the slot's container
+   *  they inherit its pose (climbs, tilts, bob) for free. Rebuilt only when
+   *  the crew set or the body art changes, never per frame. */
+  private drawCrew(s: SlotView, car: V3Car): void {
+    const key = `${car.crew.join("|")}@${s.body.texture.key}`;
+    if (key === s.crewDrawn) return;
+    s.crewDrawn = key;
+    s.riderImgs.forEach((img) => img.destroy());
+    s.riderImgs = [];
+    if (!this.textures.exists(UI_ATLAS_KEY)) return;
+    const bodyH = s.body.displayHeight;
+    const riderH = bodyH * 0.62;
+    const n = car.crew.length;
+    car.crew.forEach((spriteKey, i) => {
+      const def = UI_SPRITES[spriteKey];
+      if (!def) return;
+      const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base);
+      s.root.add(img);
+      // Spread across the roof; feet a touch INTO the body so they read as
+      // standing on it rather than hovering. AR-042's riding poses will
+      // replace the standing art; the placement contract stays.
+      placeUiSprite(img, def, {
+        x: (i - (n - 1) / 2) * CAR_W * 0.26,
+        y: -bodyH - riderH * 0.42,
+        width: CAR_W * 0.3,
+        height: riderH,
+      });
+    });
+  }
+
   private makeSlot(index: number): SlotView {
     const shadow = this.add
       .image(0, 0, "trk-shadow")
@@ -1078,6 +1114,8 @@ export class TrackV3Scene extends Phaser.Scene {
     root.add([body, coat.fill, lift, wheelA, wheelB, label]);
     const view: SlotView = {
       root, body, coat, lift, wheelA, wheelB, label, shadow,
+      riderImgs: [],
+      crewDrawn: "",
       liveryDrawn: -1,
       soundingDrawn: false,
       show: () => {
@@ -1128,6 +1166,11 @@ interface SlotView {
   readonly wheelB: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
   readonly shadow: Phaser.GameObjects.Image;
+  /** The crew standing on the car — children of `root`, so they ride every
+   *  transform (position, tilt, bob) for free. */
+  riderImgs: Phaser.GameObjects.Image[];
+  /** crew keys + body texture last drawn, so riders rebuild only on change. */
+  crewDrawn: string;
   /** Last livery applied, so the tint is re-set only when it changes rather
    *  than every frame for every car. */
   liveryDrawn: number;

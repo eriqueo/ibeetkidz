@@ -72,7 +72,21 @@ export interface ToolModel {
   /** The car has as many lanes as the chalkboard can show — a further pad tap
    *  auditions but cannot land. The panel says so rather than going quiet. */
   readonly padsFull: boolean;
-  readonly beat: readonly { id: string; emoji: string; cells: readonly boolean[] }[];
+  /** The percussion editor: the car's REAL drum lanes, one row each. The old
+   *  Beat Maker drew ten fixed rows over synthetic `beat-*` lanes that were
+   *  not the car's lanes at all — a second, parallel percussion surface, which
+   *  is exactly what Eric called "a meta instrument, I don't get it". */
+  readonly percussion: {
+    readonly rows: readonly {
+      id: string;
+      emoji: string;
+      color: string;
+      cells: readonly boolean[];
+      muted: boolean;
+    }[];
+    /** Lane cap not reached — the add-a-drum strip greys out when false. */
+    readonly canAdd: boolean;
+  };
   readonly magic: { recording: boolean; hasClip: boolean; onHome: boolean; status: string };
   // Instrument editor for the selected melody lane (MELODY_ROWS × STEP_COUNT).
   readonly melody: {
@@ -444,6 +458,11 @@ class PadKey {
   destroy(): void { this.container.destroy(); }
 }
 
+// PARKED, deliberately not deleted (2026-08-12): the conductor took the
+// raccoon's floor slot, so nothing opens this panel any more — but it is the
+// ONLY surface that lists a kid's PAST recordings (the voice tools offer just
+// the newest take). Remove it once the sound library has a new home, or wire
+// that home out of this class; see ART_REQUESTS AR-045's engineering note.
 export class PadsToolPanel extends BaseToolPanel {
   private pads: { id: string; group: string; key: PadKey }[] = [];
   private shelves: {
@@ -563,60 +582,165 @@ export class PadsToolPanel extends BaseToolPanel {
   }
 }
 
-// ── Beat Maker ────────────────────────────────────────────────────────────────
-export class BeatToolPanel extends BaseToolPanel {
-  private rows: { id: string; label: Phaser.GameObjects.Text; cells: Phaser.GameObjects.Rectangle[]; on: boolean[]; color: number }[] = [];
+// ── Percussion editor (the frog's tool) ──────────────────────────────────────
+//
+// One drum machine over the car's REAL drum lanes — the standard the whole
+// genre converged on (BeepBox's drum channels, Chrome Music Lab's Song Maker,
+// every hardware step sequencer): rows are sounds, columns are the 16 steps,
+// everything the kid's percussion does is on ONE screen. What it replaced (the
+// "Beat Maker") drew ten fixed rows over synthetic `beat-*` lanes that were
+// NOT the car's lanes, so the frog's tool and the car's actual drums could
+// disagree — the "meta instrument" confusion Eric reported.
+//
+// Interactions, chosen for a four-year-old:
+//   • tap a cell to toggle it — same as the chalkboard;
+//   • DRAG to paint: the first cell touched decides on/off and every cell the
+//     finger crosses follows it (the single biggest usability win a step grid
+//     can offer small fingers — one gesture lays a whole hi-hat line);
+//   • each row wears the sound's own emoji, its mute, and its ✕;
+//   • the strip along the bottom is the drum shelf — tap a drum to add a row.
+// Everything routes through the SAME events the chalkboard already emits, so
+// this panel adds zero new reducers and cannot disagree with the board.
+export class PercussionToolPanel extends BaseToolPanel {
+  private rows: {
+    id: string;
+    label: Phaser.GameObjects.Text;
+    mute: Phaser.GameObjects.Text;
+    del: Phaser.GameObjects.Text;
+    cells: Phaser.GameObjects.Rectangle[];
+    on: boolean[];
+    muted: boolean;
+    color: number;
+  }[] = [];
+  private rowKey = "";
+  private addButtons: PanelButton[] = [];
+  private hint!: Phaser.GameObjects.Text;
+  /** While a paint drag is live: the state every crossed cell is set to. */
+  private paintTo: boolean | null = null;
 
-  constructor(scene: Phaser.Scene) { super(scene, "🎛️ Beat Maker"); }
+  constructor(scene: Phaser.Scene) { super(scene, "🥁 Drums"); }
 
   protected buildContent(): void {
-    this.rows = DRUM_SOUNDS.map((drum) => {
-      const color = Phaser.Display.Color.HexStringToColor(drum.color).color;
-      const label = this.scene.add.text(0, 0, drum.emoji, { fontSize: "16px" }).setOrigin(0.5);
-      this.add(label);
+    this.hint = this.scene.add
+      .text(0, 0, "TAP A DRUM BELOW TO ADD IT", { fontFamily: FONT, fontSize: "12px", color: "#e8dcc8" })
+      .setOrigin(0.5);
+    this.add(this.hint);
+    this.addButtons = DRUM_SOUNDS.map((drum) => {
+      const btn = new PanelButton(
+        this.scene,
+        drum.emoji,
+        () => EventBus.emit("workshop-instrument-added", "drum", drum.assetId),
+        Phaser.Display.Color.HexStringToColor(drum.color).color,
+      );
+      this.add(btn.container);
+      return btn;
+    });
+    // The paint drag ends wherever the finger lifts — on a cell, on the frame,
+    // or off the canvas — so the release is heard scene-wide, not per cell.
+    this.scene.input.on("pointerup", () => { this.paintTo = null; });
+  }
+
+  /** Rebuild the row objects for a new lane SET (add/delete). Cheap and rare;
+   *  cell/mute updates go through `apply` without a rebuild. */
+  private rebuildRows(model: ToolModel): void {
+    this.rows.forEach((r) => {
+      r.label.destroy();
+      r.mute.destroy();
+      r.del.destroy();
+      r.cells.forEach((c) => c.destroy());
+    });
+    this.rows = model.percussion.rows.map((row) => {
+      const color = Phaser.Display.Color.HexStringToColor(row.color).color;
+      const label = this.scene.add.text(0, 0, row.emoji, { fontSize: "16px" }).setOrigin(0.5);
+      const mute = this.scene.add.text(0, 0, "🔊", { fontSize: "14px" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      const del = this.scene.add.text(0, 0, "✕", { fontFamily: FONT, fontSize: "14px", color: "#ff5d8f" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
+      mute.on("pointerdown", () => EventBus.emit("workshop-layer-muted", row.id));
+      del.on("pointerdown", () => EventBus.emit("workshop-layer-delete", row.id));
+      this.add([label, mute, del]);
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
+      const view = { id: row.id, label, mute, del, cells, on, muted: row.muted, color };
       for (let s = 0; s < STEP_COUNT; s++) {
-        const cell = this.scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.12).setStrokeStyle(1, PANEL_EDGE, 0.4).setInteractive({ useHandCursor: true });
+        const cell = this.scene.add
+          .rectangle(0, 0, 10, 10, PANEL_EDGE, 0.12)
+          .setStrokeStyle(1, PANEL_EDGE, 0.4)
+          .setInteractive({ useHandCursor: true });
         const step = s;
-        cell.on("pointerdown", () => EventBus.emit("tool-beat-toggle", drum.assetId, step));
+        const paint = (to: boolean): void => {
+          if (view.on[step] === to) return;
+          view.on[step] = to; // optimistic — the model echo confirms it
+          cell.setFillStyle(to ? view.color : PANEL_EDGE, to ? 1 : 0.12);
+          EventBus.emit("workshop-cell-toggled", { layerId: view.id, stepIndex: step, on: to });
+        };
+        cell.on("pointerdown", () => {
+          this.paintTo = !view.on[step];
+          paint(this.paintTo);
+        });
+        cell.on("pointerover", () => {
+          if (this.paintTo !== null) paint(this.paintTo);
+        });
         this.add(cell);
         cells.push(cell);
         on.push(false);
       }
-      return { id: drum.assetId, label, cells, on, color };
+      return view;
     });
+    this.layoutContent();
   }
 
   protected layoutContent(): void {
     const i = this.inner;
-    const n = this.rows.length;
-    const rowH = i.h / n;
-    const labelW = i.w * 0.08;
-    const cellW = (i.w - labelW) / STEP_COUNT;
+    const shelfH = i.h * 0.16;
+    const gridH = i.h - shelfH;
+    const n = Math.max(1, this.rows.length);
+    const rowH = Math.min(gridH / n, gridH / 4); // ≤4 rows: keep them chunky
+    const headW = i.w * 0.16;
+    const cellW = (i.w - headW) / STEP_COUNT;
     const pad = Math.min(cellW, rowH) * 0.12;
     this.rows.forEach((row, r) => {
       const cy = i.y + (r + 0.5) * rowH;
-      row.label.setPosition(i.x + labelW / 2, cy).setFontSize(Math.max(10, rowH * 0.5));
+      row.del.setPosition(i.x + headW * 0.16, cy).setFontSize(Math.max(10, rowH * 0.34));
+      row.label.setPosition(i.x + headW * 0.5, cy).setFontSize(Math.max(12, rowH * 0.5));
+      row.mute.setPosition(i.x + headW * 0.84, cy).setFontSize(Math.max(10, rowH * 0.38));
       row.cells.forEach((cell, s) => {
-        cell.setPosition(i.x + labelW + (s + 0.5) * cellW, cy);
+        cell.setPosition(i.x + headW + (s + 0.5) * cellW, cy);
         cell.setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
       });
     });
+    // The drum shelf, along the bottom.
+    const bw = i.w / this.addButtons.length;
+    this.addButtons.forEach((btn, k) => {
+      btn.place({ x: i.x + k * bw + bw * 0.06, y: i.y + gridH + shelfH * 0.18, w: bw * 0.88, h: shelfH * 0.78 }, Math.max(12, shelfH * 0.3));
+    });
+    this.hint.setPosition(i.x + i.w / 2, i.y + gridH * 0.5).setFontSize(Math.max(11, i.h * 0.035));
   }
 
   apply(model: ToolModel): void {
-    model.beat.forEach((b, r) => {
-      const row = this.rows[r];
-      if (!row) return;
+    const key = model.percussion.rows.map((r) => r.id).join("|");
+    if (key !== this.rowKey) {
+      this.rowKey = key;
+      this.rebuildRows(model);
+    }
+    this.hint.setVisible(model.percussion.rows.length === 0);
+    model.percussion.rows.forEach((row, r) => {
+      const view = this.rows[r];
+      if (!view) return;
+      if (row.muted !== view.muted) {
+        view.muted = row.muted;
+        view.mute.setText(row.muted ? "🔇" : "🔊");
+      }
+      const rowAlpha = row.muted ? 0.35 : 1;
       for (let s = 0; s < STEP_COUNT; s++) {
-        const isOn = b.cells[s] ?? false;
-        if (isOn !== row.on[s]) {
-          row.on[s] = isOn;
-          row.cells[s]?.setFillStyle(isOn ? row.color : PANEL_EDGE, isOn ? 1 : 0.12);
+        const isOn = row.cells[s] ?? false;
+        if (isOn !== view.on[s]) {
+          view.on[s] = isOn;
+          view.cells[s]?.setFillStyle(isOn ? view.color : PANEL_EDGE, isOn ? 1 : 0.12);
         }
+        view.cells[s]?.setAlpha(rowAlpha);
       }
     });
+    const canAdd = model.percussion.canAdd;
+    this.addButtons.forEach((b) => b.setEnabled(canAdd));
   }
 }
 

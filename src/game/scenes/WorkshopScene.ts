@@ -48,7 +48,7 @@ import {
   VoiceToolPanel,
   VoiceKeysToolPanel,
   PadsToolPanel,
-  BeatToolPanel,
+  PercussionToolPanel,
   MagicToolPanel,
   MelodyEditorPanel,
   type ToolModel,
@@ -68,9 +68,22 @@ export interface WorkshopLane {
   readonly muted: boolean; // whether this lane is currently muted
 }
 
+/** One crew member standing on the car, and what tapping them edits. ONE
+ *  character per instrument — the frog carries ALL percussion, each melody
+ *  character carries its own lane — instead of the one-rider-per-lane row of
+ *  five identical frogs Eric reported. Tapping a rider goes STRAIGHT to that
+ *  character's editor; the whole-train chalkboard is the conductor's view. */
+export interface WorkshopCrewMember {
+  readonly key: string; // UI_SPRITES key (inst-*)
+  readonly action:
+    | { readonly kind: "melody"; readonly layerId: string }
+    | { readonly kind: "percussion" };
+}
+
 /** What the scene needs to render, pushed from the store on every change. */
 export interface WorkshopModel {
   readonly lanes: readonly WorkshopLane[];
+  readonly crew: readonly WorkshopCrewMember[];
   readonly carType: CarType;
   /** The active car's NAME and LIVERY index, shown on the LCD. Same glyph, same
    *  colour the Yard paints on that car's flank — seeing them together while
@@ -200,7 +213,7 @@ interface LaneRow {
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], carType: "boxcar", carName: "Loop 1", livery: 0, takenColors: [], selectedLayerId: null, tempoBpm: 120, carCount: 1 };
+  private model: WorkshopModel = { lanes: [], crew: [], carType: "boxcar", carName: "Loop 1", livery: 0, takenColors: [], selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
   /** The empty-car prompt (hint + the SURPRISE ME chip), or undefined when
@@ -247,12 +260,13 @@ export class WorkshopScene extends BackgroundScene {
   // So the board became a modal and the car got a CREW. Each lane is a rider
   // standing in the open interior, drawn with that instrument's own character
   // art — the same sprite the kid tapped on the shelf to make the lane. Tapping
-  // a rider opens the board over the whole screen, where nothing overlaps it.
-  // The payoff Eric asked for ("instead of the chalkboard you physically see the
-  // character on the train car") needs no new art at all in this form: the
-  // characters already exist, in three states each.
+  // a rider goes STRAIGHT to that character's editor (melody roll, or the
+  // frog's percussion grid) — the whole-train chalkboard is the conductor's
+  // view now. The payoff Eric asked for ("you physically see the character on
+  // the train car") needs no new art at all in this form: the characters
+  // already exist, in three states each.
   private riders: {
-    layerId: string;
+    member: WorkshopCrewMember;
     img: Phaser.GameObjects.Image;
     def: UiSpriteDef;
     /** Where the character's visible art is centred, in scene px. The image's
@@ -470,8 +484,13 @@ export class WorkshopScene extends BackgroundScene {
   /** Exposed for the e2e bridge: the centre of each rider's ART, in scene px.
    *  A real tap on one of these is the only thing that proves the crew is
    *  reachable — geometry alone never has been (see the chrome hit-test spec). */
-  get riderPoints(): { layerId: string; x: number; y: number }[] {
-    return this.riders.map((r) => ({ layerId: r.layerId, x: r.cx, y: r.cy }));
+  get riderPoints(): { key: string; layerId: string | null; x: number; y: number }[] {
+    return this.riders.map((r) => ({
+      key: r.member.key,
+      layerId: r.member.action.kind === "melody" ? r.member.action.layerId : null,
+      x: r.cx,
+      y: r.cy,
+    }));
   }
 
   /**
@@ -636,10 +655,8 @@ export class WorkshopScene extends BackgroundScene {
   private buildRiders(): void {
     this.riders.forEach((r) => r.img.destroy());
     this.riders = [];
-    const lanes = this.model.lanes.slice(0, WORKSHOP_GRID_V2.maxLanes);
-    lanes.forEach((lane) => {
-      const key = lane.icon && UI_SPRITES[lane.icon] ? lane.icon : "inst-pads";
-      const def = UI_SPRITES[key]!;
+    this.model.crew.forEach((member) => {
+      const def = UI_SPRITES[member.key] ?? UI_SPRITES["inst-drums"]!;
       const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base).setDepth(DEPTH_RIDER);
       let armed = false;
       img.on("pointerdown", () => { armed = true; img.setFrame(def.states["hover"] ?? def.base); });
@@ -648,9 +665,12 @@ export class WorkshopScene extends BackgroundScene {
         img.setFrame(def.base);
         if (!armed) return;
         armed = false;
-        this.openBoard(lane.id);
+        // Straight to the character's own editor — the kid tapped the husky,
+        // so the husky's piano opens, not the whole-train board.
+        if (member.action.kind === "melody") EventBus.emit("workshop-edit-melody", member.action.layerId);
+        else EventBus.emit("workshop-open-tool", "beat-grid");
       });
-      this.riders.push({ layerId: lane.id, img, def, cx: 0, cy: 0 });
+      this.riders.push({ member, img, def, cx: 0, cy: 0 });
     });
   }
 
@@ -722,6 +742,12 @@ export class WorkshopScene extends BackgroundScene {
     const onSend = (): void => this.departCar();
     EventBus.on("workshop-send-to-yard", onSend);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("workshop-send-to-yard", onSend));
+    // The conductor's view: the whole-train chalkboard, opened from React
+    // (the conductor's floor slot) rather than from a rider — riders go
+    // straight to their own editors now.
+    const onOpenBoard = (): void => this.openBoard(null);
+    EventBus.on("workshop-open-board", onOpenBoard);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("workshop-open-board", onOpenBoard));
   }
 
   private departCar(): void {
@@ -1021,7 +1047,7 @@ export class WorkshopScene extends BackgroundScene {
       "record-voicefx": new VoiceToolPanel(this),
       "voice-keys": new VoiceKeysToolPanel(this),
       "sound-pads": new PadsToolPanel(this),
-      "beat-grid": new BeatToolPanel(this),
+      "beat-grid": new PercussionToolPanel(this),
       "theremin-xy": new MagicToolPanel(this),
       "melody-editor": new MelodyEditorPanel(this),
     };

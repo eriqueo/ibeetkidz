@@ -1742,3 +1742,32 @@ Still wanted from the artist, eventually: a clean re-export of the tanker (and
 a check of `loco.png`, whose cab region also reads semi — possibly deliberate
 window glass, so it was NOT auto-repaired). The programmatic fix is faithful
 to the delivered shapes; a re-export is the honest source.
+
+## AR-045 · The CONDUCTOR — replaces the raccoon on the Workshop floor — HIGH
+
+Eric's brief, in his words (2026-08-12): *"have the racoon art change it to
+being a conductor of the train — and lets get rid of the raccoon art and have
+a silly conductor be a human, fat and with a mustache, with a orchestra
+conductor's clothes, but looking like a train conductor, leaning into the pun."*
+
+So: one silly human — round, mustachioed, tailcoat-and-baton ORCHESTRA
+conductor dress that simultaneously reads as a TRAIN conductor (cap with a
+badge, pocket watch, maybe a whistle). The pun is the character.
+
+**Role (already wired, 2026-08-12):** tapping this character opens the
+whole-train chalkboard — the meta view of every lane in the car. Every OTHER
+character now opens its own instrument editor directly, and all percussion
+folded into ONE frog whose tap opens the revamped drum grid. The conductor is
+the only "see everything" surface, which is exactly the meta-ness Eric found
+confusing when it wore a raccoon holding sound pads.
+
+**Deliverables:** the standard station set at the standard canvas —
+`inst-conductor-passive|hover|active` (576 × 768 RGBA, true alpha-0 outside
+the art, same framing as the other eight characters). The Tiled workshop map
+and the shelf keep the raccoon's slot; engineering swaps the sprite id when
+the files land.
+
+**Engineering note (for whoever wires it):** the retired Sound Pads panel was
+the only surface listing a kid's PAST recordings (`PadsToolPanel`, parked in
+`tool-panels.ts` with this note referenced). The sound library needs a new
+home before that class is deleted.

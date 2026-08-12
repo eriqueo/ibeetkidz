@@ -8,6 +8,8 @@ import { TrackScene, type TrackCar } from "../game/scenes/TrackScene.ts";
 import { TrackV3Scene } from "../game/scenes/TrackV3Scene.ts";
 import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
+import { laneGroup } from "../core/lane-color.ts";
+import { laneSprite } from "../game/instrument-station.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
@@ -51,14 +53,25 @@ export const Track: FC = () => {
   // sidings show — one producer, so "car 3" is car 3 everywhere.
   const v3Cars = useMemo(() => {
     const ids = carIdentities(project.parts, project.clips);
+    const byId = new Map(project.parts.map((p) => [p.id, p]));
     return liveTrain(project).map((c) => {
       const id = ids.get(c.partId);
+      // The crew riding this car: one character per instrument, all percussion
+      // folded into the frog — the same collapse the Workshop crew uses.
+      const crew: string[] = [];
+      for (const layer of byId.get(c.partId)?.layers ?? []) {
+        const key = layer.kind === "drum"
+          ? "inst-drums"
+          : laneSprite(layer.station, laneGroup(layer.kind, project.clips[layer.clipId]));
+        if (!crew.includes(key)) crew.push(key);
+      }
       return {
         id: c.instanceId,
         number: id?.number ?? 1,
         livery: id?.liveryIndex ?? 0,
         carType: id?.carType ?? "boxcar",
         muted: c.muted,
+        crew: crew.slice(0, 3), // roof space — three read clearly at car scale
       };
     });
   }, [project]);
