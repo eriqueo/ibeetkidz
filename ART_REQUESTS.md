@@ -1952,3 +1952,20 @@ building the tunnel one — it may want its own design round with Eric.
 
 Reminder that **AR-048 (the BACKWARDS lever)** is already queued and unblocks
 the eighth slot's art; nothing about it changed.
+
+---
+
+---
+
+## ✅ DONE — AR-048 · Track world-depth: layered distant hills — HIGH
+
+**Delivered 2026-08-12 in `03b87a9`.** Replaced `track3/hills.png` at its
+existing 640 × 260 slot with a multi-depth distant world layer: pale far ridge,
+blue-green foothills, a restrained dark-pine middle band, and an irregular
+sand/grass horizon. This replaces the near-empty single sand silhouette that
+made the Track read as a train on a flat wallpaper band.
+
+The source was checked against a dark composite, chroma-key residue was removed,
+all four corners are exact alpha 0, and `scripts/check-sprite-alpha.sh` passes.
+It remains a separate transparent parallax strip; the near treeline and ground
+continue to layer independently.
