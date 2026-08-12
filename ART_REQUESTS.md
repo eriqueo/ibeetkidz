@@ -1749,7 +1749,18 @@ a check of `loco.png`, whose cab region also reads semi — possibly deliberate
 window glass, so it was NOT auto-repaired). The programmatic fix is faithful
 to the delivered shapes; a re-export is the honest source.
 
-## AR-045 · The CONDUCTOR — replaces the raccoon on the Workshop floor — HIGH
+## ✅ DONE — AR-045 · The CONDUCTOR — replaces the raccoon on the Workshop floor — HIGH
+
+**Delivered 2026-08-12 in `b45b8f1`.** The standard 576 × 768 RGBA station set is now present:
+`inst-conductor-passive.png`, `inst-conductor-hover.png`, and
+`inst-conductor-active.png`. It depicts a round, mustachioed human who reads as both an orchestra conductor and a train conductor: navy cap with brass badge, tailcoat, red neckerchief, baton, and pocket watch. Hover is a brighter attentive state; active is a larger raised-baton performance cue. Each export is hard-alpha, palette-limited, and has true alpha-0 corners.
+
+**Engineering handoff:** swap the retired `inst-pads` Workshop floor slot to
+`inst-conductor`. Its existing `workshop-open-board` behavior already opens the whole-train chalkboard; no new tool-panel behavior is required.
+
+---
+
+## AR-045 · The CONDUCTOR — replaces the raccoon on the Workshop floor — HIGH (ORIGINAL SPEC)
 
 Eric's brief, in his words (2026-08-12): *"have the racoon art change it to
 being a conductor of the train — and lets get rid of the raccoon art and have
