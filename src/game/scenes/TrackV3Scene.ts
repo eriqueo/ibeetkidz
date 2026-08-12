@@ -1046,34 +1046,95 @@ export class TrackV3Scene extends Phaser.Scene {
     for (let i = needed; i < this.slots.length; i++) this.slots[i]!.hide();
   }
 
-  /** Stand the car's crew on its roof — Eric's ask made literal: "you see the
-   *  character actually riding the train". As children of the slot's container
-   *  they inherit its pose (climbs, tilts, bob) for free. Rebuilt only when
-   *  the crew set or the body art changes, never per frame. */
+  /** The car's crew rides INSIDE the car, not on top of it (Eric, 2026-08-12).
+   *
+   *  The mechanism is GAME_FEEL Law 3 — an actor passes BEHIND something: the
+   *  riders are inserted at the BOTTOM of the slot's container, so the car
+   *  body occludes their lower halves and only head-and-shoulders rise above
+   *  the near wall. On a boxcar or hopper that reads as standing in the car;
+   *  on a tanker, as riding behind the tank; on a flatcar (a low body) most of
+   *  the character shows, standing on the deck. As children of the container
+   *  they inherit its pose (climbs, tilts, bob) for free.
+   *
+   *  Art seam (AR-046): a dropped `track3/ride-<station>-<carType>.png` wins
+   *  over `track3/ride-<station>.png`, which wins over the atlas shelf sprite —
+   *  per-car integrated poses land file by file with no code change, the same
+   *  contract every other track3 slot uses. Rebuilt only when the crew set or
+   *  the body art changes, never per frame. */
+  /** Where a rider peeks out of each body, in CANVAS px from the art's top —
+   *  measured off the delivered `track3/car-*.png`, not eyeballed: the
+   *  boxcar's roofline, the hopper's open rim, the tanker's barrel top, the
+   *  flatcar's deck lip. The car canvas bottom sits on the railhead at scale
+   *  1, so container-space y of the line is `-(canvasH - PEEK_Y)`. */
+  private static readonly PEEK_Y: Readonly<Record<CarType, number>> = {
+    boxcar: 8,
+    hopper: 14,
+    tanker: 30,
+    flatcar: 10,
+  };
+
   private drawCrew(s: SlotView, car: V3Car): void {
     const key = `${car.crew.join("|")}@${s.body.texture.key}`;
     if (key === s.crewDrawn) return;
     s.crewDrawn = key;
     s.riderImgs.forEach((img) => img.destroy());
     s.riderImgs = [];
-    if (!this.textures.exists(UI_ATLAS_KEY)) return;
-    const bodyH = s.body.displayHeight;
-    const riderH = bodyH * 0.62;
+    const peekLineY = -(s.body.height - (TrackV3Scene.PEEK_Y[car.carType] ?? 10));
+    // One world size for every rider on every car — the crew are the same
+    // creatures wherever they ride; only how much the wall hides varies.
+    const SLOT_W = 100;
+    const SLOT_H = 116;
     const n = car.crew.length;
     car.crew.forEach((spriteKey, i) => {
-      const def = UI_SPRITES[spriteKey];
-      if (!def) return;
-      const img = this.add.image(0, 0, UI_ATLAS_KEY, def.base);
-      s.root.add(img);
-      // Spread across the roof; feet a touch INTO the body so they read as
-      // standing on it rather than hovering. AR-042's riding poses will
-      // replace the standing art; the placement contract stays.
-      placeUiSprite(img, def, {
-        x: (i - (n - 1) / 2) * CAR_W * 0.26,
-        y: -bodyH - riderH * 0.42,
-        width: CAR_W * 0.3,
-        height: riderH,
-      });
+      // "inst-drums" → dropped art keys "ride-drums-boxcar" / "ride-drums".
+      const station = spriteKey.replace(/^inst-/, "");
+      const x = (i - (n - 1) / 2) * CAR_W * 0.24;
+
+      // AR-046 per-car INTEGRATED pose: the file carries its own crop (its
+      // bottom edge IS the car's peek line — nothing below the wall is in the
+      // art), so it draws IN FRONT of the body, bottom-anchored on the line:
+      // hands over the rim, elbows on the roof, native to that car's art.
+      const perCar = `trk-ride-${station}-${car.carType}`;
+      if (this.textures.exists(perCar)) {
+        const img = this.add.image(x, peekLineY, perCar).setOrigin(0.5, 1);
+        const fit = Math.min(SLOT_W / img.width, SLOT_H / img.height, 1);
+        img.setScale(fit);
+        s.root.add(img); // in front — the art brings its own occlusion
+        s.riderImgs.push(img);
+        return;
+      }
+
+      // Interim (generic pose, or the shelf sprite): draw BEHIND the body and
+      // let the near wall occlude. Contain-fit the CONTENT, then TOP-ANCHOR it
+      // so a third of the drawn character rises above the peek line whatever
+      // its aspect — centring instead is how a wide drummer vanished entirely
+      // behind a tall wall.
+      const generic = `trk-ride-${station}`;
+      let img: Phaser.GameObjects.Image;
+      if (this.textures.exists(generic)) {
+        img = this.add.image(0, 0, generic);
+        const fit = Math.min(SLOT_W / img.width, SLOT_H / img.height);
+        img.setScale(fit);
+        const drawnH = img.height * fit;
+        img.setPosition(x, peekLineY - drawnH * 0.32 + drawnH / 2);
+      } else if (this.textures.exists(UI_ATLAS_KEY) && UI_SPRITES[spriteKey]) {
+        const def = UI_SPRITES[spriteKey]!;
+        img = this.add.image(0, 0, UI_ATLAS_KEY, def.base);
+        const [cx0, cy0, cx1, cy1] = def.content;
+        const contentW = Math.max(1, (cx1 - cx0) * img.width);
+        const contentH = Math.max(1, (cy1 - cy0) * img.height);
+        const drawnH = contentH * Math.min(SLOT_W / contentW, SLOT_H / contentH);
+        placeUiSprite(img, def, {
+          x,
+          y: peekLineY - drawnH * 0.32 + drawnH / 2,
+          width: SLOT_W,
+          height: SLOT_H,
+        });
+      } else {
+        return;
+      }
+      s.root.addAt(img, 0); // BEHIND the body: the near wall is the occluder
+      s.riderImgs.push(img);
     });
   }
 

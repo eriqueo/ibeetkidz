@@ -1678,7 +1678,13 @@ chrome. The three terrain picture buttons are unchanged and still in use.
 
 ---
 
-## AR-042 · The crew, riding the cars — MEDIUM (new capability, not a fix)
+## AR-042 · The crew, riding the cars — SUPERSEDED BY AR-046 (2026-08-12)
+
+> The tap-to-edit flow shipped with the crew rework (one character per
+> instrument; riders open their own editors). The ART half — riding poses —
+> is superseded by **AR-046**, which upgrades it to per-car INTEGRATED poses
+> with a measured registration contract. Generate from AR-046, not from the
+> canvas notes below.
 
 Eric's idea, in his words: *"once you click on a character, you edit their
 instrument for the loop, then you click okay when you're ready and instead of the
@@ -1771,3 +1777,65 @@ the files land.
 the only surface listing a kid's PAST recordings (`PadsToolPanel`, parked in
 `tool-panels.ts` with this note referenced). The sound library needs a new
 home before that class is deleted.
+
+## AR-046 · The crew INSIDE the cars — per-car integrated riding art — HIGH
+
+Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
+the crew rework; its art half moves here, upgraded per Eric's direction,
+2026-08-12): *"i dont want them just ontop of the train, i want art of them
+inside the train, integrated natively into each car based on the car's art."*
+
+**What ships today (the honest interim):** the crew draws BEHIND each car body,
+top-anchored at a measured per-car peek line, so the wall occludes the lower
+body and heads-and-shoulders rise from inside (GAME_FEEL Law 3 — the actor
+passes behind something). It works, but it is the shelf art peeking over a
+wall, not a character interacting with THAT car.
+
+**The ask — one file per character per car type**, drawn as the VISIBLE
+PORTION ONLY, natively posed against that car's construction:
+
+- **boxcar** — leaning out over the roofline / through the sliding door's top
+  gap, forearms on the roof edge;
+- **hopper** — down in the open bay, elbows hooked over the rim;
+- **tanker** — behind the barrel, hands on the tank top, or straddling it;
+- **flatcar** — seated or standing on the bare deck, legs over the near lip.
+
+### Registration contract (this is what makes it a drop-in)
+
+Files go in `src/assets/sprites/track3/` named
+**`ride-<station>-<carType>.png`** (e.g. `ride-drums-hopper.png`). The scene
+already looks these keys up and, when present, draws the file IN FRONT of the
+body with its **bottom edge sitting exactly on that car's peek line** — so the
+art must contain NOTHING that should be hidden by the car, and its bottom row
+IS the line it rests on. The peek lines, measured off the delivered
+`car-*.png` (canvas px from the art's top edge):
+
+| car | canvas | peek line (y from top) | what the line is |
+|---|---|---|---|
+| boxcar | 300 × 190 | 8 | the roofline |
+| hopper | 300 × 190 | 14 | the open rim |
+| tanker | 300 × 170 | 30 | the barrel top |
+| flatcar | 300 × 110 | 10 | the deck lip |
+
+Suggested canvas ≈ **120 × 120** per file (the scene contain-fits to a
+100 × 116 design-px slot, never upscaling past 1:1). Match the CAR sprites'
+pixel density and style — 1px dark-plum outline, hard shadows, warm palette
+(`design/palette-nintendo.json`) — these composite ONTO the cars, so any
+density mismatch reads instantly. Hands/elbows overlapping the wall are the
+whole point: the file is in front, so contact with the car's own ironwork is
+what "integrated natively" means. Alpha-export rules from the top of this
+file apply (true alpha 0, corners clear, verify over a dark background).
+
+### Order of delivery (28 files total — land them incrementally, each works alone)
+
+1. `ride-drums-*` (4) — the frog is on nearly every car (all percussion folds
+   into it since the crew rework).
+2. `ride-piano-*`, `ride-guitar-*` (8) — the common melody characters.
+3. `ride-violin-*`, `ride-mic-*`, `ride-keys-*`, `ride-magic-*` (16).
+
+A generic `ride-<station>.png` (whole character, any pose) is also honoured as
+a middle fallback — drawn behind the wall like the interim — but the per-car
+files are the ask; do not spend the generic set first.
+
+**Unblocks when it lands:** each file replaces its interim the moment it is
+committed — no code change, the same drop-a-PNG seam as every track3 slot.
