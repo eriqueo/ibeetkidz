@@ -1797,6 +1797,17 @@ home before that class is deleted.
 
 ## AR-046 · The crew INSIDE the cars — per-car integrated riding art — HIGH
 
+### ✅ First delivery complete — Drums (2026-08-12, `bf02622`)
+
+The four per-car frog files are now live: `ride-drums-boxcar.png`,
+`ride-drums-hopper.png`, `ride-drums-tanker.png`, and
+`ride-drums-flatcar.png`. Each is a 120 × 120 hard-alpha drop-in with its
+bottom anchor on the scene’s corresponding measured peek line. The poses are
+specific to the car construction: roofline lean, hopper-rim grip,
+barrel-top peek, and seated flatcar-deck pose. A true-scale composite check
+confirmed all four land against the supplied car bodies with no code changes.
+The remaining 24 per-car rider files retain the delivery order below.
+
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
 2026-08-12): *"i dont want them just ontop of the train, i want art of them
