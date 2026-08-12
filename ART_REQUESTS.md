@@ -1814,6 +1814,14 @@ aviator goggles, black-and-cream face pattern, and red neckerchief at Track
 scale. A true-scale composite check confirms their paws and compact seated pose
 land on the corresponding roofline, rim, barrel, and deck seams.
 
+### ✅ Sixth delivery complete — Voice Keys (2026-08-13, `300fe88`)
+
+`ride-keys-boxcar.png`, `ride-keys-hopper.png`, `ride-keys-tanker.png`, and
+`ride-keys-flatcar.png` now retain the squat purple-bear silhouette, propeller
+cap, pale belly, and rainbow keyboard at Track scale. Their measured car poses
+are roofline lean, rim grip, barrel peek, and low-car stage position; the tanker
+intentionally carries only the character's upper identity above the barrel.
+
 ### ✅ Fifth delivery complete — Mic (2026-08-13, `3fdda24`)
 
 `ride-mic-boxcar.png`, `ride-mic-hopper.png`, `ride-mic-tanker.png`, and
@@ -1841,7 +1849,7 @@ tabby’s black jacket and blue bass-guitar identity into distinct roofline, rim
 barrel, and deck interactions. Exports were rechecked after a strict
 checker-matte cleanup; all have true hard alpha and bottom-row contacts.
 
-The remaining 8 per-car rider files retain the delivery order below.
+The remaining 4 per-car rider files retain the delivery order below.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
