@@ -1814,6 +1814,15 @@ aviator goggles, black-and-cream face pattern, and red neckerchief at Track
 scale. A true-scale composite check confirms their paws and compact seated pose
 land on the corresponding roofline, rim, barrel, and deck seams.
 
+### ✅ Fifth delivery complete — Mic (2026-08-13, `3fdda24`)
+
+`ride-mic-boxcar.png`, `ride-mic-hopper.png`, `ride-mic-tanker.png`, and
+`ride-mic-flatcar.png` now carry the chipmunk singer’s brown/cream silhouette,
+gold star sunglasses, buck tooth, striped tail, and vintage silver microphone
+into distinct roofline, rim, barrel, and deck contacts. A measured Track
+peek-line composite confirmed that only the intended upper performer rises
+above the three high car walls, while the flatcar uses a deck-anchored stage pose.
+
 ### ✅ Fourth delivery complete — Violin (2026-08-13, `2cd10e6`)
 
 `ride-violin-boxcar.png`, `ride-violin-hopper.png`,
@@ -1832,7 +1841,7 @@ tabby’s black jacket and blue bass-guitar identity into distinct roofline, rim
 barrel, and deck interactions. Exports were rechecked after a strict
 checker-matte cleanup; all have true hard alpha and bottom-row contacts.
 
-The remaining 12 per-car rider files retain the delivery order below.
+The remaining 8 per-car rider files retain the delivery order below.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
