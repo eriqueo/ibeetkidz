@@ -1856,3 +1856,22 @@ files are the ask; do not spend the generic set first.
 
 **Unblocks when it lands:** each file replaces its interim the moment it is
 committed — no code change, the same drop-a-PNG seam as every track3 slot.
+
+
+---
+
+## ✅ DONE — AR-047 · Track runtime bridge rebuild — HIGH
+
+**Delivered 2026-08-12 in `c9adb1c`.** Replaced
+`src/assets/sprites/track3/bridge.png` with the full 1280 × 170 side-on timber
+trestle now required by the Track scene. The old sprite was rail-correct but
+read as a sparse, repeated construction diagram while the `btn-bridge` preview
+was a richly authored world object. The replacement carries the button’s
+quality bar into the runtime world: a weathered timber deck fascia, varied
+brace rhythm, iron straps and bolts, genuinely transparent bays, and
+stone/grass end landings.
+
+**Registration and export checks:** the railhead is at **y=0**; non-transparent
+content bbox is `x=3 y=0 w=1274 h=168`; all four corners are exact alpha 0;
+`scripts/check-sprite-alpha.sh` passes. The existing `trk-bridge` loader needs
+no engineering change.
