@@ -2588,7 +2588,21 @@ All three must read as three machines from the same workshop.
 
 ---
 
-## AR-060 · Stop punching holes in cars: deliver WHOLE cars with their insides drawn — P0
+## ✅ DELIVERED — AR-060 · Stop punching holes in cars: deliver WHOLE cars with their insides drawn — P0
+
+**Art delivered 2026-08-13 in `3629b68`.** Four complete 2560 × 1440 native
+cutaway car bodies and four transparent front layers now exist: `car-open-boxcar`,
+`tanker`, `hopper`, and `flatcar`, each with a matching `-front`. The boxcar uses
+a sliding-door workshop opening; the tanker has a curved native inspection hatch;
+the hopper exposes its real bin mouth; and the flatcar remains open-air. Crew
+placement contract: **boxcar** rect `(990, 560, 850, 430)`, floor `1000`;
+**tanker** `(620, 560, 1200, 330)`, floor `895`; **hopper** `(700, 490, 1140,
+440)`, floor `930`; **flatcar** `(720, 410, 1120, 455)`, floor `865`.
+
+**Engineering handoff:** replace punched-void assembly with the full car body,
+then draw crew/chalkboard in the stated type-specific rect and the matching
+`-front` layer above crew. The previous interior/rail layers are fallbacks only;
+new native cutaways should be preferred per type.
 
 **This supersedes the layered approach of AR-052/AR-055 and is the fix for a
 complaint that has now been made three times about three different versions of
@@ -2664,7 +2678,12 @@ that have now been made and the fault is the layering, not the painting.
 
 ---
 
-## AR-058 follow-up · the row rail wants SIX sockets, not nine — LOW
+## ✅ DELIVERED — AR-058 follow-up · the row rail wants SIX sockets, not nine — LOW
+
+**Art delivered 2026-08-13 in `d5d3023`.** `panel-percussion.png` now has exactly
+six evenly pitched row sockets, matching `MAX_LAYERS` and the existing
+`field.h / 6` row pitch. The grid, bottom ten-key shelf, machine chrome and panel
+canvas are otherwise unchanged.
 
 The redrawn Percussion plate is mounted and is the right machine. One number is
 off: its left rail paints **nine** row sockets, and a car can only ever hold
