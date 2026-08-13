@@ -1814,6 +1814,24 @@ aviator goggles, black-and-cream face pattern, and red neckerchief at Track
 scale. A true-scale composite check confirms their paws and compact seated pose
 land on the corresponding roofline, rim, barrel, and deck seams.
 
+### ✅ Seventh delivery complete — Magic Pad (2026-08-13, `c71a9ee`)
+
+`ride-magic-boxcar.png`, `ride-magic-hopper.png`, `ride-magic-tanker.png`, and
+`ride-magic-flatcar.png` complete the blue fox wizard's car-native sequence.
+Every pose preserves the oversized purple star hat, yellow trim, blue fox
+silhouette, and theremin antenna/console cue. The tanker deliberately exposes
+only the head/hat/upper identity behind the barrel; the flatcar holds a compact
+theremin-stage pose.
+
+### ✅ AR-046 COMPLETE — all 28 integrated rider files delivered
+
+The seven four-car families—drums, piano, guitar, violin, mic, Voice Keys, and
+Magic Pad—are now present as `ride-<station>-<car>.png` under `track3/`. Each
+family was validated on the measured Track peek lines and through the sprite
+alpha gate before its independent commit. The Track scene discovers these files
+through its existing per-car rider texture seam; no new art-loader code is
+needed.
+
 ### ✅ Sixth delivery complete — Voice Keys (2026-08-13, `300fe88`)
 
 `ride-keys-boxcar.png`, `ride-keys-hopper.png`, `ride-keys-tanker.png`, and
@@ -1849,7 +1867,7 @@ tabby’s black jacket and blue bass-guitar identity into distinct roofline, rim
 barrel, and deck interactions. Exports were rechecked after a strict
 checker-matte cleanup; all have true hard alpha and bottom-row contacts.
 
-The remaining 4 per-car rider files retain the delivery order below.
+All 28 requested per-car rider files are now delivered.
 
 Supersedes AR-042's riding-pose items (AR-042's tap-to-edit flow shipped with
 the crew rework; its art half moves here, upgraded per Eric's direction,
