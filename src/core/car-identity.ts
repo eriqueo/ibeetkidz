@@ -84,34 +84,36 @@ export function carIdentities(
 }
 
 /**
- * Livery colours, one per car slot — `MAX_CARS` is 12, so this table is 12 long
+ * Livery colours, one per car slot — `MAX_CARS` is 10, so this table is 10 long
  * and a full yard has no repeats.
  *
- * Ordered for PERCEPTUAL SEPARATION rather than aesthetics: the first eight are
- * the charter's eight warm-Nintendo primaries (`design/palette-nintendo.json`)
- * arranged so adjacent indices are far apart in hue, and the last four are
- * darker/lighter steps of hues whose bright form is already spent — the
- * charter's own "1–2 steps of the same hue" shading rule.
+ * TEN DISTINCT HUES, and that count is the reason for the table's length rather
+ * than the other way round. It used to hold twelve, and the last four were
+ * darker steps of hues already spent: deep sky under sky, deep grape under
+ * grape, deep grass under grass. On the rack that reads as Eric described it —
+ * "light purple dark purple, light green dark green" — twelve chips of which
+ * only eight are nameable. A four-year-old picks a car by saying its colour out
+ * loud, and "the dark green one, not that dark green one" is not a name.
  *
- * Twelve *warm* colours that are all far apart do not exist, which is exactly
- * why colour is the tiebreak and not the identity: cars 9–12 lean on their
- * glyph SHAPE (`LIVERY_GLYPHS`, one per index mod 8) and on their load. Shape
- * and colour always move together, so either channel alone names the car — that
- * is what makes this scheme colour-blind-safe.
+ * So every entry below is a different crayon: red, orange, yellow, green, teal,
+ * sky, purple, pink, brown, cream. No hue appears twice at two lightnesses, and
+ * `MAX_CARS` came down to 10 to match — ten cars is already a long train.
+ *
+ * Colour is still the TIEBREAK, not the identity: cars 9 and 10 share a glyph
+ * shape (`LIVERY_GLYPHS` is 8 long, indexed mod 8) but never a colour, and load
+ * distinguishes most cars before either channel is needed.
  */
 export const CAR_COLORS: readonly string[] = [
-  "#e8503a", // 0  tomato
-  "#4aa3df", // 1  sky
-  "#ffcc3e", // 2  sunshine
-  "#8a5cc4", // 3  grape
-  "#5bbf52", // 4  grass
-  "#d94f86", // 5  berry
-  "#37b6a4", // 6  teal
-  "#f08a3c", // 7  orange
-  "#2f6fa8", // 8  deep sky
-  "#f4e8c1", // 9  paper (surface.paper-2)
-  "#5b3b8c", // 10 deep grape
-  "#2f7a45", // 11 deep grass
+  "#e8503a", // 0  red
+  "#f08a3c", // 1  orange
+  "#ffcc3e", // 2  yellow
+  "#5bbf52", // 3  green
+  "#37b6a4", // 4  teal
+  "#4aa3df", // 5  sky
+  "#8a5cc4", // 6  purple
+  "#d94f86", // 7  pink
+  "#a9714b", // 8  brown
+  "#f4e8c1", // 9  cream
 ];
 
 /** Position of `color` in `CAR_COLORS`, or -1 — e.g. a pre-2026-08 save whose

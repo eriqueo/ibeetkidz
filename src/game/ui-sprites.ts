@@ -177,6 +177,18 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // stretch that layer to the void and break the alignment the pair depends on.
   "workshop-car-interior": panelDef("workshop-car-interior", [0, 0, 1, 1]),
   "workshop-car-foreground-rail": panelDef("workshop-car-foreground-rail", [0, 0, 1, 1]),
+  // AR-055: the same pair PER CAR TYPE — a hopper's slatted bin and a tanker's
+  // steel cylinder are not a boxcar's timber room. Registered ahead of the art
+  // so a delivered PNG needs no code change; `cabinFor` asks the ATLAS whether
+  // each one exists yet and falls back to the shared pair until it does.
+  ...Object.fromEntries(
+    (["boxcar", "tanker", "hopper", "flatcar"] as const).flatMap((type) =>
+      (["interior", "foreground-rail"] as const).map((layer) => {
+        const id = `workshop-car-${layer}-${type}`;
+        return [id, panelDef(id, [0, 0, 1, 1])] as const;
+      }),
+    ),
+  ),
   "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
   "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
   // AR-026 delivered the pair: idle = lever down + OFF plaque, on = lever up +

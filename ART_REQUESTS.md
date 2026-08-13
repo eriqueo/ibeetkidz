@@ -71,17 +71,27 @@ sprites and look at them** (`instruments/inst-drums-passive.png`,
 
 ---
 
-## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 4)
+## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 5)
 
-**Rev 3's entire queue is delivered AND integrated.** Every one of AR-020,
-AR-022, AR-043, AR-051, AR-052, AR-053 and AR-054 is now mounted in the engine
-and verified on screen — see "INTEGRATED" below for what each one drives. The
-remaining list is what is genuinely still open.
+**Rev 3's entire queue is delivered AND integrated** (see "INTEGRATED" below).
+Rev 5 is the review that followed, on the live screens.
 
-1. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
+1. **AR-055 — the car cabin, revised — P0.** AR-052's art is mounted and the
+   verdict is that it reads as *a train inside the train*. Highest priority: it
+   is the screen the kid spends the most time on, and it is currently worse than
+   the flat colour it replaced. Includes the four per-car-type variants.
+2. **AR-056 — the My Voice effect rack — P0.** Eight flat neon tiles with
+   system emoji on a painted steel plate. Engineering has moved them onto the
+   AR-054 keycap and made the labels fit; what is missing is the ICONS.
+3. **AR-057 — the shared chrome pair: ✕ and DONE — HIGH.** Every tool panel now
+   carries both, in the same slot, and both are stand-ins.
+4. **AR-058 — the Percussion plate, redrawn into the machine-face family —
+   HIGH.** AR-050's plate is a wooden frame around a flat field; next to
+   AR-051's three steel machines it is now the odd one out.
+5. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
    Do not retire these merely because they are old; only supersede them when a
    replacement request explicitly replaces their user-visible result.
-2. **The TUNNEL world treatment is still parked** pending a design round (per
+6. **The TUNNEL world treatment is still parked** pending a design round (per
    AR-049), as are AR-049's optional painted night/tunnel washes. The NIGHT half
    is now painted art (AR-053's sky band + a wash over the land only); the tunnel
    is still a flat near-black rectangle. **Ask before building it** — the shape
@@ -2344,3 +2354,147 @@ rectangle — a painted `trk-sky-night` band (moon + stars, same 512-wide
 tiling contract as `trk-sky`) upgrades it properly. The TUNNEL treatment
 stays parked pending a design round (per AR-049). `trk-gloom` stays
 engine-drawn on purpose — it is a wash and should look like one.
+
+---
+
+## AR-055 · The car cabin, revised — remove the nested car, and vary it per type — P0
+
+**Supersedes the art of AR-052, not its intent.** `workshop-car-interior.png`
+and `workshop-car-foreground-rail.png` are mounted (rear layer behind the crew,
+rail in front of their legs, both travelling with the car) and the composite
+weave is right. The ART is wrong, in two specific ways, both reported on the
+live screen.
+
+### 1. It reads as a train inside the train
+
+The delivered interior carries its own **exterior signature**: a strapped roof
+beam across the top, hard rounded upper corners, and a framed edge all round.
+Those are the marks of a car's OUTSIDE. Drawn inside the car's punched opening,
+the eye reads the near frame (the car) and then a second, smaller framed box
+behind it, and names it a nested car. Eric's words: *"there's just a new train
+inside the train? this looks terrible."*
+
+**The rule an interior has to follow: it has no frame of its own.** The punched
+hole in the car body IS the frame. So:
+
+- **No top beam, no strap hardware, no rounded corners, no outline.** Nothing
+  that traces the edge of the art.
+- **Bleed past all four edges.** Draw the room as if the canvas were a window
+  cut out of a bigger space — planks, shelf lines and the floor plane must run
+  off every edge mid-stroke, never stop short and never turn a corner.
+- **Depth by INTERIOR cues only:** the back wall further away and cooler, the
+  floor/bench plane catching light, lamps as practical sources, and shadow in
+  the top corners where a roof would be — implied, not drawn.
+- The existing lamps, tool boards and cable are good and should survive; it is
+  the framing around them that has to go.
+
+### 2. It does not change per car type
+
+One timber room is currently drawn inside all four bodies, so a purple **hopper**
+has a boxcar's wooden room in it (`it also doesnt change per car`). Deliver the
+pair **per type**, all on the same `1612 × 430` void canvas and all following the
+no-frame rule above:
+
+| File stem | The room inside |
+|---|---|
+| `workshop-car-interior-boxcar` + `-foreground-rail-boxcar` | The timber workshop room already drawn, de-framed. |
+| `workshop-car-interior-tanker` + `-foreground-rail-tanker` | Riveted steel cylinder: curved inner shell, banded ribs receding, a catwalk plate for the floor, one caged lamp. |
+| `workshop-car-interior-hopper` + `-foreground-rail-hopper` | Slatted bin: raw board walls with gaps of dark between them, sloped hopper sides converging toward the bottom, a plank floor over the chute. |
+| `workshop-car-interior-flatcar` + `-foreground-rail-flatcar` | Mostly OPEN: a low stake-side rail, deck planks running to the edges, and daylight/sky behind rather than a wall — a flatcar has no room, and pretending it does is the same lie as the nested box. |
+
+**Engineering is already wired for this.** `cabinFor()` in `WorkshopScene`
+prefers `workshop-car-<layer>-<type>` when the atlas carries it and falls back
+to the shared pair otherwise, and all eight keys are pre-registered in
+`ui-sprites.ts`. Drop the PNGs, rebuild the atlas, and they appear — no code
+change, and a partial delivery (say, the tanker only) is safe.
+
+**Acceptance bar:** with a crew aboard, each character reads as standing inside
+that particular kind of car. Nothing in the opening may read as an edge, a
+frame, or a second vehicle. Check all four types with a full crew and empty.
+
+---
+
+## AR-056 · The My Voice effect rack — eight icons, no more emoji — P0
+
+The eight effect tiles are the loudest thing on the My Voice machine: flat
+saturated rectangles carrying system emoji, sitting on a painted steel plate.
+Engineering has already moved them onto AR-054's neutral `pad-key` keycap (so
+they take the machine's own light and keep their per-effect colour) and made the
+labels fit inside the key. What is missing is the picture.
+
+**Deliver eight 128 × 128 true-alpha icons**, the same compact house style and
+scale as AR-054's `drum-*` set — a simple subject, a 1px dark-plum outline, one
+cream glint, no badge, no scenery, no matte, and legible after tinting:
+
+| File | Effect | What it has to say to a non-reader |
+|---|---|---|
+| `fx-reverse.png` | Backwards | Sound running the wrong way — a reversed arrow or a tape spool unwinding. |
+| `fx-pitch-up.png` | Chipmunk | A tiny high voice: small creature, mouth open, small notes rising. |
+| `fx-pitch-down.png` | Monster | A big low voice: heavy jaw, big note falling. |
+| `fx-robot.png` | Robot | A square-jawed speaker head, stepped/quantised sound. |
+| `fx-echo.png` | Echo | The same shape repeating away into the distance, fading. |
+| `fx-reverb.png` | Big Room | A small figure in a big hall — sound opening out. |
+| `fx-bitcrush.png` | Crunchy | Sound broken into coarse blocks; deliberately chunky pixels. |
+| `fx-crazy.png` | CRAZY! | All of them at once — a happy scribble of everything above. |
+
+Same for the four Magic Pad wave pickers if it is cheap: `wave-triangle`,
+`wave-sine`, `wave-square`, `wave-saw` (Soft / Smooth / Buzzy / Sharp).
+
+**Engineering handoff:** these mount through the existing
+`PanelButton({ keycap, icon })` seam that the drum shelf already uses — the
+icon frame name is the only wiring, and the engine keeps the text label under it
+for the adult.
+
+---
+
+## AR-057 · The shared chrome pair: the ✕ and the DONE plaque — HIGH
+
+Every tool panel now carries **the same two controls in the same two places**,
+because a four-year-old should learn one gesture for "I am finished" rather than
+one per machine (Voice Keys said "Add to Car", the Magic Pad said "Send to Car",
+the drum grid said nothing at all). Both are currently stand-ins.
+
+1. **`btn-panel-close-idle/-pressed.png`** — square, ~512², the top-right corner
+   of every machine face. It sits directly on painted steel, so it must be a
+   real machined control: a recessed brass-ringed socket with a dark ✕ cut into
+   it, not a flat dark square with a glyph on top (which is what it is now).
+2. **`btn-panel-done-idle/-pressed.png`** — a WIDE plaque, roughly 3:1, ~1024 ×
+   340, that hangs BELOW the machine on the dark backdrop (the same place and
+   the same job as the conductor chalkboard's DONE chip). Baked label reading
+   **DONE**. Green family, in the timber/brass control language — it is the one
+   affirmative button in the app and should look like the biggest, friendliest
+   thing on the screen.
+
+**Engineering handoff:** both mount in `BaseToolPanel` (one construction site
+for all six panels) through the same idle/pressed contract every other button
+uses. The pair is also the natural face for the chalkboard's DONE chip; wire
+that at the same time so the two never drift apart.
+
+---
+
+## AR-058 · The Percussion plate, redrawn into the machine-face family — HIGH
+
+AR-050's `panel-percussion.png` was drawn before AR-051 established what a tool
+machine looks like in this app. Beside the three steel/timber/brass machine
+faces it is now the odd one out: a wooden picture frame around one large flat
+dark field, with the drum shelf as a strip beneath it.
+
+**Redraw it to match `panel-voice` / `panel-keys` / `panel-magic`**, same
+1536 × 1152 canvas and the same regions engineering already measures against:
+
+- The **grid field** stays a large quiet recess — it holds a step grid and must
+  not compete with it — but recessed into a steel face with the family's rivets
+  and corner hardware, not framed in wood.
+- A **row rail** down its left ~16 %, drawn as part of the machine (the engine
+  puts each drum's icon, mute and ✕ in it) rather than as empty field.
+- The **ten shelf sockets** along the bottom, sized and spaced for AR-054's
+  `pad-key` keycaps, which now sit in them.
+- Keep the drum-machine identity: this is the frog's kit, and it should look
+  like a piece of percussion gear, not a generic panel.
+
+**Engineering handoff:** the region fractions in `PercussionToolPanel.PLATE`
+(`field`, `shelf`) are measured off the current PNG and will be re-measured on
+delivery — hold the *proportions* roughly and the remount is one edit.
+
+**Acceptance bar:** open Drums, then My Voice, then the Magic Pad in sequence.
+All three must read as three machines from the same workshop.

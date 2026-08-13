@@ -94,6 +94,10 @@ export interface EventMap {
   // Payload is a `CAR_COLORS` entry; the reducer refuses anything else and
   // refuses a colour another car is already wearing (see `setCarColor`).
   "workshop-car-color-picked": [color: string];
+  // Phaser -> React (Workshop): the kid tapped a paint chip another car already
+  // wears. The colour IS that car everywhere else in the app, so the chip is a
+  // door into it rather than a refusal — open that car on the bench.
+  "workshop-open-car": [partId: string];
   // Tiled button -> WorkshopScene: SEND TO YARD — the scene plays the car
   // slide-out (+ whistle), THEN emits `workshop-car-departed` for React.
   "workshop-send-to-yard": [];

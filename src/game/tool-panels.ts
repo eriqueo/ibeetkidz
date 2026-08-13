@@ -30,6 +30,13 @@ export const INK = "#2b2440";
 /** AR-054's neutral, tintable percussion keycap (idle ⇄ seated). */
 const PAD_KEY = UI_SPRITES["pad-key"]!;
 
+/** Press Start 2P metrics, as multiples of the font size. Its advance measures
+ *  exactly 1.0 em in-browser at every size; the 1.06 buys margin for the emoji
+ *  that share these labels, which are wider than the pixel glyphs around them.
+ *  Used to fit button text without measuring — see `PanelButton.place`. */
+const FONT_ADVANCE_EM = 1.06;
+const FONT_LINE_EM = 1.45;
+
 /** Dark ink on light button fills, cream on dark ones. */
 function labelColorFor(fill: number): string {
   const r = (fill >> 16) & 0xff, g = (fill >> 8) & 0xff, b = fill & 0xff;
@@ -180,10 +187,43 @@ export class PanelButton {
   place(b: Box, fontPx = 12): void {
     this.bg.setSize(b.w, b.h);
     this.hit.setTo(-b.w / 2, -b.h / 2, b.w, b.h);
-    this.label.setFontSize(fontPx);
-    this.label.setWordWrapWidth(b.w - 8);
+    // FIT THE TEXT TO THE BUTTON, rather than to the button's height alone.
+    //
+    // The caller passes a size derived from the tile height, and Press Start 2P
+    // is a fixed-width pixel face with no narrow glyphs and no way to break a
+    // long word — so "Backwards" in a tile a third as wide as that word ran
+    // straight out through both sides and across its neighbours. That is most
+    // of what made the My Voice effect rack look broken.
+    //
     this.container.setPosition(b.x + b.w / 2, b.y + b.h / 2);
+    // The FACE goes first, because it decides how much room the text has. A
+    // keycap is square art contain-fitted into the slot, so in a wide slot the
+    // visible key is narrower than the box — text fitted to the box then ran
+    // off both sides of the key it was sitting on.
     if (this.face) placeUiSprite(this.face, PAD_KEY, { x: 0, y: 0, width: b.w, height: b.h });
+    const faceW = this.face ? this.face.displayWidth * 0.86 : b.w;
+    const faceH = this.face ? this.face.displayHeight * 0.86 : b.h;
+
+    // Computed from the LONGEST LINE, not measured off the Text object. The
+    // measuring version of this was written first and was wrong on the only run
+    // that matters: a panel lays out before the webfont finishes loading, so it
+    // measured the browser's FALLBACK face, fitted to that, and then Press
+    // Start 2P arrived and overflowed anyway. Arithmetic over the string cannot
+    // be fooled by which font happens to be resident.
+    //
+    // Press Start 2P is fixed-width with a one-em advance (measured in-browser,
+    // exactly 1.0 at every size), so a line is `chars * size` wide and a row is
+    // about 1.45 em tall — same answer before and after the font loads.
+    const pad = Math.max(8, Math.min(faceW, faceH) * 0.12);
+    const lines = this.label.text.split("\n");
+    const cols = Math.max(1, ...lines.map((l) => l.length));
+    const fit = Math.min(
+      fontPx,
+      (faceW - pad) / (cols * FONT_ADVANCE_EM),
+      (faceH - pad) / (lines.length * FONT_LINE_EM),
+    );
+    this.label.setFontSize(Math.max(7, Math.floor(fit)));
+    this.label.setWordWrapWidth(faceW - pad);
     // Inside the keycap's face, not filling it — the socket's bevel has to stay
     // visible or the raised/seated states stop reading.
     if (this.icon) {
@@ -212,6 +252,17 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
   protected frame: Phaser.GameObjects.Rectangle;
   protected titleText: Phaser.GameObjects.Text;
   protected closeBtn: PanelButton;
+  /**
+   * The one way out of every machine.
+   *
+   * Each tool used to end differently — Voice Keys said "Add to Car", the Magic
+   * Pad said "Send to Car", the drum grid said nothing at all and left the ✕ in
+   * the corner as the only exit. Three tools, three finishing moves, none of
+   * them in the same place. A four-year-old learns ONE gesture for "I'm done
+   * with this machine", so there is one button, with one word on it, in the
+   * same slot on every panel, and what it commits is the panel's business.
+   */
+  protected doneBtn: PanelButton;
   /** Inner content box (inside the frame padding), in screen px. */
   protected inner: Box = { x: 0, y: 0, w: 0, h: 0 };
   private built = false;
@@ -230,8 +281,25 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.shadow = scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.55).setOrigin(0);
     this.frame = scene.add.rectangle(0, 0, 10, 10, PANEL_BG, 1).setStrokeStyle(4, PANEL_EDGE).setOrigin(0);
     this.titleText = scene.add.text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: INK }).setOrigin(0, 0.5);
-    this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"));
-    this.add([this.backdrop, this.shadow, this.frame, this.titleText, this.closeBtn.container]);
+    // Both chrome controls wear the keycap face, so the corner ✕ stops being a
+    // flat dark square dropped on painted steel. AR-056's dedicated art
+    // replaces the face wherever it lands; this is the same greybox-then-art
+    // seam every other control uses.
+    // ✕ is square and takes the keycap. DONE is a WIDE plaque and does not:
+    // the keycap is square art, contain-fitted, so in a wide slot it shrinks to
+    // a small square with the word hanging off both ends of it. Its green
+    // rectangle is the same face the MAKE A BEAT / MAKE NOTES plaques wear,
+    // which is the language a wide commit control already speaks here.
+    this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"), 0x7a2540, { keycap: true });
+    this.doneBtn = new PanelButton(scene, "DONE", () => this.onDone(), 0x2a5c2a);
+    this.add([this.backdrop, this.shadow, this.frame, this.titleText, this.closeBtn.container, this.doneBtn.container]);
+  }
+
+  /** What DONE means for this tool. The default is the honest one: a panel that
+   *  edits the car's lanes live has nothing left to commit, so finishing IS
+   *  closing. Tools holding an uncommitted take override this to send it. */
+  protected onDone(): void {
+    EventBus.emit("tool-closed");
   }
 
   /** Position the modal over the viewport and re-flow content. */
@@ -249,8 +317,18 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.titleText.setFontSize(Math.max(12, Math.round(headerH * 0.42)));
     const closeSz = Math.min(headerH * 0.9, fw * 0.1);
     this.closeBtn.place({ x: fx + fw - pad - closeSz, y: fy + (headerH - closeSz) / 2, w: closeSz, h: closeSz }, Math.round(closeSz * 0.45));
+    this.placeDone(fx + fw / 2, fy + fh, fw);
     this.inner = { x: fx + pad, y: fy + headerH, w: fw - pad * 2, h: fh - headerH - pad };
     this.layoutContent();
+  }
+
+  /** DONE hangs just BELOW the machine, centred — the same place and the same
+   *  gesture as the conductor chalkboard's own DONE chip, so "finished" looks
+   *  identical everywhere in the Workshop. */
+  private placeDone(cx: number, bottomY: number, width: number): void {
+    const w = Math.max(140, width * 0.2);
+    const h = Math.max(52, width * 0.062);
+    this.doneBtn.place({ x: cx - w / 2, y: bottomY + h * 0.22, w, h }, Math.round(h * 0.34));
   }
 
   /**
@@ -279,6 +357,7 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     // constructor added — and `placePlate` moves the header ONTO the plate.
     this.bringToTop(this.titleText);
     this.bringToTop(this.closeBtn.container);
+    this.bringToTop(this.doneBtn.container);
   }
 
   /**
@@ -311,9 +390,9 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     // title half-hidden behind the plate's own edge.
     const inset = iw * 0.03;
     this.titleText.setX(left + inset);
-    const close = this.closeBtn;
     const sz = Math.min(ih * 0.1, iw * 0.09);
-    close.place({ x: left + iw - inset - sz, y: this.titleText.y - sz / 2, w: sz, h: sz }, Math.round(sz * 0.45));
+    this.closeBtn.place({ x: left + iw - inset - sz, y: this.titleText.y - sz / 2, w: sz, h: sz }, Math.round(sz * 0.45));
+    this.placeDone(left + iw / 2, top + ih, iw);
     return (r) => ({
       x: left + r.x0 * iw,
       y: top + r.y0 * ih,
@@ -379,9 +458,20 @@ export class VoiceToolPanel extends BaseToolPanel {
       .on("pointerout", () => EventBus.emit("tool-voice-record", false));
     // Ink on parchment, cream on steel — the plate's field is dark.
     this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: this.plateImg ? TEXT : INK, align: "center" }).setOrigin(0.5);
-    this.fxBtns = FX_TILES.map((t) => ({ id: t.id, btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color) }));
-    this.sendBeat = new PanelButton(this.scene, "🥁 Send as Beat", () => EventBus.emit("tool-voice-send", "beat"), 0x2a5c2a);
-    this.sendNotes = new PanelButton(this.scene, "🎹 Send as Notes", () => EventBus.emit("tool-voice-send", "notes"), 0x2a5c2a);
+    // The effect rack wears the SAME keycap the drum shelf does. Eight flat
+    // neon rectangles were the loudest thing on a painted steel plate and read
+    // as stickers stuck to the machine; the keycap is neutral art the engine
+    // tints, so each effect keeps its colour and stops fighting the plate.
+    this.fxBtns = FX_TILES.map((t) => ({
+      id: t.id,
+      btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { keycap: true }),
+    }));
+    // NOT two "done" buttons — a CHOICE of what the recording becomes, which is
+    // the one thing DONE cannot decide for the kid. Labelled as a pick ("make
+    // it a…") rather than as two rival ways to finish, so the single DONE below
+    // stays the only way out of every machine.
+    this.sendBeat = new PanelButton(this.scene, "🥁 MAKE A BEAT", () => EventBus.emit("tool-voice-send", "beat"), 0x2a5c2a);
+    this.sendNotes = new PanelButton(this.scene, "🎹 MAKE NOTES", () => EventBus.emit("tool-voice-send", "notes"), 0x2a5c2a);
     this.add([this.recordBtn.container, this.status, ...this.fxBtns.map((f) => f.btn.container), this.sendBeat.container, this.sendNotes.container]);
   }
 
@@ -432,7 +522,8 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
   private recordBtn!: PanelButton;
   private status!: Phaser.GameObjects.Text;
   private keys: PanelButton[] = [];
-  private sendBtn!: PanelButton;
+  /** Whether DONE has a take to commit, from the last `apply`. */
+  private pending = false;
 
   constructor(scene: Phaser.Scene) { super(scene, "🎙️ Voice Keys"); }
 
@@ -446,8 +537,15 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
     this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: this.plateImg ? TEXT : INK, align: "center" }).setOrigin(0.5);
     this.keys = Array.from({ length: MELODY_ROWS }, (_, row) =>
       new PanelButton(this.scene, "", () => EventBus.emit("tool-keys-audition", row), 0x6a5520));
-    this.sendBtn = new PanelButton(this.scene, "➡️ Add to Car", () => EventBus.emit("tool-keys-send"), 0x2a5c2a);
-    this.add([this.recordBtn.container, this.status, ...this.keys.map((k) => k.container), this.sendBtn.container]);
+    this.add([this.recordBtn.container, this.status, ...this.keys.map((k) => k.container)]);
+  }
+
+  /** Voice Keys holds an uncommitted take, so finishing sends it to the car —
+   *  which is exactly what its old "➡️ Add to Car" button did, now under the
+   *  word every other machine uses. */
+  protected override onDone(): void {
+    if (this.pending) EventBus.emit("tool-keys-send");
+    EventBus.emit("tool-closed");
   }
 
   protected layoutContent(): void {
@@ -457,13 +555,11 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
     const rec = at ? at(P.record) : { x: i.x, y: i.y, w: i.w, h: i.h * 0.22 };
     const statusY = at ? at({ ...P.record, y0: P.statusY, y1: P.statusY }).y : i.y + i.h * 0.3;
     const keys = at ? at(P.keys) : { x: i.x, y: i.y + i.h * 0.38, w: i.w, h: i.h * 0.4 };
-    const send = at ? at(P.send) : { x: i.x + i.w * 0.25, y: i.y + i.h * 0.84, w: i.w * 0.5, h: i.h * 0.14 };
 
     this.recordBtn.place(rec, Math.max(11, rec.h * 0.22));
     this.status.setPosition(i.x + i.w / 2, statusY).setFontSize(Math.max(9, i.h * 0.03));
     gridIn(keys, this.keys.length, 1, 0.012).forEach((b, idx) =>
       this.keys[idx]?.place(b, Math.max(9, b.w * 0.3)));
-    this.sendBtn.place(send, Math.max(10, send.h * 0.3));
   }
 
   apply(model: ToolModel): void {
@@ -474,8 +570,7 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
       key.setVisible(k.hasClip);
       key.setText(k.keyLabels[idx] ?? "");
     });
-    this.sendBtn.setVisible(k.hasClip);
-    this.sendBtn.setEnabled(!k.onHome);
+    this.pending = k.hasClip && !k.onHome;
   }
 }
 
@@ -986,7 +1081,8 @@ export class MagicToolPanel extends BaseToolPanel {
   private hint!: Phaser.GameObjects.Text;
   private waveBtns: { wave: ThereminWave; btn: PanelButton }[] = [];
   private recordBtn!: PanelButton;
-  private sendBtn!: PanelButton;
+  /** Whether DONE has a take to commit, from the last `apply`. */
+  private pending = false;
   private dragging = false;
   private zoneBox: Box = { x: 0, y: 0, w: 0, h: 0 };
 
@@ -1013,8 +1109,14 @@ export class MagicToolPanel extends BaseToolPanel {
     });
     this.waveBtns = WAVES.map((w) => ({ wave: w.wave, btn: new PanelButton(this.scene, `${w.emoji}\n${w.label}`, () => EventBus.emit("tool-magic-wave", w.wave)) }));
     this.recordBtn = new PanelButton(this.scene, "🎙️ Record", () => EventBus.emit("tool-magic-record"), 0x7a2540);
-    this.sendBtn = new PanelButton(this.scene, "➡️ Send to Car", () => EventBus.emit("tool-magic-send"), 0x2a5c2a);
-    this.add([this.zone, this.dot, this.hint, ...this.waveBtns.map((w) => w.btn.container), this.recordBtn.container, this.sendBtn.container]);
+    this.add([this.zone, this.dot, this.hint, ...this.waveBtns.map((w) => w.btn.container), this.recordBtn.container]);
+  }
+
+  /** Like Voice Keys, the Magic Pad holds a take until it is sent — so DONE is
+   *  what its "➡️ Send to Car" button used to be. */
+  protected override onDone(): void {
+    if (this.pending) EventBus.emit("tool-magic-send");
+    EventBus.emit("tool-closed");
   }
 
   private emitPointer(phase: "down" | "move" | "up", p: Phaser.Input.Pointer): void {
@@ -1030,8 +1132,12 @@ export class MagicToolPanel extends BaseToolPanel {
     const P = MagicToolPanel.PLATE;
     const bgap = i.w * 0.04, bw = (i.w - bgap) / 2, bh = i.h * 0.16, by = i.y + i.h * 0.78;
     const waves = at ? at(P.waves) : { x: i.x, y: i.y, w: i.w, h: i.h * 0.14 };
-    const rec = at ? at(P.record) : { x: i.x, y: by, w: bw, h: bh };
-    const send = at ? at(P.send) : { x: i.x + bw + bgap, y: by, w: bw, h: bh };
+    // RECORD spans both bottom bays now: the right one held "Send to Car",
+    // which DONE has taken over, and a half-width control beside an empty
+    // recess reads as a missing button rather than a deliberate one.
+    const recA = at ? at(P.record) : { x: i.x, y: by, w: bw, h: bh };
+    const recB = at ? at(P.send) : { x: i.x + bw + bgap, y: by, w: bw, h: bh };
+    const rec = { x: recA.x, y: recA.y, w: recB.x + recB.w - recA.x, h: recA.h };
 
     gridIn(waves, this.waveBtns.length, 1).forEach((b, k) =>
       this.waveBtns[k]?.btn.place(b, Math.max(9, b.h * 0.22)));
@@ -1040,7 +1146,6 @@ export class MagicToolPanel extends BaseToolPanel {
     this.hint.setPosition(this.zoneBox.x + this.zoneBox.w / 2, this.zoneBox.y + this.zoneBox.h / 2).setFontSize(Math.max(9, i.h * 0.03));
     this.dot.setRadius(Math.max(6, i.w * 0.012));
     this.recordBtn.place(rec, Math.max(10, rec.h * 0.28));
-    this.sendBtn.place(send, Math.max(10, send.h * 0.28));
   }
 
   apply(model: ToolModel): void {
@@ -1048,8 +1153,7 @@ export class MagicToolPanel extends BaseToolPanel {
     this.recordBtn.setText(m.recording ? "⏹️ Stop" : "🎙️ Record");
     this.recordBtn.setFill(m.recording ? 0xb03050 : 0x7a2540);
     this.hint.setText(m.status);
-    this.sendBtn.setVisible(m.hasClip);
-    this.sendBtn.setEnabled(!m.onHome);
+    this.pending = m.hasClip && !m.onHome;
   }
 }
 

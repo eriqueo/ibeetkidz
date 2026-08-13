@@ -41,8 +41,15 @@ export const WORKSHOP_GRID_V2 = {
 // Satellite tool modal (My Voice / Voice Keys / Pads / Beat / Magic). Centred
 // over the VIEWPORT (not the image) so it's fully visible regardless of the
 // cover-crop, covering most of the screen but clear of the corner nav.
+//
+// The machine faces are contain-fitted and HEIGHT-bound, so this box's height
+// is the panel's only real dimension — and it used to run from 0.11 to 0.81,
+// leaving nothing under the plate. Every tool now hangs a DONE chip below its
+// machine (the same finish gesture as the conductor chalkboard), so the box
+// gives that strip back: it starts higher and ends well clear of the transport
+// bar, where DONE was landing on top of the PLAY button.
 export const WORKSHOP_TOOL_MODAL = {
-  x: 0.07, y: 0.11, w: 0.86, h: 0.70,
+  x: 0.07, y: 0.075, w: 0.86, h: 0.655,
 } as const;
 
 // Track SEND result panel: a compact centred card (viewport-relative, like the

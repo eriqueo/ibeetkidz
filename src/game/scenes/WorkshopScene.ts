@@ -93,11 +93,18 @@ export interface WorkshopModel {
    *  editing is what makes the mark mean something on a siding later. */
   readonly carName: string;
   readonly livery: number;
-  /** Livery colours the OTHER cars in the library are wearing. The paint rack
-   *  greys these out, because `setCarColor` refuses them: a car's spoken NUMBER
-   *  is derived from where its colour sits in `CAR_COLORS`, so two cars sharing
-   *  one would silently renumber the second. See the reducer. */
-  readonly takenColors: readonly string[];
+  /**
+   * Which OTHER car wears each taken livery colour, by car id.
+   *
+   * It used to be a bare list of colours, and the rack drew a ✕ through each
+   * one: "this is spoken for, you may not have it". But a colour with an owner
+   * is not a dead chip — it is that CAR, sitting right there on the rack, and
+   * every screen already teaches the kid that the colour IS the car. So the
+   * chip became the way back into it, which is what Eric asked for: tap your
+   * red car's red and the red car opens. That needs the owner's id, not just
+   * the fact that somebody owns it.
+   */
+  readonly colorOwners: readonly { color: string; partId: string }[];
   readonly selectedLayerId: string | null;
   readonly tempoBpm: number;
   /** How many cars the LIBRARY holds. The New Car picker needs it to tell a kid
@@ -183,8 +190,22 @@ const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
 const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
 // AR-052's cabin pair, both authored on the punched void's own canvas.
-const CABIN_REAR = UI_SPRITES["workshop-car-interior"]!;
-const CABIN_RAIL = UI_SPRITES["workshop-car-foreground-rail"]!;
+//
+// PER CAR TYPE, falling back to the shared pair. A hopper is a slatted bin and
+// a tanker is a steel cylinder; giving both of them the boxcar's timber room is
+// the second half of Eric's report ("it also doesn't change per car"), and the
+// fix has to be a lookup rather than a later edit — the art agent drops
+// `workshop-car-interior-hopper.png` in and it appears, with no code change and
+// no chance of the four getting out of step with the four car types.
+function cabinFor(scene: Phaser.Scene, type: CarType, layer: "interior" | "foreground-rail"): UiSpriteDef {
+  const perType = UI_SPRITES[`workshop-car-${layer}-${type}`];
+  // The ATLAS decides, not the manifest: the per-type keys are registered ahead
+  // of the art so the drop needs no code change, which means a registered key
+  // whose PNG has not been drawn yet must fall back rather than ask Phaser for
+  // a frame that is not there.
+  if (perType && hasUiFrame(scene, perType.base)) return perType;
+  return UI_SPRITES[`workshop-car-${layer}`]!;
+}
 
 const DEPTH_CAR = 0.4;
 const DEPTH_WASH = 0.5; // the livery, over the body and under everything else
@@ -224,7 +245,7 @@ interface LaneRow {
 export class WorkshopScene extends BackgroundScene {
   static readonly KEY = "WorkshopScene";
 
-  private model: WorkshopModel = { lanes: [], crew: [], carType: "boxcar", carName: "Loop 1", livery: 0, takenColors: [], selectedLayerId: null, tempoBpm: 120, carCount: 1 };
+  private model: WorkshopModel = { lanes: [], crew: [], carType: "boxcar", carName: "Loop 1", livery: 0, colorOwners: [], selectedLayerId: null, tempoBpm: 120, carCount: 1 };
   private rows: LaneRow[] = [];
   private structKey = "";
   /** The empty-car prompt (hint + the SURPRISE ME chip), or undefined when
@@ -420,12 +441,14 @@ export class WorkshopScene extends BackgroundScene {
     // timber back wall behind the body, the bench rail in front of the riders'
     // legs. The graphics bands above stay as the fallback for a cold atlas.
     if (this.textures.exists(UI_ATLAS_KEY)) {
+      // Both start on the DEFAULT car's pair and are re-framed per car type by
+      // `drawCarInterior`, which is the one place that runs on every car change.
       this.carCabin = this.add
-        .image(0, 0, UI_ATLAS_KEY, CABIN_REAR.base)
+        .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "interior").base)
         .setOrigin(0.5)
         .setDepth(DEPTH_CAR - 0.04);
       this.carRail = this.add
-        .image(0, 0, UI_ATLAS_KEY, CABIN_RAIL.base)
+        .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "foreground-rail").base)
         .setOrigin(0.5)
         .setDepth(DEPTH_RIDER + 0.05);
     }
@@ -629,8 +652,13 @@ export class WorkshopScene extends BackgroundScene {
 
     if (this.carCabin || this.carRail) {
       const rect = { x: v.x + v.w / 2, y: v.y + v.h / 2, width: v.w, height: v.h };
-      if (this.carCabin) placeUiSprite(this.carCabin, CABIN_REAR, rect);
-      if (this.carRail) placeUiSprite(this.carRail, CABIN_RAIL, rect);
+      const rear = cabinFor(this, this.model.carType, "interior");
+      const rail = cabinFor(this, this.model.carType, "foreground-rail");
+      // The frame is re-set here, not only at construction: the car type
+      // changes under a live panel (New Car, or opening a different car), and
+      // this is the one place that already re-runs on every such change.
+      if (this.carCabin) placeUiSprite(this.carCabin.setFrame(rear.base), rear, rect);
+      if (this.carRail) placeUiSprite(this.carRail.setFrame(rail.base), rail, rect);
       return;
     }
 
@@ -759,8 +787,13 @@ export class WorkshopScene extends BackgroundScene {
     const { width, height } = this.scale.gameSize;
     const backdrop = this.editOrNew.getData("backdrop") as Phaser.GameObjects.Rectangle;
     backdrop.setSize(width, height);
+    // 0.42, down from 0.62. At 0.62 this thing filled most of the screen for a
+    // two-word question and read, in Eric's words, "way too big and jarring" —
+    // it is a quick either/or, not the app's main surface, and a dialogue that
+    // covers the workshop reads as an error rather than as a choice. The art is
+    // contain-fitted, so the smaller box just makes a smaller card.
     placeUiSprite(this.editOrNewImg, UI_SPRITES["modal-edit-or-new"]!, {
-      x: width / 2, y: height / 2, width: width * 0.62, height: height * 0.62,
+      x: width / 2, y: height / 2, width: width * 0.42, height: height * 0.42,
     });
     const img = this.editOrNewImg;
     const left = img.x - (img.width / 2) * img.scaleX;
@@ -916,19 +949,23 @@ export class WorkshopScene extends BackgroundScene {
       hit.on("pointerup", () => {
         if (!armed) return;
         armed = false;
-        // A colour another car wears is refused by the reducer anyway; catching
-        // it here is what keeps the greyed-out chip honest rather than a chip
-        // that looks disabled and silently does nothing.
-        if (this.colorTaken(color)) return;
-        EventBus.emit("workshop-car-color-picked", color);
+        // A chip with an owner OPENS that car; a free chip paints this one.
+        // Both are "go to the car that is this colour" — for the free chip the
+        // car in question is the one already on the bench.
+        const owner = this.ownerOf(color);
+        if (owner) EventBus.emit("workshop-open-car", owner);
+        else EventBus.emit("workshop-car-color-picked", color);
       });
       return hit;
     });
   }
 
-  private colorTaken(color: string): boolean {
+  /** The OTHER car wearing `color`, or null when the chip is free (or is this
+   *  car's own colour, which has no "other" owner and must not be openable —
+   *  tapping it would be a trip to where you already are). */
+  private ownerOf(color: string): string | null {
     const c = color.toLowerCase();
-    return this.model.takenColors.some((t) => t.toLowerCase() === c);
+    return this.model.colorOwners.find((o) => o.color.toLowerCase() === c)?.partId ?? null;
   }
 
   private layoutColorRack(): void {
@@ -961,12 +998,18 @@ export class WorkshopScene extends BackgroundScene {
     this.drawColorRack();
   }
 
-  /** Chip states, and why each is drawn the way it is: the car's OWN colour
-   *  wears a cream ring (the same "this one" mark the sounding car wears on the
-   *  Track); a colour another car has is dimmed AND struck through, because
-   *  dimming alone did not read — Eric's note was "there is no way to see what
-   *  color has been used yet, there should be an x or something"; everything
-   *  else is a full-strength chip. No text — the player is four. */
+  /**
+   * Chip states, and why each is drawn the way it is.
+   *
+   * THIS car's colour wears a cream ring — the same "this one" mark the
+   * sounding car wears on the Track. Another car's colour wears a brass ring
+   * and its full strength, because it is now a DOOR to that car rather than a
+   * refusal: it used to be dimmed to 28% and struck through with a ✕, which was
+   * the honest drawing while the chip did nothing, and is a lie now that
+   * tapping it opens the car. Everything else is a plain full-strength chip.
+   *
+   * No text anywhere — the player is four.
+   */
   private drawColorRack(): void {
     const g = this.rackChips;
     if (!g || this.rackCells.length === 0) return;
@@ -983,25 +1026,13 @@ export class WorkshopScene extends BackgroundScene {
       const rad = Math.min(w, h) * 0.24;
       const edge = Math.max(3, Math.min(w, h) * 0.09);
       const isMine = color.toLowerCase() === mine;
-      const taken = !isMine && this.colorTaken(color);
+      const owned = !isMine && this.ownerOf(color) !== null;
       g.fillStyle(CHIP_EDGE, 1).fillRoundedRect(
         x - edge, y - edge, w + edge * 2, h + edge * 2, rad + edge,
       );
-      g.fillStyle(hexToInt(color), taken ? 0.28 : 1).fillRoundedRect(x, y, w, h, rad);
-      if (taken) {
-        // A cross, drawn corner to corner inside the chip. Two strokes, kid-thick.
-        const inx = w * 0.18;
-        const iny = h * 0.22;
-        g.lineStyle(edge * 1.3, CHIP_EDGE, 0.85);
-        g.beginPath();
-        g.moveTo(x + inx, y + iny);
-        g.lineTo(x + w - inx, y + h - iny);
-        g.moveTo(x + w - inx, y + iny);
-        g.lineTo(x + inx, y + h - iny);
-        g.strokePath();
-      }
-      if (isMine) {
-        g.lineStyle(edge * 1.4, 0xffe9b0, 1).strokeRoundedRect(
+      g.fillStyle(hexToInt(color), 1).fillRoundedRect(x, y, w, h, rad);
+      if (isMine || owned) {
+        g.lineStyle(edge * 1.4, isMine ? 0xffe9b0 : 0x8a6b3a, 1).strokeRoundedRect(
           x - edge * 2, y - edge * 2, w + edge * 4, h + edge * 4, rad + edge * 2,
         );
       }
@@ -1123,6 +1154,11 @@ export class WorkshopScene extends BackgroundScene {
 
   setActiveTool(toolId: string | null): void {
     this.activeTool = toolId;
+    // One modal at a time. The conductor's chalkboard and a tool panel are both
+    // full-screen popups with their own DONE, and a tool opening over an open
+    // board leaves the board's chip poking out from under the machine — two
+    // DONEs on screen, one of them belonging to something you cannot see.
+    if (toolId) this.closeBoard();
     for (const [id, panel] of Object.entries(this.toolPanels)) {
       const show = id === toolId;
       panel.setVisible(show);

@@ -356,5 +356,14 @@ export const STEP_COUNT = 16;
 export const MAX_LAYERS = 6;
 /** Numbered pattern slots a single lane can hold (BeepBox-style 1-9). */
 export const MAX_PATTERNS = 9;
-/** Cap on Song-Train cars (loops). Keeps the strip + loop track a sane width. */
-export const MAX_CARS = 12;
+/**
+ * Cap on Song-Train cars (loops). Keeps the strip + loop track a sane width.
+ *
+ * TEN, matching `CAR_COLORS` exactly: every car in a full yard wears a colour
+ * no other car has, and every chip on the Workshop's paint rack is a car slot.
+ * The cap and the palette are the same fact, so they must not be two numbers —
+ * at 12 cars against 10 colours, two cars would have to share a colour, which
+ * is precisely what the rack's "tap your colour to open that car" gesture
+ * cannot express.
+ */
+export const MAX_CARS = 10;

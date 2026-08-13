@@ -84,16 +84,20 @@ describe("a car and its name chip fit inside one siding pitch", () => {
   });
 });
 
-describe("paletteSlot — 12 cars, 4 sidings, no collisions", () => {
-  it("fills 4 rows then wraps to the next column", () => {
+describe("paletteSlot — every car, 4 sidings, no collisions", () => {
+  it("fills the sidings top to bottom, then wraps to the next column", () => {
     const rows = YARD_SIDINGS_V2.rows;
-    expect(MAX_CARS % rows).toBe(0); // 12 cars ⇒ exactly 3 full columns
+    // NOT `MAX_CARS % rows === 0`. That held while the cap was 12 and read as a
+    // requirement, but it never was one: the cap is set by the PALETTE (ten
+    // distinct car colours, `CAR_COLORS`), and a partly-filled last column is a
+    // yard with room left in it, not a broken layout. What has to hold is the
+    // wrap itself, and the no-overlap property the next test proves.
     const first = paletteSlot(REF, 0);
     expect(paletteSlot(REF, rows).cy).toBeCloseTo(first.cy, 6); // wrapped
     expect(paletteSlot(REF, rows).cx).toBeGreaterThan(first.cx);
   });
 
-  it("keeps every pair of the 12 slots apart on at least one axis", () => {
+  it("keeps every pair of the MAX_CARS slots apart on at least one axis", () => {
     const slots = Array.from({ length: MAX_CARS }, (_, i) => paletteSlot(REF, i));
     const bw = (CAR_CONTENT_E.boxcar[2] - CAR_CONTENT_E.boxcar[0]) * FRAME_SIZE;
     for (let a = 0; a < slots.length; a += 1) {

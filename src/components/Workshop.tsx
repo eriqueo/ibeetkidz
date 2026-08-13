@@ -149,7 +149,9 @@ export const Workshop: FC = () => {
     livery: carLiveries(project.parts).get(part.id) ?? 0,
     // What the paint rack may NOT offer. Derived from the library rather than
     // tracked, so it is right the moment a car is added, deleted or repainted.
-    takenColors: project.parts.filter((p) => p.id !== part.id).map((p) => p.color),
+    colorOwners: project.parts
+      .filter((p) => p.id !== part.id)
+      .map((p) => ({ color: p.color, partId: p.id })),
     selectedLayerId: selectedLayer,
     tempoBpm: project.tempoBpm,
     carCount: project.parts.length,
@@ -334,8 +336,26 @@ export const Workshop: FC = () => {
     // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
     const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
     const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });
-    const onNewCar = (carType?: CarType): void =>
+    // NEW CAR on an ALREADY-EMPTY car is not a new car — it is the car you are
+    // looking at. Minting a second empty one spent a livery colour on nothing
+    // (the rack crossed it off, which is Eric's report), put a car with no
+    // sound in the Yard, and left the kid on a bench identical to the one they
+    // just left. A car type still applies: that IS a change to this car.
+    const onNewCar = (carType?: CarType): void => {
+      const here = activePart(getProject());
+      if (here.layers.length === 0) {
+        if (carType && carType !== here.carType) dispatch({ type: "setCarType", partId: here.id, carType });
+        return;
+      }
       dispatch(carType ? { type: "addCar", id: newCarId(), carType } : { type: "addCar", id: newCarId() });
+    };
+    // A paint chip another car wears: put that car on the bench.
+    const onOpenCar = (partId: string): void => {
+      dispatch({ type: "setActivePart", partId });
+      setSelectedLayer(null);
+      setEditMelodyId(null);
+      setOpenTool(null);
+    };
     const onSurprise = (): void => surprise();
     // SEND TO YARD: the scene runs the slide-out; we voice a two-tone train
     // whistle when it starts (procedural — no binary audio) and travel to the
@@ -651,6 +671,7 @@ export const Workshop: FC = () => {
       ["nav-map", onNavMap], ["nav-yard", onNavYard],
       ["workshop-send-to-yard", onSendToYard], ["workshop-car-departed", onCarDeparted],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],
+      ["workshop-open-car", onOpenCar],
       ["workshop-layer-muted", onLayerMuted],
       ["workshop-layer-delete", onLayerDelete], ["workshop-edit-melody", onEditMelody],
       ["workshop-add-melody", onAddMelody],
