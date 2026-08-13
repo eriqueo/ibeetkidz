@@ -71,33 +71,33 @@ sprites and look at them** (`instruments/inst-drums-passive.png`,
 
 ---
 
-## PRIORITY ORDER (2026-08-01, rev 2)
+## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 3)
 
-1. **AR-024 — RE-EXPORT the 24 instrument PNGs with an alpha channel. BLOCKING.**
-   The AR-016/AR-021 art itself is good and is *not* being rejected — but all 24
-   files shipped as PNG colour-type 2 (RGB, **no alpha channel at all**) on a
-   solid near-white background. None of it can be wired until it is re-exported.
-   See AR-024 below for exactly what to change. **Nothing else in this queue
-   matters until this is fixed** — it is holding two finished tools hostage.
-2. **AR-023 — Workshop interior plate, pushed BACK.** Eric's own words on the
-   deployed build: *"little to no separation between the noisy background and the
-   cars."* The Workshop is where a kid spends nearly all their time, and it is the
-   one screen where background and foreground compete. Foreground is already
-   correct; the fix is entirely in the plate.
-3. **AR-026 — ×2 lever ON state + picture captions for the deck.** The only
-   entry in this queue where the shipped art says something FALSE: the switch
-   has one frame, so an armed ×2 still reads "OFF". Engineering can move the
-   lever (it does now) but cannot repaint a plaque. Small job, wrong-information
-   payoff.
-4. **AR-013 — steampunk LCD plate** (the last "debug-looking" chrome; wiring is
-   Tiled-only).
-5. **AR-022 — Map building labels** (the boot screen names none of its three
-   destinations). Prefer baking into the plate — see the entry for why the plaque
-   route needs code first.
-6. **AR-020 — SEND SONG plaque + result panel**, **AR-018 — satellite tool panel
-   plate** (engine parchment interim shipped for both).
-7. LOW: AR-006 (nav pressed states), AR-008 (picker selected states),
-   AR-009 / AR-017 (semi-opaque wash cleanups), AR-019 (yard readability).
+The earlier priority table is historical. AR-024, AR-023, and AR-026 shipped;
+**AR-013 is closed by product decision**. The active order below is based on the
+current Workshop and Track screenshots, not stale queue position.
+
+1. **AR-052 — Workshop car cabin integration — P0.** The current characters are
+   visually pasted into a maroon rectangle inside the car: no seat, floor,
+   foreground sill, practical light, or shared depth plane tells a child that
+   they are *inside and riding in* a musical train car. This is now the highest
+   visual-integration job.
+2. **AR-051 — My Voice / Voice Keys / Magic Pad painted tool plates — P0.** My
+   Voice first, then Voice Keys and Magic Pad. These screens still use generic
+   parchment while the Melody and Percussion tools have bespoke machine faces.
+3. **AR-054 — Percussion Editor coherence pass — P0.** The new plate improved
+   the frame but the drum shelf still reads as a row of mismatched flat stickers,
+   and the current row imagery/control art does not meet the house style. This
+   supersedes AR-025's narrow neutral-keycap request.
+4. **AR-043 — CLEAR plaque — HIGH.** It is a visible header fallback, not a
+   low-priority nicety; it must join RIDE and STOP as authored Track chrome.
+5. **AR-020 — SEND SONG plaque — HIGH**, then **AR-022 — Map destination labels
+   — HIGH.** The map is the quality benchmark and needs its three destinations
+   named in-world.
+6. **AR-053 — painted Track weather garnish and NIGHT sky — MEDIUM.**
+7. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
+   Do not retire these merely because they are old; only supersede them when a
+   replacement request explicitly replaces their user-visible result.
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
 not at generation resolution. `placeUiSprite` contain-fits a sprite's *content
@@ -234,7 +234,15 @@ carried by a word.
 
 ---
 
-## AR-025 · Sound Pads keycap — MEDIUM
+## RETIRED — AR-025 · Sound Pads keycap — superseded by AR-054
+
+The two neutral keycap states are too narrow a remedy for the current percussion
+surface. AR-054 replaces this with a coherent drum-pad, row-control, and icon
+system that shares the panel's material language. Do not generate AR-025 alone.
+
+---
+
+## AR-025 · Sound Pads keycap — SUPERSEDED SPEC
 
 **Target files:** `src/assets/sprites/buttons/pad-key-idle.png` and
 `pad-key-seated.png` (ONE pair, shared by all ~34 pads — see "one shape, many
@@ -445,7 +453,15 @@ existing refs."
 
 ---
 
-## AR-013 · Steampunk LCD display plate (SONG/TEMPO + SPEED readouts) — HIGH
+## ✅ CLOSED — AR-013 · Steampunk LCD display plate (SONG/TEMPO + SPEED readouts)
+
+**Closed 2026-08-13 by product decision.** The engine-drawn SONG/TEMPO and SPEED
+chips are no longer a requested art investment. Do not generate `panel-lcd.png`
+or schedule wiring for it unless the product decision is explicitly reopened.
+
+---
+
+## AR-013 · Steampunk LCD display plate (SONG/TEMPO + SPEED readouts) — SUPERSEDED SPEC
 
 **Target file:** `panels/panel-lcd.png`
 
@@ -930,7 +946,15 @@ treatment is coming for the Map, Yard and Workshop.
 > size; delivering these at 2× re-creates the exact bug they are fixing. Draw
 > them at the pixel dimensions stated, no larger.
 
-## AR-030 · Track foreground occluder overlay — HIGH
+## RETIRED — AR-030 · Track foreground occluder overlay
+
+**Retired 2026-08-13.** This belonged to the pre-V3 Track composition. The
+side-scroller now uses its delivered ground, fringe, bridge, hill, rider, and
+parallax layers; generate only against current Track V3 requests.
+
+---
+
+## AR-030 · Track foreground occluder overlay — RETIRED SPEC
 
 **The problem.** `src/assets/maps/track.json` has exactly ONE `base-plate` image
 layer, so every pine, rock and bush is baked into the backdrop. The train draws
@@ -960,7 +984,15 @@ it is.
 
 **Unblocks:** Law 3 in `design/GAME_FEEL.md`, for the Track.
 
-## AR-031 · Train vehicles redrawn at on-screen size (2 depth tiers) — HIGH
+## RETIRED — AR-031 · Train vehicles redrawn at on-screen size
+
+**Retired 2026-08-13.** Its old projection and depth-tier assumptions were
+replaced by Track V3 side-on rolling stock, separate wheelsets, and AR-041's
+remaining source-cleanup check.
+
+---
+
+## AR-031 · Train vehicles redrawn at on-screen size — RETIRED SPEC
 
 **The problem, measured.** Car art is 128×128 native (`train.png`, 1024×640,
 40 frames = 5 types × 8 directions). It is drawn at `carW 0.11 × 2560` = **281.6 px**
@@ -1010,7 +1042,14 @@ drawing of the same vehicle.
 downscaled from the near art.** Same reasoning as the standing re-render rule
 above: a resample invents intermediate colours and turns crisp pixels to mush.
 
-## AR-032 · Train motion + ground kit: wheelsets and contact shadows — HIGH
+## RETIRED — AR-032 · Train motion + ground kit
+
+**Retired 2026-08-13.** Track V3 has delivered wheel, shadow, ground, and fringe
+assets; remaining vehicle-source work is documented precisely in AR-041.
+
+---
+
+## AR-032 · Train motion + ground kit — RETIRED SPEC
 
 **The problem.** Two of the eight laws fail here at once. (Law 2) **No world
 object in this entire project has a contact shadow** — every `shadow` in the
@@ -1038,7 +1077,15 @@ independently.
 **Unblocks:** Laws 2 and 4 for the Track, and the same kit is reusable for the
 Yard's cars and for any future overworld character.
 
-## AR-033 · REDRAW the Track plate in the house projection — HIGH (supersedes half of AR-030/031)
+## RETIRED — AR-033 · Track plate redraw
+
+**Retired 2026-08-13.** The V3 side-scroller replaced the oval Track plate and
+its projection assumptions. Current Track changes must use the live V3 art
+seams, not this retired plate brief.
+
+---
+
+## AR-033 · Track plate redraw — RETIRED SPEC
 
 **This is a premise fix, not a polish pass. Read it before starting AR-030 or AR-031.**
 
@@ -1716,7 +1763,7 @@ through, and no art has ever existed for the inside of the car. **A painted
 interior (three-quarter timber planking, a lit floor) would be a genuine
 improvement** and is the smallest art job on this list.
 
-## AR-043 · Track v3: a painted CLEAR plaque for the top bar — LOW
+## AR-043 · Track v3: a painted CLEAR plaque for the top bar — HIGH
 
 The side-scroller's top bar gained a fourth control (2026-08-12): **CLEAR**,
 which empties the train (undoable — the "put it back" chip answers it). It
@@ -2083,26 +2130,69 @@ Name it `panel-percussion.png` under `src/assets/sprites/panels/`, rebuild
 contract as usual (engineering regenerates the atlas and mounts it; the cell
 grid stays engine-drawn over the plate exactly like the melody editor's).
 
-## AR-051 · Painted plates for My Voice, Voice Keys and the Magic Pad — MEDIUM
+## AR-051 · Painted plates for My Voice, Voice Keys and the Magic Pad — P0
 
-Same treatment, one plate each (`panel-voice.png`, `panel-keys.png`,
-`panel-magic.png`): the three remaining tools still sit on the generic
-parchment rectangle. Reads to hit — My Voice: a big mic mount + an FX tile
-rack; Voice Keys: a keyboard ledge; Magic Pad: a large XY pad face with a
-wave-picker rail. Engineering will measure each plate's recesses on delivery
-and mount the existing controls into them (same flow AR-016 used); deliver
-one at a time, My Voice first.
+These are the three remaining generic-parchment tools. Deliver **one painted
+machine face at a time**, My Voice first: `panel-voice.png` needs a large mic
+mount and FX-tile rack; `panel-keys.png` needs a child-readable keyboard ledge;
+`panel-magic.png` needs a substantial XY pad face and wave-picker rail. Each
+plate must leave the engine-drawn controls in quiet, precisely recessed zones
+rather than putting a new ornamental frame behind a generic interface.
 
-## AR-052 · The Workshop car's painted interior — MEDIUM (smallest job)
+**Acceptance bar:** at runtime each tool must read as a dedicated physical music
+machine in the same steel/wood/brass family as Melody and Percussion, not as a
+parchment modal with controls pasted on top. Engineering measures the recesses
+and mounts the existing controls on delivery.
 
-Lifted from AR-042's closing note so it stops hiding inside a DONE entry:
-the car interior the crew stands in is still engine-drawn (a flat back wall
-+ floor derived from the livery colour). One painted interior — three-quarter
-timber planking, a lit floor — for the void `punch_void.py` cut
-(x=474 y=280 w=1612 h=430 on the 2560×1440 car canvas), all four car types
-can share it. The crew and chalkboard draw over it unchanged.
+## AR-052 · The Workshop car's painted cabin — P0 (character integration)
 
-## AR-053 · Track garnish: smoke, splashes, and the NIGHT sky — LOW
+This request exists to solve the current Workshop failure visible in the live
+screen: the characters read as a line of large cut-outs pasted into a flat
+maroon void, not as musicians seated or standing **inside a moving workshop car**.
+A background-only replacement is insufficient.
+
+**Deliver two aligned shared layers for the identical void** `x=474 y=280
+w=1612 h=430` on the 2560 × 1440 car canvas:
+
+1. `workshop-car-interior.png` — three-quarter timber back wall, warm practical
+   lamps, shallow shelves/tool hooks, and a lit floor or bench plane with clear
+   depth; keep a calm central zone for the chalkboard.
+2. `workshop-car-foreground-rail.png` — a transparent foreground sill/bench/
+   rail strip that can draw **in front of the crew's lower legs**, grounding
+   them on a shared seat/floor line and giving the eye a car-side occlusion plane.
+
+The four car types can share both layers. Engineering must place the interior
+behind crew/chalkboard and the foreground rail above the crew, all at the
+existing punched-void registration. The acceptance test is simple: in the
+Workshop screenshot, each character must look seated, leaning, or standing on a
+real interior surface—not pasted onto a colour rectangle.
+
+## AR-054 · Percussion Editor coherence pass — P0
+
+The delivered `panel-percussion.png` is a useful structural base, but the live
+Drums screen still fails the visual bar: the bottom pad strip reads as mismatched
+flat stickers, system-emoji row art clashes with the chunky Workshop characters,
+and the interaction states do not share the strong authored button language.
+
+**Supersedes AR-025.** Deliver a coherent drum-machine surface in this order:
+
+1. Neutral, tintable `pad-key-idle.png` and `pad-key-seated.png` whose bevel,
+   brass/steel socket, and pressed recession match the Percussion plate rather
+   than generic flat colour tiles; the engine continues to tint them per sound.
+2. A compact house-style pixel icon set for the ten drum sounds and six tone
+   sounds, replacing system emoji at editor scale. Every icon must remain
+   recognisable to a non-reader at the small row/shelf size.
+3. If needed after a runtime check, a revised drum-shelf insert with better
+   spacing/raised sockets; do not redraw the whole panel merely to hide a layout
+   problem.
+
+**Acceptance bar:** the user must read one authored child-friendly drum machine,
+not a polished frame surrounding sticker controls. Test in the live panel with
+active, inactive, muted, and seated pads before accepting the art.
+
+---
+
+## AR-053 · Track garnish: smoke, splashes, and the NIGHT sky — MEDIUM
 
 Measured leftovers (2026-08-13 audit — these are the last engine-drawn
 textures on the v3 Track): `trk-smoke` (chimney puffs) and `trk-splash`
