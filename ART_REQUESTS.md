@@ -2144,7 +2144,26 @@ machine in the same steel/wood/brass family as Melody and Percussion, not as a
 parchment modal with controls pasted on top. Engineering measures the recesses
 and mounts the existing controls on delivery.
 
-## AR-052 · The Workshop car's painted cabin — P0 (character integration)
+## ✅ DELIVERED — AR-052 · The Workshop car's painted cabin — P0 (character integration)
+
+**Art delivered 2026-08-13 in `0a5cb26`.** The standardized 1612 × 430 void now
+has two aligned transparent production layers under `sprites/panels/`:
+`workshop-car-interior.png` (rear timber cabin, warm lamps, floor/bench plane,
+central chalkboard-safe wall) and `workshop-car-foreground-rail.png` (front
+bench/rail, cable and tool-box accents). Both export with hard alpha and alpha-0
+corners; the composite review verifies the intended weave: rear interior → car
+body → crew → foreground rail.
+
+**Engineering handoff:** replace `drawCarInterior()`'s two procedural bands with
+the rear sprite at the current `voidRect`; load the foreground rail as a second
+sprite at the same rect and put it above `DEPTH_RIDER`. The rail must travel with
+the car and crew on departure. This final front pass is the part that grounds
+lower legs and makes the musicians read inside the car rather than pasted into
+its opening.
+
+---
+
+## AR-052 · The Workshop car's painted cabin — DELIVERED SPEC
 
 This request exists to solve the current Workshop failure visible in the live
 screen: the characters read as a line of large cut-outs pasted into a flat
