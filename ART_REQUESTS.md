@@ -2311,7 +2311,19 @@ active, inactive, muted, and seated pads before accepting the art.
 
 ---
 
-## AR-053 · Track garnish: smoke, splashes, and the NIGHT sky — MEDIUM
+## ✅ DELIVERED — AR-053 · Track garnish: smoke, splashes, and the NIGHT sky — MEDIUM
+
+**Art delivered 2026-08-13 in `ae5701c`.** `smoke.png` (96 × 96) and
+`splash.png` (40 × 22) replace the procedural locomotive-puff and rain-on-ballast
+blobs with small hard-alpha pixel assets. `sky-night.png` is a 1280 × 540
+moon, cloud, and star world layer designed for the Track NIGHT treatment. The
+smoke and splash corners are alpha 0; the NIGHT strip is RGBA and uses a
+near-identical edge-safe field for scroll continuity.
+
+**Engineering handoff:** bind the assets to the existing `trk-smoke`,
+`trk-splash`, and NIGHT sky texture seams in `TrackV3Scene`; retain procedural
+`trk-gloom` as the intentional top-weighted rain wash. No gameplay behavior
+changes are needed.
 
 Measured leftovers (2026-08-13 audit — these are the last engine-drawn
 textures on the v3 Track): `trk-smoke` (chimney puffs) and `trk-splash`
