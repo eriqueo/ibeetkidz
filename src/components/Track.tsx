@@ -9,7 +9,7 @@ import { TrackV3Scene } from "../game/scenes/TrackV3Scene.ts";
 import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 import { laneGroup } from "../core/lane-color.ts";
-import { laneSprite } from "../game/instrument-station.ts";
+import { riderSprite } from "../game/instrument-station.ts";
 import {
   LATCH_UNIT_BARS,
   TERRAIN_KINDS,
@@ -63,13 +63,12 @@ export const Track: FC = () => {
     const byId = new Map(project.parts.map((p) => [p.id, p]));
     return liveTrain(project).map((c) => {
       const id = ids.get(c.partId);
-      // The crew riding this car: one character per instrument, all percussion
-      // folded into the frog — the same collapse the Workshop crew uses.
+      // The crew riding this car — `riderSprite` is the one collapse rule,
+      // shared with the Workshop (fox and chipmunk ride for their own
+      // percussion lanes; every other drum lane rides the frog).
       const crew: string[] = [];
       for (const layer of byId.get(c.partId)?.layers ?? []) {
-        const key = layer.kind === "drum"
-          ? "inst-drums"
-          : laneSprite(layer.station, laneGroup(layer.kind, project.clips[layer.clipId]));
+        const key = riderSprite(layer.station, layer.kind, laneGroup(layer.kind, project.clips[layer.clipId]));
         if (!crew.includes(key)) crew.push(key);
       }
       return {

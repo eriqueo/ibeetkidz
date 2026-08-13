@@ -19,7 +19,7 @@ import {
   INSTRUMENTS,
   type InstrumentId,
 } from "../core/instruments.ts";
-import { STATION_LABEL, STATION_VOICE, laneSprite } from "../game/instrument-station.ts";
+import { STATION_LABEL, STATION_VOICE, laneSprite, riderSprite } from "../game/instrument-station.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
 import { carLiveries } from "../core/car-identity.ts";
 import { BUILTIN_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
@@ -121,23 +121,21 @@ export const Workshop: FC = () => {
       const badge = builtin ? builtin.emoji : null;
       return { id: layer.id, label, badge, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
-    // The crew: ONE character per instrument, not one per lane. All drum lanes
-    // fold into the frog (its tap opens the percussion grid, which shows them
-    // all); each melody character rides once and its tap opens ITS editor.
+    // The crew: ONE character per instrument, not one per lane (`riderSprite`
+    // is the collapse rule, shared with the Track). Every percussion
+    // character's tap opens the one drum grid; each melody character's tap
+    // opens ITS editor.
     crew: (() => {
       const crew: WorkshopCrewMember[] = [];
       for (const layer of layers.slice(0, VISIBLE_LANE_CAP)) {
-        if (layer.kind === "drum") {
-          if (!crew.some((c) => c.action.kind === "percussion")) {
-            crew.push({ key: "inst-drums", action: { kind: "percussion" } });
-          }
-          continue;
-        }
         const clip = project.clips[layer.clipId];
-        const key = laneSprite(layer.station, laneGroup(layer.kind, clip));
-        if (!crew.some((c) => c.key === key)) {
-          crew.push({ key, action: { kind: "melody", layerId: layer.id } });
-        }
+        const key = riderSprite(layer.station, layer.kind, laneGroup(layer.kind, clip));
+        if (crew.some((c) => c.key === key)) continue;
+        crew.push(
+          layer.kind === "drum"
+            ? { key, action: { kind: "percussion" } }
+            : { key, action: { kind: "melody", layerId: layer.id } },
+        );
       }
       return crew;
     })(),

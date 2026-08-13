@@ -62,6 +62,31 @@ export function laneSprite(station: string | undefined, group: LaneGroup): strin
 }
 
 /**
+ * The character who RIDES a car for a lane — the crew's collapse rule, ONE
+ * producer for the Workshop car and the Track train.
+ *
+ * Drum-kind lanes ride their own character when the station has one (the
+ * Magic Pad fox, the microphone chipmunk — their AR-046 poses exist and a
+ * kid's creation deserves its face), and the frog otherwise (the drums
+ * character, plus every legacy/pads/unknown drum lane — the retired raccoon
+ * must not ride). Tapping ANY percussion character opens the one drum grid;
+ * identity is who rides, not who edits — "I don't want to see five frogs"
+ * was about duplicates, never about erasing the fox.
+ */
+export function riderSprite(
+  station: string | undefined,
+  kind: "drum" | "melody",
+  group: LaneGroup,
+): string {
+  if (kind === "drum") {
+    if (station === "mic") return "inst-mic";
+    if (station === "magic") return "inst-magic";
+    return "inst-drums";
+  }
+  return laneSprite(station, group);
+}
+
+/**
  * The synth a melody station voices its lane with.
  *
  * The violin's is `pluck`, and that is the whole reason this table exists
