@@ -2159,6 +2159,25 @@ passes.
 eight key buttons, and Add-to-Car control. Keep the engine controls in the
 matching recesses and retire the generic parchment frame.
 
+### ✅ Third delivery complete — Magic Pad (2026-08-13, `e3f2eda`)
+
+`panel-magic.png` is a 1536 × 1152 hard-alpha theremin machine face. It provides
+four wave-selector recesses, a large deliberately quiet XY playfield, and paired
+Record/Send bays; the antenna-like side details distinguish it without breaking
+the shared steel, timber, and brass tool family. Alpha corners are 0 and the
+sprite-alpha gate passes.
+
+**Engineering handoff:** mount the plate behind `MagicToolPanel`'s four wave
+buttons, engine-drawn XY zone/dot/hint, and bottom Record/Send controls. Its
+large empty central face is reserved for the live pointer interaction—do not
+cover it with decorative art or retain the generic parchment frame.
+
+### ✅ AR-051 COMPLETE — all three remaining painted tool plates delivered
+
+My Voice, Voice Keys, and Magic Pad now have their dedicated physical-machine
+surfaces. Each asset matches the existing engine control geometry, has true hard
+alpha, and is ready for its corresponding panel to replace generic parchment.
+
 
 
 These are the three remaining generic-parchment tools. Deliver **one painted
