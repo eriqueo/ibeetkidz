@@ -2507,7 +2507,18 @@ for the adult.
 
 ---
 
-## AR-057 · The shared chrome pair: the ✕ and the DONE plaque — HIGH
+## ✅ DELIVERED — AR-057 · The shared chrome pair: the ✕ and the DONE plaque — HIGH
+
+**Art delivered 2026-08-13 in `ff48c3b`.** Matched idle/pressed states now exist
+for a 512 × 512 machined close socket (`btn-panel-close-*`) and a 1024 × 340
+friendly green timber-and-brass DONE plaque (`btn-panel-done-*`). The close
+control is a recessed brass-ringed X socket rather than a flat glyph; DONE is
+baked in a large cream pixel label with a small music/rail cue. All four
+exports have hard alpha and shared state registration.
+
+**Engineering handoff:** mount the pair in `BaseToolPanel` through its existing
+idle/pressed contract, and use the same DONE textures for the conductor
+chalkboard chip so panel and chalkboard completion never drift apart.
 
 Every tool panel now carries **the same two controls in the same two places**,
 because a four-year-old should learn one gesture for "I am finished" rather than
