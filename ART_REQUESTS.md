@@ -88,7 +88,10 @@ Rev 5 is the review that followed, on the live screens.
 4. **AR-058 — the Percussion plate, redrawn into the machine-face family —
    HIGH.** AR-050's plate is a wooden frame around a flat field; next to
    AR-051's three steel machines it is now the odd one out.
-5. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
+5. **AR-059 — active-car Beat Lantern — HIGH.** Replace the detached NOW post
+   with a small bouncing music-powered railway signal directly above the car
+   currently playing. It must identify the active car without reading.
+6. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
    Do not retire these merely because they are old; only supersede them when a
    replacement request explicitly replaces their user-visible result.
 6. **The TUNNEL world treatment is still parked** pending a design round (per
@@ -117,6 +120,38 @@ costs GPU memory. Where an entry pins a canvas size, that number is derived from
 the slot; do not round it up "for safety". (Measured: the live atlas is 61 frames
 / 34.1 Mpx, plus 28 dead frames / 13.8 Mpx that engineering is deleting
 separately — the live art is correctly sized and does not need re-delivery.)
+
+---
+
+## AR-059 · Active-car Beat Lantern — HIGH
+
+**Target files:**
+- `src/assets/sprites/track3/beat-lantern-low.png`
+- `src/assets/sprites/track3/beat-lantern-high.png`
+
+**Why (2026-08-13 live Track review):** `now-post.png` is a tall detached NOW
+sign planted behind the currently sounding car. It reads as trackside scenery,
+not as a live musical cue; it also makes the active marker depend on a word.
+The playing car needs a small, clearly attached visual beat that a non-reader
+can follow instantly.
+
+**Design:** a **Beat Lantern**—a compact brass railway signal lantern with a
+warm cream lens, a tiny blue music-note cutout/vent, and a short springy brass
+hanger. It is not a ball and not a placard. It lives immediately above the active
+car roof, bobs on each beat, and reads as a music-powered railway signal. Low
+state is the lantern a little nearer the roof; high state rises about 18–24px
+with a brighter cream lens and a tiny two-pixel steam/note flick. The lantern
+must be substantially wider than the current 90px NOW post but much shorter:
+transparent **160 × 160** canvases, matching subject registration, no shaft to
+the rail, no baked word. Use warm 16-colour Nintendo palette, chunky 2–4px
+pixel clusters, 1px dark-plum outline, hard shadow only, true alpha 0 outside
+art. It must read at an on-screen height around 45–55px.
+
+**Engineering handoff:** retire `trk-now-post` and mount the paired Beat Lantern
+above the active car roof, **in front of the car body** so the cue is visibly
+attached rather than standing behind it. Swap low/high frame or tween the same
+states with the sequencer beat; the marker tracks the currently sounding car
+exactly as the current post does. No word label and no pole are retained.
 
 ---
 
