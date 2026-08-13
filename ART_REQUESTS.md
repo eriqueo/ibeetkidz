@@ -2543,7 +2543,19 @@ that at the same time so the two never drift apart.
 
 ---
 
-## AR-058 · The Percussion plate, redrawn into the machine-face family — HIGH
+## ✅ DELIVERED — AR-058 · The Percussion plate, redrawn into the machine-face family — HIGH
+
+**Art delivered 2026-08-13 in `b77361f`.** `panel-percussion.png` is now a
+1536 × 1152 steel-and-brass drum-machine face aligned with the three AR-051
+machines. It retains a deliberately quiet central grid recess, a left rail with
+ten empty row bays, and ten lower physical sockets sized for the AR-054 pad
+keycaps; the wooden picture-frame treatment is retired.
+
+**Engineering handoff:** re-measure the existing `PercussionToolPanel.PLATE`
+fractions against this replacement, then mount the unchanged engine step grid,
+row controls and pad keycaps into the corresponding quiet recesses. The goal is
+for Drum, Voice and Magic to read as three purpose-built machines from one
+Workshop.
 
 AR-050's `panel-percussion.png` was drawn before AR-051 established what a tool
 machine looks like in this app. Beside the three steel/timber/brass machine
