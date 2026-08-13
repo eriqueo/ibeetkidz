@@ -2269,6 +2269,15 @@ real interior surface—not pasted onto a colour rectangle.
 
 ## AR-054 · Percussion Editor coherence pass — P0
 
+### ✅ Final delivery complete — 2026-08-13, `b830478`
+
+**Second delivery:** six compact 128 × 128 true-alpha tone icons now complete
+the visual family: `tone-do`, `tone-re`, `tone-mi`, `tone-sol`, `tone-la`, and
+`tone-do2`. The initial ornate, background-bearing generated attempt was rejected
+and removed. The accepted replacement uses only a simple colored note, 1px
+dark-plum outline, and a tiny cream glint—no badge, scenery, or matte—so it
+matches the compact drum-icon scale and can remain clear after tinting.
+
 ### ✅ First delivery complete — 2026-08-13, `8eb05ea`
 
 The coherent percussion foundation is delivered: `buttons/pad-key-idle.png` and
