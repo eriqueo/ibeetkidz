@@ -55,7 +55,7 @@ import {
 import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast } from "../undo-toast.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, placeUiSprite } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
 import type { CarType } from "../../core/types.ts";
 
@@ -152,6 +152,12 @@ export interface V3TerrainRide {
 
 const W = 2560;
 const H = 1440;
+
+/** The slot EVERY job-bar switch is drawn into, painted or keycap. One size,
+ *  because eight controls that do the same kind of thing should look like eight
+ *  of the same control (see `buildLegend`). */
+const SWITCH_W = 325;
+const SWITCH_H = 150;
 
 // Horizon bands, back to front.
 const SKY_Y = 0;
@@ -649,6 +655,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.plate("panel-transport-v2", { x: W / 2, y: fieldY, width: 1980, height: 370 });
 
     // Four columns across the plate's field (~400..2064), two rows inside it.
+    // Every switch gets the SAME slot — painted or keycap, hill or night.
     const COLS = 4;
     const ROW_Y = [fieldY - 86, fieldY + 86];
     const slot = (i: number): { x: number; y: number } => ({
@@ -671,14 +678,23 @@ export class TrackV3Scene extends Phaser.Scene {
       if (this.textures.exists(idle)) {
         // Picture buttons: the player is four and cannot read. The caption is
         // for the adult, so it is only drawn when there is no picture.
-        const btn = this.add
-          .image(x, y, idle)
-          .setDepth(DEPTH.hud + 1)
-          .setScale(1.25); // 260x120 art -> 325x150 in a 416px column
+        const btn = this.add.image(x, y, idle).setDepth(DEPTH.hud + 1);
+        // Contain-fit each button's MEASURED content into the identical slot,
+        // rather than drawing every canvas at one scale. The eight files share
+        // a 260x120 canvas but not the plaque inside it — hill fills 258x120,
+        // night only 226x73 — so a fixed scale produced a row of buttons at
+        // eight different sizes. The idle box is the reference for the pressed
+        // frame too: the pressed art is drawn a shade smaller ON PURPOSE, and
+        // re-fitting it would cancel exactly that feedback.
+        placeUiSprite(
+          btn,
+          { states: {}, base: idle, content: measureContentBox(this, idle), stretch: false },
+          { x, y, width: SWITCH_W, height: SWITCH_H },
+        );
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
         return (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
       }
-      const swatch = this.add.rectangle(x, y, 325, 150, 0x3a3350, 1).setDepth(DEPTH.hud + 1);
+      const swatch = this.add.rectangle(x, y, SWITCH_W, SWITCH_H, 0x3a3350, 1).setDepth(DEPTH.hud + 1);
       const cap = this.add
         .text(x, y, label, {
           fontFamily: "'Press Start 2P', monospace",

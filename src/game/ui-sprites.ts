@@ -259,6 +259,69 @@ export interface PlacedRect {
   height: number;
 }
 
+/** Measured content boxes, keyed by texture. Scanning a texture's alpha costs a
+ *  canvas readback, so it happens once per texture per session. */
+const MEASURED = new Map<string, ContentBox>();
+
+/**
+ * The opaque content box of a STANDALONE texture, measured from its own pixels.
+ *
+ * The manifest above carries hand-measured boxes for atlas chrome, and that is
+ * fine there because the manifest and the art land in the same delivery. The
+ * Track's mode buttons are different: they are dropped into `sprites/track3/`
+ * and picked up by a glob with no manifest entry at all, so the only place
+ * their content box can come from is the pixels.
+ *
+ * It has to come from somewhere, because they are NOT consistent. Eight buttons
+ * share a 260x120 canvas and the painted plaque inside runs from 258x120 (hill)
+ * down to 205x102 (tunnel) and 226x73 (night). Drawn at one fixed scale — which
+ * is what the legend did — night came out barely three-fifths the height of
+ * hill, and the row read as buttons of eight different sizes. Contain-fitting
+ * the measured content into one slot makes them identical on screen, whatever
+ * padding each file happens to carry, and keeps doing so when the art is
+ * redelivered.
+ *
+ * Returns the full canvas when the texture is missing or unreadable, which is
+ * the old behaviour and never worse than it.
+ */
+export function measureContentBox(scene: Phaser.Scene, key: string): ContentBox {
+  const cached = MEASURED.get(key);
+  if (cached) return cached;
+  const full: ContentBox = [0, 0, 1, 1];
+  if (!scene.textures.exists(key)) return full; // not resident: do not cache
+  const src = scene.textures.get(key).getSourceImage() as CanvasImageSource & { width: number; height: number };
+  const w = src.width | 0;
+  const h = src.height | 0;
+  if (w === 0 || h === 0) return full;
+  const canvas = document.createElement("canvas");
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return full;
+  ctx.drawImage(src, 0, 0);
+  let data: Uint8ClampedArray;
+  try {
+    data = ctx.getImageData(0, 0, w, h).data;
+  } catch {
+    return full; // tainted canvas (a cross-origin texture) — not worth failing over
+  }
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y += 1) {
+    for (let x = 0; x < w; x += 1) {
+      // 40, matching the threshold the manifest's boxes were measured at: a
+      // stray chroma-key pixel at alpha 1..33 must not inflate the box.
+      if (data[(y * w + x) * 4 + 3]! <= 40) continue;
+      if (x < x0) x0 = x;
+      if (x > x1) x1 = x;
+      if (y < y0) y0 = y;
+      if (y > y1) y1 = y;
+    }
+  }
+  const box: ContentBox = x1 < 0 ? full : [x0 / w, y0 / h, (x1 + 1) / w, (y1 + 1) / h];
+  MEASURED.set(key, box);
+  return box;
+}
+
 /**
  * The sprite's opaque CONTENT box, in unscaled texture pixels — the rect Phaser
  * should hit-test against.

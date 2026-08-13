@@ -16,6 +16,12 @@ interface Sched {
   readonly clipId: string;
   readonly cycleBars: number;
   readonly barOffset: number;
+  /** WHERE in the bar the hit was placed. BACKWARDS is a claim about this
+   *  number, so a fake that threw it away could not tell a reversed song from
+   *  an unreversed one — which is how "plays backwards" shipped meaning only
+   *  "each sample plays backwards in its original slot". */
+  readonly stepIndex: number;
+  readonly totalSteps: number;
 }
 
 class FakeSoundPort implements SoundPort {
@@ -32,8 +38,8 @@ class FakeSoundPort implements SoundPort {
 
   scheduleStep(
     clip: Clip,
-    _stepIndex: number,
-    _totalSteps: number,
+    stepIndex: number,
+    totalSteps: number,
     _opts: unknown,
     _lengthSteps?: number,
     _roll?: number,
@@ -41,7 +47,7 @@ class FakeSoundPort implements SoundPort {
     cycleBars = 1,
     barOffset = 0,
   ): void {
-    this.scheduled.push({ clipId: clip.id, cycleBars, barOffset });
+    this.scheduled.push({ clipId: clip.id, cycleBars, barOffset, stepIndex, totalSteps });
   }
   clearScheduled(): void {
     this.clears++;
@@ -135,13 +141,38 @@ async function booted(sound: FakeSoundPort): Promise<AudioEngine> {
   return engine;
 }
 
+/** Just the BAR placement of everything scheduled. The arrangement tests are
+ *  about which bar a car lands in; where the hit sits inside that bar is the
+ *  BACKWARDS tests' business, and mixing the two would make every arrangement
+ *  expectation carry a step index it does not care about. */
+function bars(sound: FakeSoundPort): { clipId: string; cycleBars: number; barOffset: number }[] {
+  return sound.scheduled.map(({ clipId, cycleBars, barOffset }) => ({ clipId, cycleBars, barOffset }));
+}
+
+/** Two DISTINCT cars, one bar each, in train order A then B. Distinct clips on
+ *  purpose: `duplicateCar` would give both cars the same clip id, and the
+ *  bar-order test has to be able to say which car moved. */
+function twoCarTrain(): Project {
+  const clip = (id: string): Clip => ({
+    id, source: { kind: "recording", bufferId: id }, effects: [], color: "#fff", label: id,
+  });
+  let s = reduce(emptyProject("eng"), { type: "addClip", clip: clip("carA") });
+  s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "lA", clipId: "carA" }) });
+  s = reduce(s, { type: "toggleStep", layerId: "lA", index: 0 });
+  s = reduce(s, { type: "addCar", id: "car-B" });
+  s = reduce(s, { type: "addClip", clip: clip("carB") });
+  s = reduce(s, { type: "addLayer", layer: makeLayer({ id: "lB", clipId: "carB" }) });
+  s = reduce(s, { type: "toggleStep", layerId: "lB", index: 0 });
+  return reduce(s, { type: "addToTrain", instanceId: "iB", partId: "car-B" });
+}
+
 describe("AudioEngine play modes", () => {
   it("loop mode schedules the active car at one bar, offset 0", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     engine.playLoop(oneHitCar());
     expect(engine.playMode).toBe("loop");
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
   });
@@ -156,7 +187,7 @@ describe("AudioEngine play modes", () => {
     engine.playRide(project);
     expect(engine.playMode).toBe("ride");
     // Each slot's lane scheduled at cycleBars = 2 (song length), at bars 0 and 1.
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 2, barOffset: 0 },
       { clipId: "d1", cycleBars: 2, barOffset: 1 },
     ]);
@@ -172,7 +203,7 @@ describe("AudioEngine play modes", () => {
     project = reduce(project, { type: "addToTrain", instanceId: "r2", partId: car1 });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playRide(project);
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 3, barOffset: 0 },
       { clipId: "d1", cycleBars: 3, barOffset: 1 },
       { clipId: "d1", cycleBars: 3, barOffset: 2 },
@@ -191,7 +222,7 @@ describe("AudioEngine play modes", () => {
     project = reduce(project, { type: "muteCar", instanceId: "mid", muted: true });
     engine.playRide(project);
     // Bars 0 and 2 sound at cycleBars = 3; bar 1 (muted) is skipped.
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 3, barOffset: 0 },
       { clipId: "d1", cycleBars: 3, barOffset: 2 },
     ]);
@@ -205,7 +236,7 @@ describe("AudioEngine play modes", () => {
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     engine.playCarLoop(project.parts[0]!.id, project);
     expect(engine.playMode).toBe("loop");
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
   });
@@ -214,7 +245,7 @@ describe("AudioEngine play modes", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     engine.playRide(oneHitCar());
-    expect(sound.scheduled).toEqual([
+    expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
   });
@@ -383,5 +414,44 @@ describe("AudioEngine terrain", () => {
 
     expect(engine.toggleReversed(project)).toBe(false);
     expect(sound.reversedStates).toEqual([true, false]);
+  });
+
+  it("BACKWARDS mirrors the STEPS in the bar, not just the samples", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    // One hit, on the downbeat.
+    const project = oneHitCar();
+    engine.playRide(project);
+    const forward = sound.scheduled.at(-1)!;
+    expect(forward.stepIndex).toBe(0);
+
+    engine.toggleReversed(project);
+    const back = sound.scheduled.at(-1)!;
+    // Played backwards, the FIRST hit of the bar is the LAST thing you hear.
+    // This is the assertion the shipped version would have failed: it flipped
+    // the sample and left the hit sitting on the downbeat.
+    expect(back.stepIndex).toBe(forward.totalSteps - 1);
+    expect(back.totalSteps).toBe(forward.totalSteps);
+
+    engine.toggleReversed(project);
+    expect(sound.scheduled.at(-1)!.stepIndex).toBe(0);
+  });
+
+  it("BACKWARDS mirrors the ORDER of the train's bars", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = twoCarTrain();
+    engine.playRide(project);
+    const forward = sound.scheduled.map((s) => s.barOffset);
+    expect(new Set(forward)).toEqual(new Set([0, 1]));
+
+    sound.scheduled.length = 0;
+    engine.toggleReversed(project);
+    // Same two bars, opposite order: the car that played second now plays
+    // first. A song run backwards has to end at its beginning.
+    const byClip = (id: string): number =>
+      sound.scheduled.find((s) => s.clipId === id)!.barOffset;
+    expect(byClip("carA")).toBe(1);
+    expect(byClip("carB")).toBe(0);
   });
 });

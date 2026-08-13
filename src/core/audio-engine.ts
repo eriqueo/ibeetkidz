@@ -24,6 +24,23 @@ import {
  *  then loops the song (the Tracks strip's Ride). */
 type PlayMode = "loop" | "ride";
 
+/**
+ * Where an event that starts at step `i` and lasts `span` steps lands when the
+ * bar is played backwards.
+ *
+ * `total - i - span`, not `total - 1 - i`, and the difference matters for
+ * anything longer than one step: reversing time reverses an event's ENDS, so a
+ * note occupying [i, i+span) has to come back occupying [total-i-span, total-i).
+ * Mirroring the start alone would push every long note `span-1` steps late and
+ * hang the last one off the end of the bar.
+ *
+ * Pure and total: clamped at 0 so a malformed span cannot schedule before the
+ * downbeat.
+ */
+function mirrorIndex(i: number, span: number, total: number): number {
+  return Math.max(0, total - i - Math.max(1, span));
+}
+
 export class AudioEngine {
   private started = false;
   private playing = false;
@@ -113,10 +130,25 @@ export class AudioEngine {
     this.sound.clearTerrain();
   }
 
-  /** BACKWARDS mode: everything sampled plays tape-reversed. Toggling while
-   *  the song runs reconciles in place, so the flip is heard on the very next
-   *  scheduled pass without stopping the groove. Like terrain, this is a
-   *  performance — no Command, no history, never saved. */
+  /**
+   * BACKWARDS mode: the song plays backwards.
+   *
+   * All of it, which took two goes. The first version only asked the adapter to
+   * play each SAMPLE tape-reversed and left the schedule alone — so the beat
+   * still landed 1-2-3-4 in the same places and every hit was a backwards
+   * whoosh in its original slot. Eric heard exactly that: "it doesn't actually
+   * play the song backwards, it just makes swishing backwards sounds."
+   *
+   * Playing a song backwards is three mirrors, and the sample was only one:
+   *
+   *   1. the SAMPLE plays tape-reversed              (`sound.setReversed`)
+   *   2. the STEPS within a bar run last-to-first    (`mirrorIndex`)
+   *   3. the BARS of the train run last-to-first     (`scheduleArrangement`)
+   *
+   * Toggling while the song runs reconciles in place, so the flip is heard on
+   * the very next scheduled pass without stopping the groove. Like terrain,
+   * this is a performance — no Command, no history, never saved.
+   */
   private reversed = false;
 
   toggleReversed(project: Project): boolean {
@@ -159,7 +191,11 @@ export class AudioEngine {
     train.forEach((car, k) => {
       if (car.muted) return; // tarped → silent bar
       const part = partForCar(project, car);
-      if (part) this.scheduleLayers(project, part.layers, length, k);
+      // BACKWARDS mirror 3 of 3: the last car's bar plays first. A song run
+      // backwards has to arrive at its beginning, so the ORDER of the sections
+      // reverses, not only what happens inside each one.
+      const slot = this.reversed ? length - 1 - k : k;
+      if (part) this.scheduleLayers(project, part.layers, length, slot);
     });
   }
 
@@ -201,6 +237,9 @@ export class AudioEngine {
         // One live fx chain per lane, shared by all its cells (see StepOptions).
         laneKey: layer.id,
       };
+      // BACKWARDS mirror 2 of 3: within the bar, the last step plays first.
+      const at = (i: number, span: number, total: number): number =>
+        this.reversed ? mirrorIndex(i, span, total) : i;
       if (layer.kind === "melody") {
         const total = layer.notes.length || STEP_COUNT;
         const instrument = resolveInstrument(layer.instrument, layer.wave);
@@ -210,12 +249,15 @@ export class AudioEngine {
             // Resolve bend pin rows → note names here so the adapter stays free
             // of music theory (Magic Notes lives in the core).
             const bend = n.pins?.map((p) => ({
-              t: p.t,
+              // A pin's `t` is a position INSIDE its note, so a backwards song
+              // runs it backwards too — otherwise a bend that rose to its peak
+              // would still rise while everything around it fell.
+              t: this.reversed ? 1 - p.t : p.t,
               noteName: degreeToNote(project.scaleId, project.keyId, p.row),
             }));
             this.sound.scheduleNote(
-              note, instrument, i, total, opts, n.length, n.roll ?? 1, bend,
-              cycleBars, barOffset,
+              note, instrument, at(i, n.length ?? 1, total), total, opts,
+              n.length, n.roll ?? 1, bend, cycleBars, barOffset,
             );
           }
         });
@@ -225,7 +267,8 @@ export class AudioEngine {
           // A drum hit's `row` is its tune (semitone offset); 0 = natural.
           if (cell)
             this.sound.scheduleStep(
-              clip, i, total, opts, cell.length, cell.roll ?? 1, cell.row,
+              clip, at(i, cell.length ?? 1, total), total, opts,
+              cell.length, cell.roll ?? 1, cell.row,
               cycleBars, barOffset,
             );
         });
