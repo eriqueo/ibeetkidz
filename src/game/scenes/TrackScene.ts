@@ -66,7 +66,7 @@ import {
 } from "../pixel-shadow.ts";
 import { parseTiledLayer, parseTiledPath, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
-import { loadUiSprites } from "../ui-sprites.ts";
+import { loadUiSprites, placeUiSprite, UI_ATLAS_KEY, UI_SPRITES } from "../ui-sprites.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
 import { SceneVisualizer } from "../scene-visualizer.ts";
@@ -87,6 +87,9 @@ export interface TrackCar {
   readonly carType: CarType;
   readonly muted: boolean;
 }
+
+// AR-020's painted SEND SONG plaque, mounted at the `btn-send` Tiled spawn.
+const SEND_SONG = UI_SPRITES["btn-send-song"]!;
 
 // Depth band the train tokens draw in (y-sorted within it, under the chrome).
 const TRAIN_DEPTH = 4;
@@ -178,6 +181,10 @@ export class TrackScene extends BackgroundScene {
   private sendText?: Phaser.GameObjects.Text;
   private sendHit?: Phaser.GameObjects.Rectangle;
   private sendPulse?: Phaser.Tweens.Tween | undefined;
+  /** AR-020's painted plaque, once the atlas carries it. When present it IS the
+   *  face: the cream chip stays hidden and the baked SEND SONG label makes the
+   *  scene-drawn caption redundant — `sendText` then only ever says ● REC. */
+  private sendPlaque?: Phaser.GameObjects.Image;
   private sendPanel?: SendSongPanel;
   private sendState: SendUiState = { kind: "idle" };
   // "See the sound": the jumbotron in the middle of the oval. Constructed only
@@ -262,6 +269,12 @@ export class TrackScene extends BackgroundScene {
     // a take it flips to a pulsing ● REC readout — the train riding the oval
     // IS the progress indicator, so no modal covers the scene while recording.
     this.sendChip = this.add.graphics().setDepth(9);
+    if (this.textures.exists(UI_ATLAS_KEY)) {
+      this.sendPlaque = this.add
+        .image(0, 0, UI_ATLAS_KEY, SEND_SONG.base)
+        .setOrigin(0.5)
+        .setDepth(10);
+    }
     this.sendText = this.add
       .text(0, 0, "", { fontFamily: "'Press Start 2P', monospace", color: "#2b2440", letterSpacing: 2 })
       .setOrigin(0.5)
@@ -269,12 +282,22 @@ export class TrackScene extends BackgroundScene {
     this.sendHit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setDepth(12);
     this.sendHit.setInteractive({ useHandCursor: true });
     let armed = false;
+    // The plaque's own pressed art is the feedback when it exists; the chip
+    // fallback keeps the text nudge it always had.
+    const press = (down: boolean): void => {
+      if (this.sendPlaque) {
+        const frame = down ? SEND_SONG.states["pressed"] : SEND_SONG.base;
+        if (frame) this.sendPlaque.setFrame(frame);
+        return;
+      }
+      this.sendText?.setScale(down ? 0.94 : 1);
+    };
     this.sendHit.on("pointerdown", () => {
       if (this.sendState.kind !== "idle") return;
       armed = true;
-      this.sendText?.setScale(0.94);
+      press(true);
     });
-    const restore = (): void => this.sendText?.setScale(1) as unknown as void;
+    const restore = (): void => press(false);
     this.sendHit.on("pointerout", () => { armed = false; restore(); });
     this.sendHit.on("pointerup", () => {
       restore();
@@ -348,8 +371,10 @@ export class TrackScene extends BackgroundScene {
     if (!this.sendChip || !this.sendText) return;
     const recording = this.sendState.kind === "recording";
     // Plain caps only: the chip renders in Press Start 2P, which has no emoji
-    // glyphs (a 📮 came out as tofu boxes on some platforms).
-    this.sendText.setText(recording ? "● REC" : "SEND");
+    // glyphs (a 📮 came out as tofu boxes on some platforms). With AR-020's
+    // plaque mounted the idle caption is baked into the art, so the scene draws
+    // text only for the ● REC readout the plaque cannot show.
+    this.sendText.setText(recording || !this.sendPlaque ? (recording ? "● REC" : "SEND") : "");
     this.sendText.setColor(recording ? "#b03050" : "#2b2440");
     this.sendPulse?.remove();
     this.sendPulse = undefined;
@@ -379,12 +404,16 @@ export class TrackScene extends BackgroundScene {
     if (send && this.sendChip && this.sendText && this.sendHit) {
       const p = placeSpawn(send, r, { width, height });
       const rad = Math.min(p.height * 0.28, 18);
-      this.sendChip
-        .clear()
-        .fillStyle(0xe9d7ac, 1)
-        .fillRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad)
-        .lineStyle(Math.max(2, p.height * 0.04), 0x2b2440, 1)
-        .strokeRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad);
+      this.sendChip.clear();
+      if (this.sendPlaque) {
+        placeUiSprite(this.sendPlaque, SEND_SONG, p);
+      } else {
+        this.sendChip
+          .fillStyle(0xe9d7ac, 1)
+          .fillRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad)
+          .lineStyle(Math.max(2, p.height * 0.04), 0x2b2440, 1)
+          .strokeRoundedRect(p.x - p.width / 2, p.y - p.height / 2, p.width, p.height, rad);
+      }
       this.sendText.setPosition(p.x, p.y);
       const fs = Math.max(10, Math.round(p.height * 0.32));
       this.sendText.setFontSize(fs);

@@ -28,6 +28,7 @@ import { EventBus } from "../game/EventBus.ts";
 import { WORKSHOP_GRID_V2 } from "../game/scene-layout.ts";
 import { WorkshopScene, type WorkshopCrewMember, type WorkshopModel } from "../game/scenes/WorkshopScene.ts";
 import { type ToolModel } from "../game/tool-panels.ts";
+import { soundIconFrame } from "../game/ui-sprites.ts";
 
 type RecPhase = "idle" | "opening" | "recording" | "stopping";
 
@@ -119,7 +120,7 @@ export const Workshop: FC = () => {
       // …but only worth drawing when the picture alone cannot tell two lanes
       // apart, i.e. for the built-in sounds that share one character.
       const badge = builtin ? builtin.emoji : null;
-      return { id: layer.id, label, badge, icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
+      return { id: layer.id, label, badge, badgeIcon: soundIconFrame(builtin?.assetId), icon, color: laneColor(layer.kind, clip), kind: layer.kind, cells, muted: layer.muted ?? false };
     }),
     // The crew: ONE character per instrument, not one per lane (`riderSprite`
     // is the collapse rule, shared with the Track). Every percussion
@@ -212,6 +213,7 @@ export const Workshop: FC = () => {
           return {
             id: l.id,
             emoji: builtin?.emoji ?? (clip?.source.kind === "recording" ? "🎤" : "🥁"),
+            icon: soundIconFrame(builtin?.assetId),
             color: laneColor(l.kind, clip),
             cells: Array.from({ length: STEP_COUNT }, (_, i) => l.steps[i] != null),
             muted: l.muted ?? false,

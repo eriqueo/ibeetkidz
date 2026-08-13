@@ -237,6 +237,8 @@ export class TrackV3Scene extends Phaser.Scene {
   private trainScale = 1;
   private nightShade?: Phaser.GameObjects.Rectangle | undefined;
   private tunnelShade?: Phaser.GameObjects.Rectangle | undefined;
+  /** AR-053's painted night band, drawn OVER the day sky in the same rect. */
+  private nightSky?: Phaser.GameObjects.TileSprite | undefined;
 
   private sky?: Phaser.GameObjects.TileSprite;
   private hills?: Phaser.GameObjects.TileSprite;
@@ -421,11 +423,27 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.shadow)
       .setVisible(false);
 
-    // The NIGHT and TUNNEL washes: full-scene shades under the HUD (the job
-    // bar must stay daylight-legible whatever the world is doing). AR-049's
-    // painted night sky / tunnel walls replace these flat rects.
+    // AR-053's painted night band: moon, stars and cloud, tiling on the same
+    // rect and the same slow parallax as the day sky it covers. It replaces the
+    // sky HALF of the night treatment only — the wash below still has to darken
+    // the ground, hills and train, which no sky texture can do.
+    if (this.textures.exists("trk-sky-night")) {
+      this.nightSky = this.add
+        .tileSprite(0, SKY_Y, W, HILLS_Y, "trk-sky-night")
+        .setOrigin(0, 0)
+        .setDepth(DEPTH.sky + 0.5)
+        .setVisible(false);
+    }
+
+    // The NIGHT and TUNNEL washes: shades under the HUD (the job bar must stay
+    // daylight-legible whatever the world is doing). AR-049's painted tunnel
+    // walls would replace the tunnel rect the same way.
     this.nightShade = this.add
-      .rectangle(0, 0, W, H, 0x141c4a, 0.42)
+      // With the painted sky mounted the wash starts BELOW it and covers only
+      // the land: washing over the night band as well would put a blue film
+      // over the moon and stars, which is the flat-rectangle look the painted
+      // sky was drawn to replace.
+      .rectangle(0, this.nightSky ? HILLS_Y : 0, W, this.nightSky ? H - HILLS_Y : H, 0x141c4a, 0.45)
       .setOrigin(0)
       .setDepth(DEPTH.hud - 1)
       .setVisible(false);
@@ -481,10 +499,10 @@ export class TrackV3Scene extends Phaser.Scene {
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
     this.placeButton("btn-transport-stop", { x: 1560, y: cy, width: 205, height: 205 },
       () => void EventBus.emit("transport-stop"), "STOP");
-    // Empty the train and start the build over. No painted sprite yet
-    // (ART_REQUESTS AR-043) — placeButton's keycap fallback carries it until
-    // then, the same greybox-then-art seam every other slot uses.
-    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 260, height: 140 },
+    // Empty the train and start the build over. AR-043's painted plaque is a
+    // near-square 512 canvas, so it takes a square slot like RIDE and STOP
+    // rather than the landscape one the keycap fallback wanted.
+    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 200, height: 200 },
       () => void EventBus.emit("track-clear-train"), "CLEAR");
   }
 
@@ -610,17 +628,77 @@ export class TrackV3Scene extends Phaser.Scene {
   private backwardsLatch: (on: boolean) => void = () => {};
 
   /** The Lemmings job bar — on the shared transport plate, docked to the
-   *  bottom edge. EIGHT switches now (geometry trio + night/tunnel/tiny/giant
-   *  + BACKWARDS), all latching, all stacking. Keycaps stand in wherever
-   *  AR-048/AR-049 have not painted a picture button yet. */
+   *  bottom edge. EIGHT switches (geometry trio + night/tunnel/tiny/giant +
+   *  BACKWARDS), all latching, all stacking. Keycaps stand in wherever
+   *  AR-048/AR-049 have not painted a picture button yet.
+   *
+   * TWO ROWS OF FOUR, not one row of eight. Eight across the plate gave each
+   * switch a ~200px slot, so the 260x120 painted art drew at 0.72 and the
+   * picture inside it — a hill, a moon, a mouse — was the size of a thumbnail.
+   * The player cannot read the captions (that is the whole reason these are
+   * pictures), so a picture too small to identify is a button with no label at
+   * all. Four across doubles the column to 416px and the art now draws at 1.25,
+   * which is 2.7x the area it had.
+   *
+   * The plate grows upward to hold the second row (top rim 1090, was 1200) and
+   * stops well clear of RAIL_Y — the wheels still stand on visible ground.
+   */
   private buildLegend(): void {
-    const cy = H - 125;
     // Runs off the bottom edge, for the reason `buildTopBar` gives.
-    this.plate("panel-transport-v2", { x: W / 2, y: H - 105, width: 1980, height: 270 });
+    const fieldY = 1275;
+    this.plate("panel-transport-v2", { x: W / 2, y: fieldY, width: 1980, height: 370 });
 
-    // Eight equal slots across the plate's parchment (~400..2064).
-    const slotX = (i: number): number => Math.round(400 + (i + 0.5) * (1664 / 8));
+    // Four columns across the plate's field (~400..2064), two rows inside it.
+    const COLS = 4;
+    const ROW_Y = [fieldY - 86, fieldY + 86];
+    const slot = (i: number): { x: number; y: number } => ({
+      x: Math.round(400 + ((i % COLS) + 0.5) * (1664 / COLS)),
+      y: ROW_Y[Math.floor(i / COLS)] ?? ROW_Y[0]!,
+    });
 
+    /** One switch in slot `i`: the painted pair when it exists, a labelled
+     *  keycap when it does not. Returns its latched-look setter. Written once —
+     *  BACKWARDS used to hand-copy this whole body for its single slot. */
+    const switchAt = (
+      i: number,
+      id: string,
+      label: string,
+      fire: () => void,
+    ): ((on: boolean) => void) => {
+      const { x, y } = slot(i);
+      const idle = `trk-btn-${id}`;
+      const down = `trk-btn-${id}-pressed`;
+      if (this.textures.exists(idle)) {
+        // Picture buttons: the player is four and cannot read. The caption is
+        // for the adult, so it is only drawn when there is no picture.
+        const btn = this.add
+          .image(x, y, idle)
+          .setDepth(DEPTH.hud + 1)
+          .setScale(1.25); // 260x120 art -> 325x150 in a 416px column
+        this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
+        return (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
+      }
+      const swatch = this.add.rectangle(x, y, 325, 150, 0x3a3350, 1).setDepth(DEPTH.hud + 1);
+      const cap = this.add
+        .text(x, y, label, {
+          fontFamily: "'Press Start 2P', monospace",
+          color: "#ffe9b0",
+        })
+        .setOrigin(0.5)
+        .setFontSize(24)
+        .setDepth(DEPTH.hud + 2);
+      // Law 8: the response happens THIS frame, even though the sound lands on
+      // the next bar.
+      this.pressable(swatch, fire);
+      return (on) => {
+        swatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
+        cap.setColor(on ? "#2b2440" : "#ffe9b0");
+      };
+    };
+
+    // Row 1 is what the WORLD does; row 2 is what the TRAIN does. BACKWARDS
+    // closes the second row because it is the other thing that rewrites how the
+    // whole consist sounds without touching the landscape.
     const modes: { kind: ModeKind; label: string }[] = [
       { kind: "hill", label: "HILL" },
       { kind: "bridge", label: "BRIDGE" },
@@ -631,77 +709,16 @@ export class TrackV3Scene extends Phaser.Scene {
       { kind: "giant", label: "🦖 GIANT" },
     ];
     modes.forEach(({ kind, label }, i) => {
-      const cx = slotX(i);
-      const fire = (): void => void EventBus.emit("track-mode-toggled", kind);
-      const idle = `trk-btn-${kind}`;
-      const down = `trk-btn-${kind}-pressed`;
-      if (this.textures.exists(idle)) {
-        // Picture buttons: the player is four and cannot read. The caption is
-        // for the adult, so it is only drawn when there is no picture.
-        const btn = this.add
-          .image(cx, cy, idle)
-          .setDepth(DEPTH.hud + 1)
-          .setScale(0.72); // 260x120 art in a ~200px slot
-        this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
-        this.modeBtns[kind] = {
-          setLatched: (on) => (on ? btn.setTint(0xffd166) : btn.clearTint()),
-        };
-        return;
-      }
-      const swatch = this.add
-        .rectangle(cx, cy - 20, 186, 110, 0x3a3350, 1)
-        .setDepth(DEPTH.hud + 1);
-      const cap = this.add
-        .text(cx, cy - 20, label, {
-          fontFamily: "'Press Start 2P', monospace",
-          color: "#ffe9b0",
-        })
-        .setOrigin(0.5)
-        .setFontSize(17)
-        .setDepth(DEPTH.hud + 2);
-      // Law 8: the response happens THIS frame, even though the sound lands on
-      // the next bar.
-      this.pressable(swatch, fire);
       this.modeBtns[kind] = {
-        setLatched: (on) => {
-          swatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
-          cap.setColor(on ? "#2b2440" : "#ffe9b0");
-        },
+        setLatched: switchAt(i, kind, label, () =>
+          void EventBus.emit("track-mode-toggled", kind)),
       };
     });
 
     // The BACKWARDS switch — reverses every sampled voice; its own latch,
-    // stacks with everything above. AR-048's painted pair when delivered,
-    // keycap when not — the same seam as every other slot.
-    const bCx = slotX(7);
-    const bFire = (): void => void EventBus.emit("track-backwards-toggled");
-    const bIdle = "trk-btn-backwards";
-    const bDown = "trk-btn-backwards-pressed";
-    if (this.textures.exists(bIdle)) {
-      const btn = this.add
-        .image(bCx, cy, bIdle)
-        .setDepth(DEPTH.hud + 1)
-        .setScale(0.72);
-      this.pressableImage(btn, bIdle, this.textures.exists(bDown) ? bDown : bIdle, bFire);
-      this.backwardsLatch = (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
-      return;
-    }
-    const bSwatch = this.add
-      .rectangle(bCx, cy - 20, 186, 110, 0x3a3350, 1)
-      .setDepth(DEPTH.hud + 1);
-    const bCap = this.add
-      .text(bCx, cy - 20, "⏪ BACK", {
-        fontFamily: "'Press Start 2P', monospace",
-        color: "#ffe9b0",
-      })
-      .setOrigin(0.5)
-      .setFontSize(17)
-      .setDepth(DEPTH.hud + 2);
-    this.pressable(bSwatch, bFire);
-    this.backwardsLatch = (on) => {
-      bSwatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
-      bCap.setColor(on ? "#2b2440" : "#ffe9b0");
-    };
+    // stacks with everything above.
+    this.backwardsLatch = switchAt(7, "backwards", "⏪ BACK", () =>
+      void EventBus.emit("track-backwards-toggled"));
   }
 
   /** React → scene: the set of LATCHED modes. Every latched switch holds a
@@ -722,6 +739,7 @@ export class TrackV3Scene extends Phaser.Scene {
    *  HUD, dark blue for night and near-black for the tunnel, stacked when
    *  both are on. The painted versions are AR-049's. */
   setNightTunnel(night: boolean, tunnel: boolean): void {
+    this.nightSky?.setVisible(night);
     this.nightShade?.setVisible(night);
     this.tunnelShade?.setVisible(tunnel);
   }
@@ -774,6 +792,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // Parallax. Every offset is floored to a whole pixel inside
     // `parallaxOffset` — a fractional tilePosition makes pixel art shimmer.
     if (this.sky) this.sky.tilePositionX = parallaxOffset(this.pos, this.view, 0.05);
+    if (this.nightSky) this.nightSky.tilePositionX = parallaxOffset(this.pos, this.view, 0.05);
     if (this.hills) this.hills.tilePositionX = parallaxOffset(this.pos, this.view, 0.18);
     if (this.trees) this.trees.tilePositionX = parallaxOffset(this.pos, this.view, 0.42);
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);

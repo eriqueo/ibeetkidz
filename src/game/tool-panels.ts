@@ -9,7 +9,7 @@
 import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import { WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, placeUiSprite } from "./ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, type UiSpriteDef } from "./ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
@@ -26,6 +26,9 @@ export const PANEL_EDGE = 0x2b2440;
 const BTN_BG = 0x2a2118;
 const TEXT = "#e8dcc8";
 export const INK = "#2b2440";
+
+/** AR-054's neutral, tintable percussion keycap (idle ⇄ seated). */
+const PAD_KEY = UI_SPRITES["pad-key"]!;
 
 /** Dark ink on light button fills, cream on dark ones. */
 function labelColorFor(fill: number): string {
@@ -80,6 +83,9 @@ export interface ToolModel {
     readonly rows: readonly {
       id: string;
       emoji: string;
+      /** AR-054 icon frame for the row's built-in sound (`soundIconFrame`), or
+       *  null for a recorded lane, which has no built-in sound to picture. */
+      icon: string | null;
       color: string;
       cells: readonly boolean[];
       muted: boolean;
@@ -111,14 +117,41 @@ export class PanelButton {
   private label: Phaser.GameObjects.Text;
   private hit: Phaser.Geom.Rectangle;
   private enabled = true;
+  /** AR-054's painted keycap + its sound icon, when the caller asked for the
+   *  authored face and the atlas has the art. Both null on the plain button. */
+  private face: Phaser.GameObjects.Image | null = null;
+  private icon: Phaser.GameObjects.Image | null = null;
 
   private fill: number;
 
-  constructor(scene: Phaser.Scene, text: string, onPress: () => void, fill = BTN_BG) {
+  constructor(
+    scene: Phaser.Scene,
+    text: string,
+    onPress: () => void,
+    fill = BTN_BG,
+    // A keycap face turns the flat colour tile into AR-054's raised socket,
+    // tinted with the same `fill` the rectangle wore — the art is neutral on
+    // purpose so the sound keeps its colour identity.
+    opts: { keycap?: boolean; icon?: string | null } = {},
+  ) {
     this.fill = fill;
     this.bg = scene.add.rectangle(0, 0, 10, 10, fill).setStrokeStyle(3, PANEL_EDGE);
     this.label = scene.add.text(0, 0, text, { fontFamily: FONT, fontSize: "12px", color: labelColorFor(fill), align: "center" }).setOrigin(0.5);
-    this.container = scene.add.container(0, 0, [this.bg, this.label]);
+    const kids: Phaser.GameObjects.GameObject[] = [this.bg];
+    if (opts.keycap && hasUiFrame(scene, PAD_KEY.base)) {
+      this.bg.setVisible(false);
+      this.face = scene.add.image(0, 0, UI_ATLAS_KEY, PAD_KEY.base).setOrigin(0.5).setTint(fill);
+      kids.push(this.face);
+    }
+    kids.push(this.label);
+    if (hasUiFrame(scene, opts.icon)) {
+      this.icon = scene.add.image(0, 0, UI_ATLAS_KEY, opts.icon!).setOrigin(0.5);
+      kids.push(this.icon);
+      // The icon IS the label for a non-reader; the emoji it replaces would
+      // just sit on top of it.
+      this.label.setText("");
+    }
+    this.container = scene.add.container(0, 0, kids);
     this.hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
     this.container.setInteractive(this.hit, Phaser.Geom.Rectangle.Contains);
     if (this.container.input) this.container.input.cursor = "pointer";
@@ -126,7 +159,10 @@ export class PanelButton {
       .on("pointerdown", () => {
         if (!this.enabled) return;
         this.container.setScale(0.94);
-        this.bg.setFillStyle(0xffffff, 0.18);
+        // The seated keycap is a socket the key drops INTO, so the press reads
+        // without the wash the flat tile needed.
+        if (this.face) this.face.setFrame(PAD_KEY.states["seated"] ?? PAD_KEY.base);
+        else this.bg.setFillStyle(0xffffff, 0.18);
         onPress();
       })
       .on("pointerup", () => this.rest())
@@ -137,7 +173,8 @@ export class PanelButton {
     this.container.setScale(1);
     // Restore the button's OWN fill — resetting to the dark default turned
     // every coloured tile (pads / FX) permanently dark after its first tap.
-    this.bg.setFillStyle(this.fill, 1);
+    if (this.face) this.face.setFrame(PAD_KEY.base);
+    else this.bg.setFillStyle(this.fill, 1);
   }
 
   place(b: Box, fontPx = 12): void {
@@ -146,6 +183,13 @@ export class PanelButton {
     this.label.setFontSize(fontPx);
     this.label.setWordWrapWidth(b.w - 8);
     this.container.setPosition(b.x + b.w / 2, b.y + b.h / 2);
+    if (this.face) placeUiSprite(this.face, PAD_KEY, { x: 0, y: 0, width: b.w, height: b.h });
+    // Inside the keycap's face, not filling it — the socket's bevel has to stay
+    // visible or the raised/seated states stop reading.
+    if (this.icon) {
+      const d = Math.min(b.w, b.h) * 0.62;
+      this.icon.setDisplaySize(d, d).setPosition(0, 0);
+    }
   }
 
   setText(t: string): void { this.label.setText(t); }
@@ -171,6 +215,10 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
   /** Inner content box (inside the frame padding), in screen px. */
   protected inner: Box = { x: 0, y: 0, w: 0, h: 0 };
   private built = false;
+  /** The painted machine face (AR-050/AR-051), once `mountPlate` finds it. */
+  protected plateImg?: Phaser.GameObjects.Image | undefined;
+  private plateDef?: UiSpriteDef | undefined;
+  private plateHeightScale = 1;
 
   constructor(scene: Phaser.Scene, title: string) {
     super(scene, 0, 0);
@@ -205,13 +253,114 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.layoutContent();
   }
 
+  /**
+   * Swap the generic parchment for a painted machine face.
+   *
+   * Four tools have one now (AR-050's drum plate, AR-051's voice / keys / magic
+   * plates) and every one of them needs the identical four moves: hide the
+   * parchment and its drop shadow, lift the title off the dark steel, mount the
+   * art, and expose where its recesses landed. That was written once per panel
+   * until this existed; the second copy is where the drift starts.
+   *
+   * Call from `buildContent`. A missing sprite or a cold atlas is not an error —
+   * the panel simply keeps the parchment it was drawn on before the art existed.
+   */
+  protected mountPlate(key: string, heightScale = 1): void {
+    const def = UI_SPRITES[key];
+    if (!def || !hasUiFrame(this.scene, def.base)) return;
+    this.frame.setVisible(false);
+    this.shadow.setVisible(false);
+    this.titleText.setColor("#ffd166");
+    this.plateDef = def;
+    this.plateHeightScale = heightScale;
+    this.plateImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, def.base);
+    this.add(this.plateImg);
+    // The plate joins the container last, so it covers everything the base
+    // constructor added — and `placePlate` moves the header ONTO the plate.
+    this.bringToTop(this.titleText);
+    this.bringToTop(this.closeBtn.container);
+  }
+
+  /**
+   * Lay the mounted plate over the modal frame and return a mapper from the
+   * plate's own normalized coordinates to screen boxes — so a panel says where
+   * a control goes in the coordinates the art was MEASURED in, and the contain
+   * fit stops being every panel's arithmetic.
+   *
+   * Null when no plate is mounted: the caller then falls back to its
+   * proportional layout inside `inner`, which is what it did before the art.
+   */
+  protected placePlate(): ((r: PlateRegion) => Box) | null {
+    const img = this.plateImg;
+    const def = this.plateDef;
+    if (!img || !def) return null;
+    const f = this.frame; // laid out by `layout` just before `layoutContent`
+    placeUiSprite(img, def, {
+      x: f.x + f.width / 2,
+      y: f.y + f.height / 2,
+      width: f.width,
+      height: f.height * this.plateHeightScale,
+    });
+    const left = img.x - (img.width / 2) * img.scaleX;
+    const top = img.y - (img.height / 2) * img.scaleY;
+    const iw = img.width * img.scaleX;
+    const ih = img.height * img.scaleY;
+    // Re-anchor the header to the PLATE. `layout` put the title and ✕ on the
+    // parchment frame's corners, and a contain-fitted plate is narrower than
+    // that frame — so both were left stranded out on the dark backdrop, the
+    // title half-hidden behind the plate's own edge.
+    const inset = iw * 0.03;
+    this.titleText.setX(left + inset);
+    const close = this.closeBtn;
+    const sz = Math.min(ih * 0.1, iw * 0.09);
+    close.place({ x: left + iw - inset - sz, y: this.titleText.y - sz / 2, w: sz, h: sz }, Math.round(sz * 0.45));
+    return (r) => ({
+      x: left + r.x0 * iw,
+      y: top + r.y0 * ih,
+      w: (r.x1 - r.x0) * iw,
+      h: (r.y1 - r.y0) * ih,
+    });
+  }
+
   protected abstract buildContent(): void;
   protected abstract layoutContent(): void;
   abstract apply(model: ToolModel): void;
 }
 
+/** A rectangle on a plate, normalized to the plate's OWN canvas — the space the
+ *  recesses were measured in, straight off the delivered PNG. */
+interface PlateRegion { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+
+/** Split a plate region into an `cols`×`rows` grid of boxes, in reading order.
+ *  Shared by every plate whose art is a rack of matching recesses. */
+function gridIn(b: Box, cols: number, rows: number, gapFrac = 0.02): Box[] {
+  const gx = b.w * gapFrac;
+  const gy = b.h * gapFrac;
+  const cw = (b.w - gx * (cols - 1)) / cols;
+  const ch = (b.h - gy * (rows - 1)) / rows;
+  return Array.from({ length: cols * rows }, (_, k) => ({
+    x: b.x + (k % cols) * (cw + gx),
+    y: b.y + Math.floor(k / cols) * (ch + gy),
+    w: cw,
+    h: ch,
+  }));
+}
+
 // ── My Voice ──────────────────────────────────────────────────────────────────
 export class VoiceToolPanel extends BaseToolPanel {
+  /** AR-051's recorder-machine face. Regions measured off the delivered PNG
+   *  (1536×1152): the mic record bay, the rivet rail its status reads on, the
+   *  4×2 FX rack, and the two send bays under it. */
+  private static readonly PLATE = {
+    // Right of the painted microphone, which is the bay's own icon — a button
+    // face across the whole bay would cover the one picture that says "record".
+    record: { x0: 0.285, y0: 0.135, x1: 0.832, y1: 0.275 },
+    statusY: 0.318,
+    fx: { x0: 0.126, y0: 0.359, x1: 0.876, y1: 0.766 },
+    sendA: { x0: 0.105, y0: 0.786, x1: 0.491, y1: 0.9 },
+    sendB: { x0: 0.52, y0: 0.786, x1: 0.903, y1: 0.9 },
+  } as const;
+
   private recordBtn!: PanelButton;
   private status!: Phaser.GameObjects.Text;
   private fxBtns: { id: EffectId; btn: PanelButton }[] = [];
@@ -221,13 +370,15 @@ export class VoiceToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "🎤 My Voice"); }
 
   protected buildContent(): void {
+    this.mountPlate("panel-voice");
     this.recordBtn = new PanelButton(this.scene, "🎤 HOLD TO RECORD", () => {}, 0x7a2540);
     // Hold-to-record: emit on the raw down/up of the button container.
     this.recordBtn.container
       .on("pointerdown", () => EventBus.emit("tool-voice-record", true))
       .on("pointerup", () => EventBus.emit("tool-voice-record", false))
       .on("pointerout", () => EventBus.emit("tool-voice-record", false));
-    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: INK, align: "center" }).setOrigin(0.5);
+    // Ink on parchment, cream on steel — the plate's field is dark.
+    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: this.plateImg ? TEXT : INK, align: "center" }).setOrigin(0.5);
     this.fxBtns = FX_TILES.map((t) => ({ id: t.id, btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color) }));
     this.sendBeat = new PanelButton(this.scene, "🥁 Send as Beat", () => EventBus.emit("tool-voice-send", "beat"), 0x2a5c2a);
     this.sendNotes = new PanelButton(this.scene, "🎹 Send as Notes", () => EventBus.emit("tool-voice-send", "notes"), 0x2a5c2a);
@@ -236,20 +387,22 @@ export class VoiceToolPanel extends BaseToolPanel {
 
   protected layoutContent(): void {
     const i = this.inner;
-    this.recordBtn.place({ x: i.x, y: i.y, w: i.w, h: i.h * 0.2 }, Math.max(11, i.h * 0.045));
-    this.status.setPosition(i.x + i.w / 2, i.y + i.h * 0.27);
-    this.status.setFontSize(Math.max(9, i.h * 0.03));
-    // 4×2 FX grid in the middle band.
-    const gx = i.x, gy = i.y + i.h * 0.33, gw = i.w, gh = i.h * 0.42;
-    const cols = 4, rows = 2, gap = gw * 0.02;
-    const cw = (gw - gap * (cols - 1)) / cols, ch = (gh - gap * (rows - 1)) / rows;
-    this.fxBtns.forEach(({ btn }, k) => {
-      const c = k % cols, r = Math.floor(k / cols);
-      btn.place({ x: gx + c * (cw + gap), y: gy + r * (ch + gap), w: cw, h: ch }, Math.max(9, ch * 0.18));
-    });
-    const sy = i.y + i.h * 0.8, sgap = i.w * 0.04, sw = (i.w - sgap) / 2, sh = i.h * 0.16;
-    this.sendBeat.place({ x: i.x, y: sy, w: sw, h: sh }, Math.max(10, sh * 0.3));
-    this.sendNotes.place({ x: i.x + sw + sgap, y: sy, w: sw, h: sh }, Math.max(10, sh * 0.3));
+    const at = this.placePlate();
+    const P = VoiceToolPanel.PLATE;
+    // The plate's recesses, or the proportional bands the parchment used before
+    // the art existed. Same five boxes either way — only the source differs.
+    const rec = at ? at(P.record) : { x: i.x, y: i.y, w: i.w, h: i.h * 0.2 };
+    const statusY = at ? at({ ...P.record, y0: P.statusY, y1: P.statusY }).y : i.y + i.h * 0.27;
+    const fx = at ? at(P.fx) : { x: i.x, y: i.y + i.h * 0.33, w: i.w, h: i.h * 0.42 };
+    const sgap = i.w * 0.04, sw = (i.w - sgap) / 2, sh = i.h * 0.16, sy = i.y + i.h * 0.8;
+    const sendA = at ? at(P.sendA) : { x: i.x, y: sy, w: sw, h: sh };
+    const sendB = at ? at(P.sendB) : { x: i.x + sw + sgap, y: sy, w: sw, h: sh };
+
+    this.recordBtn.place(rec, Math.max(11, rec.h * 0.22));
+    this.status.setPosition(i.x + i.w / 2, statusY).setFontSize(Math.max(9, i.h * 0.03));
+    gridIn(fx, 4, 2).forEach((b, k) => this.fxBtns[k]?.btn.place(b, Math.max(9, b.h * 0.18)));
+    this.sendBeat.place(sendA, Math.max(10, sendA.h * 0.3));
+    this.sendNotes.place(sendB, Math.max(10, sendB.h * 0.3));
   }
 
   apply(model: ToolModel): void {
@@ -266,6 +419,16 @@ export class VoiceToolPanel extends BaseToolPanel {
 
 // ── Voice Keys ────────────────────────────────────────────────────────────────
 export class VoiceKeysToolPanel extends BaseToolPanel {
+  /** AR-051's vocal-keyboard face. Regions measured off the delivered PNG
+   *  (1536×1152): record bay (right of its painted mic), status rail, the eight
+   *  tall key recesses, and the wide send bay across the bottom. */
+  private static readonly PLATE = {
+    record: { x0: 0.285, y0: 0.14, x1: 0.832, y1: 0.278 },
+    statusY: 0.322,
+    keys: { x0: 0.118, y0: 0.364, x1: 0.884, y1: 0.772 },
+    send: { x0: 0.135, y0: 0.788, x1: 0.868, y1: 0.888 },
+  } as const;
+
   private recordBtn!: PanelButton;
   private status!: Phaser.GameObjects.Text;
   private keys: PanelButton[] = [];
@@ -274,12 +437,13 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "🎙️ Voice Keys"); }
 
   protected buildContent(): void {
+    this.mountPlate("panel-keys");
     this.recordBtn = new PanelButton(this.scene, "🎙️ HOLD TO SING", () => {}, 0x7a6a25);
     this.recordBtn.container
       .on("pointerdown", () => EventBus.emit("tool-keys-record", true))
       .on("pointerup", () => EventBus.emit("tool-keys-record", false))
       .on("pointerout", () => EventBus.emit("tool-keys-record", false));
-    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: INK, align: "center" }).setOrigin(0.5);
+    this.status = this.scene.add.text(0, 0, "", { fontFamily: FONT, fontSize: "10px", color: this.plateImg ? TEXT : INK, align: "center" }).setOrigin(0.5);
     this.keys = Array.from({ length: MELODY_ROWS }, (_, row) =>
       new PanelButton(this.scene, "", () => EventBus.emit("tool-keys-audition", row), 0x6a5520));
     this.sendBtn = new PanelButton(this.scene, "➡️ Add to Car", () => EventBus.emit("tool-keys-send"), 0x2a5c2a);
@@ -288,13 +452,18 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
 
   protected layoutContent(): void {
     const i = this.inner;
-    this.recordBtn.place({ x: i.x, y: i.y, w: i.w, h: i.h * 0.22 }, Math.max(11, i.h * 0.05));
-    this.status.setPosition(i.x + i.w / 2, i.y + i.h * 0.3);
-    this.status.setFontSize(Math.max(9, i.h * 0.03));
-    const ky = i.y + i.h * 0.38, kh = i.h * 0.4, n = this.keys.length, gap = i.w * 0.01;
-    const kw = (i.w - gap * (n - 1)) / n;
-    this.keys.forEach((k, idx) => k.place({ x: i.x + idx * (kw + gap), y: ky, w: kw, h: kh }, Math.max(9, kw * 0.3)));
-    this.sendBtn.place({ x: i.x + i.w * 0.25, y: i.y + i.h * 0.84, w: i.w * 0.5, h: i.h * 0.14 }, Math.max(10, i.h * 0.035));
+    const at = this.placePlate();
+    const P = VoiceKeysToolPanel.PLATE;
+    const rec = at ? at(P.record) : { x: i.x, y: i.y, w: i.w, h: i.h * 0.22 };
+    const statusY = at ? at({ ...P.record, y0: P.statusY, y1: P.statusY }).y : i.y + i.h * 0.3;
+    const keys = at ? at(P.keys) : { x: i.x, y: i.y + i.h * 0.38, w: i.w, h: i.h * 0.4 };
+    const send = at ? at(P.send) : { x: i.x + i.w * 0.25, y: i.y + i.h * 0.84, w: i.w * 0.5, h: i.h * 0.14 };
+
+    this.recordBtn.place(rec, Math.max(11, rec.h * 0.22));
+    this.status.setPosition(i.x + i.w / 2, statusY).setFontSize(Math.max(9, i.h * 0.03));
+    gridIn(keys, this.keys.length, 1, 0.012).forEach((b, idx) =>
+      this.keys[idx]?.place(b, Math.max(9, b.w * 0.3)));
+    this.sendBtn.place(send, Math.max(10, send.h * 0.3));
   }
 
   apply(model: ToolModel): void {
@@ -611,7 +780,6 @@ export class PercussionToolPanel extends BaseToolPanel {
     shelf: { x0: 0.058, y0: 0.777, x1: 0.941, y1: 0.894 },
   } as const;
 
-  private plateImg?: Phaser.GameObjects.Image | undefined;
   /** Empty cells are pale chalk on the plate's dark field — the parchment
    *  era's dark-plum-on-dark cells were invisible the moment AR-050 landed. */
   private static readonly CELL_OFF = 0xf6efdc;
@@ -619,6 +787,9 @@ export class PercussionToolPanel extends BaseToolPanel {
   private rows: {
     id: string;
     label: Phaser.GameObjects.Text;
+    /** AR-054's painted sound icon, drawn INSTEAD of the emoji label when the
+     *  atlas has one for this row's sound. */
+    icon: Phaser.GameObjects.Image | null;
     mute: Phaser.GameObjects.Text;
     del: Phaser.GameObjects.Text;
     cells: Phaser.GameObjects.Rectangle[];
@@ -635,16 +806,8 @@ export class PercussionToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "🥁 Drums"); }
 
   protected buildContent(): void {
-    // The painted plate replaces the generic parchment when the atlas has it
-    // (same mount the melody editor's panel-editor uses).
-    const def = UI_SPRITES["panel-percussion"];
-    if (def && this.scene.textures.exists(UI_ATLAS_KEY)) {
-      this.frame.setVisible(false);
-      this.shadow.setVisible(false);
-      this.titleText.setColor("#ffd166");
-      this.plateImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, def.base);
-      this.add(this.plateImg);
-    }
+    // 1.06: the plate carries its own header band above the grid field.
+    this.mountPlate("panel-percussion", 1.06);
     this.hint = this.scene.add
       .text(0, 0, "TAP A DRUM BELOW TO ADD IT", { fontFamily: FONT, fontSize: "12px", color: "#e8dcc8" })
       .setOrigin(0.5);
@@ -655,6 +818,10 @@ export class PercussionToolPanel extends BaseToolPanel {
         drum.emoji,
         () => EventBus.emit("workshop-instrument-added", "drum", drum.assetId),
         Phaser.Display.Color.HexStringToColor(drum.color).color,
+        // AR-054: the shelf is ten sockets in the plate, so its faces are the
+        // painted keycap with the sound's own icon on it — not ten flat
+        // stickers wearing system emoji next to chunky pixel art.
+        { keycap: true, icon: soundIconFrame(drum.assetId) },
       );
       this.add(btn.container);
       return btn;
@@ -669,13 +836,22 @@ export class PercussionToolPanel extends BaseToolPanel {
   private rebuildRows(model: ToolModel): void {
     this.rows.forEach((r) => {
       r.label.destroy();
+      r.icon?.destroy();
       r.mute.destroy();
       r.del.destroy();
       r.cells.forEach((c) => c.destroy());
     });
     this.rows = model.percussion.rows.map((row) => {
       const color = Phaser.Display.Color.HexStringToColor(row.color).color;
-      const label = this.scene.add.text(0, 0, row.emoji, { fontSize: "16px" }).setOrigin(0.5);
+      const iconFrame = row.icon;
+      const icon = hasUiFrame(this.scene, iconFrame)
+        ? this.scene.add.image(0, 0, UI_ATLAS_KEY, iconFrame!).setOrigin(0.5)
+        : null;
+      if (icon) this.add(icon);
+      // Kept, and emptied, when the icon takes over: the row still needs a text
+      // object for the layout to size against, and a recorded lane (no built-in
+      // sound, so no painted icon) still shows its emoji here.
+      const label = this.scene.add.text(0, 0, icon ? "" : row.emoji, { fontSize: "16px" }).setOrigin(0.5);
       const mute = this.scene.add.text(0, 0, "🔊", { fontSize: "14px" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       const del = this.scene.add.text(0, 0, "✕", { fontFamily: FONT, fontSize: "14px", color: "#ff5d8f" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
       mute.on("pointerdown", () => EventBus.emit("workshop-layer-muted", row.id));
@@ -683,7 +859,7 @@ export class PercussionToolPanel extends BaseToolPanel {
       this.add([label, mute, del]);
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
-      const view = { id: row.id, label, mute, del, cells, on, muted: row.muted, color };
+      const view = { id: row.id, label, icon, mute, del, cells, on, muted: row.muted, color };
       for (let s = 0; s < STEP_COUNT; s++) {
         const cell = this.scene.add
           .rectangle(0, 0, 10, 10, PercussionToolPanel.CELL_OFF, PercussionToolPanel.CELL_OFF_ALPHA)
@@ -721,23 +897,11 @@ export class PercussionToolPanel extends BaseToolPanel {
     // the generic parchment's inner box carries the same proportions.
     let grid: Box;
     let shelf: Box;
-    const def = UI_SPRITES["panel-percussion"];
-    if (this.plateImg && def) {
-      const f = this.frame; // laid out by BaseToolPanel just before this call
-      placeUiSprite(this.plateImg, def, {
-        x: f.x + f.width / 2,
-        y: f.y + f.height / 2,
-        width: f.width,
-        height: f.height * 1.06, // the plate carries its own header band
-      });
-      const img = this.plateImg;
-      const left = img.x - (img.width / 2) * img.scaleX;
-      const top = img.y - (img.height / 2) * img.scaleY;
-      const iw = img.width * img.scaleX;
-      const ih = img.height * img.scaleY;
+    const at = this.placePlate();
+    if (at) {
       const P = PercussionToolPanel.PLATE;
-      grid = { x: left + P.field.x0 * iw, y: top + P.field.y0 * ih, w: (P.field.x1 - P.field.x0) * iw, h: (P.field.y1 - P.field.y0) * ih };
-      shelf = { x: left + P.shelf.x0 * iw, y: top + P.shelf.y0 * ih, w: (P.shelf.x1 - P.shelf.x0) * iw, h: (P.shelf.y1 - P.shelf.y0) * ih };
+      grid = at(P.field);
+      shelf = at(P.shelf);
     } else {
       const i = this.inner;
       const shelfH = i.h * 0.16;
@@ -754,6 +918,11 @@ export class PercussionToolPanel extends BaseToolPanel {
       const cy = grid.y + (r + 0.5) * rowH;
       row.del.setPosition(grid.x + headW * 0.16, cy).setFontSize(Math.max(10, rowH * 0.34));
       row.label.setPosition(grid.x + headW * 0.5, cy).setFontSize(Math.max(12, rowH * 0.5));
+      // Bounded by the RAIL as well as the row: the head carries ✕, icon and
+      // mute across `headW`, and an icon sized only off row height grows into
+      // its neighbours as soon as there are few enough rows to be chunky.
+      const iconD = Math.max(14, Math.min(rowH * 0.62, headW * 0.3));
+      row.icon?.setDisplaySize(iconD, iconD).setPosition(grid.x + headW * 0.5, cy);
       row.mute.setPosition(grid.x + headW * 0.84, cy).setFontSize(Math.max(10, rowH * 0.38));
       row.cells.forEach((cell, s) => {
         cell.setPosition(grid.x + headW + (s + 0.5) * cellW, cy);
@@ -802,6 +971,16 @@ export class PercussionToolPanel extends BaseToolPanel {
 
 // ── Magic Pad ─────────────────────────────────────────────────────────────────
 export class MagicToolPanel extends BaseToolPanel {
+  /** AR-051's theremin face. Regions measured off the delivered PNG
+   *  (1536×1152): the four wave recesses, the big XY playfield, and the paired
+   *  Record / Send bays. */
+  private static readonly PLATE = {
+    waves: { x0: 0.097, y0: 0.105, x1: 0.897, y1: 0.245 },
+    xy: { x0: 0.135, y0: 0.316, x1: 0.877, y1: 0.742 },
+    record: { x0: 0.105, y0: 0.78, x1: 0.48, y1: 0.895 },
+    send: { x0: 0.513, y0: 0.78, x1: 0.895, y1: 0.895 },
+  } as const;
+
   private zone!: Phaser.GameObjects.Rectangle;
   private dot!: Phaser.GameObjects.Arc;
   private hint!: Phaser.GameObjects.Text;
@@ -814,7 +993,13 @@ export class MagicToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "✨ Magic Pad"); }
 
   protected buildContent(): void {
-    this.zone = this.scene.add.rectangle(0, 0, 10, 10, 0x2a1f3a, 0.9).setStrokeStyle(3, 0x8338ec).setOrigin(0).setInteractive();
+    this.mountPlate("panel-magic");
+    // On the plate the playfield IS painted, and AR-051 asked for it to stay
+    // clear — so the zone keeps its hit area and gives up its face. Alpha 0
+    // does not affect Phaser's hit test, which uses the shape.
+    this.zone = this.plateImg
+      ? this.scene.add.rectangle(0, 0, 10, 10, 0x2a1f3a, 0).setOrigin(0).setInteractive()
+      : this.scene.add.rectangle(0, 0, 10, 10, 0x2a1f3a, 0.9).setStrokeStyle(3, 0x8338ec).setOrigin(0).setInteractive();
     this.dot = this.scene.add.circle(0, 0, 10, 0xffd166).setVisible(false);
     // The hint floats INSIDE the dark XY pad, so it stays cream (not ink).
     this.hint = this.scene.add.text(0, 0, "Drag your finger to play! ✨", { fontFamily: FONT, fontSize: "10px", color: TEXT, align: "center" }).setOrigin(0.5);
@@ -841,19 +1026,21 @@ export class MagicToolPanel extends BaseToolPanel {
 
   protected layoutContent(): void {
     const i = this.inner;
-    // Wave selector row across the top.
-    const wy = i.y, wh = i.h * 0.14, n = this.waveBtns.length, gap = i.w * 0.02;
-    const ww = (i.w - gap * (n - 1)) / n;
-    this.waveBtns.forEach(({ btn }, k) => btn.place({ x: i.x + k * (ww + gap), y: wy, w: ww, h: wh }, Math.max(9, wh * 0.22)));
-    // XY zone fills the middle.
-    this.zoneBox = { x: i.x, y: i.y + i.h * 0.18, w: i.w, h: i.h * 0.55 };
+    const at = this.placePlate();
+    const P = MagicToolPanel.PLATE;
+    const bgap = i.w * 0.04, bw = (i.w - bgap) / 2, bh = i.h * 0.16, by = i.y + i.h * 0.78;
+    const waves = at ? at(P.waves) : { x: i.x, y: i.y, w: i.w, h: i.h * 0.14 };
+    const rec = at ? at(P.record) : { x: i.x, y: by, w: bw, h: bh };
+    const send = at ? at(P.send) : { x: i.x + bw + bgap, y: by, w: bw, h: bh };
+
+    gridIn(waves, this.waveBtns.length, 1).forEach((b, k) =>
+      this.waveBtns[k]?.btn.place(b, Math.max(9, b.h * 0.22)));
+    this.zoneBox = at ? at(P.xy) : { x: i.x, y: i.y + i.h * 0.18, w: i.w, h: i.h * 0.55 };
     this.zone.setSize(this.zoneBox.w, this.zoneBox.h).setPosition(this.zoneBox.x, this.zoneBox.y);
     this.hint.setPosition(this.zoneBox.x + this.zoneBox.w / 2, this.zoneBox.y + this.zoneBox.h / 2).setFontSize(Math.max(9, i.h * 0.03));
     this.dot.setRadius(Math.max(6, i.w * 0.012));
-    // Record + Send row at the bottom.
-    const by = i.y + i.h * 0.78, bgap = i.w * 0.04, bw = (i.w - bgap) / 2, bh = i.h * 0.16;
-    this.recordBtn.place({ x: i.x, y: by, w: bw, h: bh }, Math.max(10, bh * 0.28));
-    this.sendBtn.place({ x: i.x + bw + bgap, y: by, w: bw, h: bh }, Math.max(10, bh * 0.28));
+    this.recordBtn.place(rec, Math.max(10, rec.h * 0.28));
+    this.sendBtn.place(send, Math.max(10, send.h * 0.28));
   }
 
   apply(model: ToolModel): void {

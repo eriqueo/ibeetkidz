@@ -71,33 +71,34 @@ sprites and look at them** (`instruments/inst-drums-passive.png`,
 
 ---
 
-## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 3)
+## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 4)
 
-The earlier priority table is historical. AR-024, AR-023, and AR-026 shipped;
-**AR-013 is closed by product decision**. The active order below is based on the
-current Workshop and Track screenshots, not stale queue position.
+**Rev 3's entire queue is delivered AND integrated.** Every one of AR-020,
+AR-022, AR-043, AR-051, AR-052, AR-053 and AR-054 is now mounted in the engine
+and verified on screen — see "INTEGRATED" below for what each one drives. The
+remaining list is what is genuinely still open.
 
-1. **AR-052 — Workshop car cabin integration — P0.** The current characters are
-   visually pasted into a maroon rectangle inside the car: no seat, floor,
-   foreground sill, practical light, or shared depth plane tells a child that
-   they are *inside and riding in* a musical train car. This is now the highest
-   visual-integration job.
-2. **AR-051 — My Voice / Voice Keys / Magic Pad painted tool plates — P0.** My
-   Voice first, then Voice Keys and Magic Pad. These screens still use generic
-   parchment while the Melody and Percussion tools have bespoke machine faces.
-3. **AR-054 — Percussion Editor coherence pass — P0.** The new plate improved
-   the frame but the drum shelf still reads as a row of mismatched flat stickers,
-   and the current row imagery/control art does not meet the house style. This
-   supersedes AR-025's narrow neutral-keycap request.
-4. **AR-043 — CLEAR plaque — HIGH.** It is a visible header fallback, not a
-   low-priority nicety; it must join RIDE and STOP as authored Track chrome.
-5. **AR-020 — SEND SONG plaque — HIGH**, then **AR-022 — Map destination labels
-   — HIGH.** The map is the quality benchmark and needs its three destinations
-   named in-world.
-6. **AR-053 — painted Track weather garnish and NIGHT sky — MEDIUM.**
-7. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
+1. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
    Do not retire these merely because they are old; only supersede them when a
    replacement request explicitly replaces their user-visible result.
+2. **The TUNNEL world treatment is still parked** pending a design round (per
+   AR-049), as are AR-049's optional painted night/tunnel washes. The NIGHT half
+   is now painted art (AR-053's sky band + a wash over the land only); the tunnel
+   is still a flat near-black rectangle. **Ask before building it** — the shape
+   of a tunnel that a side-scrolling train enters and leaves is a design
+   question, not a texture request.
+
+### INTEGRATED 2026-08-13 (engineering)
+
+| Request | Where it now shows |
+|---|---|
+| AR-020 | The oval Track header's SEND plaque (`TrackScene`); the cream chip is gone, ● REC still overprints during a take. |
+| AR-022 | The Map's baked destination signs (no wiring — the scene art carries them). |
+| AR-043 | The v3 Track header's CLEAR plaque, in a square slot beside RIDE and STOP. |
+| AR-051 | `VoiceToolPanel`, `VoiceKeysToolPanel` and `MagicToolPanel`, mounted through the shared `BaseToolPanel.mountPlate` / `placePlate` seam that AR-050 now also uses. Controls sit in the measured recesses; the Magic playfield is left clear as asked. |
+| AR-052 | The Workshop car's void: rear cabin behind the crew, bench rail in front of their legs, both travelling with the car on departure. |
+| AR-053 | `trk-smoke` / `trk-splash` (picked up automatically by the drop-folder glob) and the NIGHT sky band, which now tiles and parallaxes over the day sky while the wash darkens only the land. |
+| AR-054 | The percussion shelf's ten tinted keycaps and their drum icons, the percussion editor's row heads, and the conductor chalkboard's sound badges — which is where the six `tone-*` icons are reachable, every melody lane's clip being the built-in `note-do`. |
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
 not at generation resolution. `placeUiSprite` contain-fits a sprite's *content

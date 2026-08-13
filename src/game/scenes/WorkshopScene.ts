@@ -36,7 +36,7 @@ import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, contentHitRect, hitRectContains, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, contentHitRect, hasUiFrame, hitRectContains, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import { drawGlyph } from "../car-livery.ts";
 import { CHIP_EDGE, colorFor, darken, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
@@ -62,6 +62,9 @@ export interface WorkshopLane {
   /** The SOUND's own emoji, when the character alone cannot name it — eight
    *  drum lanes share one drummer, so the board needs to say which drum. */
   readonly badge: string | null;
+  /** AR-054's painted icon for that same sound (`soundIconFrame`). Drawn over
+   *  the badge when the atlas has it; the emoji stays as the fallback. */
+  readonly badgeIcon: string | null;
   readonly color: string; // laneColor() — the lane-group colour
   readonly kind: LaneKind; // melody lanes get a piano-roll edit button
   readonly cells: readonly boolean[]; // length STEP_COUNT
@@ -179,6 +182,10 @@ const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
  *  before `showCar` corrects it. */
 const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
+// AR-052's cabin pair, both authored on the punched void's own canvas.
+const CABIN_REAR = UI_SPRITES["workshop-car-interior"]!;
+const CABIN_RAIL = UI_SPRITES["workshop-car-foreground-rail"]!;
+
 const DEPTH_CAR = 0.4;
 const DEPTH_WASH = 0.5; // the livery, over the body and under everything else
 const DEPTH_RIDER = 0.7; // the crew, standing in the car's open interior
@@ -203,6 +210,10 @@ interface LaneRow {
   label: Phaser.GameObjects.Text | Phaser.GameObjects.Image; // instrument sprite (emoji fallback)
   del: Phaser.GameObjects.Text; // ✕ remove this lane
   badge: Phaser.GameObjects.Text | null; // the sound's own emoji, when it has one
+  /** AR-054's painted sound icon, drawn over the (then blanked) badge. The
+   *  badge Text stays underneath as the hit target, so the tap, the press
+   *  scale and the layout slot are all still ONE object's job. */
+  badgeIcon: Phaser.GameObjects.Image | null;
   edit: Phaser.GameObjects.Text | null; // 🎹 piano-roll (melody lanes only)
   mute: Phaser.GameObjects.Text; // 🔇 mute toggle
   colorInt: number;
@@ -250,6 +261,8 @@ export class WorkshopScene extends BackgroundScene {
    *  `car-tint.ts`. This is what makes the paint rack visibly paint the car. */
   private carCoat: LiveryCoat | undefined;
   private carInterior: Phaser.GameObjects.Graphics | undefined;
+  private carCabin: Phaser.GameObjects.Image | undefined;
+  private carRail: Phaser.GameObjects.Image | undefined;
   // ── the crew and their board ───────────────────────────────────────────────
   // The chalkboard used to be BOLTED to the car, filling its whole interior, and
   // that was the problem: it hid the car art entirely, and the instrument
@@ -403,6 +416,19 @@ export class WorkshopScene extends BackgroundScene {
     // Drawn behind the body so the car's own edges mask it and nothing has to
     // match the hole's outline.
     this.carInterior = this.add.graphics().setDepth(DEPTH_CAR - 0.05);
+    // AR-052: the painted cabin, in two layers that sandwich the crew — the
+    // timber back wall behind the body, the bench rail in front of the riders'
+    // legs. The graphics bands above stay as the fallback for a cold atlas.
+    if (this.textures.exists(UI_ATLAS_KEY)) {
+      this.carCabin = this.add
+        .image(0, 0, UI_ATLAS_KEY, CABIN_REAR.base)
+        .setOrigin(0.5)
+        .setDepth(DEPTH_CAR - 0.04);
+      this.carRail = this.add
+        .image(0, 0, UI_ATLAS_KEY, CABIN_RAIL.base)
+        .setOrigin(0.5)
+        .setDepth(DEPTH_RIDER + 0.05);
+    }
     // Always constructed on the preloaded default, then corrected by `showCar`:
     // the real car type arrives from React and may not be resident yet.
     this.car = this.add
@@ -580,17 +606,37 @@ export class WorkshopScene extends BackgroundScene {
     this.layoutRiders();
   }
 
-  /** A lit interior in the car's own colour: a deep back wall and a lighter
-   *  floor the crew stands on. Two flat bands is all it needs — the car's art
-   *  frames it, and anything more detailed would compete with the characters. */
+  /**
+   * The car's inside.
+   *
+   * AR-052's two painted layers when the atlas has them: both are authored on
+   * the void's own 1612x430 canvas, so they stretch onto `voidRect` and land in
+   * register with each other and with the punched hole by construction.
+   *
+   * The two flat colour bands below are what shipped before the art existed —
+   * a lit back wall and a lighter floor in the car's own livery — and they are
+   * the fallback for a cold atlas ONLY. The painted rear layer covers the void
+   * edge to edge, so drawing the bands under it would just be a second answer
+   * to the same question, and the one that shows if the registration ever slips.
+   */
   private drawCarInterior(): void {
     const g = this.carInterior;
     const v = this.voidRect;
     if (!g || v.w === 0) return;
+    // The bands are drawn in absolute screen coords, so the departure tween's
+    // leftover x offset has to be cleared before the next car is drawn.
+    g.setPosition(0, 0).clear();
+
+    if (this.carCabin || this.carRail) {
+      const rect = { x: v.x + v.w / 2, y: v.y + v.h / 2, width: v.w, height: v.h };
+      if (this.carCabin) placeUiSprite(this.carCabin, CABIN_REAR, rect);
+      if (this.carRail) placeUiSprite(this.carRail, CABIN_RAIL, rect);
+      return;
+    }
+
     const color = colorFor(this.model.livery);
     const pad = Math.max(6, v.h * 0.04); // bleed under the car's own edges
-    g.clear()
-      .fillStyle(darken(color, 0.74), 1)
+    g.fillStyle(darken(color, 0.74), 1)
       .fillRect(v.x - pad, v.y - pad, v.w + pad * 2, v.h + pad * 2)
       .fillStyle(darken(color, 0.52), 1)
       .fillRect(v.x - pad, v.y + v.h * 0.8, v.w + pad * 2, v.h * 0.2 + pad);
@@ -759,6 +805,12 @@ export class WorkshopScene extends BackgroundScene {
     this.closeBoard();
     const targets: Phaser.GameObjects.GameObject[] = [this.car];
     if (this.carCoat) targets.push(this.carCoat.fill);
+    // The cabin travels with the car it is the inside of. Left behind, the
+    // painted back wall and bench rail would stay hanging in the workshop while
+    // the car slid out from around them.
+    if (this.carCabin) targets.push(this.carCabin);
+    if (this.carRail) targets.push(this.carRail);
+    if (this.carInterior) targets.push(this.carInterior);
     this.riders.forEach((rider) => targets.push(rider.img));
     if (this.emptyText) targets.push(this.emptyText);
     this.playhead?.setVisible(false);
@@ -1179,6 +1231,7 @@ export class WorkshopScene extends BackgroundScene {
       r.label.destroy();
       r.del.destroy();
       r.badge?.destroy();
+      r.badgeIcon?.destroy();
       r.edit?.destroy();
       r.mute.destroy();
       r.cells.forEach((c) => c.destroy());
@@ -1227,8 +1280,12 @@ export class WorkshopScene extends BackgroundScene {
       del.setColor("#ff6b6b");
       // The sound's own emoji, in the slot the piano-roll button leaves empty on
       // a drum lane — which is exactly the lane that needs it.
+      const painted = hasUiFrame(this, lane.badgeIcon);
       const badge = lane.badge
-        ? this.makeIconText(lane.badge, () => EventBus.emit("workshop-layer-selected", lane.id))
+        ? this.makeIconText(painted ? "" : lane.badge, () => EventBus.emit("workshop-layer-selected", lane.id))
+        : null;
+      const badgeIcon = badge && painted
+        ? this.add.image(0, 0, UI_ATLAS_KEY, lane.badgeIcon!).setOrigin(0.5).setDepth(7)
         : null;
       const edit = lane.kind === "melody"
         ? this.makeIconText("🎹", () => EventBus.emit("workshop-edit-melody", lane.id))
@@ -1255,7 +1312,7 @@ export class WorkshopScene extends BackgroundScene {
         cells.push(cell);
         on.push(isOn);
       }
-      this.rows.push({ layerId: lane.id, band, label, del, badge, edit, mute, colorInt, cells, on });
+      this.rows.push({ layerId: lane.id, band, label, del, badge, badgeIcon, edit, mute, colorInt, cells, on });
     });
 
     // The playhead is a full-height chalk line sweeping the board (one cell
@@ -1268,6 +1325,7 @@ export class WorkshopScene extends BackgroundScene {
     this.rows.forEach((row) => {
       onBoard.push(row.band, row.label, row.del, row.mute, ...row.cells);
       if (row.badge) onBoard.push(row.badge);
+      if (row.badgeIcon) onBoard.push(row.badgeIcon);
       if (row.edit) onBoard.push(row.edit);
     });
     this.boardModal?.add(onBoard);
@@ -1453,6 +1511,11 @@ export class WorkshopScene extends BackgroundScene {
       // The badge and the piano roll share a slot: a drum lane has no roll, a
       // melody lane's sound is named by its own character.
       row.badge?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
+      // Bounded by the COLUMN as well as the row: the four label slots are
+      // 0.24·labelW apart, so an icon sized only off row height runs into the
+      // instrument sprite on its left and the mute on its right.
+      const bd = Math.min(this.cellH * 0.86, labelW * 0.18);
+      row.badgeIcon?.setPosition(gx + labelW * 0.62, cy).setDisplaySize(bd, bd);
       row.edit?.setPosition(gx + labelW * 0.62, cy).setFontSize(iconPx);
       row.mute.setPosition(gx + labelW * 0.86, cy).setFontSize(iconPx);
       growHit(row.del);

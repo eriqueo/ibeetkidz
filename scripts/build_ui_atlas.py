@@ -17,6 +17,10 @@ SRC_DIRS = [
     "src/assets/sprites/buttons",
     "src/assets/sprites/instruments",
     "src/assets/sprites/panels",
+    # AR-054's 128x128 drum/tone icons. They are chrome like everything else
+    # here — sixteen extra HTTP round-trips per view switch is exactly the cost
+    # this atlas exists to remove, and at 128px they pack into leftover space.
+    "src/assets/sprites/icons",
 ]
 OUT_DIR = "public/assets/spritesheets"
 PAGE = 4096  # safe GPU texture ceiling (older iPads)

@@ -99,6 +99,19 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-transport-fast": buttonDef("btn-transport-fast", { content: [0.181, 0.155, 0.819, 0.845] }),
   // Track: the dedicated RIDE keycap (golden loco, baked label — no caption).
   "btn-track-ride": buttonDef("btn-track-ride"),
+  // AR-043: the painted CLEAR plaque that retires the Track header's keycap
+  // fallback. AR-020: the SEND SONG plaque on the oval Track's header.
+  "btn-track-clear": buttonDef("btn-track-clear", { content: [0.1836, 0.1328, 0.8281, 0.8223] }),
+  "btn-send-song": buttonDef("btn-send-song", { content: [0.0352, 0.0893, 0.9785, 0.896] }),
+  // AR-054: the neutral, tintable percussion keycap. `seated` is the pressed-in
+  // socket with the gold selected tick, so this pair is a two-state sprite the
+  // pad shelf swaps per cell rather than an idle/pressed press animation.
+  "pad-key": {
+    states: { idle: "pad-key-idle", seated: "pad-key-seated" },
+    base: "pad-key-idle",
+    content: [0.0449, 0.0215, 0.9922, 0.9961],
+    stretch: false,
+  },
   // Yard bottom-bar action keycaps (baked labels — no captions).
   "btn-yard-edit": buttonDef("btn-yard-edit"),
   "btn-yard-hitch": buttonDef("btn-yard-hitch"),
@@ -149,6 +162,21 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // AR-050: the frog's drum-machine plate. Content box measured off the
   // delivered PNG (bbox 1466x1074+35+36 on 1536x1152).
   "panel-percussion": { states: { base: "panel-percussion" }, base: "panel-percussion", content: [0.0228, 0.0313, 0.977, 0.964], stretch: false },
+  // AR-051: the three remaining painted machine faces. Same contract as the
+  // percussion plate — contain-fit, NOT stretched, so the recesses the engine
+  // controls mount into keep their authored proportions. Boxes measured off
+  // each delivered PNG's alpha bbox (threshold 40) at 1536x1152.
+  "panel-voice": { states: { base: "panel-voice" }, base: "panel-voice", content: [0.0221, 0.0304, 0.9779, 0.9679], stretch: false },
+  "panel-keys": { states: { base: "panel-keys" }, base: "panel-keys", content: [0.0228, 0.0339, 0.9779, 0.9696], stretch: false },
+  "panel-magic": { states: { base: "panel-magic" }, base: "panel-magic", content: [0.0208, 0.0286, 0.9792, 0.9696], stretch: false },
+  // AR-052: the Workshop car's cabin, as two aligned layers for the SAME
+  // 1612x430 punched void — rear interior behind the crew, foreground rail in
+  // front of their legs. Both carry the full canvas as their content box on
+  // purpose: they are registration-locked to each other, so measuring either
+  // one's opaque bbox (the rail's art occupies only its bottom third) would
+  // stretch that layer to the void and break the alignment the pair depends on.
+  "workshop-car-interior": panelDef("workshop-car-interior", [0, 0, 1, 1]),
+  "workshop-car-foreground-rail": panelDef("workshop-car-foreground-rail", [0, 0, 1, 1]),
   "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
   "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
   // AR-026 delivered the pair: idle = lever down + OFF plaque, on = lever up +
@@ -163,6 +191,34 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
 /** The chalkboard's inner slate surface (where the note grid draws), normalized
  *  to the sequencer-chalkboard canvas — inside the wooden frame + chalk tray. */
 export const CHALKBOARD_SLATE: ContentBox = [0.115, 0.14, 0.885, 0.82];
+
+/**
+ * AR-054's painted icon frame for a built-in sound, by catalogue `assetId`.
+ *
+ * The frame name is DERIVED, not tabulated: the drum ids are the file stems
+ * (`kick` → `drum-kick`) and the tone ids differ only by the catalogue's
+ * `note-` prefix (`note-do` → `tone-do`). A hand-written id→frame table would
+ * be a second copy of the catalogue, and it would rot the first time a sound is
+ * added.
+ *
+ * This returns a NAME, not a promise that the art exists — whether AR-054 drew
+ * it is a question only the atlas can answer, so the drawing site checks with
+ * `hasUiFrame` and keeps its emoji when the answer is no. Null here means the
+ * lane has no built-in sound at all (a recording), which no icon can name.
+ */
+export function soundIconFrame(assetId: string | undefined): string | null {
+  if (!assetId) return null;
+  return assetId.startsWith("note-")
+    ? `tone-${assetId.slice("note-".length)}`
+    : `drum-${assetId}`;
+}
+
+/** True when the loaded chrome atlas carries `frame`. The atlas is the only
+ *  honest answer to "did the artist draw this yet". */
+export function hasUiFrame(scene: Phaser.Scene, frame: string | null | undefined): boolean {
+  if (!frame || !scene.textures.exists(UI_ATLAS_KEY)) return false;
+  return scene.textures.get(UI_ATLAS_KEY).has(frame);
+}
 
 /** Load the packed chrome multiatlas (idempotent). ONE atlas serves every
  *  scene — a handful of requests instead of ~38 per view switch, and the
