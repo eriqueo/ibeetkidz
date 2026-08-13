@@ -2661,3 +2661,19 @@ art stops and the body art starts, it is not done.
 
 **Do not deliver a revised `workshop-car-interior-*` instead.** Three rounds of
 that have now been made and the fault is the layering, not the painting.
+
+---
+
+## AR-058 follow-up · the row rail wants SIX sockets, not nine — LOW
+
+The redrawn Percussion plate is mounted and is the right machine. One number is
+off: its left rail paints **nine** row sockets, and a car can only ever hold
+**six** lanes (`MAX_LAYERS`). Engineering tried pitching the rows to the painted
+sockets and had to back it out — nine slots across the field makes each row a
+third too short, which shrinks the drum icon in each head to roughly 45px of a
+2560-wide stage. That is below the size a four-year-old can reliably hit, so the
+rows are pitched to the lane cap instead and no longer line up with the sockets.
+
+**Redraw the rail with six sockets** at the same overall extent and the rows
+land in them with no code change (the pitch is already `field.h / 6`). Nothing
+else about the plate needs to move.

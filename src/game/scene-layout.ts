@@ -49,7 +49,7 @@ export const WORKSHOP_GRID_V2 = {
 // gives that strip back: it starts higher and ends well clear of the transport
 // bar, where DONE was landing on top of the PLAY button.
 export const WORKSHOP_TOOL_MODAL = {
-  x: 0.07, y: 0.075, w: 0.86, h: 0.655,
+  x: 0.07, y: 0.07, w: 0.86, h: 0.6,
 } as const;
 
 // Track SEND result panel: a compact centred card (viewport-relative, like the

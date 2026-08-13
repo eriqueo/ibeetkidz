@@ -13,7 +13,7 @@ import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, ty
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
-import { STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
+import { MAX_LAYERS, STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
 
 export const FONT = "'Press Start 2P', monospace";
 // Charter: light "paper" panels with dark text (the old flat near-black
@@ -27,8 +27,17 @@ const BTN_BG = 0x2a2118;
 const TEXT = "#e8dcc8";
 export const INK = "#2b2440";
 
-/** AR-054's neutral, tintable percussion keycap (idle ⇄ seated). */
-const PAD_KEY = UI_SPRITES["pad-key"]!;
+/**
+ * AR-056's painted icon frame for a voice effect, derived from the effect id.
+ *
+ * `pitchUp` → `fx-pitch-up`, and so on: the art was named off the same ids, so
+ * deriving beats a table for the same reason `soundIconFrame` does — a table
+ * would be a second copy of `EffectId` and would rot the first time one is
+ * added. The drawing site checks the atlas; a missing icon keeps its emoji.
+ */
+function fxIconFrame(id: string): string {
+  return `fx-${id.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`;
+}
 
 /** Press Start 2P metrics, as multiples of the font size. Its advance measures
  *  exactly 1.0 em in-browser at every size; the 1.06 buys margin for the emoji
@@ -127,6 +136,7 @@ export class PanelButton {
   /** AR-054's painted keycap + its sound icon, when the caller asked for the
    *  authored face and the atlas has the art. Both null on the plain button. */
   private face: Phaser.GameObjects.Image | null = null;
+  private faceDef: UiSpriteDef | null = null;
   private icon: Phaser.GameObjects.Image | null = null;
 
   private fill: number;
@@ -136,19 +146,29 @@ export class PanelButton {
     text: string,
     onPress: () => void,
     fill = BTN_BG,
-    // A keycap face turns the flat colour tile into AR-054's raised socket,
-    // tinted with the same `fill` the rectangle wore — the art is neutral on
-    // purpose so the sound keeps its colour identity.
-    opts: { keycap?: boolean; icon?: string | null } = {},
+    // A painted FACE replaces the flat colour rectangle. `pad-key` is AR-054's
+    // neutral keycap, tinted with the same `fill` the rectangle wore so a sound
+    // keeps its colour identity; AR-057's `btn-panel-close` / `btn-panel-done`
+    // are authored controls that carry their own colour and are not tinted.
+    opts: { face?: string; tintFace?: boolean; bakedLabel?: boolean; icon?: string | null } = {},
   ) {
     this.fill = fill;
     this.bg = scene.add.rectangle(0, 0, 10, 10, fill).setStrokeStyle(3, PANEL_EDGE);
     this.label = scene.add.text(0, 0, text, { fontFamily: FONT, fontSize: "12px", color: labelColorFor(fill), align: "center" }).setOrigin(0.5);
     const kids: Phaser.GameObjects.GameObject[] = [this.bg];
-    if (opts.keycap && hasUiFrame(scene, PAD_KEY.base)) {
+    const faceDef = opts.face ? UI_SPRITES[opts.face] : undefined;
+    if (faceDef && hasUiFrame(scene, faceDef.base)) {
+      this.faceDef = faceDef;
       this.bg.setVisible(false);
-      this.face = scene.add.image(0, 0, UI_ATLAS_KEY, PAD_KEY.base).setOrigin(0.5).setTint(fill);
+      this.face = scene.add.image(0, 0, UI_ATLAS_KEY, faceDef.base).setOrigin(0.5);
+      if (opts.tintFace) this.face.setTint(fill);
       kids.push(this.face);
+      // A face that paints its own word does not want the engine's copy of it
+      // on top. The caller still passes the text, because it is what the button
+      // says when the art has not loaded — the same greybox-then-art seam as
+      // everywhere else, and the reason this is a flag rather than an empty
+      // string at the call site.
+      if (opts.bakedLabel) this.label.setText("");
     }
     kids.push(this.label);
     if (hasUiFrame(scene, opts.icon)) {
@@ -166,9 +186,10 @@ export class PanelButton {
       .on("pointerdown", () => {
         if (!this.enabled) return;
         this.container.setScale(0.94);
-        // The seated keycap is a socket the key drops INTO, so the press reads
-        // without the wash the flat tile needed.
-        if (this.face) this.face.setFrame(PAD_KEY.states["seated"] ?? PAD_KEY.base);
+        // The pressed art IS the feedback, so no wash over it. A keycap calls
+        // that state `seated` (it drops into its socket) and a plaque calls it
+        // `pressed`; either way it is the one frame that is not the base.
+        if (this.face) this.face.setFrame(this.pressedFrame());
         else this.bg.setFillStyle(0xffffff, 0.18);
         onPress();
       })
@@ -176,11 +197,17 @@ export class PanelButton {
       .on("pointerout", () => this.rest());
   }
 
+  /** The face's pressed-looking state, whatever this sprite calls it. */
+  private pressedFrame(): string {
+    const s = this.faceDef?.states ?? {};
+    return s["pressed"] ?? s["seated"] ?? this.faceDef?.base ?? "";
+  }
+
   private rest(): void {
     this.container.setScale(1);
     // Restore the button's OWN fill — resetting to the dark default turned
     // every coloured tile (pads / FX) permanently dark after its first tap.
-    if (this.face) this.face.setFrame(PAD_KEY.base);
+    if (this.face && this.faceDef) this.face.setFrame(this.faceDef.base);
     else this.bg.setFillStyle(this.fill, 1);
   }
 
@@ -200,7 +227,7 @@ export class PanelButton {
     // keycap is square art contain-fitted into the slot, so in a wide slot the
     // visible key is narrower than the box — text fitted to the box then ran
     // off both sides of the key it was sitting on.
-    if (this.face) placeUiSprite(this.face, PAD_KEY, { x: 0, y: 0, width: b.w, height: b.h });
+    if (this.face && this.faceDef) placeUiSprite(this.face, this.faceDef, { x: 0, y: 0, width: b.w, height: b.h });
     const faceW = this.face ? this.face.displayWidth * 0.86 : b.w;
     const faceH = this.face ? this.face.displayHeight * 0.86 : b.h;
 
@@ -281,17 +308,14 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.shadow = scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.55).setOrigin(0);
     this.frame = scene.add.rectangle(0, 0, 10, 10, PANEL_BG, 1).setStrokeStyle(4, PANEL_EDGE).setOrigin(0);
     this.titleText = scene.add.text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: INK }).setOrigin(0, 0.5);
-    // Both chrome controls wear the keycap face, so the corner ✕ stops being a
-    // flat dark square dropped on painted steel. AR-056's dedicated art
-    // replaces the face wherever it lands; this is the same greybox-then-art
-    // seam every other control uses.
-    // ✕ is square and takes the keycap. DONE is a WIDE plaque and does not:
-    // the keycap is square art, contain-fitted, so in a wide slot it shrinks to
-    // a small square with the word hanging off both ends of it. Its green
-    // rectangle is the same face the MAKE A BEAT / MAKE NOTES plaques wear,
-    // which is the language a wide commit control already speaks here.
-    this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"), 0x7a2540, { keycap: true });
-    this.doneBtn = new PanelButton(scene, "DONE", () => this.onDone(), 0x2a5c2a);
+    // AR-057's authored pair: a recessed brass-ringed ✕ socket and a wide green
+    // DONE plaque, both carrying their own baked label and their own colour, so
+    // neither is tinted. They briefly wore the drum keycap as a stand-in; the
+    // ✕ looked right and DONE did not, because a square keycap contain-fitted
+    // into a wide slot shrinks to a small square with the word hanging off both
+    // ends of it. The real plaque is drawn wide, which is why it can be.
+    this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"), 0x7a2540, { face: "btn-panel-close", bakedLabel: true });
+    this.doneBtn = new PanelButton(scene, "DONE", () => this.onDone(), 0x2a5c2a, { face: "btn-panel-done", bakedLabel: true });
     this.add([this.backdrop, this.shadow, this.frame, this.titleText, this.closeBtn.container, this.doneBtn.container]);
   }
 
@@ -326,8 +350,8 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
    *  gesture as the conductor chalkboard's own DONE chip, so "finished" looks
    *  identical everywhere in the Workshop. */
   private placeDone(cx: number, bottomY: number, width: number): void {
-    const w = Math.max(140, width * 0.2);
-    const h = Math.max(52, width * 0.062);
+    const w = Math.max(190, width * 0.26);
+    const h = Math.max(66, width * 0.085);
     this.doneBtn.place({ x: cx - w / 2, y: bottomY + h * 0.22, w, h }, Math.round(h * 0.34));
   }
 
@@ -464,7 +488,7 @@ export class VoiceToolPanel extends BaseToolPanel {
     // tints, so each effect keeps its colour and stops fighting the plate.
     this.fxBtns = FX_TILES.map((t) => ({
       id: t.id,
-      btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { keycap: true }),
+      btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { face: "pad-key", tintFace: true, icon: fxIconFrame(t.id) }),
     }));
     // NOT two "done" buttons — a CHOICE of what the recording becomes, which is
     // the one thing DONE cannot decide for the kid. Labelled as a pick ("make
@@ -870,9 +894,13 @@ export class PercussionToolPanel extends BaseToolPanel {
    *  PNG (1536×1152): the recessed grid field inside the wooden frame, and
    *  the ten-recess drum shelf strip — the engine controls mount INTO them.
    *  The plate's own row rail sits at 16% of the field, matching `HEAD_FRAC`. */
+  // Re-measured for AR-058's redrawn machine face. `field` spans the row RAIL
+  // and the grid together, because `HEAD_FRAC` splits the heads off the front
+  // of it — and 0.16 of this span lands exactly on the rail the plate now
+  // draws, which is what makes the ✕/icon/mute column sit in its sockets.
   private static readonly PLATE = {
-    field: { x0: 0.0768, y0: 0.1024, x1: 0.927, y1: 0.7188 },
-    shelf: { x0: 0.058, y0: 0.777, x1: 0.941, y1: 0.894 },
+    field: { x0: 0.0605, y0: 0.0868, x1: 0.9408, y1: 0.7378 },
+    shelf: { x0: 0.0788, y0: 0.7934, x1: 0.9206, y1: 0.8733 },
   } as const;
 
   /** Empty cells are pale chalk on the plate's dark field — the parchment
@@ -916,7 +944,7 @@ export class PercussionToolPanel extends BaseToolPanel {
         // AR-054: the shelf is ten sockets in the plate, so its faces are the
         // painted keycap with the sound's own icon on it — not ten flat
         // stickers wearing system emoji next to chunky pixel art.
-        { keycap: true, icon: soundIconFrame(drum.assetId) },
+        { face: "pad-key", tintFace: true, icon: soundIconFrame(drum.assetId) },
       );
       this.add(btn.container);
       return btn;
@@ -1004,8 +1032,15 @@ export class PercussionToolPanel extends BaseToolPanel {
       shelf = { x: i.x, y: i.y + i.h - shelfH, w: i.w, h: shelfH };
     }
 
-    const n = Math.max(1, this.rows.length);
-    const rowH = Math.min(grid.h / n, grid.h / 4); // ≤4 rows: keep them chunky
+    // One row per LANE the car can hold, so a full car fills the field exactly.
+    //
+    // Tried aligning to the plate's painted rail sockets instead, and it is the
+    // wrong trade: AR-058 draws NINE of them against a cap of six, so the pitch
+    // came out a third too small and the drum icon in each head shrank to about
+    // 45px of a 2560-wide stage — too small for the four-year-old who has to
+    // hit it. A tappable row that does not line up with a decorative socket
+    // beats a tidy row nobody can hit. (AR-058's follow-up asks for six.)
+    const rowH = grid.h / MAX_LAYERS;
     const headW = grid.w * 0.16; // the plate's row rail is drawn at this split
     const cellW = (grid.w - headW) / STEP_COUNT;
     const pad = Math.min(cellW, rowH) * 0.12;

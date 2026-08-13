@@ -103,6 +103,11 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // fallback. AR-020: the SEND SONG plaque on the oval Track's header.
   "btn-track-clear": buttonDef("btn-track-clear", { content: [0.1836, 0.1328, 0.8281, 0.8223] }),
   "btn-send-song": buttonDef("btn-send-song", { content: [0.0352, 0.0893, 0.9785, 0.896] }),
+  // AR-057: the shared tool-panel chrome — a recessed ✕ socket and the wide
+  // DONE plaque, in the same slot on every machine. Boxes measured off the
+  // delivered idle PNGs.
+  "btn-panel-close": buttonDef("btn-panel-close", { content: [0.2031, 0.1523, 0.8008, 0.7949] }),
+  "btn-panel-done": buttonDef("btn-panel-done", { content: [0.2939, 0.2618, 0.7109, 0.7206] }),
   // AR-054: the neutral, tintable percussion keycap. `seated` is the pressed-in
   // socket with the gold selected tick, so this pair is a two-state sprite the
   // pad shelf swaps per cell rather than an idle/pressed press animation.
