@@ -2236,6 +2236,25 @@ real interior surface—not pasted onto a colour rectangle.
 
 ## AR-054 · Percussion Editor coherence pass — P0
 
+### ✅ First delivery complete — 2026-08-13, `8eb05ea`
+
+The coherent percussion foundation is delivered: `buttons/pad-key-idle.png` and
+`buttons/pad-key-seated.png` are matched neutral 512 × 512 keycaps designed for
+engine tinting, and `sprites/icons/drum-*.png` provides a 128 × 128 child-readable
+family for all ten drum sounds (kick, snare, hi-hat, clap, tom, cowbell, open hat,
+rim, shaker, conga). The idle key reads raised; the seated key visibly drops into
+its socket and gains a small gold selected tick. All assets pass the hard-alpha
+gate and use alpha-0 corners.
+
+**Engineering handoff:** replace Percussion Editor's generic `PanelButton` shelf
+faces with these paired sprites, tinting the neutral keycaps with each sound's
+existing color. Replace emoji row labels and shelf glyphs with the matching
+`drum-<assetId>.png` icon while retaining the engine-drawn text labels, mute, and
+delete interactions. The icons and keycaps are visual assets only; keep gameplay
+state in the existing model.
+
+
+
 The delivered `panel-percussion.png` is a useful structural base, but the live
 Drums screen still fails the visual bar: the bottom pad strip reads as mismatched
 flat stickers, system-emoji row art clashes with the chunky Workshop characters,
