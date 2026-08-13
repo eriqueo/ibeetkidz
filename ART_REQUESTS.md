@@ -1763,7 +1763,17 @@ through, and no art has ever existed for the inside of the car. **A painted
 interior (three-quarter timber planking, a lit floor) would be a genuine
 improvement** and is the smallest art job on this list.
 
-## AR-043 · Track v3: a painted CLEAR plaque for the top bar — HIGH
+## ✅ DELIVERED — AR-043 · Track v3: a painted CLEAR plaque for the top bar — HIGH
+
+**Art delivered 2026-08-13 in `a684424`.** `btn-track-clear-idle.png` and
+`btn-track-clear-pressed.png` are matched 512 × 512 hard-alpha states in the
+Track plaque family: steel frame, cracked black stone, brass bolts, readable
+cream pixel lettering, and a broom sweeping small car blocks from a rail. The
+files have alpha-0 corners and pass the sprite-alpha gate.
+
+**Engineering handoff:** replace `TrackV3Scene`'s engine-drawn CLEAR keycap
+fallback with the two new atlas states at the existing `btn-track-clear` button
+site. The control remains undoable; this delivery changes only its visual face.
 
 The side-scroller's top bar gained a fourth control (2026-08-12): **CLEAR**,
 which empties the train (undoable — the "put it back" chip answers it). It
