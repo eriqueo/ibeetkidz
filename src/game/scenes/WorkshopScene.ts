@@ -283,6 +283,7 @@ export class WorkshopScene extends BackgroundScene {
   private carCoat: LiveryCoat | undefined;
   private carInterior: Phaser.GameObjects.Graphics | undefined;
   private carCabin: Phaser.GameObjects.Image | undefined;
+  private cabinCoat: LiveryCoat | undefined;
   private carRail: Phaser.GameObjects.Image | undefined;
   // ── the crew and their board ───────────────────────────────────────────────
   // The chalkboard used to be BOLTED to the car, filling its whole interior, and
@@ -447,6 +448,18 @@ export class WorkshopScene extends BackgroundScene {
         .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "interior").base)
         .setOrigin(0.5)
         .setDepth(DEPTH_CAR - 0.04);
+      // THE CABIN WEARS THE CAR'S PAINT. Without this the body is livery-tinted
+      // and the room inside it is not, so a gold tanker had a blue-grey steel
+      // room in it — two different colour worlds meeting at a hard rectangle,
+      // which is most of why the interior still read as pasted on rather than
+      // as part of the car. Same coat, same technique as the body itself.
+      this.cabinCoat = asLiveryCoat(
+        this.carCabin,
+        this.add
+          .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "interior").base)
+          .setOrigin(0.5)
+          .setDepth(DEPTH_CAR - 0.035),
+      );
       this.carRail = this.add
         .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "foreground-rail").base)
         .setOrigin(0.5)
@@ -658,6 +671,14 @@ export class WorkshopScene extends BackgroundScene {
       // changes under a live panel (New Car, or opening a different car), and
       // this is the one place that already re-runs on every such change.
       if (this.carCabin) placeUiSprite(this.carCabin.setFrame(rear.base), rear, rect);
+      if (this.cabinCoat) {
+        // The coat is the SAME picture drawn once more, so it has to follow the
+        // cabin's frame and transform exactly — a coat left on last car type's
+        // frame paints this car's colour onto last car's room.
+        this.cabinCoat.fill.setFrame(rear.base);
+        placeUiSprite(this.cabinCoat.fill, rear, rect);
+        setLiveryColor(this.cabinCoat, colorFor(this.model.livery));
+      }
       if (this.carRail) placeUiSprite(this.carRail.setFrame(rail.base), rail, rect);
       return;
     }
@@ -842,6 +863,7 @@ export class WorkshopScene extends BackgroundScene {
     // painted back wall and bench rail would stay hanging in the workshop while
     // the car slid out from around them.
     if (this.carCabin) targets.push(this.carCabin);
+    if (this.cabinCoat) targets.push(this.cabinCoat.fill);
     if (this.carRail) targets.push(this.carRail);
     if (this.carInterior) targets.push(this.carInterior);
     this.riders.forEach((rider) => targets.push(rider.img));

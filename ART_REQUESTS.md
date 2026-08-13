@@ -76,10 +76,14 @@ sprites and look at them** (`instruments/inst-drums-passive.png`,
 **Rev 3's entire queue is delivered AND integrated** (see "INTEGRATED" below).
 Rev 5 is the review that followed, on the live screens.
 
-1. **AR-055 — the car cabin, revised — P0.** AR-052's art is mounted and the
-   verdict is that it reads as *a train inside the train*. Highest priority: it
-   is the screen the kid spends the most time on, and it is currently worse than
-   the flat colour it replaced. Includes the four per-car-type variants.
+1. **AR-060 — WHOLE cars with their insides drawn — P0, and read it before
+   touching cabin art again.** AR-055 is delivered, mounted and per-type, and
+   engineering has since matched the palettes by putting the car's own livery
+   paint on the interior. It STILL reads as superimposed, for a reason no
+   interior texture can fix: the punched void is one rectangle cut through four
+   differently-shaped cars, including a cylinder. AR-060 replaces the
+   body+interior+rail layering with one drawing per car type. **Three rounds of
+   revised interiors have now been made; do not make a fourth.**
 2. **AR-056 — the My Voice effect rack — P0.** Eight flat neon tiles with
    system emoji on a painted steel plate. Engineering has moved them onto the
    AR-054 keycap and made the labels fit; what is missing is the ICONS.
@@ -88,12 +92,11 @@ Rev 5 is the review that followed, on the live screens.
 4. **AR-058 — the Percussion plate, redrawn into the machine-face family —
    HIGH.** AR-050's plate is a wooden frame around a flat field; next to
    AR-051's three steel machines it is now the odd one out.
-5. **AR-059 — active-car Beat Lantern — HIGH.** Replace the detached NOW post
-   with a small bouncing music-powered railway signal directly above the car
-   currently playing. It must identify the active car without reading.
-6. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
+5. **Open cleanup/polish:** AR-018, AR-006, AR-008, AR-009, AR-019, and AR-027.
    Do not retire these merely because they are old; only supersede them when a
    replacement request explicitly replaces their user-visible result.
+
+**AR-055 and AR-059 are delivered and integrated** — see the INTEGRATED table.
 6. **The TUNNEL world treatment is still parked** pending a design round (per
    AR-049), as are AR-049's optional painted night/tunnel washes. The NIGHT half
    is now painted art (AR-053's sky band + a wash over the land only); the tunnel
@@ -112,6 +115,7 @@ Rev 5 is the review that followed, on the live screens.
 | AR-052 | The Workshop car's void: rear cabin behind the crew, bench rail in front of their legs, both travelling with the car on departure. |
 | AR-053 | `trk-smoke` / `trk-splash` (picked up automatically by the drop-folder glob) and the NIGHT sky band, which now tiles and parallaxes over the day sky while the wash darkens only the land. |
 | AR-054 | The percussion shelf's ten tinted keycaps and their drum icons, the percussion editor's row heads, and the conductor chalkboard's sound badges — which is where the six `tone-*` icons are reachable, every melody lane's clip being the built-in `note-do`. |
+| AR-055 | The four per-car-type cabins, chosen by `cabinFor`. Engineering additionally put the car's LIVERY COAT on the interior — the body was tinted and the room inside it was not, so a gold tanker held a blue-grey steel room. Superseded in approach by AR-060; the art itself is what the current build ships. |
 | AR-059 | The Beat Lantern, riding the sounding car's ROOF and flicking to its high frame on each of the bar's four beats (read off the transport position, not off distance travelled — a lantern pulsing with the wheels would be a wheel lantern). `trk-now-post` is retired wherever the lantern art is present, and remains the fallback when it is not. Anchored by the LOW frame's measured painted base rather than the canvas edge: hung by the canvas the lamp floated half a car above the roof, which is the exact detachment the lantern was drawn to fix. |
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
@@ -2581,3 +2585,79 @@ delivery — hold the *proportions* roughly and the remount is one edit.
 
 **Acceptance bar:** open Drums, then My Voice, then the Magic Pad in sequence.
 All three must read as three machines from the same workshop.
+
+---
+
+## AR-060 · Stop punching holes in cars: deliver WHOLE cars with their insides drawn — P0
+
+**This supersedes the layered approach of AR-052/AR-055 and is the fix for a
+complaint that has now been made three times about three different versions of
+the same art.** Read this section before touching cabin art again.
+
+### What is actually wrong
+
+The Workshop car is assembled from three pieces at runtime: a car BODY png with
+a rectangular hole punched through it, a separate INTERIOR png stretched into
+that hole, and a separate foreground RAIL png over the crew's legs. Engineering
+has now fixed everything that layering can fix — registration is exact, the
+interior is per car type, the framing that made it read as a nested car is
+gone, and the interior even wears the car's livery paint so the palettes match.
+It still reads as pasted on, and it always will, for two reasons that no
+interior texture can solve:
+
+1. **The hole is a rectangle; the cars are not.** The same 1612 × 430 box is cut
+   through a boxcar, a hopper, a **cylinder** and a flat deck. A rectangular
+   window into a round tank is not a thing that can exist, so the eye correctly
+   refuses to read it as an opening and reads it as a picture laid on top.
+2. **Two pictures, two light sources.** A separate interior is lit, shaded and
+   perspectived by itself, and its edges meet the body's edges at a hard seam no
+   matter how well the two are matched.
+
+Eric, on the current build: *"you see how its still not native to the art behind
+it, it is still superimposed. maybe its just an art rewrite, to make the new art
+that can live load the characters just be built out to be full cars?"* That is
+the right call, and it is what this request asks for.
+
+### What to deliver
+
+**One complete car per type, drawn as a single picture, with its opening and its
+interior already part of it** — the way you would draw a cutaway in a picture
+book. Not a body plus an interior; one car that happens to be open.
+
+| File stem | The car, opened |
+|---|---|
+| `car-open-boxcar` | Sliding door rolled back; timber room visible through a door-shaped opening with the door's own frame and runners around it. |
+| `car-open-tanker` | An inspection hatch or cut-away section that belongs on a CYLINDER — the opening's top and bottom edges must curve with the tank, and the shell's thickness should show at the cut. |
+| `car-open-hopper` | Open-topped bin seen from the side, looking down into the slatted hopper — the opening is the bin's own mouth, not a window in its side. |
+| `car-open-flatcar` | No opening at all: a flat deck with stake sides, the crew standing on it in open air. |
+
+Each on the existing **2560 × 1440 car canvas**, drawn at the same scale and on
+the same wheel baseline as the current `car-side-*.png` set, so nothing about
+placement changes.
+
+Plus, per type, **one foreground layer** (`car-open-<type>-front`) carrying only
+what must draw IN FRONT of the crew — the near door edge, the tank's near shell
+lip, the bin's near wall, the flatcar's stake rail. Transparent everywhere else.
+
+### What engineering needs back, per type
+
+Two numbers, and they can be a comment in the delivery note rather than a file:
+
+- **The crew rect** — where in the 2560 × 1440 canvas the characters may stand
+  (x, y, w, h). It no longer has to be the same rect on every type, which is the
+  whole point: a flatcar's crew stands on a deck, a tanker's stands in a hatch.
+- **The floor line** — the y the characters' feet sit on inside that rect.
+
+Engineering replaces the punched-void geometry with these per type; the crew,
+the chalkboard and the livery coat all key off them.
+
+### Acceptance bar
+
+Open each car type with a full crew, and with the paint rack set to three
+different colours. In every combination the car must read as **one drawing** —
+no rectangle, no seam, no second light source, nothing that could be described
+as a picture inside a car. If a screenshot lets you point at where the interior
+art stops and the body art starts, it is not done.
+
+**Do not deliver a revised `workshop-car-interior-*` instead.** Three rounds of
+that have now been made and the fault is the layering, not the painting.

@@ -449,13 +449,20 @@ test("an empty car offers a surprise, and the surprise makes a real beat", async
   expect(await promptShown(), "…so the offer is there").toBe(true);
 
   await emit(page, "workshop-surprise");
-  // A real groove: kick + snare + hihat always, plus seeded extras.
-  await expect.poll(laneCount).toBeGreaterThanOrEqual(3);
+  // A real groove: kick + snare + hihat always, one seeded extra drum, and a
+  // TUNE over the top.
+  await expect.poll(laneCount).toBeGreaterThanOrEqual(4);
   const p = await getProject(page);
   const part = p.parts.find((x: any) => x.id === p.activePartId) ?? p.parts[0];
   expect(
     part.layers.some((l: any) => l.steps.some((s: any) => s != null)),
     "a surprise with no notes in it is not a beat",
+  ).toBe(true);
+  // …and it is not JUST a beat, which is the whole of Eric's report: "the
+  // SURPRISE ME is always just a drum beat?"
+  expect(
+    part.layers.some((l: any) => l.kind === "melody" && l.notes.some((c: any) => c.length > 0)),
+    "a surprise should play a tune, not only drums",
   ).toBe(true);
 
   // …and the offer goes away, because the car is no longer empty.
@@ -468,7 +475,10 @@ test("an empty car offers a surprise, and the surprise makes a real beat", async
   const offer = () =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer);
   await expect.poll(async () => (await offer()).offering).toBe(true);
-  expect((await offer()).lost).toMatch(/NEW BEAT/i);
+  // "Surprise", not "New beat": a surprise lays down a tune and a bass as well
+  // as a groove now, so naming the undo after the drums alone would describe
+  // about a third of what the tap did.
+  expect((await offer()).lost).toMatch(/SURPRISE/i);
 
   await emit(page, "undo-requested");
   await expect.poll(laneCount, { message: "one undo must clear the whole beat" }).toBe(0);

@@ -15,7 +15,7 @@ import { LocalStoragePort } from "../adapters/local-storage-port.ts";
 import { QuotaExceededError, StorageError } from "../ports/storage-port.ts";
 import { AudioEngine } from "../core/audio-engine.ts";
 import { createRng, type RngPort } from "../core/rng.ts";
-import { generateBeat } from "../core/generative.ts";
+import { generateBeat, type MelodyVoice } from "../core/generative.ts";
 import {
   emptyProject,
   initHistory,
@@ -27,6 +27,7 @@ import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
 import { EventBus } from "../game/EventBus.ts";
 import type { EventMap } from "../game/EventBus.ts";
+import { STATION_VOICE } from "../game/instrument-station.ts";
 import type Phaser from "phaser";
 
 // ── Singletons (one per page load) ──────────────────────────────────────────
@@ -35,6 +36,16 @@ const sound: SoundPort = toneSound;
 const storage = new LocalStoragePort();
 const engine = new AudioEngine(sound);
 const rng: RngPort = createRng(Date.now() & 0xffffffff);
+
+/**
+ * The characters a SURPRISE may hand its tune to, bound here at the composition
+ * root because `STATION_VOICE` lives in `game/` and the core must not import
+ * from it. Derived from that one table rather than restated, so a new melody
+ * character joins the surprise the moment it joins the Workshop shelf.
+ */
+const MELODY_VOICES: MelodyVoice[] = Object.entries(STATION_VOICE)
+  .filter(([, instrument]) => instrument !== undefined)
+  .map(([station, instrument]) => ({ station, instrument: instrument! }));
 const store: Store = createStore(initHistory(emptyProject(`proj-${Date.now()}`)));
 
 const getProject = (): Project => store.getSnapshot().present;
@@ -393,8 +404,8 @@ const api: AppApi = {
   // (the rare additive batch that earns one: it rewrites the whole car).
   surprise: () => {
     dispatchAll(
-      [...generateBeat(rng), { type: "setActiveMachine", machineId: "looper-stage" }],
-      "New beat",
+      [...generateBeat(rng, MELODY_VOICES), { type: "setActiveMachine", machineId: "looper-stage" }],
+      "Surprise",
     );
   },
   getProject,

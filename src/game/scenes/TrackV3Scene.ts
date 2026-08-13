@@ -157,8 +157,11 @@ const H = 1440;
  *  raised frame — short, so the flick reads as a hit rather than a wobble. */
 const BEATS_PER_BAR = 4;
 const BEAT_FLICK = 0.38;
-/** The square canvas AR-059's two lantern frames share. */
+/** The square canvas AR-059's two lantern frames share, and the gap it keeps
+ *  above the tallest thing on the car so the lamp reads as hanging over the
+ *  crew rather than resting on one. */
 const LANTERN_CANVAS = 160;
+const LANTERN_CLEARANCE = 26;
 
 /** The slot EVERY job-bar switch is drawn into, painted or keycap. One size,
  *  because eight controls that do the same kind of thing should look like eight
@@ -980,18 +983,24 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.beatLantern) {
       const x = carX[sounding] as number;
       const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
-      const body = this.slots[sounding]?.body;
-      // ON the roof, so it moves with the car's lift, tilt-free and scaled with
-      // the consist (TINY and GIANT carry their own lantern, not a fixed one).
-      //
+      const slot = this.slots[sounding];
+      // Above the car AND above whoever is riding it. The roofline alone put
+      // the lamp through the drummer's head — the crew's integrated poses stand
+      // proud of the roof, so the roof is not the top of the car. Asking the
+      // drawn objects for their own tops means a taller rider pushes the
+      // lantern up instead of wearing it.
+      let top = RAIL_Y - pose.lift + bob - (slot ? slot.body.height * S : 0);
+      for (const rider of slot?.riderImgs ?? []) {
+        if (rider.visible) top = Math.min(top, rider.getBounds().top);
+      }
       // Anchored by the LOW frame's painted base, not by the canvas edge: both
       // frames are drawn inside a 160px square with the lamp at different
-      // heights, so hanging the canvas bottom on the roofline left the lamp
+      // heights, so hanging the canvas bottom on that line left the lamp
       // floating half a car above it, detached — which is the exact fault the
       // lantern was drawn to fix in the NOW post. Measured, so a redelivered
-      // lantern with different padding still lands on the roof.
+      // lantern with different padding still lands where it should.
       const base = (1 - measureContentBox(this, "trk-beat-lantern-low")[3]) * LANTERN_CANVAS;
-      const roofY = RAIL_Y - pose.lift + bob - (body ? body.height * S : 0) + base * S;
+      const roofY = top + base * S - LANTERN_CLEARANCE * S;
       // The flick is on the BEAT, read off the transport position — four beats
       // to the bar — not off distance travelled like the bob. A beat lantern
       // that pulsed with the wheels would be a wheel lantern.
