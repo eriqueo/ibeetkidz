@@ -2132,6 +2132,22 @@ grid stays engine-drawn over the plate exactly like the melody editor's).
 
 ## AR-051 · Painted plates for My Voice, Voice Keys and the Magic Pad — P0
 
+### ✅ First delivery complete — My Voice (2026-08-13, `bf165c8`)
+
+`panel-voice.png` is now a 1536 × 1152 hard-alpha recorder-machine face in the
+Melody/Percussion steel, timber, and brass family. It has a broad microphone
+record bay, quiet status strip, eight 4×2 FX recesses, and two lower send bays
+that align to the existing `VoiceToolPanel` proportions. The generated plate
+was checked over dark ground, has alpha-0 corners, and passes the sprite-alpha
+gate.
+
+**Engineering handoff:** mount it below `VoiceToolPanel`'s existing controls;
+the engine-drawn record button, status, 4×2 FX grid, and two send buttons are
+already positioned to the matching plate recesses. Do not retain the generic
+parchment frame behind it.
+
+
+
 These are the three remaining generic-parchment tools. Deliver **one painted
 machine face at a time**, My Voice first: `panel-voice.png` needs a large mic
 mount and FX-tile rack; `panel-keys.png` needs a child-readable keyboard ledge;
