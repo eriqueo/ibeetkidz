@@ -2146,6 +2146,19 @@ the engine-drawn record button, status, 4×2 FX grid, and two send buttons are
 already positioned to the matching plate recesses. Do not retain the generic
 parchment frame behind it.
 
+### ✅ Second delivery complete — Voice Keys (2026-08-13, `e29fa62`)
+
+`panel-keys.png` is a 1536 × 1152 hard-alpha vocal-keyboard machine face. Its
+broad record bay, thin status strip, eight equal tall keyboard recesses, and
+centered send bay map directly to `VoiceKeysToolPanel`'s existing control
+proportions. It retains the same steel, timber, brass, and non-reader music
+language as the My Voice plate; alpha corners are 0 and the sprite-alpha gate
+passes.
+
+**Engineering handoff:** mount it behind Voice Keys' existing record/status,
+eight key buttons, and Add-to-Car control. Keep the engine controls in the
+matching recesses and retire the generic parchment frame.
+
 
 
 These are the three remaining generic-parchment tools. Deliver **one painted
