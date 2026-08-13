@@ -741,7 +741,19 @@ Magic Pad tools become reachable by tapping a character, like every other tool.
 
 ---
 
-## AR-022 · Map building labels — MEDIUM
+## ✅ DELIVERED — AR-022 · Map building labels — HIGH
+
+**Art delivered 2026-08-13 in `8ac2832`.** The canonical 2560 × 1440
+`map-scene-clean.png` now includes three small physical signposts: **WORKSHOP**
+beside the wrench-roof building, **YARD** beside the central rail shed, and
+**TRACK** beside the oval loop. Each uses the existing map's dark wood, brass
+fasteners, cream pixel lettering, hard shadow, and unobtrusive landmark-safe
+placement. The map's rail geometry, buildings, paths, trees, terrain, and
+floating-island silhouette are preserved; all four exterior corners are alpha 0.
+
+**Engineering handoff:** no new loader or tap geometry is required—the live map
+continues to use its canonical scene art. This is a visual legibility revision
+only.
 
 **Target:** either baked into `src/assets/scenes-v2/map-scene-clean.png`, or
 three plaque sprites.
