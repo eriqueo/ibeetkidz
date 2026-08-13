@@ -2392,7 +2392,20 @@ engine-drawn on purpose — it is a wash and should look like one.
 
 ---
 
-## AR-055 · The car cabin, revised — remove the nested car, and vary it per type — P0
+## ✅ DELIVERED — AR-055 · The car cabin, revised — remove the nested car, and vary it per type — P0
+
+**Art delivered 2026-08-13 in `00dec4e`.** Eight aligned 1612 × 430 layers
+now provide a cabin rear and sparse foreground contact rail for **boxcar,
+tanker, hopper, and flatcar**. The rooms remove the shared cabin's edge-tracing
+outer frame and vary materially by car: de-framed timber workshop; riveted
+steel/catwalk tanker; slatted hopper bin; and an outdoor daylight flatcar deck.
+The contact rails are deliberately sparse, transparent above the lower crew
+contact zone, and distinguish timber, steel, raw-plank, and open-deck use.
+
+**Engineering handoff:** `cabinFor()` already registers all eight names and
+prefers them over the shared fallback. Rebuild the UI atlas and mount them at the
+existing void rect/depth weave; no scene logic changes are needed. Verify full
+crew and empty states for all four types before deleting the shared fallback.
 
 **Supersedes the art of AR-052, not its intent.** `workshop-car-interior.png`
 and `workshop-car-foreground-rail.png` are mounted (rear layer behind the crew,
