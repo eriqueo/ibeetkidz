@@ -2463,7 +2463,18 @@ frame, or a second vehicle. Check all four types with a full crew and empty.
 
 ---
 
-## AR-056 · The My Voice effect rack — eight icons, no more emoji — P0
+## ✅ DELIVERED — AR-056 · The My Voice effect rack — eight icons, no more emoji — P0
+
+**Art delivered 2026-08-13 in `3422fd4`.** Eight compact 128 × 128 hard-alpha
+icons now replace the system-emoji picture layer: reverse tape, high/low pitch,
+robot, echo, big room, bitcrush, and crazy. Each has a simple child-readable
+subject, dark-plum outline, cream glint, and no badge/scenery/matte; they are
+intended to remain legible under the existing per-effect keycap tint.
+
+**Engineering handoff:** map the existing eight effect asset IDs to
+`fx-reverse`, `fx-pitch-up`, `fx-pitch-down`, `fx-robot`, `fx-echo`,
+`fx-reverb`, `fx-bitcrush`, and `fx-crazy` through the existing
+`PanelButton({ keycap, icon })` seam. Keep runtime text labels and effect logic.
 
 The eight effect tiles are the loudest thing on the My Voice machine: flat
 saturated rectangles carrying system emoji, sitting on a painted steel plate.
