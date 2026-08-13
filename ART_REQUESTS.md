@@ -635,7 +635,18 @@ brighter, label in bold gold instead of cream."
 
 ---
 
-## AR-020 · SEND SONG plaque + result panel for the Track header — MEDIUM
+## ✅ DELIVERED — AR-020 · SEND SONG plaque + result panel for the Track header — HIGH
+
+**Art delivered 2026-08-13 in `15facf5`.** `btn-send-song-idle.png` and
+`btn-send-song-pressed.png` are paired 1024 × 683 hard-alpha plaques in the
+timber, brass, iron, and parchment control family. Their music card, train, and
+upward-arrow pictogram explain sending/exporting a song, while the exact centered
+**SEND SONG** label remains readable at header scale. Both have alpha-0 corners
+and pass the sprite-alpha gate.
+
+**Engineering handoff:** mount the paired atlas states at `TrackScene`'s current
+`track-send` plaque site. Retain the existing send-state logic, REC state, and
+result modal; this delivery replaces only the cream-chip fallback face.
 
 **Target files:**
 - `src/assets/sprites/buttons/btn-send-song-idle.png`
