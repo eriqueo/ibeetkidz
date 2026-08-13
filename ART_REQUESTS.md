@@ -112,6 +112,7 @@ Rev 5 is the review that followed, on the live screens.
 | AR-052 | The Workshop car's void: rear cabin behind the crew, bench rail in front of their legs, both travelling with the car on departure. |
 | AR-053 | `trk-smoke` / `trk-splash` (picked up automatically by the drop-folder glob) and the NIGHT sky band, which now tiles and parallaxes over the day sky while the wash darkens only the land. |
 | AR-054 | The percussion shelf's ten tinted keycaps and their drum icons, the percussion editor's row heads, and the conductor chalkboard's sound badges — which is where the six `tone-*` icons are reachable, every melody lane's clip being the built-in `note-do`. |
+| AR-059 | The Beat Lantern, riding the sounding car's ROOF and flicking to its high frame on each of the bar's four beats (read off the transport position, not off distance travelled — a lantern pulsing with the wheels would be a wheel lantern). `trk-now-post` is retired wherever the lantern art is present, and remains the fallback when it is not. Anchored by the LOW frame's measured painted base rather than the canvas edge: hung by the canvas the lamp floated half a car above the roof, which is the exact detachment the lantern was drawn to fix. |
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
 not at generation resolution. `placeUiSprite` contain-fits a sprite's *content

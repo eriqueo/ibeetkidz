@@ -153,6 +153,13 @@ export interface V3TerrainRide {
 const W = 2560;
 const H = 1440;
 
+/** Beats to the bar, and how much of each beat the Beat Lantern spends in its
+ *  raised frame — short, so the flick reads as a hit rather than a wobble. */
+const BEATS_PER_BAR = 4;
+const BEAT_FLICK = 0.38;
+/** The square canvas AR-059's two lantern frames share. */
+const LANTERN_CANVAS = 160;
+
 /** The slot EVERY job-bar switch is drawn into, painted or keycap. One size,
  *  because eight controls that do the same kind of thing should look like eight
  *  of the same control (see `buildLegend`). */
@@ -259,6 +266,8 @@ export class TrackV3Scene extends Phaser.Scene {
   private locoWheels: Phaser.GameObjects.Image[] = [];
   private locoShadow?: Phaser.GameObjects.Image;
   private nowPost?: Phaser.GameObjects.Image;
+  /** AR-059's Beat Lantern — the NOW marker, riding the sounding car's roof. */
+  private beatLantern?: Phaser.GameObjects.Image;
   private smoke: Phaser.GameObjects.Image[] = [];
   private smokeDebt = 0;
   private smokeNext = 0;
@@ -398,11 +407,26 @@ export class TrackV3Scene extends Phaser.Scene {
     // centre, the post's sign clears the car roof while its shaft is occluded
     // by the body — so it reads as a signal standing behind the train rather
     // than as a sticker across the car's number.
-    this.nowPost = this.add
-      .image(0, RAIL_Y + 16, "trk-now-post")
-      .setOrigin(0.5, 1)
-      .setDepth(DEPTH.train - 0.2)
-      .setVisible(false);
+    // AR-059's Beat Lantern retires the post where the art exists: a signal
+    // lamp riding ON the sounding car's roof, flicking high on every beat, so a
+    // non-reader sees which car is playing AND hears the beat in the same
+    // object. The post stays as the fallback for a cold drop folder.
+    if (this.textures.exists("trk-beat-lantern-low")) {
+      this.beatLantern = this.add
+        .image(0, 0, "trk-beat-lantern-low")
+        // Both frames share one 160px canvas and the rise is drawn INSIDE it,
+        // so anchoring the canvas bottom is what makes the flick a flick rather
+        // than a jump: the anchor never moves, only the art within it.
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.train + 0.1)
+        .setVisible(false);
+    } else {
+      this.nowPost = this.add
+        .image(0, RAIL_Y + 16, "trk-now-post")
+        .setOrigin(0.5, 1)
+        .setDepth(DEPTH.train - 0.2)
+        .setVisible(false);
+    }
 
     for (let i = 0; i < 14; i++) {
       this.smoke.push(
@@ -863,6 +887,7 @@ export class TrackV3Scene extends Phaser.Scene {
       this.locoRoot?.setVisible(false);
       this.locoShadow?.setVisible(false);
       this.nowPost?.setVisible(false);
+      this.beatLantern?.setVisible(false);
       return;
     }
     const sounding = ((barAtPlayhead(this.pos) % n) + n) % n;
@@ -951,8 +976,37 @@ export class TrackV3Scene extends Phaser.Scene {
       );
     }
 
-    // The marker rides beside whichever car is sounding.
-    if (this.nowPost) {
+    // The marker rides with whichever car is sounding.
+    if (this.beatLantern) {
+      const x = carX[sounding] as number;
+      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      const body = this.slots[sounding]?.body;
+      // ON the roof, so it moves with the car's lift, tilt-free and scaled with
+      // the consist (TINY and GIANT carry their own lantern, not a fixed one).
+      //
+      // Anchored by the LOW frame's painted base, not by the canvas edge: both
+      // frames are drawn inside a 160px square with the lamp at different
+      // heights, so hanging the canvas bottom on the roofline left the lamp
+      // floating half a car above it, detached — which is the exact fault the
+      // lantern was drawn to fix in the NOW post. Measured, so a redelivered
+      // lantern with different padding still lands on the roof.
+      const base = (1 - measureContentBox(this, "trk-beat-lantern-low")[3]) * LANTERN_CANVAS;
+      const roofY = RAIL_Y - pose.lift + bob - (body ? body.height * S : 0) + base * S;
+      // The flick is on the BEAT, read off the transport position — four beats
+      // to the bar — not off distance travelled like the bob. A beat lantern
+      // that pulsed with the wheels would be a wheel lantern.
+      const beat = this.pos * BEATS_PER_BAR;
+      const key = beat - Math.floor(beat) < BEAT_FLICK
+        ? "trk-beat-lantern-high"
+        : "trk-beat-lantern-low";
+      if (this.beatLantern.texture.key !== key && this.textures.exists(key)) {
+        this.beatLantern.setTexture(key);
+      }
+      this.beatLantern
+        .setVisible(true)
+        .setScale(S)
+        .setPosition(Math.round(x), Math.round(roofY));
+    } else if (this.nowPost) {
       const x = carX[sounding] as number;
       const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
       this.nowPost
