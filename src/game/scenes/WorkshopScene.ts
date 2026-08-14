@@ -1562,6 +1562,13 @@ export class WorkshopScene extends BackgroundScene {
       align: "center",
       lineSpacing: 8,
     } as const;
+    // The hint gets its OWN backing plate, drawn under it.
+    //
+    // It used to be bare cream text, and that was fine while the car's inside
+    // was a flat dark band. AR-060's cars are drawn rooms — the boxcar's wall
+    // is a rack of hand tools and jars — and cream 12px type over a tool board
+    // is unreadable. The words have to bring their own quiet background now.
+    const hintPlate = this.add.graphics();
     const hint = this.add.text(0, 0, "Empty car —\ntap an instrument below", style).setOrigin(0.5);
     const chip = this.add.graphics();
     // Plain caps: Press Start 2P carries no emoji glyphs (a ✨ renders as tofu).
@@ -1579,14 +1586,15 @@ export class WorkshopScene extends BackgroundScene {
       armed = false;
       EventBus.emit("workshop-surprise");
     });
-    return this.add.container(0, 0, [hint, chip, label, hit]).setDepth(6);
+    return this.add.container(0, 0, [hintPlate, hint, chip, label, hit]).setDepth(6);
   }
 
   /** Centre the empty prompt on the slate and size its chip to it. */
   private layoutEmptyPrompt(cx: number, cy: number, gw: number, gh: number): void {
     const c = this.emptyText;
     if (!c) return;
-    const [hint, chip, label, hit] = c.list as [
+    const [hintPlate, hint, chip, label, hit] = c.list as [
+      Phaser.GameObjects.Graphics,
       Phaser.GameObjects.Text,
       Phaser.GameObjects.Graphics,
       Phaser.GameObjects.Text,
@@ -1596,6 +1604,13 @@ export class WorkshopScene extends BackgroundScene {
     const fs = Math.max(10, Math.round(gh * 0.055));
     hint.setFontSize(fs).setPosition(0, -gh * 0.12);
     label.setFontSize(Math.round(fs * 1.15));
+    // Sized to the words it is under, so it dims the tool wall behind them and
+    // nothing else.
+    const hp = { w: hint.width + fs * 1.6, h: hint.height + fs * 1.1 };
+    hintPlate
+      .clear()
+      .fillStyle(0x1a1220, 0.72)
+      .fillRoundedRect(-hp.w / 2, hint.y - hp.h / 2, hp.w, hp.h, Math.min(hp.h * 0.3, 14));
 
     const w = Math.min(gw * 0.5, label.width + gh * 0.14);
     const h = Math.max(fs * 3, gh * 0.14);
