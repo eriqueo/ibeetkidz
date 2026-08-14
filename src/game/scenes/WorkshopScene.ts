@@ -30,7 +30,7 @@ import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
-import { SCENE_BG_V2, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID } from "../assets.ts";
+import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
@@ -285,6 +285,8 @@ export class WorkshopScene extends BackgroundScene {
   private carCabin: Phaser.GameObjects.Image | undefined;
   private cabinCoat: LiveryCoat | undefined;
   private carRail: Phaser.GameObjects.Image | undefined;
+  /** AR-060's near lip, drawn over the crew when the open car is in use. */
+  private carFront: Phaser.GameObjects.Image | undefined;
   // ── the crew and their board ───────────────────────────────────────────────
   // The chalkboard used to be BOLTED to the car, filling its whole interior, and
   // that was the problem: it hid the car art entirely, and the instrument
@@ -348,10 +350,20 @@ export class WorkshopScene extends BackgroundScene {
     // texture, so three types nobody is looking at cost ~44 MB of VRAM and
     // ~690 KB of transfer on a scene that shows exactly one car. The others load
     // on first use via `showCar`; the swap is one texture change with no
-    // reposition (they share a canvas and a baseline), so a late arrival is
-    // dimensionally safe.
-    const boot = CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE];
-    if (!this.textures.exists(boot.key)) this.load.image(boot.key, boot.url);
+    // reposition, so a late arrival is dimensionally safe.
+    //
+    // It preloads the OPEN car, and that must stay true. Loading it later —
+    // from `showCar`, once the scene was already live — put a 4 MB PNG decode
+    // on the main thread at whatever moment the kid opened the Workshop, and
+    // when that overlapped a mic take the recorder handed back a blob its own
+    // decoder rejected and the recording was lost. Preload is the phase for
+    // paying that cost; the e2e mic proof is what says so.
+    const boot: ImageAsset[] = CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].url
+      ? [CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE], CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].front]
+      : [CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE]];
+    for (const a of boot) {
+      if (!this.textures.exists(a.key)) this.load.image(a.key, a.url);
+    }
     this.chromeSpawns = parseTiledLayer(workshopMap, "ui-layer");
     loadUiSprites(this); // the one packed chrome multiatlas
   }
@@ -407,24 +419,52 @@ export class WorkshopScene extends BackgroundScene {
    *
    *  The `carType` re-check in the callback matters: two quick swaps would
    *  otherwise race, and the slower load would win and stomp the newer choice. */
+  /** AR-060's open car for `type`, once its texture is resident. Null until
+   *  then (and forever, if the art is absent) — the punched-void assembly is
+   *  the fallback and every reader below branches on this. */
+  private openCar(type: CarType): OpenCarAsset | null {
+    const asset = CAR_OPEN_SPRITES[type];
+    return asset.url && this.textures.exists(asset.key) ? asset : null;
+  }
+
   private showCar(type: CarType): void {
-    const asset = CAR_SIDE_SPRITES[type];
-    if (this.textures.exists(asset.key)) {
-      this.car?.setTexture(asset.key);
-      // The coat is the body's OWN silhouette — it has to follow the swap, or
-      // the livery ends up painted on the shape of the previous car type.
-      if (this.carCoat) setLiveryTexture(this.carCoat, asset.key);
-      return;
-    }
-    this.load.image(asset.key, asset.url);
-    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+    // AR-060 first: a car drawn open, with its own interior, is ONE picture and
+    // needs no void, no cabin and no rail. The old body is the fallback.
+    const open = CAR_OPEN_SPRITES[type];
+    const asset = open.url ? open : CAR_SIDE_SPRITES[type];
+
+    const apply = (): void => {
       // The scene can be torn down mid-flight (every nav destroys the game).
       if (!this.car?.scene || this.model.carType !== type) return;
       if (!this.textures.exists(asset.key)) return;
       this.car.setTexture(asset.key);
+      // The coat is the body's OWN silhouette — it has to follow the swap, or
+      // the livery ends up painted on the shape of the previous car type.
       if (this.carCoat) setLiveryTexture(this.carCoat, asset.key);
+      if (this.carFront && this.textures.exists(open.front.key)) {
+        this.carFront.setTexture(open.front.key);
+      }
+      // AFTER the texture lands, not before: how much livery a car takes
+      // depends on whether it is one of AR-060's already-painted bodies, and
+      // that question can only be answered once the body is resident. Set on
+      // the way in, it answered "no" for every car and flooded them all.
+      this.refreshLivery();
       this.layoutFixtures();
-    });
+    };
+
+    // The cache check sits HERE, immediately before the queue, and not only
+    // because rule 7 measures the distance: an open car is two files, and the
+    // body arriving without its near lip is a car whose crew stands in front of
+    // the part that should occlude them.
+    const pending: ImageAsset[] = [];
+    if (!this.textures.exists(asset.key)) pending.push(asset);
+    if (open.url && !this.textures.exists(open.front.key)) pending.push(open.front);
+    if (pending.length === 0) {
+      apply();
+      return;
+    }
+    for (const a of pending) this.load.image(a.key, a.url);
+    this.load.once(Phaser.Loader.Events.COMPLETE, apply);
     this.load.start();
   }
 
@@ -465,6 +505,14 @@ export class WorkshopScene extends BackgroundScene {
         .setOrigin(0.5)
         .setDepth(DEPTH_RIDER + 0.05);
     }
+    // AR-060's near lip — the part of the OPEN car that must draw in front of
+    // the crew's legs. Same canvas and same transform as the body, so it needs
+    // no registration of its own.
+    this.carFront = this.add
+      .image(0, 0, CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].front.key)
+      .setOrigin(0.5)
+      .setDepth(DEPTH_RIDER + 0.06)
+      .setVisible(false);
     // Always constructed on the preloaded default, then corrected by `showCar`:
     // the real car type arrives from React and may not be resident yet.
     this.car = this.add
@@ -627,15 +675,26 @@ export class WorkshopScene extends BackgroundScene {
     if (!anchor) return;
     const target = placeSpawn(anchor, r, { width, height });
 
-    // Contain-fit the shared content box, bottom-aligned so the wheels sit on
-    // the anchor rect's bottom edge (the painted near rail).
-    const carDef: UiSpriteDef = { states: {}, base: "", content: CAR_CONTENT, stretch: false };
+    // Contain-fit the content box, bottom-aligned so the wheels sit on the
+    // anchor rect's bottom edge (the painted near rail).
+    //
+    // Per type, not the one shared constant. The four `car-side-*` files were
+    // drawn on a common box, which is why one constant worked; the AR-060 open
+    // cars are four separate drawings whose boxes genuinely differ (the flatcar
+    // runs 200px lower in its canvas than the tanker), so each carries its own.
+    const content = this.openCar(this.model.carType)?.content ?? CAR_CONTENT;
+    const carDef: UiSpriteDef = { states: {}, base: "", content, stretch: false };
     placeUiSprite(this.car, carDef, target);
     const s = this.car.scaleX;
-    const contentBottom = this.car.y + (CAR_CONTENT[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
+    const contentBottom = this.car.y + (content[3] - 0.5) * CAR_SIDE_CANVAS.h * s;
     this.car.y += target.y + target.height / 2 - contentBottom;
     // Same texture, same transform — the fill IS the car, drawn once more.
     this.carCoat?.fill.setPosition(this.car.x, this.car.y).setScale(this.car.scaleX, this.car.scaleY);
+    // The near lip shares the body's canvas, so it shares its transform whole.
+    this.carFront
+      ?.setVisible(this.openCar(this.model.carType) !== null)
+      .setPosition(this.car.x, this.car.y)
+      .setScale(this.car.scaleX, this.car.scaleY);
 
     this.voidRect = this.carVoidRect();
     this.drawCarInterior();
@@ -662,6 +721,20 @@ export class WorkshopScene extends BackgroundScene {
     // The bands are drawn in absolute screen coords, so the departure tween's
     // leftover x offset has to be cleared before the next car is drawn.
     g.setPosition(0, 0).clear();
+
+    // AR-060: the open car IS its own interior. Nothing to assemble, and every
+    // layer of the old assembly has to get out of the way — a cabin stretched
+    // into a crew rect that is no longer a punched hole would be a rectangle
+    // pasted over the drawing, which is the fault this art replaced.
+    if (this.openCar(this.model.carType)) {
+      this.carCabin?.setVisible(false);
+      this.cabinCoat?.fill.setVisible(false);
+      this.carRail?.setVisible(false);
+      return;
+    }
+    this.carCabin?.setVisible(true);
+    this.cabinCoat?.fill.setVisible(true);
+    this.carRail?.setVisible(true);
 
     if (this.carCabin || this.carRail) {
       const rect = { x: v.x + v.w / 2, y: v.y + v.h / 2, width: v.w, height: v.h };
@@ -700,12 +773,26 @@ export class WorkshopScene extends BackgroundScene {
     const sy = car.scaleY;
     const canvasLeft = car.x - (CAR_SIDE_CANVAS.w / 2) * sx;
     const canvasTop = car.y - (CAR_SIDE_CANVAS.h / 2) * sy;
+    // The OPEN car carries its own opening, so the crew stands where that car's
+    // artist said they stand — not in one rectangle shared by four bodies.
+    const box = this.openCar(this.model.carType)?.crew ?? CAR_SIDE_VOID;
     return {
-      x: canvasLeft + CAR_SIDE_VOID.x * sx,
-      y: canvasTop + CAR_SIDE_VOID.y * sy,
-      w: CAR_SIDE_VOID.w * sx,
-      h: CAR_SIDE_VOID.h * sy,
+      x: canvasLeft + box.x * sx,
+      y: canvasTop + box.y * sy,
+      w: box.w * sx,
+      h: box.h * sy,
     };
+  }
+
+  /** Screen y the crew's feet stand on. The open car states it per type; the
+   *  punched void has no floor of its own, so its crew stands near the bottom
+   *  of the hole as it always did. */
+  private carFloorY(): number {
+    const car = this.car;
+    const open = this.openCar(this.model.carType);
+    const v = this.voidRect;
+    if (!car || !open) return v.y + v.h * 0.9;
+    return car.y - (CAR_SIDE_CANVAS.h / 2) * car.scaleY + open.floor * car.scaleY;
   }
 
   /**
@@ -725,9 +812,10 @@ export class WorkshopScene extends BackgroundScene {
     // ON something reads as riding it, and the slight overflow past the car's
     // open side is what makes the crew look like passengers rather than cargo.
     const h = v.h * 0.98;
+    const floorY = this.carFloorY();
     this.riders.forEach((rider, i) => {
       rider.cx = v.x + (i + 0.5) * slotW;
-      rider.cy = v.y + v.h * 0.9 - h / 2;
+      rider.cy = floorY - h / 2;
       placeUiSprite(rider.img, rider.def, {
         x: rider.cx,
         y: rider.cy,
@@ -1223,7 +1311,10 @@ export class WorkshopScene extends BackgroundScene {
   /** The car's paint, everywhere it shows: the body wash, the LCD mark, and
    *  which chip on the rack is ringed. One call so they cannot disagree. */
   private refreshLivery(): void {
-    if (this.carCoat) setLiveryColor(this.carCoat, colorFor(this.model.livery));
+    // AR-060's cars carry their own materials, so they take a glaze rather than
+    // the full coat the neutral-brown `car-side-*` art was tuned for.
+    const painted = this.openCar(this.model.carType) !== null;
+    if (this.carCoat) setLiveryColor(this.carCoat, colorFor(this.model.livery), painted);
     this.drawCarInterior();
     this.drawColorRack();
   }

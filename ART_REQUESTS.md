@@ -2696,3 +2696,23 @@ rows are pitched to the lane cap instead and no longer line up with the sockets.
 **Redraw the rail with six sockets** at the same overall extent and the rows
 land in them with no code change (the pitch is already `field.h / 6`). Nothing
 else about the plate needs to move.
+
+---
+
+## AR-060 follow-up · the open cars are 4 MB each — LOW, but real
+
+The four native cutaways are mounted and they are the right art. Their FILE
+sizes are a problem worth one pass: `car-open-boxcar.png` is 4.05 MB,
+`hopper` 3.88, `tanker` 3.59, `flatcar` 1.88 — about 13 MB for the set, against
+a repo advisory threshold of 2 MB per tracked asset.
+
+This is not aesthetics. Engineering already had to move the default car's decode
+into the scene's preload phase because decoding one of these on the main thread
+mid-session corrupted a live microphone take (the recorder returned a blob its
+own decoder rejected). The app is offline-first and kid-facing; on a phone over
+a slow connection, 13 MB of car art is the whole first-load budget.
+
+**Ask:** re-export at the same 2560 × 1440 canvas with an indexed/quantised
+palette, the way the rest of the sprite set ships — the art is flat pixel work
+with a limited palette, so this should be a large saving with no visible change.
+No redraw, no re-registration; the crew rects and content boxes stay valid.

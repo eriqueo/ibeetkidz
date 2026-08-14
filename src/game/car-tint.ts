@@ -88,10 +88,29 @@ export function asLiveryCoat(
   return { shade, fill };
 }
 
-/** Repaint a coat. `color` is a `#rrggbb` from `CAR_COLORS`. */
-export function setLiveryColor(coat: LiveryCoat, color: string): void {
-  coat.shade.setTint(lighten(color, SHADE_LIFT));
+/**
+ * How much livery a car that is ALREADY painted will take.
+ *
+ * The numbers above were tuned against the `car-side-*` art, which is drawn in
+ * a neutral brown built to be tinted — flooding it with colour is the point.
+ * AR-060's open cars are not: they are drawn with real materials, a silver
+ * steel tank with brass banding, timber decks. Put the full coat on one and the
+ * whole car goes flat copper (or flat teal, which is how it was first seen),
+ * and every material the artist drew is gone.
+ *
+ * So a painted car takes a light glaze and no multiply pass: enough for the
+ * paint rack to visibly paint it, not enough to repaint the steel.
+ */
+export const PAINTED_FILL_ALPHA = 0.2;
+
+/** Repaint a coat. `color` is a `#rrggbb` from `CAR_COLORS`. Set `painted` for
+ *  art that already carries its own materials — see `PAINTED_FILL_ALPHA`. */
+export function setLiveryColor(coat: LiveryCoat, color: string, painted = false): void {
+  // White multiplies to a no-op, which is how the shade pass steps aside
+  // without the caller having to know it is a multiply at all.
+  coat.shade.setTint(painted ? 0xffffff : lighten(color, SHADE_LIFT));
   coat.fill.setTint(hexToInt(color));
+  coat.fill.setAlpha(painted ? PAINTED_FILL_ALPHA : FILL_ALPHA);
 }
 
 /** Follow the body onto a new car type. */
