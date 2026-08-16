@@ -147,14 +147,14 @@ describe("field instrument objects", () => {
     expect(need("inst-keys").arg).toBe("voice-keys");
     expect(need("inst-guitar").action).toBe("workshop-add-melody");
     expect(need("inst-guitar").arg).toBe("guitar");
-    // The violin emits its own name. There is still no bowed-string voice in
-    // INSTRUMENTS, so the lane is VOICED with `pluck` (pizzicato — the same
-    // family, and swapping it for a real bowed voice is an art/audio call) —
-    // but the voice is now looked up from the station in
-    // `instrument-station.ts` instead of being what the map emits. Emitting
-    // `pluck` here made the character unrecoverable downstream: the lane could
-    // no longer say which of the three melody characters had made it, and it
-    // came back as the toy-keyboard bear.
+    // The violin emits its own name, and the VOICE is looked up from the
+    // station in `instrument-station.ts` rather than being what the map emits.
+    // Emitting a synth id here made the character unrecoverable downstream: the
+    // lane could no longer say which of the three melody characters had made
+    // it, and it came back as the toy-keyboard bear. (The violin voiced `pluck`
+    // as a placeholder until 2026-08-16; it now has a real bowed voice. This
+    // assertion is deliberately about the CHARACTER the map emits, so it did
+    // not have to change when the voice did — which is the point.)
     expect(need("inst-violin").arg).toBe("violin");
     expect(need("inst-piano").action).toBe("workshop-add-melody");
     expect(need("inst-piano").arg).toBe("piano");

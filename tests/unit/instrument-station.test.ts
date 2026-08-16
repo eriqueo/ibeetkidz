@@ -59,10 +59,25 @@ describe("instrument stations", () => {
   });
 
   it("keeps the violin's IDENTITY separate from its VOICE", () => {
-    // The precise shape of the reported bug: the character is a violin, the
-    // sound is a pizzicato pluck, and conflating them lost the character.
-    expect(STATION_VOICE.violin).toBe("pluck");
+    // The reported bug was that the character is a violin, the sound was a
+    // pizzicato pluck, and conflating them lost the character. The character
+    // still resolves through the SPRITE table, never through the voice — which
+    // is the part that actually broke, and the part that must keep holding
+    // whatever the violin ends up sounding like.
     expect(stationSprite("violin")).toBe("inst-violin");
+  });
+
+  it("gives the violin a bowed voice of its own, not the pluck placeholder", () => {
+    // `pluck` was a stand-in: there was no bowed-string voice in INSTRUMENTS at
+    // all, so the violin borrowed the nearest family member (pizzicato). A
+    // borrowed voice is exactly the kind of thing that silently becomes
+    // permanent, so this pins that the violin now voices ITSELF.
+    expect(STATION_VOICE.violin).toBe("violin");
+    expect(STATION_VOICE.violin).not.toBe("pluck");
+    // …and that the id it names is a real registered instrument, not a string
+    // that falls through to the default synth (the original failure mode: the
+    // map emitted "violin", which was not a SynthInstrumentId at all).
+    expect(INSTRUMENTS.map((i) => i.id)).toContain("violin");
   });
 
   it("falls back to the family picture for a lane with no station", () => {

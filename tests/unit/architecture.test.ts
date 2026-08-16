@@ -20,6 +20,7 @@
 // fixtures, and it avoids depending on `@types/node` (not installed).
 
 import { describe, expect, it } from "vitest";
+import { INSTRUMENTS } from "../../src/core/instruments.ts";
 
 const RAW = import.meta.glob("../../src/**/*.{ts,tsx}", {
   query: "?raw",
@@ -226,6 +227,25 @@ describe("architecture guards (source text over src/**)", () => {
     // `Tone.Time`/`Tone.Ticks` conversions read the GLOBAL transport's tempo,
     // so they are banned outright — tempo math derives from the pinned one.
     expect(offenders(/Tone\.(Time|Ticks)\s*\(/, adapter)).toEqual([]);
+  });
+
+  // Every registered instrument must have its OWN recipe in the adapter.
+  //
+  // `makeMelodyVoice` ends in `case "soft": default:`, so an id with no case
+  // does not fail — it silently becomes the default triangle synth. That is
+  // not hypothetical: the violin shipped for weeks emitting an id that was not
+  // a `SynthInstrumentId` at all, fell through, and was labelled "Melody". The
+  // type system cannot catch it (the switch is over a union but the `default`
+  // makes it total), so it is caught here instead.
+  it("gives every instrument in INSTRUMENTS its own case in the Tone adapter", () => {
+    const adapter = SOURCES.find(([p]) => p === "src/adapters/tone-sound-port.ts");
+    expect(adapter, "adapter source must be readable").toBeDefined();
+    const text = adapter![1];
+    const recipes = text.slice(text.indexOf("function makeMelodyVoice"));
+    const missing = INSTRUMENTS.map((i) => i.id).filter(
+      (id) => !new RegExp(`case\\s+"${id}"\\s*:`).test(recipes),
+    );
+    expect(missing, `instruments with no recipe (they fall through to "soft")`).toEqual([]);
   });
 
   // The editor is only worth guarding if it is actually there.

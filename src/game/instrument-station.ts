@@ -89,17 +89,25 @@ export function riderSprite(
 /**
  * The synth a melody station voices its lane with.
  *
- * The violin's is `pluck`, and that is the whole reason this table exists
- * separately from the station id: the CHARACTER is the identity and the SYNTH
- * is the sound, and they are not the same fact. The Tiled map used to hand the
- * synth id straight through as if they were, which is how an alien with a
- * violin arrived in the car as a bear with a toy keyboard.
+ * This table exists separately from the station id because the CHARACTER is
+ * the identity and the SYNTH is the sound, and they are not the same fact. The
+ * Tiled map used to hand the synth id straight through as if they were, which
+ * is how an alien with a violin arrived in the car as a bear with a toy
+ * keyboard.
+ *
+ * The violin used to be the standing proof of that: it voiced `pluck`, because
+ * there was no bowed voice to give it. There is now (2026-08-16) — so all three
+ * entries happen to be identity mappings today. **That coincidence is not a
+ * licence to delete this table and use the station id as the synth id.** The
+ * next character added to the shelf (a cello sharing the violin's voice, a
+ * second drummer) reintroduces the split immediately, and `isMelodyStation`
+ * reads this table to tell a melody station from a tool station.
  *
  * Anything not listed is not a melody station (its lane comes from a tool).
  */
 export const STATION_VOICE: Readonly<Partial<Record<StationId, SynthInstrumentId>>> = {
   guitar: "guitar",
-  violin: "pluck",
+  violin: "violin",
   piano: "piano",
 };
 

@@ -24,7 +24,8 @@ export type SynthInstrumentId =
   | "organ" // sustained, held tone
   | "pluck" // short filtered pluck (synth-y)
   | "brass" // reedy filtered lead
-  | "guitar"; // Karplus-Strong plucked string — a real guitar
+  | "guitar" // Karplus-Strong plucked string — a real guitar
+  | "violin"; // bowed string — sustained, with the bow's slow bite
 
 /** A melody lane's voice. Either a built-in synth, OR `voice:<bufferId>` — the
  *  kid's own recording played chromatically through a sampler (Voice Keys). The
@@ -71,6 +72,7 @@ export const INSTRUMENTS: readonly Instrument[] = [
   { id: "pluck", label: "Pluck", emoji: "🪕" },
   { id: "brass", label: "Brass", emoji: "🎺" },
   { id: "guitar", label: "Guitar", emoji: "🎸" },
+  { id: "violin", label: "Violin", emoji: "🎻" },
 ];
 
 export const DEFAULT_INSTRUMENT: InstrumentId = "soft";

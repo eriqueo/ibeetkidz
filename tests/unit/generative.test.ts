@@ -11,7 +11,7 @@ import { MAX_BPM, MAX_LAYERS, MIN_BPM, STEP_COUNT, type Layer } from "../../src/
 const VOICES: MelodyVoice[] = [
   { station: "piano", instrument: "piano" },
   { station: "guitar", instrument: "guitar" },
-  { station: "violin", instrument: "pluck" },
+  { station: "violin", instrument: "violin" },
 ];
 
 describe("generateBeat", () => {

@@ -149,6 +149,25 @@ function makeMelodyVoice(
           baseFrequency: 200, octaves: 3.5,
         },
       });
+    case "violin":
+      // Bowed string. The ONE thing that separates bowed from plucked is that
+      // the energy keeps arriving: a pluck is all attack and decay, a bow has a
+      // slow bite and then holds. So this is deliberately the inverse of
+      // `pluck` above — same sawtooth (bowed strings are harmonically rich),
+      // but a soft attack, a high sustain, and a filter that opens gently
+      // instead of snapping. `MonoSynth` keeps `.frequency`, so the violin can
+      // BEND — which is right for the one instrument in the shelf that really
+      // does slide between notes.
+      return new Tone.MonoSynth({
+        context,
+        oscillator: { type: "sawtooth" },
+        envelope: { attack: 0.11, decay: 0.1, sustain: 0.85, release: 0.28 },
+        filter: { type: "lowpass", rolloff: -12, Q: 1.4 },
+        filterEnvelope: {
+          attack: 0.15, decay: 0.4, sustain: 0.7, release: 0.3,
+          baseFrequency: 280, octaves: 2.6,
+        },
+      });
     case "guitar":
       // Karplus-Strong plucked string — a real guitar pluck: bright pick attack,
       // string-like decay + ring. No `.frequency` signal (so bend degrades to a
