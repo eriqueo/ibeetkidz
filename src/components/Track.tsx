@@ -20,18 +20,39 @@ import {
 
 const SONG_FILE_NAME = "my-train-song.wav";
 
-/** `?v3` swaps the oval for the side-scroller greybox. A flag, not a
- *  replacement: the oval stays the default until v3 is demonstrably better,
- *  and both are driven by the same transport and the same EventBus actions. */
-function wantsV3(): boolean {
+/**
+ * The side-scroller is the Track. `?oval` opts back into the old ring.
+ *
+ * This was the other way round from 2026-08-07 to 2026-08-16, with the comment
+ * "the oval stays the default until v3 is demonstrably better". It is better,
+ * and by then the comment was the only thing still saying otherwise: the
+ * side-scroller had picked up parallax art, side-on rolling stock, wheelsets
+ * and contact shadows, hill/bridge/rain terrain that changes how the song
+ * SOUNDS, the terrain legend, latching night/tunnel/tiny/giant modes, the
+ * BACKWARDS lever, weather, the crew riding inside the cars and the Beat
+ * Lantern — roughly AR-034 through AR-059 — none of which a kid could reach
+ * without typing a query string.
+ *
+ * The reason it is better is structural, not cosmetic: terrain is a SEQUENCE,
+ * and a ring cannot show sequence. On the oval half the cars always travel the
+ * opposite way across the screen and "next" has no direction. Unrolled, the
+ * ground under bar b, the car for bar b and the terrain applied to bar b travel
+ * together and reach a fixed playhead at the same instant.
+ *
+ * `?oval` stays because the ring is still a working scene with tests of its
+ * own, and because a flip this size should be reversible from the URL bar
+ * before it is reversible from a deploy. Both are driven by the same transport
+ * and the same EventBus actions.
+ */
+function wantsOval(): boolean {
   if (typeof window === "undefined") return false;
-  return new URLSearchParams(window.location.search).has("v3");
+  return new URLSearchParams(window.location.search).has("oval");
 }
 
 export const Track: FC = () => {
   const { dispatch, dispatchAll, engine, sound, getProject } = useApp();
   const project = useProject();
-  const v3 = useMemo(wantsV3, []);
+  const oval = useMemo(wantsOval, []);
   const sceneRef = useRef<TrackScene | null>(null);
   const v3Ref = useRef<TrackV3Scene | null>(null);
 
@@ -417,7 +438,7 @@ export const Track: FC = () => {
   return (
     <div style={VIEW_OVERLAY}>
       <PhaserScene
-        scene={v3 ? TrackV3Scene : TrackScene}
+        scene={oval ? TrackScene : TrackV3Scene}
         onSceneReady={handleSceneReady}
       />
 

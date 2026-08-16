@@ -13,7 +13,13 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function boot(page: Page): Promise<void> {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
-  await page.goto("/");
+  // `?oval`: these assert the MOMENTARY terrain path — pick a hill, the
+  // transport bends, the world comes back on its own. That is the oval's
+  // behaviour. The side-scroller (the default since 2026-08-16) routes
+  // `terrain-picked` into the LATCHING mode system instead, which is a
+  // different engine call with a different contract and has its own coverage
+  // in track-v3.spec.ts and the terrain unit suite.
+  await page.goto("/?oval");
   const start = page.getByRole("button", { name: /tap to start/i });
   await expect(start).toBeVisible();
   await start.click({ force: true });

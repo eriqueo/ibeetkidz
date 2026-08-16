@@ -52,7 +52,11 @@ interface Tap {
 async function boot(page: Page): Promise<string[]> {
   const crashes: string[] = [];
   page.on("pageerror", (e) => crashes.push(e.message));
-  await page.goto("/");
+  // `?oval`: this walks the TILED SPAWN pipeline — every action-bearing
+  // object in a map, hit-tested at its real pixels. The side-scroller draws
+  // its chrome programmatically and has no map, so it has no spawns for this
+  // spec to enumerate; the oval is the Tiled-driven Track.
+  await page.goto("/?oval");
   const start = page.getByRole("button", { name: /tap to start/i });
   await expect(start).toBeVisible();
   await start.click({ force: true });

@@ -23,7 +23,12 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function boot(page: Page): Promise<void> {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
-  await page.goto("/");
+  // `?oval`: every assertion below is about RING geometry — cars coupled a
+  // car-length apart rather than a lap-fraction apart, vehicles standing on
+  // the painted oval, a highlight walking a closed loop. The side-scroller
+  // has no lap at all, so these cannot be retargeted at it; the equivalent
+  // motion proofs for the default Track live in track-v3.spec.ts.
+  await page.goto("/?oval");
   const start = page.getByRole("button", { name: /tap to start/i });
   await expect(start).toBeVisible();
   await start.click({ force: true });

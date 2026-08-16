@@ -60,8 +60,16 @@ import mapMap from "../../src/assets/maps/map.json" with { type: "json" };
 
 const BASE = "/ibeetkidz"; // must match `base` in vite.config.ts for `--mode gh`
 const ORIGIN = "http://ibeetkidz.test"; // synthetic; every request is fulfilled from disk
-const NO_TRAILING_SLASH = `${ORIGIN}${BASE}`; // the URL under test
-const CANONICAL = `${ORIGIN}${BASE}/`; // what GitHub Pages 301-redirects to
+// `?oval` on purpose, and it is load-bearing — see the header note about Track
+// being the destination because it is the only scene running BOTH loader
+// shapes. That is the OVAL Track. The side-scroller (the default since
+// 2026-08-16) preloads `loadUiSprites` plus Vite-globbed image URLs, which is a
+// strict subset of the URL shapes the oval exercises: it never calls
+// `loadSpriteAssets`, whose four URL-argument atlases are exactly what this
+// spec exists to catch resolving wrong. Driving the default here would QUIETLY
+// narrow the coverage while still passing.
+const NO_TRAILING_SLASH = `${ORIGIN}${BASE}?oval`; // the URL under test
+const CANONICAL = `${ORIGIN}${BASE}/?oval`; // what GitHub Pages 301-redirects to
 
 // Explicit, not inferred: a module script served with the wrong Content-Type is
 // rejected by the browser, which would look like an app bug instead of a

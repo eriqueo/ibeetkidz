@@ -1007,6 +1007,13 @@ export class TrackV3Scene extends Phaser.Scene {
   update(time: number): void {
     if (!this.ready) return;
     const dt = this.lastAt < 0 ? 0 : Math.max(0, (time - this.lastAt) / 1000);
+    // The jumbotron ticks off the SCENE's update, not its own rAF — same as the
+    // oval. Missing this call is not a visible crash: the screen simply stays
+    // dark for ever, because `visibility` only ever moves inside `update`. An
+    // e2e caught it (visibility stuck at 0 while a song played) and that is the
+    // only way it WOULD be caught, which is why the spec asserts a real level
+    // rather than that a visualizer object exists.
+    this.viz?.update(dt * 1000);
     this.lastAt = time;
     if (dt > 0) {
       const inst = Math.abs(this.pos - this.lastPos) / dt;

@@ -85,7 +85,15 @@ inversion). **This is a decided architecture, not an accident — see
   (`setTintMode` in Phaser 4 does offer FILL/ADD/SCREEN and would sidestep the
   multiply — but the painted-beside approach already shipped and reads well, so
   the rule above stands until something forces a revisit.)
-- **Track** (`TrackScene`): sprite loco + cars ride the painted oval **coupled** —
+- **Track** — **the side-scroller (`TrackV3Scene`) is the Track as of
+  2026-08-16.** `?oval` opts back into the ring described immediately below,
+  which is still a working scene with tests of its own (`track-timing.spec.ts`,
+  `terrain.spec.ts`, `chrome-reachable.spec.ts` and `built-artifact.spec.ts` all
+  pin `?oval`, each for a reason stated in the spec). The side-scroller's own
+  story — why a ring cannot show a SEQUENCE, and what terrain does to the sound
+  — is in `BASELINE.md`'s 2026-08-07 entries onward; the flip itself is in the
+  2026-08-16 re-baseline. What follows is the OVAL.
+- **Track, the oval** (`TrackScene`): sprite loco + cars ride the painted oval **coupled** —
   every vehicle sits half of each neighbour's on-screen length behind the one in
   front (`src/game/train-chain.ts`, arc length over path length), so the consist
   reads as one train at any car count. Which bar is sounding is shown by the

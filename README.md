@@ -14,10 +14,15 @@ You land on a painted island **Map** with three places to go:
 - 🚉 **Yard** — the cars you've built wait on the sidings. A gantry crane
   hitches one onto the train, unhitches the last one, or takes a car back to
   the workshop for another go. When the train looks right, send it to the track.
-- 🛤 **Track** — the loco pulls your train around the oval. Car #1 passes the
-  crossing signal exactly when bar #1 sounds, so you can *see* where you are in
-  the song. Tap a car to throw a tarp over it and hear the song without it.
-  **SEND** renders the whole thing to a WAV you can save or share.
+- 🛤 **Track** — the loco pulls your train through a side-scrolling world. The
+  song is laid out along the ground in bar order, so the car for bar #4 and the
+  ground under bar #4 reach the marker together and you can *see* where you are
+  in the song — and see what is coming. Flip HILL, BRIDGE or RAIN and that
+  terrain rolls up from the right and changes how the song sounds when it
+  arrives; NIGHT, TUNNEL, TINY and GIANT stack on top of it, and BACKWARDS plays
+  the whole thing in reverse. Tap a car to open it back up in the Workshop, or
+  arm **TARP** and tap it to hear the song without it. **SEND** renders the
+  whole thing to a WAV you can save or share.
 
 No accounts, no backend, nothing is uploaded. Touch-first, made for an iPad.
 
@@ -103,8 +108,8 @@ empty car and it fills with a seeded groove (`src/core/generative.ts`,
 same seed → same beat). It offers itself only while the car is empty, which is
 when it is worth offering; tapping it again re-rolls rather than stacking.
 
-**"See the sound" ships in the Track view.** A jumbotron stands in the middle of
-the oval and shows the song as it rides: three styles — Bars, Lava, Retro Scope —
+**"See the sound" ships in the Track view.** A jumbotron hangs over the world
+and shows the song as it rides: three styles — Bars, Lava, Retro Scope —
 and you tap the screen to change which. It is driven by the master-output
 analyser, the same node the audio diagnostics read, so it can only ever show
 sound that actually reached the speakers. It fades up when the song starts and

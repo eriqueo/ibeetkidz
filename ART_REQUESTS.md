@@ -1256,7 +1256,10 @@ all 21 sample points within 1px tolerance. Bottom edge = railhead.
 > day once already. This header exists so it does not happen twice.)
 >
 > **The scene is already built and playable in greybox.** Open
-> <https://ibeetkidz.pages.dev/?v3>, press RIDE, and tap HILL / BRIDGE / RAIN.
+> <https://ibeetkidz.pages.dev/>, press RIDE, and tap HILL / BRIDGE / RAIN.
+> (This said `/?v3` while the side-scroller was behind a flag. It became the
+> default on 2026-08-16 and the flag is gone; `?oval` now opts back into the
+> old ring.)
 > Everything you see is a flat rectangle generated at runtime. Your art replaces
 > those rectangles one at a time; the geometry, motion and gameplay do not
 > change.

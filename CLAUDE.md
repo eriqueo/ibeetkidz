@@ -87,6 +87,22 @@ at). This file used to hardcode them; they went stale repeatedly and misled
 several agents. Read `BASELINE.md`, or just run the gate — never quote a count
 from prose.
 
+### Which Track a spec is testing — read this before retargeting one
+
+The Track has two scenes. **`TrackV3Scene` (the side-scroller) is the default
+since 2026-08-16; `?oval` opts back into `TrackScene` (the ring).** Four specs
+pin `?oval` DELIBERATELY, and each says why in its own header — do not "fix"
+them by pointing them at the default:
+
+| Spec | Why it needs the ring |
+|---|---|
+| `track-timing.spec.ts` | Asserts lap geometry. The side-scroller has no lap. |
+| `terrain.spec.ts` | Asserts the MOMENTARY terrain path; the side-scroller routes `terrain-picked` into the LATCHING mode system, a different engine call. |
+| `chrome-reachable.spec.ts` | Walks the Tiled spawn pipeline. The side-scroller draws its chrome programmatically and has no map. |
+| `built-artifact.spec.ts` | Needs the only scene that runs BOTH loader shapes; the side-scroller never calls `loadSpriteAssets`, so driving the default would quietly narrow the coverage while still passing. |
+
+Everything else follows the default and expects `TrackV3Scene`.
+
 ### Two e2e traps that have bitten repeatedly
 
 1. **The e2e count differs local vs CI, by design.** **Four** blocks `test.skip`

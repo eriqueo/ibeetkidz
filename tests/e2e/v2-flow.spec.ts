@@ -282,7 +282,7 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   // Depart for the Track.
   await emit(page, "yard-send-to-track");
   await expect.poll(async () => (await getProject(page)).activeView).toBe("track");
-  await waitForScene(page, "TrackScene");
+  await waitForScene(page, "TrackV3Scene");
 
   // Tap-a-car-to-tarp-it: the scene's car token emits the mute toggle.
   const slot = (await getProject(page)).train[0];
@@ -296,10 +296,17 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   // shows up as the loco freezing while React keeps pushing progress.
   await emit(page, "transport-play", "ride");
   await page.waitForTimeout(1200);
-  const x1 = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().loco.x);
+  // `debugState().pos` rather than `loco.x`: on the side-scroller the consist is
+  // FIXED and the world scrolls past it, so the loco's x is constant by design
+  // and would report "frozen" on a perfectly healthy ride. `pos` is the song
+  // position the whole view is drawn from — if the game step dies, it stops
+  // advancing, which is the thing this assertion is actually about.
+  const pos = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().debugState().pos);
+  const x1 = await pos();
   await page.waitForTimeout(1200);
-  const x2 = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().loco.x);
-  expect(x2, "the loco must still be moving after the smoke timer fires").not.toBe(x1);
+  const x2 = await pos();
+  expect(x2, "the ride must still be advancing after the smoke timer fires").not.toBe(x1);
   await emit(page, "transport-stop");
 
   // SEND: the in-scene plaque kicks off a master-output render (the train
@@ -336,7 +343,7 @@ test("Track: the jumbotron lights up from real audio, and dark otherwise", async
   await emit(page, "workshop-add-melody", "guitar"); // something to hear
 
   await setView(page, "track");
-  await waitForScene(page, "TrackScene");
+  await waitForScene(page, "TrackV3Scene");
 
   const viz = () =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().vizState);

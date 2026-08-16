@@ -48,7 +48,7 @@ test("every view is still wired to React on its SECOND visit", async ({ page }) 
 
   // Lap 1 primes every texture cache — after this, every preload is a no-op and
   // every `create()` runs synchronously. That is the condition that broke it.
-  for (const [v, k] of [["yard", "YardScene"], ["track", "TrackScene"], ["map", "MapScene"]] as const) {
+  for (const [v, k] of [["yard", "YardScene"], ["track", "TrackV3Scene"], ["map", "MapScene"]] as const) {
     await go(page, v);
     await waitForScene(page, k);
   }
@@ -62,7 +62,7 @@ test("every view is still wired to React on its SECOND visit", async ({ page }) 
     .toBe(false); // the seeded melody lane is on the board, so no empty prompt
 
   await go(page, "track");
-  await waitForScene(page, "TrackScene");
+  await waitForScene(page, "TrackV3Scene");
   await expect
     .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().vizState !== null), {
       message: "the Track never received its analyser on the second visit",

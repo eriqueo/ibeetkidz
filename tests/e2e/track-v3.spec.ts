@@ -1,6 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 
-// Track v3, the side-scroller greybox (`?v3`).
+// The Track: the side-scroller, which is what you get with no flag at all as of
+// 2026-08-16. `?oval` opts back into the old ring.
 //
 // These assert on MOTION, which a screenshot cannot test: that the world scrolls
 // at a rate proportional to tempo, that the wheels turn because distance was
@@ -10,7 +11,7 @@ import { expect, test, type Page } from "@playwright/test";
 
 async function bootV3(page: Page): Promise<void> {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
-  await page.goto("/?v3");
+  await page.goto("/");
   const start = page.getByRole("button", { name: /tap to start/i });
   await expect(start).toBeVisible();
   await start.click({ force: true });
@@ -35,7 +36,7 @@ function emit(page: Page, event: string, ...args: unknown[]): Promise<void> {
   );
 }
 
-test("?v3 opens the side-scroller instead of the oval", async ({ page }) => {
+test("the side-scroller is the Track you get with no flag", async ({ page }) => {
   await bootV3(page);
   const key = await page.evaluate(
     () => (window as any).__ibeetkidz_test__.getScene().scene.key,
@@ -43,9 +44,9 @@ test("?v3 opens the side-scroller instead of the oval", async ({ page }) => {
   expect(key).toBe("TrackV3Scene");
 });
 
-test("the oval is still the default without the flag", async ({ page }) => {
+test("?oval opts back into the ring", async ({ page }) => {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
-  await page.goto("/");
+  await page.goto("/?oval");
   await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
   await page.waitForFunction(() => !!(window as any).__ibeetkidz_test__);
   await page.waitForFunction(
