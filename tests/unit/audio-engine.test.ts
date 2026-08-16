@@ -111,8 +111,11 @@ class FakeSoundPort implements SoundPort {
   getTransportStep(): number {
     return -1;
   }
+  /** Drivable, so the loop-count tests can walk the song forward a bar at a
+   *  time. -1 is "stopped", which is what the real port reports. */
+  bar = -1;
   getTransportBar(): number {
-    return -1;
+    return this.bar;
   }
   getAnalyser(): AnalyserNode {
     return {} as AnalyserNode;
@@ -453,5 +456,63 @@ describe("AudioEngine terrain", () => {
       sound.scheduled.find((s) => s.clipId === id)!.barOffset;
     expect(byClip("carA")).toBe(1);
     expect(byClip("carB")).toBe(0);
+  });
+});
+
+describe("ride loop count", () => {
+  it("rides for ever by default — the behaviour the Track has always had", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    engine.playRide(twoCarTrain());
+    expect(engine.rideLoopCount).toBe(null);
+    // Far past any plausible song length; still going.
+    sound.bar = 9999;
+    expect(engine.tickRide()).toBe(false);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("stops after N times round, counting the SONG and not the bar", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    engine.setRideLoops(2);
+    engine.playRide(twoCarTrain()); // a two-bar song
+    // Bar 3 is the last bar of the second time round — not done yet.
+    for (const bar of [0, 1, 2, 3]) {
+      sound.bar = bar;
+      expect(engine.tickRide(), `bar ${bar}`).toBe(false);
+      expect(engine.isPlaying).toBe(true);
+    }
+    sound.bar = 4; // 2 loops x 2 bars — the song has run twice
+    expect(engine.tickRide()).toBe(true);
+    expect(engine.isPlaying).toBe(false);
+  });
+
+  it("holds the finish line it started with when the train is edited mid-ride", async () => {
+    // `rideBars` is captured at playRide on purpose: a kid deleting a car while
+    // the song runs must not make the song end early (or never), because the
+    // finish line would move under a ride already in progress.
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    engine.setRideLoops(1);
+    engine.playRide(twoCarTrain());
+    sound.bar = 1;
+    expect(engine.tickRide()).toBe(false);
+    sound.bar = 2;
+    expect(engine.tickRide()).toBe(true);
+  });
+
+  it("counts nothing while stopped, and nothing in single-car LOOP mode", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    engine.setRideLoops(1);
+    // Never started: a bar reading of -1 must not be read as "past the end".
+    sound.bar = -1;
+    expect(engine.tickRide()).toBe(false);
+    // LOOP mode is the Workshop's play-one-car; a ride count must not stop it.
+    const project = twoCarTrain();
+    engine.playLoop(project);
+    sound.bar = 500;
+    expect(engine.tickRide()).toBe(false);
+    expect(engine.isPlaying).toBe(true);
   });
 });

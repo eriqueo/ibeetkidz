@@ -69,6 +69,14 @@ export interface EventMap {
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.
+  // Phaser -> React (Track): the LOOP keycap was tapped — advance the song's
+  // repeat count through its cycle. The SCENE holds no count of its own; it is
+  // told what to display, so there is one producer of "how many times".
+  "track-loop-cycled": [];
+  // Phaser -> React (Track): the TARP keycap was tapped — arm/disarm the
+  // cover-a-car gesture. Armed, the next car tapped is tarped instead of opened
+  // in the Workshop; tap-to-edit stays the default it was designed to be.
+  "track-tarp-armed": [];
   "track-send": [];        // SEND plaque (or Try Again) tapped → render the song
   "track-send-share": [];  // result panel: open the OS share sheet
   "track-send-save": [];   // result panel: download the WAV

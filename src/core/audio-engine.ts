@@ -45,6 +45,11 @@ export class AudioEngine {
   private started = false;
   private playing = false;
   private mode: PlayMode = "loop";
+  /** Ride repeat count (null = for ever) and the song length it counts against,
+   *  captured at `playRide` so a mid-ride train edit cannot move the finish
+   *  line under a song that is already running. */
+  private rideLoops: number | null = null;
+  private rideBars = 1;
 
   constructor(private readonly sound: SoundPort) {}
 
@@ -293,7 +298,45 @@ export class AudioEngine {
 
   /** The Tracks strip's Ride: play through the whole arrangement, then loop it. */
   playRide(project: Project): void {
+    this.rideBars = Math.max(1, liveTrain(project).length);
     this.playIn("ride", project);
+  }
+
+  /**
+   * How many times a ride runs before it stops. `null` is for ever, which is
+   * what the Track has always done and stays the default.
+   *
+   * The charter puts "Mute/Loop controls" on the Track's bottom bar. Mute
+   * became tap-a-car; the loop count was never built, so a kid who wanted to
+   * hear their song once and stop had to press STOP at the right moment.
+   */
+  setRideLoops(loops: number | null): void {
+    this.rideLoops = loops;
+  }
+
+  get rideLoopCount(): number | null {
+    return this.rideLoops;
+  }
+
+  /**
+   * Called once per animation frame by the Track while riding: stop the song
+   * when it has run its requested number of times.
+   *
+   * The POLICY lives here rather than in the view even though the view is what
+   * ticks, because "when is the song over" is a musical fact, not a rendering
+   * one. The view supplies no number — this reads the transport itself, so the
+   * charter's "the transport is the clock" still holds and there is no second
+   * clock to disagree with it.
+   *
+   * Returns true when this call ended the ride, so the caller can react.
+   */
+  tickRide(): boolean {
+    if (this.rideLoops === null || !this.playing || this.mode !== "ride") return false;
+    const bar = this.sound.getTransportBar();
+    if (bar < 0) return false;
+    if (bar < this.rideLoops * this.rideBars) return false;
+    this.stop();
+    return true;
   }
 
   /** Render the whole arrangement to a shareable WAV blob by riding the song

@@ -57,7 +57,13 @@ import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from 
 import { attachUndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
-import type { CarType } from "../../core/types.ts";
+import type { CarType, Project } from "../../core/types.ts";
+// The oval already owns both of these; the side-scroller mounts the SAME
+// classes rather than growing its own SEND panel and its own visualizer, so
+// "see the sound" and "send your song" behave identically in both views.
+import { SendSongPanel, type SendUiState } from "../send-panel.ts";
+import { SceneVisualizer } from "../scene-visualizer.ts";
+import { VISUAL_STYLES } from "../../visualizer/styles.ts";
 
 /**
  * Real art, if any has been delivered. Vite resolves this at build time, so an
@@ -492,6 +498,11 @@ export class TrackV3Scene extends Phaser.Scene {
     // CLEAR empties the whole train, so this view must be able to show the
     // "put it back" chip the Workshop and Yard already carry.
     attachUndoToast(this);
+    // The SEND result panel. Built here (not on first use) so it is already
+    // laid out when React pushes the first state mid-render.
+    this.sendPanel = new SendSongPanel(this);
+    this.sendPanel.setUiState(this.sendState);
+    this.sendPanel.layout(this.scale.gameSize.width, this.scale.gameSize.height);
     this.ready = true;
     EventBus.emit("current-scene-ready", this);
   }
@@ -520,23 +531,113 @@ export class TrackV3Scene extends Phaser.Scene {
     // it is an object floating in the world; a plate running off the top of the
     // frame is the frame — that is the whole difference Eric is pointing at
     // when he says the bars are "superimposed" rather than "natively embedded".
-    this.plate("panel-header-v2", { x: W / 2, y: 160, width: 1980, height: 360 });
-    const cy = 170;
+    //
+    // TWO ROWS, for the reason `buildLegend` gives about its own plate: the
+    // side-scroller had to grow a real transport deck to stop being a
+    // feature-loss against the oval (tempo, SEND and the song's loop count all
+    // lived only on the oval), and squeezing nine controls into one row would
+    // give each the ~200 px slot that made the job-bar pictures unreadable.
+    // Row 1 is WHERE you are and WHETHER it is playing; row 2 is HOW it plays.
+    this.plate("panel-header-v2", { x: W / 2, y: 205, width: 1980, height: 450 });
+    const cy = 118;
     // Four across, on the plate's parchment field (~400..2064) — a control
     // past the gear medallion floats on the sky, which is the exact
     // "superimposed chrome" this bar replaced. The legend row below uses the
     // same columns so the two decks read as one frame.
-    this.placeButton("btn-nav-map", { x: 660, y: cy, width: 470, height: 165 },
+    this.placeButton("btn-nav-map", { x: 660, y: cy, width: 470, height: 150 },
       () => void EventBus.emit("track-nav", "map"), "MAP");
-    this.placeButton("btn-track-ride", { x: 1160, y: cy, width: 205, height: 205 },
+    this.placeButton("btn-track-ride", { x: 1160, y: cy, width: 190, height: 190 },
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
-    this.placeButton("btn-transport-stop", { x: 1560, y: cy, width: 205, height: 205 },
+    this.placeButton("btn-transport-stop", { x: 1560, y: cy, width: 190, height: 190 },
       () => void EventBus.emit("transport-stop"), "STOP");
     // Empty the train and start the build over. AR-043's painted plaque is a
     // near-square 512 canvas, so it takes a square slot like RIDE and STOP
     // rather than the landscape one the keycap fallback wanted.
-    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 200, height: 200 },
+    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 185, height: 185 },
       () => void EventBus.emit("track-clear-train"), "CLEAR");
+
+    this.buildTransportRow(300);
+  }
+
+  /**
+   * Row 2 of the header: the controls the oval had and the side-scroller did
+   * not. Every sprite here is already in the packed atlas — this deck needed no
+   * new art, which is why it could be built rather than queued.
+   *
+   *   SLOW / FAST   `btn-transport-slow` / `-fast`, the Workshop's own keycaps
+   *   the readout   drawn text, because `lcd-transport` is a Tiled display
+   *                 anchor the oval mounts from its map and this scene has no
+   *                 map — same numbers, same job, no second sprite invented
+   *   LOOP          `btn-transport-loop`, cycling how many times the song runs
+   *   TARP          arms tap-a-car-to-tarp without stealing tap-to-edit
+   *   SEND          AR-020's `btn-send-song` plaque
+   */
+  private buildTransportRow(cy: number): void {
+    this.placeButton("btn-transport-slow", { x: 470, y: cy, width: 165, height: 165 },
+      () => void EventBus.emit("tempo-changed", -10), "SLOW");
+    // The readout sits BETWEEN the two tempo keycaps, which is where a kid
+    // looks when they have just pressed one of them.
+    this.tempoText = this.add
+      .text(700, cy, "120", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+      })
+      .setOrigin(0.5)
+      .setFontSize(44)
+      .setDepth(DEPTH.hud + 2);
+    this.placeButton("btn-transport-fast", { x: 930, y: cy, width: 165, height: 165 },
+      () => void EventBus.emit("tempo-changed", 10), "FAST");
+
+    // How many times round before the train stops. The charter puts "Mute/Loop
+    // controls" on the Track's bottom bar; mute became tap-a-car and loop-count
+    // was never built at all, so the song only ever looped forever.
+    this.loopBtn = this.placeLatchButton(
+      "btn-transport-loop",
+      { x: 1270, y: cy, width: 165, height: 165 },
+      () => void EventBus.emit("track-loop-cycled"),
+      "LOOP",
+    );
+    this.loopText = this.add
+      .text(1270, cy + 92, "∞", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+      })
+      .setOrigin(0.5)
+      .setFontSize(28)
+      .setDepth(DEPTH.hud + 2);
+
+    // TARP arms the tarp gesture instead of replacing tap-to-edit. Tapping a
+    // car on this view opens THAT car in the Workshop — a deliberate choice
+    // (edit on the fly, 2026-08-13) that muting must not quietly take back. So
+    // muting gets its own latch: arm it, and the next car you tap gets covered.
+    this.tarpLatch = this.placeLatchButton(
+      "btn-transport-loop",
+      { x: 1620, y: cy, width: 165, height: 165 },
+      () => void EventBus.emit("track-tarp-armed"),
+      "TARP",
+    );
+
+    // Render the song to a WAV and offer share/save. The oval has had this
+    // since AR-020; without it the side-scroller could not have become the
+    // default without losing the one feature that gets a song off the device.
+    this.placeButton("btn-send-song", { x: 1950, y: cy, width: 300, height: 165 },
+      () => void EventBus.emit("track-send"), "SEND");
+  }
+
+  /** A chrome button that also carries a latched (gold) look, for the two
+   *  controls in this row that are states rather than one-shots. */
+  private placeLatchButton(
+    sprite: string,
+    rect: { x: number; y: number; width: number; height: number },
+    fire: () => void,
+    caption: string,
+  ): (on: boolean) => void {
+    this.placeButton(sprite, rect, fire, caption);
+    const glow = this.add
+      .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
+      .setDepth(DEPTH.hud)
+      .setVisible(false);
+    return (on: boolean) => glow.setVisible(on);
   }
 
   /** One of the shared stretched zone plates, or nothing at all if the atlas is
@@ -656,6 +757,19 @@ export class TrackV3Scene extends Phaser.Scene {
 
   /** Every mode switch on the job bar, keyed by kind, so a LATCHED mode can
    *  visibly hold its gold wash whatever art it currently wears. */
+  /** Row-2 transport deck: the tempo readout, the loop counter and its keycap
+   *  glow, the TARP arm latch. All written by React, never read by the scene. */
+  private tempoText?: Phaser.GameObjects.Text;
+  private loopText?: Phaser.GameObjects.Text;
+  private loopBtn: (on: boolean) => void = () => {};
+  private tarpLatch: (on: boolean) => void = () => {};
+  /** Mirrors the TARP latch, read on a car tap. React owns the truth. */
+  private tarpArmed = false;
+  /** The SEND flow's panel + the state React drives it with. */
+  private sendPanel?: SendSongPanel;
+  private sendState: SendUiState = { kind: "idle" };
+  /** "See the sound" — the same jumbotron the oval carries. */
+  private viz?: SceneVisualizer;
   private modeBtns: Record<string, { setLatched: (on: boolean) => void }> = {};
   /** The BACKWARDS switch's latched look — picture or keycap alike. */
   private backwardsLatch: (on: boolean) => void = () => {};
@@ -776,6 +890,75 @@ export class TrackV3Scene extends Phaser.Scene {
   /** React → scene: the BACKWARDS switch's latched look. */
   setBackwards(on: boolean): void {
     this.backwardsLatch(on);
+  }
+
+  /** React → scene: the tempo readout between SLOW and FAST. */
+  setTempo(bpm: number): void {
+    this.tempoText?.setText(String(Math.round(bpm)));
+  }
+
+  /** React → scene: how many times the song runs before stopping (null = for
+   *  ever). The keycap wears the latch glow whenever a FINITE count is set, so
+   *  "this will stop" is visible without reading the number. */
+  setLoopCount(loops: number | null): void {
+    this.loopText?.setText(loops === null ? "∞" : `${loops}x`);
+    this.loopBtn(loops !== null);
+  }
+
+  /** React → scene: is the tarp gesture armed? */
+  setTarpArmed(on: boolean): void {
+    this.tarpArmed = on;
+    this.tarpLatch(on);
+  }
+
+  /**
+   * React → scene: the master-output analyser + a Project reader, which is what
+   * lets the jumbotron exist. Same contract as the oval's — the analyser is
+   * PUSHED in, because `SoundPort` is React's to own and a scene reaching for
+   * it would put a vendor audio dependency behind the EventBus boundary.
+   *
+   * The screen hangs in the sky on the far side of the header, where nothing
+   * else is drawn and the parallax bands are quietest; it is fixed rather than
+   * scrolling, because it is a readout of the SOUND and not a thing in the
+   * world the train rides through.
+   */
+  attachVisualizer(analyser: AnalyserNode, getProject: () => Project): void {
+    if (this.viz) return;
+    const viz = new SceneVisualizer(this, {
+      analyser,
+      getProject,
+      styles: VISUAL_STYLES,
+      depth: DEPTH.hud - 1,
+    });
+    this.viz = viz;
+    let armed = false;
+    viz.hitTarget.on("pointerdown", () => { armed = true; });
+    viz.hitTarget.on("pointerout", () => { armed = false; });
+    viz.hitTarget.on("pointerup", () => {
+      if (!armed) return;
+      armed = false;
+      viz.cycleStyle();
+    });
+    viz.layout({ x: W / 2 - 330, y: 560, width: 660, height: 190 });
+  }
+
+  /** Exposed for the e2e bridge: what the jumbotron is showing, and how visible
+   *  it is. Visibility is driven by REAL master-output level, so asserting it
+   *  rose while a song played proves the screen is fed by audio, not a flag. */
+  get vizState(): { style: string; visibility: number } | null {
+    return this.viz ? { style: this.viz.styleLabel, visibility: this.viz.visibility } : null;
+  }
+
+  /** React → scene: the SEND flow's state (drives the result panel). */
+  setSendState(state: SendUiState): void {
+    this.sendState = state;
+    this.sendPanel?.setUiState(state);
+    this.sendPanel?.layout(this.scale.gameSize.width, this.scale.gameSize.height);
+  }
+
+  /** Exposed for the e2e bridge: what the SEND UI currently shows. */
+  get sendUiState(): SendUiState {
+    return this.sendState;
   }
 
   /** React → scene: the NIGHT and TUNNEL shades — full-scene washes under the
@@ -1424,7 +1607,14 @@ export class TrackV3Scene extends Phaser.Scene {
       if (!armed) return;
       armed = false;
       const car = this.cars[index];
-      if (car) EventBus.emit("track-car-edit", car.id);
+      if (!car) return;
+      // Armed by the TARP keycap: cover this car instead of opening it. The
+      // default stays tap-to-edit, which is what the side-scroller was designed
+      // around ("fix a lane and hear it on the song's next pass") — muting is
+      // the guest here, so it announces itself with a latch rather than
+      // silently changing what a tap means.
+      if (this.tarpArmed) EventBus.emit("track-car-mute-toggled", car.id);
+      else EventBus.emit("track-car-edit", car.id);
     });
     view.hide();
     return view;
