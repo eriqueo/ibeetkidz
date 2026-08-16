@@ -41,6 +41,11 @@ export interface EventMap {
   "yard-edit-car": [];
   // Tiled hit -> React (Yard): delete the active (selected) car from the library.
   "yard-remove-car": [];
+  // Phaser -> React (Yard): a car was DRAGGED to a new place in the train.
+  // Carries the whole new order rather than a (from, to) pair, so the reducer
+  // stays the pure `reorderTrain` it already was and there is no second way to
+  // express an ordering that could disagree with the first.
+  "yard-reorder-train": [instanceIds: readonly string[]];
   // Tiled hit -> React (Yard): travel to another view.
   "yard-nav": [view: AppView];
   // Tiled hit -> React (Track): travel to another view.

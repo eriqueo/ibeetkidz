@@ -74,6 +74,45 @@ export function trainSlot(
 }
 
 /**
+ * Which assembly-line slot a car dropped at screen `x` belongs in.
+ *
+ * The inverse of `trainSlot`'s `cx`, rounded to the nearest slot and clamped to
+ * the occupied range — so dragging a car off either end parks it first or last
+ * rather than dropping it out of the train. Pure, because "where did that land"
+ * is exactly the arithmetic that is impossible to eyeball once a train is long
+ * and `trainStep` has started packing the slots tighter.
+ */
+export function trainIndexAtX(
+  rect: SlotRect,
+  x: number,
+  count: number,
+): number {
+  if (count <= 1) return 0;
+  const a = YARD_LAYOUT_V2.assemblyLine;
+  const w = rect.width * YARD_SIDINGS_V2.carW;
+  const step = trainStep(rect, count);
+  const startX = rect.x + rect.width * a.x + w / 2;
+  const raw = Math.round((x - startX) / step);
+  return Math.max(0, Math.min(count - 1, raw));
+}
+
+/**
+ * Move item `from` to index `to`, returning a new array.
+ *
+ * This is a MOVE, not a swap: dragging car 1 to the end must leave 2,3,4
+ * shuffled down, not put car 4 where car 1 was. A swap is the tempting
+ * one-liner and it is wrong — it makes a long drag do something the kid did not
+ * ask for at the far end of the train.
+ */
+export function moveTrainOrder<T>(ids: readonly T[], from: number, to: number): T[] {
+  const next = [...ids];
+  if (from === to || from < 0 || from >= next.length) return next;
+  const [moved] = next.splice(from, 1);
+  next.splice(Math.max(0, Math.min(next.length, to)), 0, moved!);
+  return next;
+}
+
+/**
  * Uniform scale for a car's square atlas cell inside a slot — **both axes
  * bind**.
  *

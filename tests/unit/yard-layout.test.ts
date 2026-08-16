@@ -18,6 +18,8 @@ import {
   paletteSlot,
   trainSlot,
   trainStep,
+  trainIndexAtX,
+  moveTrainOrder,
   carFitScale,
   namePlateBox,
   PALETTE_DIR,
@@ -164,6 +166,52 @@ describe("assembly line", () => {
     const chip = namePlateBox(REF, trainSlot(REF, 0, MAX_CARS), step);
     expect(chip.maxW).toBeLessThanOrEqual(step);
     expect(chip.w).toBeLessThanOrEqual(chip.maxW);
+  });
+});
+
+describe("drag-to-reorder on the assembly line", () => {
+  it("maps a drop x back to the slot it landed on", () => {
+    const count = 5;
+    for (let i = 0; i < count; i += 1) {
+      const slot = trainSlot(REF, i, count);
+      expect(trainIndexAtX(REF, slot.cx, count)).toBe(i);
+    }
+  });
+
+  it("clamps a drag off either end to first/last instead of out of the train", () => {
+    // A kid dragging enthusiastically past the buffers must still get a valid
+    // slot — dropping "outside" the train is not a state the reducer can hold.
+    expect(trainIndexAtX(REF, -99999, 5)).toBe(0);
+    expect(trainIndexAtX(REF, 99999, 5)).toBe(4);
+    expect(trainIndexAtX(REF, 12345, 1)).toBe(0); // a one-car train has one slot
+  });
+
+  it("snaps to the NEAREST slot, not the one it passed", () => {
+    const count = 4;
+    const a = trainSlot(REF, 1, count);
+    const b = trainSlot(REF, 2, count);
+    expect(trainIndexAtX(REF, a.cx + (b.cx - a.cx) * 0.4, count)).toBe(1);
+    expect(trainIndexAtX(REF, a.cx + (b.cx - a.cx) * 0.6, count)).toBe(2);
+  });
+
+  it("MOVES a car through the order rather than swapping two", () => {
+    // The bug a swap would ship: dragging the first car to the end would fling
+    // the last car to the front, which is not what the kid dragged.
+    expect(moveTrainOrder(["a", "b", "c", "d"], 0, 3)).toEqual(["b", "c", "d", "a"]);
+    expect(moveTrainOrder(["a", "b", "c", "d"], 3, 0)).toEqual(["d", "a", "b", "c"]);
+    expect(moveTrainOrder(["a", "b", "c", "d"], 1, 2)).toEqual(["a", "c", "b", "d"]);
+  });
+
+  it("is a no-op for a drag that lands where it started, and never loses a car", () => {
+    const ids = ["a", "b", "c", "d"];
+    expect(moveTrainOrder(ids, 2, 2)).toEqual(ids);
+    // Whatever the indices, every car survives exactly once — a reorder that
+    // drops or duplicates an instanceId would corrupt the train.
+    for (let from = 0; from < ids.length; from += 1) {
+      for (let to = 0; to < ids.length; to += 1) {
+        expect([...moveTrainOrder(ids, from, to)].sort()).toEqual([...ids].sort());
+      }
+    }
   });
 });
 

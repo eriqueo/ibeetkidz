@@ -21,6 +21,8 @@ import {
   paletteSlot,
   trainSlot,
   trainStep,
+  trainIndexAtX,
+  moveTrainOrder,
   carFitScale,
   namePlateBox,
   PALETTE_DIR,
@@ -314,9 +316,11 @@ export class YardScene extends BackgroundScene {
       this.makePaletteInteractive(token.car, car.id, car.carType);
       this.paletteTokens.set(car.id, token);
     });
-    this.train.forEach((slot) =>
-      this.trainTokens.push(this.makeTrainCar(slot)),
-    );
+    this.train.forEach((slot, i) => {
+      const token = this.makeTrainCar(slot);
+      this.makeTrainDraggable(token.car, i);
+      this.trainTokens.push(token);
+    });
     // A selected car may have been removed; drop a stale highlight.
     if (this.selectedId && !this.paletteTokens.has(this.selectedId)) this.selectedId = null;
     this.layout();
@@ -342,6 +346,64 @@ export class YardScene extends BackgroundScene {
     token.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
     if (token.input) token.input.cursor = "pointer";
     token.on("pointerdown", () => this.selectPaletteCar(partId));
+  }
+
+  /**
+   * Drag a car along the assembly line to change where it sits in the train.
+   *
+   * This is the reorder control. `reorderTrain` had been a reducer with no
+   * caller since the v2 data model landed — there was no way at all to change
+   * the order of a built train, only to pop the last car off and rebuild.
+   *
+   * A drag rather than a button because it needs NO new art (the art queue has
+   * no `btn-yard-reorder`, and the house rule is not to paint stand-ins), and
+   * because "pick the thing up and put it where you want it" is the gesture a
+   * four-year-old already has. The line is horizontal, so it is a 1-D drag.
+   *
+   * Only the x is followed: a car cannot leave its rail, which keeps a clumsy
+   * vertical wobble from looking like the car is about to be dropped somewhere.
+   */
+  private makeTrainDraggable(
+    token: Phaser.GameObjects.Container,
+    index: number,
+  ): void {
+    const slot = this.train[index];
+    if (!slot) return;
+    const [x0, y0, x1, y1] = CAR_CONTENT_E[slot.carType];
+    const w = (x1 - x0) * FRAME_SIZE;
+    const h = (y1 - y0) * FRAME_SIZE;
+    const padX = w * 0.2;
+    const padY = h * 0.2;
+    const hit = new Phaser.Geom.Rectangle(-w / 2 - padX, -h - padY, w + padX * 2, h + padY * 2);
+    token.setInteractive(hit, Phaser.Geom.Rectangle.Contains);
+    if (token.input) token.input.cursor = "grab";
+    this.input.setDraggable(token);
+    const homeY = token.y;
+    const homeDepth = token.depth;
+
+    token.on("drag", (_p: Phaser.Input.Pointer, dragX: number) => {
+      // x only — the car stays on its rail. Lifted a little and brought to the
+      // front so it reads as picked up and never hides behind a neighbour.
+      token.setPosition(dragX, homeY - 14).setDepth(30);
+    });
+
+    token.on("dragend", () => {
+      token.setDepth(homeDepth);
+      const r = this.backgroundRect;
+      const count = this.train.length;
+      const to = trainIndexAtX(r, token.x, count);
+      // Put it back on the grid no matter what: if the order did not change (a
+      // tap, or a drag that landed on its own slot) the car must not be left
+      // sitting 14 px high and between two slots. `layout()` is the one placer.
+      this.layout();
+      if (to === index) return;
+      const order = moveTrainOrder(
+        this.train.map((c) => c.instanceId),
+        index,
+        to,
+      );
+      EventBus.emit("yard-reorder-train", order);
+    });
   }
 
   /** Deselect the previous car, highlight + store the new one, tell React. */

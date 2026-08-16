@@ -84,6 +84,12 @@ export const Yard: FC = () => {
       const last = liveTrain(projectRef.current).at(-1);
       if (last) dispatch({ type: "removeFromTrain", instanceId: last.instanceId });
     };
+    // A car was dragged to a new place on the assembly line. The scene sends
+    // the whole new order and the reducer takes the whole new order, so there
+    // is nothing here to translate — which is why `reorderTrain` needed no
+    // change to gain its first caller.
+    const onReorder = (instanceIds: readonly string[]) =>
+      dispatch({ type: "reorderTrain", instanceIds });
     const onEditCar = () => dispatch({ type: "setActiveView", view: "workshop" });
     const onRemoveCar = () =>
       dispatch({ type: "removeCar", partId: projectRef.current.activePartId });
@@ -100,6 +106,7 @@ export const Yard: FC = () => {
     EventBus.on("yard-add-to-train", onAdd);
     EventBus.on("yard-send-to-track", onSend);
     EventBus.on("yard-remove-from-train", onRemoveFromTrain);
+    EventBus.on("yard-reorder-train", onReorder);
     EventBus.on("yard-edit-car", onEditCar);
     EventBus.on("yard-remove-car", onRemoveCar);
     EventBus.on("yard-nav", onNav);
@@ -108,6 +115,7 @@ export const Yard: FC = () => {
       EventBus.off("yard-add-to-train", onAdd);
       EventBus.off("yard-send-to-track", onSend);
       EventBus.off("yard-remove-from-train", onRemoveFromTrain);
+      EventBus.off("yard-reorder-train", onReorder);
       EventBus.off("yard-edit-car", onEditCar);
       EventBus.off("yard-remove-car", onRemoveCar);
       EventBus.off("yard-nav", onNav);
