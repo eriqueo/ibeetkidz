@@ -858,3 +858,98 @@ that over ~760 px so the squall arrives and leaves instead of switching on.
 `audio-output.spec.ts` went red in the full run and passed on its own (8.6 s) —
 the load-sensitivity this file has warned about since the first re-baseline.
 Recorded rather than quietly re-run.
+
+---
+
+## Re-baseline — 2026-08-16, the side-scroller is the Track, and the six gaps are closed
+
+| Fact | Value | Previous (2026-08-10) |
+|---|---|---|
+| Baseline commit | `32a321f` | — |
+| Unit tests | **597 / 35 files**, 0 skipped | 561 / 34 |
+| E2E local | **44 passed**, 0 failed | 43 |
+| `dist/` | **21 MB** | 32 MB |
+| `src/assets` tracked | **41 MB** | 551 MB |
+| `.git` | 1.4 GB (unchanged — A3 ruled out a history rewrite) | 1.4 GB |
+
+Typecheck clean, `eslint .` exit 0. `check-asset-size.sh`: no tracked file under
+`src/` over 2 MB. `check-sprite-alpha.sh`: 211 sprite PNGs, all with alpha.
+
+### The Track flip
+
+**`TrackV3Scene` is the default. `?oval` opts back into `TrackScene`.** The flag
+was `?v3` from 2026-08-07 until today, and by the end its own comment ("the oval
+stays the default until v3 is demonstrably better") was the only thing still
+arguing for the ring. Everything from roughly AR-034 to AR-059 was behind it —
+parallax art, side-on rolling stock, wheelsets and contact shadows, terrain that
+changes how the song sounds, the mode switches, BACKWARDS, weather, the riding
+crew, the Beat Lantern — unreachable without typing a query string.
+
+**Four specs pin `?oval` deliberately**, each stating why in its own header:
+`track-timing` (lap geometry — there is no lap), `terrain` (the MOMENTARY
+terrain path; v3 routes `terrain-picked` into the LATCHING mode system, a
+different engine call), `chrome-reachable` (the Tiled spawn pipeline; v3 draws
+chrome in code and has no map), `built-artifact` (the only scene running BOTH
+loader shapes). The last is the trap worth remembering: retargeting it at the
+new default would have **passed** while silently dropping coverage of
+`loadSpriteAssets`'s four URL-argument atlases, which is the exact bug class it
+exists to catch. `CLAUDE.md` carries this as a table.
+
+Flipping the default broke 17 e2e tests and surfaced two real defects in the new
+v3 work — a jumbotron that never ticked (`SceneVisualizer.update` must be driven
+from the scene's `update`; silent, since `visibility` only moves in there), and
+a motion assertion reading `loco.x`, which on a fixed consist with a scrolling
+world is constant BY DESIGN and would have called a healthy ride frozen.
+
+### Parity built before the flip, not after
+
+The side-scroller had no tempo, no SEND, no jumbotron and no muting. Flipping
+without those would have been a feature loss dressed as an upgrade, so the
+header grew a second row first — every sprite already in the packed atlas, so
+no art was queued. Muting returned as a TARP **latch** rather than by changing
+what a car tap does: tap-to-edit was a deliberate 2026-08-13 decision and the
+guest feature does not get to take it back silently.
+
+### The six gaps
+
+1. **Reorder** — `reorderTrain` had been a reducer with no caller since the v2
+   data model landed (`rg -n 'reorderTrain' src` → 2 hits, both declarations).
+   Now: drag a car along the assembly line. Arithmetic is pure and lives in
+   `yard-geometry.ts`; `moveTrainOrder` MOVES rather than swaps.
+2. **Track LOOP** — the charter's "Mute/Loop controls" had never been built, so
+   the song only ever looped for ever. Cycles ∞ → 1 → 2 → 4 → ∞.
+   `AudioEngine.tickRide()` owns the stop decision and reads the transport
+   itself, so "the transport is the clock" holds. `rideBars` is captured at
+   `playRide` so a mid-ride edit cannot move the finish line.
+3. **Open-car weight** — AR-060's follow-up assumed flat pixel art; measured,
+   the files carry 190k-271k unique opaque colours and ~229 alpha levels. The
+   house encoder (FASTOCTREE) hit only ~36 dB and would band, so pngquant (41-45
+   dB) was used instead: quality kept, threshold met. `map-scene-clean.png` went
+   with them — one step past the stated gap, called out in its commit.
+4. **Violin** — had no bowed voice anywhere in INSTRUMENTS and borrowed `pluck`.
+   Now a `MonoSynth` that is deliberately the inverse of a pluck, and one that
+   can BEND. New architecture guard (seeded red first) asserts every id in
+   INSTRUMENTS has its own `case` in `makeMelodyVoice`, because the switch's
+   `default` makes a missing case compile and fall through to "soft".
+5. **Dead art** — `ar015/` (366 MB) was held under a `.gitignore` TODO for a
+   16-direction loco pass that is now a RETIRED SPEC. It and the 43 train refs
+   moved to the gitignored `art/`; `build_train_atlas.py` rebuilds the atlas
+   BYTE-IDENTICALLY from there (md5 `e519687d`, verified).
+6. **Yard audit** — cars stood on the FAR rail of each siding because
+   `y0 + row × dy` cannot fit rails that recede (measured pitches 0.0937 /
+   0.0903 / 0.0875); `railY` is now the measured near-railhead table. The tarp
+   was drawn 17% flatter than painted. The crane hoisted the car DOWN to 0.476
+   when its destination was 0.361, so the tween commented "lower onto line"
+   raised it. The fourth item, "no `roundPixels`", was **not a defect** —
+   Phaser 4.2 derives it from `pixelArt`, which this config has always set.
+
+### Known-open, stated rather than quietly dropped
+
+- **The crane still starts ~0.4 of the canvas from the painted gantry.** The
+  sidings are painted at x ≈ 0.11, the gantry legs stand at x 0.510-0.554 and
+  0.580-0.622. Only the VERTICAL story was fixable in code; closing the
+  horizontal gap needs one of them repainted. Recorded at `YARD_CRANE_BEAM_Y`.
+- **The new header row has never been looked at.** Its five controls were placed
+  by arithmetic against the plate's parchment field and verified only by tests.
+- `design/HISTORY.md`'s "Current state" is still verified against 2026-07-31 in
+  its other sections; only the Track entry was corrected here.
