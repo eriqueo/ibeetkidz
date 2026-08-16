@@ -13,11 +13,17 @@ playwright-report/
 
 # Raw art inputs (decision A3: re-home, don't police). Concept references,
 # pre-pack sprite sources and generator scratch live here and are NOT committed
-# — only the packed atlases under src/assets/spritesheets/ are. scripts/pack-sprites.py
-# reads this tree; set IBK_ART_DIR to point it somewhere else.
-# TODO(eric): src/assets/spritesheets/ar015/ (~114 MB of loco reference frames)
-# is still tracked on purpose — it is the in-flight input batch for the loco
-# sprite pass. Move it into art/ and drop it from git once that pass lands.
+# — only the PACKED atlases under public/assets/spritesheets/ are.
+# scripts/pack-sprites.py and scripts/build_train_atlas.py read this tree; set
+# IBK_ART_DIR to point them somewhere else.
+#
+# A3's TODO is discharged (2026-08-16): the ar015 16-direction loco batch and
+# the 43 per-direction train refs both moved here, because the pass they were
+# held for is retired — the side-scroller draws ONE heading (AR-036), and
+# AR-031's 8-heading redraw is a RETIRED SPEC. `build_train_atlas.py` rebuilds
+# public/.../train.png byte-identically from art/train-refs/ (verified by md5).
+# A clone WITHOUT this tree still builds and runs the app; it just cannot
+# regenerate the train atlas. History was deliberately not rewritten (A3).
 /art/
 
 # Third-party course transcript kept as a local reference only.

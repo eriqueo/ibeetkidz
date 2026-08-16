@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Assemble public/assets/spritesheets/train.png from the per-direction ref
-frames in src/assets/spritesheets/ (AR-012).
+frames in art/train-refs/ (AR-012).
+
+The refs are BUILD INPUTS, not runtime assets: only the packed atlas this
+script writes under public/ ships. They live in the gitignored `art/` tree per
+decision A3 ("re-home, don't police") — set IBK_ART_DIR to point elsewhere.
+Re-running this script needs that tree present; a clone without it still runs
+the app, because the packed atlas is committed.
 
 Atlas format (must match train.json + sprite-assets.ts):
   5 rows  = loco, boxcar, tanker, hopper, flatcar
@@ -21,7 +27,7 @@ from PIL import Image
 import numpy as np
 import os
 
-SRC = "src/assets/spritesheets"
+SRC = os.path.join(os.environ.get("IBK_ART_DIR", "art"), "train-refs")
 OUT = "public/assets/spritesheets/train.png"
 DIRS = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"]
 MIRROR_PARTNER = {"E": "W", "W": "E", "NE": "NW", "NW": "NE", "SE": "SW", "SW": "SE"}
