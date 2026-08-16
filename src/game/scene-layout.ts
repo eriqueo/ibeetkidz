@@ -69,6 +69,22 @@ export const YARD_LAYOUT_V2 = {
   crane: { x: 0.50, y: 0.35, w: 0.40, h: 0.40 } satisfies NormRegion,
 } as const;
 
+/**
+ * The painted gantry's beam line — the height a lifted car hangs at.
+ *
+ * Measured off `yard-scene-clean-v2.png`: the beam spanning the gantry's two
+ * legs (x 0.510–0.554 and 0.580–0.622) reads strongest at y 0.3007.
+ *
+ * KNOWN LIMIT, deliberately not papered over: this fixes the crane's VERTICAL
+ * story only. A car is picked up from a siding at x ≈ 0.11 and the gantry
+ * stands at x 0.51–0.62, so the hoist still begins ~0.4 of the canvas away
+ * from the painted crane. Closing that needs the sidings repainted under the
+ * gantry or the gantry repainted over the sidings — an art/layout decision,
+ * not a constant. The lift now at least happens at the beam's height and the
+ * car is lowered onto the line rather than raised onto it.
+ */
+export const YARD_CRANE_BEAM_Y = 0.3007;
+
 // Yard sidings: 4 horizontal tracks where palette cars park. Centre y of each
 // siding + the shared x-range; cars lay out left→right along the active siding.
 //
@@ -93,10 +109,31 @@ export const YARD_LAYOUT_V2 = {
 export const YARD_SIDINGS_V2 = {
   rows: 4,
   x0: 0.085, // left edge of a siding (first car centre offset added per index)
-  y0: 0.517, // centre y of the top siding (2026-07-02 plate: rails at 0.517)
-  dy: 0.092, // vertical spacing between sidings
+  /**
+   * The NEAR railhead of each siding, measured off `yard-scene-clean-v2.png`.
+   *
+   * This was `y0 0.517 + row × dy 0.092`, and a straight line cannot fit these
+   * rails: the sidings RECEDE in the plate's shallow 3/4, so their pitch shrinks
+   * (0.0937, 0.0903, 0.0875). The linear model landed on the FAR rail of each
+   * pair — cars stood on the wrong rail of their own siding, floating ~7-16 px
+   * above the one their wheels should touch.
+   *
+   * Measured, not eyeballed: a per-row luminance-contrast profile over the
+   * siding band resolves each siding into its two painted rails —
+   *   siding 1  far 0.5097  near 0.5278
+   *   siding 2  far 0.6042  near 0.6215
+   *   siding 3  far 0.6944  near 0.7118
+   *   siding 4  far 0.7819  near 0.7993
+   * The NEAR rail is the one a side-on car's wheels rest on, so these are the
+   * near column. Re-measure with the same method if the plate is repainted.
+   */
+  railY: [0.5278, 0.6215, 0.7118, 0.7993] as readonly number[],
   carW: 0.052, // car CELL fit width (fraction of image width)
-  carH: 0.085, // car CELL fit height (fraction of image HEIGHT) — the binding axis
+  // car CELL fit height (fraction of image HEIGHT) — the binding axis.
+  // 0.085 -> 0.082 with the railY move: the tightest real pitch is 0.0875
+  // (sidings 3->4), where the old value made body+gap+chip exactly 0.0875 —
+  // touching, not clearing. See the arithmetic below.
+  carH: 0.082,
   dx: 0.053, // horizontal spacing between cars on a siding
   /** Name chip: width + height as fractions of image WIDTH, and the gap below
    *  the car's wheels. Sized in SCREEN space (the chip is not a child of the
@@ -104,10 +141,13 @@ export const YARD_SIDINGS_V2 = {
    *
    *  The vertical sum is what has to clear the siding pitch. In fractions of
    *  image HEIGHT, at any 16:9 canvas:
-   *      body  0.758 × 0.085            = 0.0644
+   *      body  0.758 × 0.082            = 0.0622
    *      gap   0.0025 × (16/9)          = 0.0044
    *      chip  0.0105 × (16/9)          = 0.0187
-   *                                  ⇒   0.0875  <  dy 0.092  ✓
+   *                                  ⇒   0.0853  <  0.0875  ✓
+   *  0.0875 is the TIGHTEST measured pitch (railY[3] − railY[2]), not an
+   *  average — the rails recede, so the average would pass while the bottom
+   *  pair overlapped.
    *  `tests/unit/yard-layout.test.ts` asserts that inequality, so tuning any of
    *  these five numbers back into an overlap fails the gate instead of
    *  quietly reintroducing the bug. */

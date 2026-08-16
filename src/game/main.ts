@@ -14,6 +14,13 @@ export function startGame(parent: HTMLElement): Phaser.Game {
     transparent: true,
     // Nearest-neighbour scaling — the whole point is crisp 16-bit pixels, never
     // the browser's bilinear blur.
+    //
+    // This ALSO covers `roundPixels`, which an audit once flagged as missing
+    // here: Phaser 4.2's Config sets `antialias`, `antialiasGL` false and
+    // `roundPixels` true whenever `pixelArt` is true (verified in
+    // phaser/src/core/Config.js). Writing `roundPixels: true` as well would
+    // restate a derived fact and invite the two drifting apart — if the pixel
+    // policy ever changes, it changes HERE, once.
     pixelArt: true,
     scale: {
       // FIT a fixed 16:9 design resolution into the container, letterboxing and

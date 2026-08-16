@@ -13,7 +13,7 @@ import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
 import { alignCarBody, CAR_CONTENT_E, FRAME_SIZE } from "../car-geometry.ts";
-import { YARD_SIDINGS_V2, YARD_LAYOUT_V2 } from "../scene-layout.ts";
+import { YARD_SIDINGS_V2, YARD_CRANE_BEAM_Y } from "../scene-layout.ts";
 // The pure slot arithmetic lives outside the scene so the unit suite can reach
 // it — a real `import Phaser` cannot load under jsdom, and this is the math the
 // palette got wrong. Re-exported: it is still the Yard's geometry.
@@ -196,7 +196,16 @@ export class YardScene extends BackgroundScene {
     }
     const from = paletteSlot(r, fromSlotIndex);
     const to = trainSlot(r, toTrainIndex, Math.max(1, this.train.length + 1));
-    const liftY = r.y + r.height * (YARD_LAYOUT_V2.assemblyLine.y + 0.16); // crane beam height
+    // The crane beam, measured off the plate (the painted gantry's beam sits at
+    // y ≈ 0.30; its legs stand at x 0.510–0.554 and 0.580–0.622).
+    //
+    // This was `assemblyLine.y + 0.16` = 0.476, which is BELOW the assembly
+    // line the car is being delivered to (slot cy 0.361). So the chain hoisted
+    // the car DOWN to 0.476, carried it across under its destination, and the
+    // tween commented "lower onto line" actually lifted it. Now it clears the
+    // beam, travels at beam height, and comes DOWN onto the line — which is
+    // also the order the three eases (Back / Sine / Bounce) were chosen for.
+    const liftY = r.y + r.height * YARD_CRANE_BEAM_Y;
 
     // Ghost = the car being carried + a cable/hook above it, grouped so they move
     // together. Hide the static palette token while it's "in the air". The car is
@@ -434,7 +443,12 @@ export class YardScene extends BackgroundScene {
       const bw = (x1 - x0) * FRAME_SIZE;
       const bh = (y1 - y0) * FRAME_SIZE;
       const tarp = this.add.image(0, -bh / 2, "tarp", "tarp").setOrigin(0.5);
-      tarp.setDisplaySize(bw * 1.05, bh * 1.05);
+      // UNIFORM scale. `setDisplaySize(bw * 1.05, bh * 1.05)` stretched a
+      // SQUARE 128 px tarp onto the car's content box (boxcar-E is 117×97), so
+      // it drew at scaleX 0.96 / scaleY 0.796 — a tarp squashed 17% flatter
+      // than it was painted. One scale, taken from the axis that needs the most
+      // cover, so the sheet keeps its drawn proportions AND still covers the body.
+      tarp.setScale((1.05 * Math.max(bw, bh)) / FRAME_SIZE);
       token.car.add(tarp);
     }
     return token;

@@ -58,23 +58,52 @@ describe("a car and its name chip fit inside one siding pitch", () => {
   // THE invariant. Body + gap + chip must clear `dy`, or cars occlude each
   // other and labels land under the next car's body — the original complaint.
   for (const rect of [REF, SMALL]) {
-    it(`holds at ${rect.width}×${rect.height} for every car type`, () => {
-      const slot = paletteSlot(rect, 0);
-      const next = paletteSlot(rect, 1);
-      const pitch = next.cy - slot.cy;
-      expect(pitch).toBeCloseTo(rect.height * YARD_SIDINGS_V2.dy, 6);
+    it(`holds at ${rect.width}×${rect.height} for every car type, on EVERY siding pair`, () => {
+      // The sidings recede, so the pitch is not constant (0.0937 / 0.0903 /
+      // 0.0875 of image height). Checking only the first pair would pass on the
+      // widest gap while the bottom pair overlapped — so every consecutive pair
+      // is checked, and the binding one is the tightest.
+      for (let row = 0; row + 1 < YARD_SIDINGS_V2.rows; row += 1) {
+        const slot = paletteSlot(rect, row);
+        const next = paletteSlot(rect, row + 1);
+        const railY = YARD_SIDINGS_V2.railY;
+        expect(next.cy - slot.cy).toBeCloseTo(
+          rect.height * (railY[row + 1]! - railY[row]!),
+          6,
+        );
 
-      const chip = namePlateBox(rect, slot, rect.width * YARD_SIDINGS_V2.dx);
-      const chipBottom = chip.cy + chip.h / 2;
+        const chip = namePlateBox(rect, slot, rect.width * YARD_SIDINGS_V2.dx);
+        const chipBottom = chip.cy + chip.h / 2;
 
-      for (const type of Object.keys(CAR_CONTENT_E) as (keyof typeof CAR_CONTENT_E)[]) {
-        if (type === "loco") continue; // the loco is never in the palette
-        // Wheels sit on the rail (slot.cy); the body grows upward from there.
-        const bodyTopOfNextCar = next.cy - bodyHeight(next, type);
-        expect(chipBottom).toBeLessThan(bodyTopOfNextCar);
+        for (const type of Object.keys(CAR_CONTENT_E) as (keyof typeof CAR_CONTENT_E)[]) {
+          if (type === "loco") continue; // the loco is never in the palette
+          // Wheels sit on the rail (slot.cy); the body grows upward from there.
+          const bodyTopOfNextCar = next.cy - bodyHeight(next, type);
+          expect(chipBottom, `row ${row} → ${row + 1}, ${type}`).toBeLessThan(bodyTopOfNextCar);
+        }
       }
     });
   }
+
+  it("stands each car on the NEAR railhead of its own siding", () => {
+    // The regression this replaces: `y0 + row * dy` put every car on the FAR
+    // rail of its pair (or between the two), floating 7-16 px above the rail
+    // its wheels are drawn to touch. These are the measured near railheads.
+    expect(YARD_SIDINGS_V2.railY).toEqual([0.5278, 0.6215, 0.7118, 0.7993]);
+    for (let row = 0; row < YARD_SIDINGS_V2.rows; row += 1) {
+      expect(paletteSlot(REF, row).cy).toBeCloseTo(REF.height * YARD_SIDINGS_V2.railY[row]!, 6);
+    }
+  });
+
+  it("has a receding pitch that no single spacing constant could express", () => {
+    // The REASON railY is a table and not `y0 + row * dy`, asserted rather than
+    // left in prose: if these three gaps were ever equal, the table would be
+    // redundant and someone would be right to collapse it.
+    const railY = YARD_SIDINGS_V2.railY;
+    const gaps = [railY[1]! - railY[0]!, railY[2]! - railY[1]!, railY[3]! - railY[2]!];
+    expect(gaps[0]).toBeGreaterThan(gaps[1]!);
+    expect(gaps[1]).toBeGreaterThan(gaps[2]!);
+  });
 
   it("leaves the tallest body clear of the siding above it", () => {
     const slot = paletteSlot(REF, 1);

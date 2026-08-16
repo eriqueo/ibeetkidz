@@ -36,7 +36,10 @@ export function paletteSlot(
     cx:
       rect.x +
       rect.width * (YARD_SIDINGS_V2.x0 + YARD_SIDINGS_V2.carW / 2 + col * YARD_SIDINGS_V2.dx),
-    cy: rect.y + rect.height * (YARD_SIDINGS_V2.y0 + row * YARD_SIDINGS_V2.dy),
+    // The measured near railhead for this siding — NOT `y0 + row * dy`. The
+    // painted sidings recede, so their pitch is not constant and no linear
+    // model lands on all four (see `railY`'s comment).
+    cy: rect.y + rect.height * (YARD_SIDINGS_V2.railY[row] ?? YARD_SIDINGS_V2.railY[0]!),
     w: rect.width * YARD_SIDINGS_V2.carW,
     h: rect.height * YARD_SIDINGS_V2.carH,
   };
