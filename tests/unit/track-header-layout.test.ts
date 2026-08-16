@@ -18,8 +18,8 @@ import { describe, expect, it } from "vitest";
 import {
   HEADER_PLATE_FIELD,
   TRACK_HEADER,
+  headerColumnCentres,
   headerPlateField,
-  headerRowCentres,
   trackHeaderSlots,
 } from "../../src/game/scene-layout.ts";
 
@@ -34,8 +34,10 @@ describe("track header field", () => {
     // plate rect or the fractions has to restate them deliberately.
     expect(field.x0).toBeCloseTo(508.8, 1);
     expect(field.x1).toBeCloseTo(2028.2, 1);
-    expect(field.y0).toBeCloseTo(59.9, 1);
-    expect(field.y1).toBeCloseTo(346.8, 1);
+    expect(field.y0).toBeCloseTo(65.2, 1);
+    expect(field.y1).toBeCloseTo(371.2, 1);
+    // 306 px of usable height is the whole reason the controls are 134 tall.
+    expect(field.y1 - field.y0).toBeCloseTo(306, 0);
   });
 
   it("is a strictly smaller box than the plate it belongs to", () => {
@@ -46,69 +48,63 @@ describe("track header field", () => {
   });
 });
 
-describe("headerRowCentres", () => {
-  it("runs the row flush from one end of the field to the other", () => {
-    const widths = [100, 200, 100];
-    const [a, , c] = headerRowCentres({ x0: 0, x1: 1000 }, widths);
-    expect(a! - widths[0]! / 2).toBeCloseTo(0, 6);
-    expect(c! + widths[2]! / 2).toBeCloseTo(1000, 6);
+describe("headerColumnCentres", () => {
+  it("splits the field into equal columns and centres each", () => {
+    const xs = headerColumnCentres({ x0: 0, x1: 1000 }, 5);
+    expect(xs).toEqual([100, 300, 500, 700, 900]);
   });
 
-  it("leaves equal gaps between neighbours", () => {
-    const widths = [100, 200, 60, 140];
-    const xs = headerRowCentres({ x0: 0, x1: 1000 }, widths);
-    const gaps = xs.slice(1).map((x, i) => (x - widths[i + 1]! / 2) - (xs[i]! + widths[i]! / 2));
-    for (const g of gaps) expect(g).toBeCloseTo(gaps[0]!, 6);
-  });
-
-  it("reports a row that does not fit as overlap rather than clamping it", () => {
-    // Silently squeezing an over-wide row back inside would hide exactly the
-    // condition the containment tests below exist to catch.
-    const xs = headerRowCentres({ x0: 0, x1: 100 }, [80, 80]);
-    expect(xs[1]! - xs[0]!).toBeLessThan(80);
+  it("keeps the outer columns symmetric about the field", () => {
+    const xs = headerColumnCentres({ x0: 200, x1: 800 }, 4);
+    expect(xs[0]! - 200).toBeCloseTo(800 - xs[3]!, 6);
   });
 });
 
-describe("every header control lands on the plate", () => {
-  const ids = TRACK_HEADER.rows.flatMap((r) => r.slots.map((s) => s.id));
+describe("every header control lands on the parchment", () => {
+  const ids = TRACK_HEADER.rows.flatMap((r) => r.cells.map((c) => c.id));
 
-  it("covers every slot the scene binds", () => {
-    expect(ids.sort()).toEqual(
+  it("covers every cell the scene binds", () => {
+    expect([...ids].sort()).toEqual(
       ["clear", "fast", "loop", "map", "ride", "send", "slow", "stop", "tarp", "tempo"],
     );
   });
 
-  // There is deliberately NO "each control is inside the field horizontally"
-  // assertion. The solver places every row flush from x0 to x1, so such a test
-  // passes by construction whatever the field is — it would restate the
-  // definition rather than check it, and it duly went green when the field was
-  // seeded back to the wrong numbers. The honest horizontal check is that a row
-  // FITS: an over-subscribed row is exactly what negative gaps mean, and that is
-  // the overlap test below.
-
-  // Vertically the rule is the PLATE, not the parchment: a keycap standing proud
-  // of the top or bottom rail reads as hardware mounted on the plate, and
-  // shrinking every control to clear a 287 px field would cost a four-year-old a
-  // third of every touch target. Falling off the plate entirely — which the loop
-  // counter did — is the thing that was actually wrong.
-  it.each(ids)("%s sits inside the plate vertically", (id) => {
+  // BOTH axes now. An earlier pass checked only the plate vertically, on the
+  // theory that a keycap standing proud of the top or bottom rail read as
+  // mounted hardware. It did not: on the live site the row hung visibly off the
+  // bottom rail, worst on TARP, whose `pad-key` art fills its cell edge to edge
+  // where the stone keycaps contain-fit narrower. The rule is the parchment.
+  it.each(ids)("%s sits inside the parchment on both axes", (id) => {
     const r = slots[id]!;
-    expect(r.y - r.height / 2).toBeGreaterThanOrEqual(plateTop);
-    expect(r.y + r.height / 2).toBeLessThanOrEqual(plateBottom);
+    expect(r.x - r.width / 2).toBeGreaterThanOrEqual(field.x0);
+    expect(r.x + r.width / 2).toBeLessThanOrEqual(field.x1);
+    expect(r.y - r.height / 2).toBeGreaterThanOrEqual(field.y0);
+    expect(r.y + r.height / 2).toBeLessThanOrEqual(field.y1);
   });
 
-  it("gives the two rows the same left and right margin", () => {
+  it("stays on the plate, which the parchment is inside of", () => {
+    for (const id of ids) {
+      const r = slots[id]!;
+      expect(r.y - r.height / 2).toBeGreaterThanOrEqual(plateTop);
+      expect(r.y + r.height / 2).toBeLessThanOrEqual(plateBottom);
+    }
+  });
+
+  // THE grid assertion: a cell in column i of row 1 shares its centre with the
+  // cell in column i of row 2. This is what the deck was missing — the two rows
+  // were each spread flush end-to-end with equal gaps, which lines nothing up
+  // when one row holds four controls and the other holds six.
+  it("hangs both rows off the same column centres", () => {
+    const xs = headerColumnCentres(field, TRACK_HEADER.columns);
     for (const row of TRACK_HEADER.rows) {
-      const first = slots[row.slots[0]!.id]!;
-      const last = slots[row.slots[row.slots.length - 1]!.id]!;
-      expect(first.x - first.width / 2).toBeCloseTo(field.x0, 6);
-      expect(last.x + last.width / 2).toBeCloseTo(field.x1, 6);
+      expect(row.cells.length).toBeLessThanOrEqual(TRACK_HEADER.columns);
+      row.cells.forEach((c, i) => expect(slots[c.id]!.x).toBeCloseTo(xs[i]!, 6));
     }
   });
 
   it("never overlaps two controls in the same row", () => {
     for (const row of TRACK_HEADER.rows) {
-      const rects = row.slots.map((s) => slots[s.id]!);
+      const rects = row.cells.map((c) => slots[c.id]!);
       for (let i = 1; i < rects.length; i++) {
         const gap = (rects[i]!.x - rects[i]!.width / 2) - (rects[i - 1]!.x + rects[i - 1]!.width / 2);
         expect(gap).toBeGreaterThan(0);
@@ -118,8 +114,8 @@ describe("every header control lands on the plate", () => {
 
   it("keeps the rows clear of each other", () => {
     const [top, bottom] = TRACK_HEADER.rows;
-    const lowest = Math.max(...top!.slots.map((s) => top!.cy + s.height / 2));
-    const highest = Math.min(...bottom!.slots.map((s) => bottom!.cy - s.height / 2));
+    const lowest = Math.max(...top!.cells.map((c) => top!.cy + c.height / 2));
+    const highest = Math.min(...bottom!.cells.map((c) => bottom!.cy - c.height / 2));
     expect(highest).toBeGreaterThan(lowest);
   });
 });

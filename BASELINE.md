@@ -984,10 +984,40 @@ Now: both rows solve against the measured field in `scene-layout.ts`
 run-time caption, the loop count badges the LOOP key's corner, and the readout
 reads `SPEED nnn` in dark ink — it was cream on cream parchment.
 
-`tests/unit/track-header-layout.test.ts` (19 tests) is the guard. It deliberately
-does **not** assert horizontal containment: the solver places every row flush
-from `x0` to `x1`, so that assertion passes by construction whatever the field is
-— it was written, seeded with the wrong field, and went green. The honest checks
-are the pinned field numbers, vertical containment against the plate, and
-no-overlap (an over-subscribed row is what negative gaps mean). Both of the
-latter were seeded with a failure and watched to fail.
+### The second pass, after Eric looked at the first
+
+The first pass fixed the field but kept two bad calls, and on the live site it
+read **worse** than what it replaced:
+
+1. It gave the rows **licence to stand proud of the top and bottom rails**, on
+   the theory that a keycap overlapping the frame reads as mounted hardware. It
+   does not — the row hung visibly off the bottom rail, worst on TARP, whose
+   `pad-key` art fills its cell edge to edge where the stone keycaps contain-fit
+   narrower. **The rule is now the parchment, on both axes**, and the controls
+   are sized to the 306 px field (134 tall) rather than the plate being asked to
+   hide the overflow.
+2. It tinted the blank TARP slab with the tarp's own saturated blue. A tint
+   MULTIPLIES, so that crushed the slab's painted shading into **one flat blue
+   rectangle** — precisely what `plate()` refuses to draw, in a scene whose whole
+   header rebuild was about removing flat-colour chrome. It is untinted now.
+
+Also in the second pass: the deck is a **5-column grid**, both rows hanging off
+the same column centres (equal end-to-end gaps are not a grid — with four
+controls in one row and six in the other, nothing lined up); **SEND moved to row
+1** to bookend MAP, leaving row 2 as five even cells; the loop count is stroked
+text rather than a filled chip (the chip read as a black blob stuck to the key);
+and TARP latches by showing `pad-key`'s **seated** frame — a key that is
+physically down is a state a four-year-old can read, where a gold wash is a hint.
+
+Three things had to be measured rather than guessed for the TARP caption alone:
+`pad-key`'s pale face is only **0.1543..0.7969** of its canvas, that face is **not
+centred** on the sprite, and Press Start 2P advances **exactly 1 em per glyph**
+("TARP" at 100 px is 400 px). Sizing by arithmetic over the string, never by
+measuring the Text object — a scene lays out before the webfont resolves.
+
+`tests/unit/track-header-layout.test.ts` (19 tests) is the guard: pinned field
+numbers, containment on both axes, the column-alignment assertion, and no-overlap.
+An earlier draft also asserted horizontal containment and that one was a
+tautology — the solver places relative to the field, so it passed by construction
+whatever the field was; it was seeded with the wrong field and went green. It is
+gone, and the file says why.

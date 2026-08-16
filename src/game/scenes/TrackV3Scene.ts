@@ -160,11 +160,12 @@ export interface V3TerrainRide {
 const W = 2560;
 const H = 1440;
 
-/** The tarp's own colour, sampled from `public/assets/spritesheets/tarp.png`
- *  (its dominant opaque pixel, 44,107,199). The TARP key has no authored art, so
- *  it tints a blank keycap this — the one thing that ties the button to the
- *  thing it drops on a car. */
-const TARP_BLUE = 0x2c6bc7;
+/** `pad-key`'s pale label face as fractions of its 512 canvas, measured by
+ *  scanning the packed frame (2026-08-16). It is 64 % of the canvas wide and
+ *  sits ~4 % LEFT of centre, which is why a caption centred on the cell and
+ *  sized to the cell overhung the brass frame on both sides. */
+const PAD_KEY_FACE = { x0: 0.1543, x1: 0.7969 } as const;
+
 
 /** Beats to the bar, and how much of each beat the Beat Lantern spends in its
  *  raised frame — short, so the flick reads as a hit rather than a wobble. */
@@ -547,11 +548,9 @@ export class TrackV3Scene extends Phaser.Scene {
     // Row 1 is WHERE you are and WHETHER it is playing; row 2 is HOW it plays.
     this.plate("panel-header-v2", TRACK_HEADER.plate);
 
-    // Both rows are solved in `scene-layout.ts` against the plate's MEASURED
-    // parchment field, so they share their margins instead of only claiming to.
-    // The x's this replaces were picked by hand against a GUESSED field
-    // ("~400..2064"); it is really 509..2028, so SLOW stood on the left gear
-    // medallion and SEND SONG ran off onto the right-hand rail.
+    // A 5-column GRID, solved in `scene-layout.ts` against the plate's MEASURED
+    // parchment field. The x's this replaces were picked by hand against a
+    // GUESSED field ("~400..2064"); it is really 509..2028.
     const s = trackHeaderSlots();
     this.placeButton("btn-nav-map", s["map"]!,
       () => void EventBus.emit("track-nav", "map"), "MAP");
@@ -564,6 +563,14 @@ export class TrackV3Scene extends Phaser.Scene {
     // rather than the landscape one the keycap fallback wanted.
     this.placeButton("btn-track-clear", s["clear"]!,
       () => void EventBus.emit("track-clear-train"), "CLEAR");
+    // Render the song to a WAV and offer share/save. On row 1, bookending MAP:
+    // both are wide painted plaques and both are ways OUT of this view, and
+    // putting it here leaves row 2 as five even cells instead of six crammed
+    // ones. The oval has had SEND since AR-020; without it the side-scroller
+    // could not have become the default without losing the one feature that
+    // gets a song off the device.
+    this.placeButton("btn-send-song", s["send"]!,
+      () => void EventBus.emit("track-send"), "SEND");
 
     this.buildTransportRow(s);
   }
@@ -630,18 +637,22 @@ export class TrackV3Scene extends Phaser.Scene {
     //
     // On the CORNER rather than centred on the face: the keycap art has arrows
     // across its middle and the word LOOP along its foot, so there is no clear
-    // space on it. A chip sitting proud of one corner reads as a badge; the same
-    // chip nudged onto the top edge just reads as a smudge on the key.
-    const badgeX = loop.x + loop.width * 0.35;
-    const badgeY = loop.y - loop.height * 0.35;
-    this.add
-      .circle(badgeX, badgeY, 30, 0x1a1526, 0.92)
-      .setStrokeStyle(3, 0xffd166, 0.9)
-      .setDepth(DEPTH.hud + 1.5);
+    // space on it.
+    //
+    // STROKED TEXT, not a filled chip. The first attempt drew a dark disc behind
+    // the number so it would read over the mottled stone; against the painted
+    // deck that disc was simply a black blob stuck to the key. An outline does
+    // the same legibility job without adding a shape to the picture.
+    // Sized and placed so the WIDEST value it can hold ("2x") still clears the
+    // key's right edge: `btn-transport-loop` contain-fits to ~0.9 of its cell
+    // width, and Press Start 2P advances 1 em per glyph, so two glyphs plus half
+    // the outline must fit inside that from the offset below.
     this.loopText = this.add
-      .text(badgeX, badgeY, "∞", {
+      .text(loop.x + loop.width * 0.2, loop.y - loop.height * 0.28, "∞", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
+        stroke: "#1a1526",
+        strokeThickness: 8,
       })
       .setOrigin(0.5)
       .setFontSize(24)
@@ -655,20 +666,13 @@ export class TrackV3Scene extends Phaser.Scene {
     // It wore `btn-transport-loop` until 2026-08-16, which paints the word LOOP
     // into the keycap — so the deck showed TWO buttons both reading LOOP and
     // nothing anywhere reading TARP. There is no authored tarp keycap, so this
-    // borrows AR-054's blank `pad-key` (the face the sound pads label at run
-    // time, which is exactly this job) tinted the tarp's own blue and captioned.
+    // borrows AR-054's blank `pad-key`: the face the sound pads label at run
+    // time, which is exactly this job.
     this.tarpLatch = this.placeCaptionedKey(
       s["tarp"]!,
       () => void EventBus.emit("track-tarp-armed"),
       "TARP",
-      TARP_BLUE,
     );
-
-    // Render the song to a WAV and offer share/save. The oval has had this
-    // since AR-020; without it the side-scroller could not have become the
-    // default without losing the one feature that gets a song off the device.
-    this.placeButton("btn-send-song", s["send"]!,
-      () => void EventBus.emit("track-send"), "SEND");
   }
 
   /** A blank `pad-key` slab wearing a run-time caption, for a control the atlas
@@ -678,39 +682,81 @@ export class TrackV3Scene extends Phaser.Scene {
     rect: { x: number; y: number; width: number; height: number },
     fire: () => void,
     caption: string,
-    tint: number,
   ): (on: boolean) => void {
     const def = UI_SPRITES["pad-key"];
+    // `pad-key` is a two-state sprite, not an idle/pressed animation: `seated` is
+    // the slab dropped into its socket. That makes it the right art for an
+    // ARMING LATCH — the key visibly stays down while TARP is armed, which is a
+    // state a four-year-old can read. The gold wash the other latch uses is a
+    // hint; a key that is physically down is not.
+    const idle = def?.states["idle"] ?? def?.base ?? "";
+    const seated = def?.states["seated"] ?? idle;
+    let latched = false;
+    let img: Phaser.GameObjects.Image | undefined;
+    const restFrame = (): string => (latched ? seated : idle);
+
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
-      const img = this.add
+      // UNTINTED. The first attempt washed this slab with the tarp's own blue,
+      // and a tint multiplies: it crushed the painted shading into one flat
+      // rectangle — precisely what `plate()` refuses to draw, and what the rest
+      // of this deck exists to have stopped being. The slab's own grey stone and
+      // brass corners already belong to the header's material language.
+      const key = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
         .setOrigin(0.5)
-        .setTint(tint)
         .setDepth(DEPTH.hud + 1);
-      placeUiSprite(img, def, rect);
-      this.pressableAtlas(img, def, fire);
+      placeUiSprite(key, def, rect);
+      let armed = false;
+      key.setInteractive({ useHandCursor: true });
+      key.on("pointerdown", () => { armed = true; key.setFrame(seated); });
+      key.on("pointerout", () => { armed = false; key.setFrame(restFrame()); });
+      key.on("pointerup", () => {
+        key.setFrame(restFrame());
+        if (!armed) return;
+        armed = false;
+        fire();
+      });
+      img = key;
     } else {
       this.pressable(
         this.add
-          .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, tint, 1)
+          .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x8d8878, 1)
           .setDepth(DEPTH.hud + 1),
         fire,
       );
     }
-    // Cream on the tinted slab, matching every baked keycap word on this deck.
+    // DARK ink on the SLAB — not on the cell, and not the cream the stone keys
+    // use. Three separate things had to be measured rather than guessed:
+    //
+    //  - the slab's pale face is `PAD_KEY_FACE` of the canvas, only 64 % of its
+    //    width, so a caption sized to the cell runs out under the brass frame;
+    //  - that face is NOT centred on the sprite — it sits ~4 % left — so a
+    //    caption centred on the cell overhangs the right side even when it fits;
+    //  - Press Start 2P advances exactly 1 em per glyph (measured: "TARP" at
+    //    100 px is 400 px), so the width IS `chars x fontSize`. Arithmetic over
+    //    the string, never a measurement off the Text object: a scene lays out
+    //    before the webfont resolves, so measuring sizes to the fallback face
+    //    and then Press Start 2P arrives and overflows anyway.
+    const faceW = (PAD_KEY_FACE.x1 - PAD_KEY_FACE.x0) * (img?.displayWidth ?? rect.width);
+    const faceCx = (img?.x ?? rect.x)
+      + ((PAD_KEY_FACE.x0 + PAD_KEY_FACE.x1) / 2 - 0.5) * (img?.displayWidth ?? rect.width);
     this.add
-      .text(rect.x, rect.y + rect.height * 0.24, caption, {
+      .text(faceCx, rect.y, caption, {
         fontFamily: "'Press Start 2P', monospace",
-        color: "#ffe9b0",
+        color: "#33302b",
       })
       .setOrigin(0.5)
-      .setFontSize(26)
+      .setFontSize(Math.floor((faceW * 0.86) / caption.length))
       .setDepth(DEPTH.hud + 2);
     const glow = this.add
       .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
       .setDepth(DEPTH.hud)
       .setVisible(false);
-    return (on: boolean) => glow.setVisible(on);
+    return (on: boolean) => {
+      latched = on;
+      glow.setVisible(on);
+      img?.setFrame(restFrame());
+    };
   }
 
   /** A chrome button that also carries a latched (gold) look, for the two

@@ -73,7 +73,8 @@ export const TRACK_SEND_MODAL = {
  * right wooden rail, and the loop counter fell off the plate entirely.
  *
  * `tests/unit/track-header-layout.test.ts` asserts every header control's rect
- * lands inside this box, so moving one back onto the frame fails the gate.
+ * lands inside this box on BOTH axes, so a control drifting back onto the frame
+ * fails the gate.
  */
 export const HEADER_PLATE_FIELD = {
   x0: 0.1105,
@@ -97,89 +98,80 @@ export function headerPlateField(plate: PlacedRect): { x0: number; x1: number; y
   };
 }
 
-/**
- * Spread one row of control widths across the field with EQUAL gaps: first flush
- * left, last flush right, everything between evenly spaced. Returns a centre x
- * per item.
- *
- * Both header rows go through this, which is the point — the two decks used to
- * be two independent piles of hand-picked x's, and the comment claiming they
- * "use the same columns" was simply untrue. Sharing the solver makes the shared
- * margins a fact rather than a claim.
- *
- * A row wider than its field returns overlapping (negative-gap) centres rather
- * than silently clamping: the caller asked for something that does not fit, and
- * the unit test that checks containment is where that should surface.
- */
-export function headerRowCentres(
-  field: { x0: number; x1: number },
-  widths: readonly number[],
-): number[] {
-  const total = widths.reduce((a, w) => a + w, 0);
-  const gap = widths.length > 1 ? (field.x1 - field.x0 - total) / (widths.length - 1) : 0;
-  const out: number[] = [];
-  let cursor = field.x0;
-  for (const w of widths) {
-    out.push(cursor + w / 2);
-    cursor += w + gap;
-  }
-  return out;
+/** Centre x of each of `n` equal columns spanning the field. */
+export function headerColumnCentres(field: { x0: number; x1: number }, n: number): number[] {
+  const pitch = (field.x1 - field.x0) / n;
+  return Array.from({ length: n }, (_, i) => field.x0 + pitch * (i + 0.5));
 }
 
 /**
- * The side-scroller's two-row header deck, as SLOTS rather than as hand-picked
- * x's. Row 1 is where you are and whether it is playing; row 2 is how it plays.
+ * The side-scroller's header deck: a 5-column, 2-row GRID.
  *
- * Each slot is the box the art is contain-fitted into, so the slot is an upper
+ * Both rows hang off the same five column centres, which is what makes it read
+ * as one control panel rather than as two independent piles of hand-picked x's.
+ * (An earlier pass spread each row flush end-to-end with equal gaps. Equal gaps
+ * are not the same thing as a grid: with four controls in one row and six in the
+ * other, nothing lined up vertically and the deck read as scattered.)
+ *
+ * Every cell is the box its art is contain-fitted into, so the cell is an upper
  * bound on the ink and containment can be checked against boxes instead of
  * pixels. `TrackV3Scene` binds a sprite, an event and a caption to each id; the
  * geometry lives here because that is what makes it testable without Phaser.
  *
- * Vertical placement is deliberately looser than horizontal: a keycap standing
- * proud of the plate's top or bottom RAIL reads as hardware mounted on the
- * plate, and shrinking every control to clear the 287 px parchment field would
- * cost a four-year-old a third of every touch target. Horizontally there is no
- * such licence — the left and right ends of the plate are gear medallions, and a
- * control on one reads as broken.
+ * EVERYTHING STAYS INSIDE THE PARCHMENT, on both axes. A previous pass gave the
+ * rows licence to stand proud of the top and bottom rails on the theory that a
+ * keycap overlapping the frame reads as mounted hardware. It does not — it reads
+ * as a control falling off the panel, most obviously on the one key whose art
+ * fills its cell edge to edge. The field is 306 px tall, so two rows of 134 with
+ * a gap is what actually fits, and the controls are sized to that rather than
+ * the plate being asked to hide the overflow.
  */
 export const TRACK_HEADER = {
-  // 2560x1440 design space; the plate overhangs the top edge on purpose.
-  plate: { x: 1280, y: 205, width: 1980, height: 450 },
+  // 2560x1440 design space; the plate overhangs the TOP screen edge on purpose
+  // (chrome that runs off the frame is the frame). Its bottom stops at 460,
+  // clear of the hills band at 470.
+  plate: { x: 1280, y: 220, width: 1980, height: 480 },
+  columns: 5,
   rows: [
+    // WHERE you are, WHETHER it is playing, and what leaves with the song. The
+    // two wide plaques (MAP, SEND) bookend the three transport keycaps.
     {
-      cy: 118,
-      slots: [
-        // MAP's plaque is landscape; the other three are near-square 512 canvases.
-        { id: "map", width: 300, height: 155 },
-        { id: "ride", width: 190, height: 190 },
-        { id: "stop", width: 190, height: 190 },
-        { id: "clear", width: 185, height: 185 },
+      cy: 142,
+      cells: [
+        // MAP and SEND are landscape plaques; their widths are their art's
+        // aspect at this row height, so the contain-fit does not leave dead
+        // space inside the cell that the grid then spaces around.
+        { id: "map", width: 256, height: 134 },
+        { id: "ride", width: 134, height: 134 },
+        { id: "stop", width: 134, height: 134 },
+        { id: "clear", width: 134, height: 134 },
+        { id: "send", width: 235, height: 134 },
       ],
     },
+    // HOW it plays: the tempo trio, then the two latches.
     {
-      cy: 300,
-      slots: [
-        { id: "slow", width: 165, height: 165 },
-        // The tempo readout takes a slot like any other so the keycaps either
-        // side of it space evenly against everything else in the row.
-        { id: "tempo", width: 210, height: 60 },
-        { id: "fast", width: 165, height: 165 },
-        { id: "loop", width: 165, height: 165 },
-        { id: "tarp", width: 165, height: 165 },
-        { id: "send", width: 300, height: 165 },
+      cy: 294,
+      cells: [
+        { id: "slow", width: 134, height: 134 },
+        // Drawn text, not a sprite: `lcd-transport` is a Tiled display anchor
+        // the oval mounts from its map, and this scene has no map.
+        { id: "tempo", width: 260, height: 134 },
+        { id: "fast", width: 134, height: 134 },
+        { id: "loop", width: 134, height: 134 },
+        { id: "tarp", width: 134, height: 134 },
       ],
     },
   ],
 } as const;
 
-/** Every header control's placed rect, keyed by slot id. */
+/** Every header control's placed rect, keyed by cell id. */
 export function trackHeaderSlots(): Record<string, PlacedRect> {
   const field = headerPlateField(TRACK_HEADER.plate);
+  const xs = headerColumnCentres(field, TRACK_HEADER.columns);
   const out: Record<string, PlacedRect> = {};
   for (const row of TRACK_HEADER.rows) {
-    const xs = headerRowCentres(field, row.slots.map((s) => s.width));
-    row.slots.forEach((s, i) => {
-      out[s.id] = { x: xs[i] ?? 0, y: row.cy, width: s.width, height: s.height };
+    row.cells.forEach((c, i) => {
+      out[c.id] = { x: xs[i] ?? 0, y: row.cy, width: c.width, height: c.height };
     });
   }
   return out;
