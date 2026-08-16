@@ -5,8 +5,13 @@
 # Decision A3: re-home, don't police. Raw art belongs in the gitignored art/
 # tree; anything large that lands under src/ is worth a second look, but this
 # check is a WARNING and MUST NOT fail a build. Eric ships reference batches
-# deliberately (see src/assets/spritesheets/ar015/) and a blocking guard would
-# fight his actual workflow. Exit status is always 0, by design.
+# deliberately and a blocking guard would fight his actual workflow. Exit
+# status is always 0, by design.
+#
+# (The example this used to cite, src/assets/spritesheets/ar015/, moved into
+# the gitignored art/ tree on 2026-08-16 — the pass it was held for is a
+# RETIRED SPEC. The tree is clean of >2 MB files as of that date, so the
+# report below should normally print the "no tracked file" line.)
 #
 # Threshold: 2 MB, override with ASSET_SIZE_LIMIT_MB.
 
