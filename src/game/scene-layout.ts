@@ -59,6 +59,132 @@ export const TRACK_SEND_MODAL = {
   x: 0.24, y: 0.28, w: 0.52, h: 0.44,
 } as const;
 
+/**
+ * The `panel-header-v2` plate's PARCHMENT FIELD — the cream area a control may
+ * stand on — as fractions of wherever the plate is placed. `panelDef` gives that
+ * plate `stretch: true`, so the art maps corner-to-corner onto its rect and
+ * these fractions hold at any size it is mounted at.
+ *
+ * MEASURED, not eyeballed (2026-08-16): the packed 2687x687 frame was drawn to a
+ * canvas and scanned for the cream field, giving x 0.1105..0.8779, y
+ * 0.1776..0.8151. That matters because the arithmetic this replaces GUESSED the
+ * field as "~400..2064" of a 290..2270 plate and was wrong on both sides and the
+ * bottom — which is why SLOW stood on the left gear medallion, SEND SONG on the
+ * right wooden rail, and the loop counter fell off the plate entirely.
+ *
+ * `tests/unit/track-header-layout.test.ts` asserts every header control's rect
+ * lands inside this box, so moving one back onto the frame fails the gate.
+ */
+export const HEADER_PLATE_FIELD = {
+  x0: 0.1105,
+  x1: 0.8779,
+  y0: 0.1776,
+  y1: 0.8151,
+} as const;
+
+export interface PlacedRect { x: number; y: number; width: number; height: number }
+
+/** The parchment field of a `panel-header-v2` mounted at `plate`, in the same
+ *  coordinates the plate was placed in. */
+export function headerPlateField(plate: PlacedRect): { x0: number; x1: number; y0: number; y1: number } {
+  const left = plate.x - plate.width / 2;
+  const top = plate.y - plate.height / 2;
+  return {
+    x0: left + HEADER_PLATE_FIELD.x0 * plate.width,
+    x1: left + HEADER_PLATE_FIELD.x1 * plate.width,
+    y0: top + HEADER_PLATE_FIELD.y0 * plate.height,
+    y1: top + HEADER_PLATE_FIELD.y1 * plate.height,
+  };
+}
+
+/**
+ * Spread one row of control widths across the field with EQUAL gaps: first flush
+ * left, last flush right, everything between evenly spaced. Returns a centre x
+ * per item.
+ *
+ * Both header rows go through this, which is the point — the two decks used to
+ * be two independent piles of hand-picked x's, and the comment claiming they
+ * "use the same columns" was simply untrue. Sharing the solver makes the shared
+ * margins a fact rather than a claim.
+ *
+ * A row wider than its field returns overlapping (negative-gap) centres rather
+ * than silently clamping: the caller asked for something that does not fit, and
+ * the unit test that checks containment is where that should surface.
+ */
+export function headerRowCentres(
+  field: { x0: number; x1: number },
+  widths: readonly number[],
+): number[] {
+  const total = widths.reduce((a, w) => a + w, 0);
+  const gap = widths.length > 1 ? (field.x1 - field.x0 - total) / (widths.length - 1) : 0;
+  const out: number[] = [];
+  let cursor = field.x0;
+  for (const w of widths) {
+    out.push(cursor + w / 2);
+    cursor += w + gap;
+  }
+  return out;
+}
+
+/**
+ * The side-scroller's two-row header deck, as SLOTS rather than as hand-picked
+ * x's. Row 1 is where you are and whether it is playing; row 2 is how it plays.
+ *
+ * Each slot is the box the art is contain-fitted into, so the slot is an upper
+ * bound on the ink and containment can be checked against boxes instead of
+ * pixels. `TrackV3Scene` binds a sprite, an event and a caption to each id; the
+ * geometry lives here because that is what makes it testable without Phaser.
+ *
+ * Vertical placement is deliberately looser than horizontal: a keycap standing
+ * proud of the plate's top or bottom RAIL reads as hardware mounted on the
+ * plate, and shrinking every control to clear the 287 px parchment field would
+ * cost a four-year-old a third of every touch target. Horizontally there is no
+ * such licence — the left and right ends of the plate are gear medallions, and a
+ * control on one reads as broken.
+ */
+export const TRACK_HEADER = {
+  // 2560x1440 design space; the plate overhangs the top edge on purpose.
+  plate: { x: 1280, y: 205, width: 1980, height: 450 },
+  rows: [
+    {
+      cy: 118,
+      slots: [
+        // MAP's plaque is landscape; the other three are near-square 512 canvases.
+        { id: "map", width: 300, height: 155 },
+        { id: "ride", width: 190, height: 190 },
+        { id: "stop", width: 190, height: 190 },
+        { id: "clear", width: 185, height: 185 },
+      ],
+    },
+    {
+      cy: 300,
+      slots: [
+        { id: "slow", width: 165, height: 165 },
+        // The tempo readout takes a slot like any other so the keycaps either
+        // side of it space evenly against everything else in the row.
+        { id: "tempo", width: 210, height: 60 },
+        { id: "fast", width: 165, height: 165 },
+        { id: "loop", width: 165, height: 165 },
+        { id: "tarp", width: 165, height: 165 },
+        { id: "send", width: 300, height: 165 },
+      ],
+    },
+  ],
+} as const;
+
+/** Every header control's placed rect, keyed by slot id. */
+export function trackHeaderSlots(): Record<string, PlacedRect> {
+  const field = headerPlateField(TRACK_HEADER.plate);
+  const out: Record<string, PlacedRect> = {};
+  for (const row of TRACK_HEADER.rows) {
+    const xs = headerRowCentres(field, row.slots.map((s) => s.width));
+    row.slots.forEach((s, i) => {
+      out[s.id] = { x: xs[i] ?? 0, y: row.cy, width: s.width, height: s.height };
+    });
+  }
+  return out;
+}
+
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
 // inside the oval is the assembly line the crane drops cars onto. Measured
 // from the 2026-07-02 repainted base plate (rail rows: oval top 0.289,

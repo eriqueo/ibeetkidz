@@ -949,7 +949,45 @@ guest feature does not get to take it back silently.
   sidings are painted at x ≈ 0.11, the gantry legs stand at x 0.510-0.554 and
   0.580-0.622. Only the VERTICAL story was fixable in code; closing the
   horizontal gap needs one of them repainted. Recorded at `YARD_CRANE_BEAM_Y`.
-- **The new header row has never been looked at.** Its five controls were placed
-  by arithmetic against the plate's parchment field and verified only by tests.
+- ~~**The new header row has never been looked at.**~~ Looked at, and the
+  arithmetic was wrong — see the re-baseline below.
 - `design/HISTORY.md`'s "Current state" is still verified against 2026-07-31 in
   its other sections; only the Track entry was corrected here.
+
+## Re-baseline — 2026-08-16 (later), the header deck measured instead of guessed
+
+| Fact | Value | Previous (earlier 2026-08-16) |
+|---|---|---|
+| Unit tests | **616 / 36 files**, 0 skipped | 597 / 35 |
+| E2E local | **44 passed**, 0 failed | 44 |
+
+Typecheck clean, `eslint .` exit 0.
+
+The header row above was placed against a parchment field the code had **guessed**
+(its own comment said "~400..2064"). Measured off the packed `panel-header-v2`
+frame — drawn to a canvas and scanned for the cream field — it is **509..2028
+horizontally, 60..347 vertically**. Consequences, all visible in a 2× crop and
+none visible to any test that existed:
+
+- SLOW stood on the left gear medallion; SEND SONG ran onto the right wooden rail.
+- The loop counter hung 92 px below the row — past the bottom rail, off the plate,
+  a stray "∞" in the sky.
+- **TARP wore `btn-transport-loop`**, which paints the word LOOP into the keycap.
+  The deck showed two buttons both reading LOOP and nothing reading TARP.
+- `pressableAtlas` looked its frames up by frame name (`states["btn-x-idle"]`)
+  where the contract in `ui-scene.ts` is by role (`states["idle"]`). Both reads
+  always missed, so every authored `-pressed` frame on this deck was dead.
+
+Now: both rows solve against the measured field in `scene-layout.ts`
+(`HEADER_PLATE_FIELD` / `TRACK_HEADER` / `trackHeaderSlots`), TARP wears a blank
+`pad-key` tinted the tarp's own blue (`#2c6bc7`, sampled from `tarp.png`) with a
+run-time caption, the loop count badges the LOOP key's corner, and the readout
+reads `SPEED nnn` in dark ink — it was cream on cream parchment.
+
+`tests/unit/track-header-layout.test.ts` (19 tests) is the guard. It deliberately
+does **not** assert horizontal containment: the solver places every row flush
+from `x0` to `x1`, so that assertion passes by construction whatever the field is
+— it was written, seeded with the wrong field, and went green. The honest checks
+are the pinned field numbers, vertical containment against the plate, and
+no-overlap (an over-subscribed row is what negative gaps mean). Both of the
+latter were seeded with a failure and watched to fail.

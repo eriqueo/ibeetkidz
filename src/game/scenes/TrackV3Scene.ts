@@ -56,6 +56,7 @@ import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
+import { TRACK_HEADER, trackHeaderSlots, type PlacedRect } from "../scene-layout.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
 import type { CarType, Project } from "../../core/types.ts";
 // The oval already owns both of these; the side-scroller mounts the SAME
@@ -158,6 +159,12 @@ export interface V3TerrainRide {
 
 const W = 2560;
 const H = 1440;
+
+/** The tarp's own colour, sampled from `public/assets/spritesheets/tarp.png`
+ *  (its dominant opaque pixel, 44,107,199). The TARP key has no authored art, so
+ *  it tints a blank keycap this — the one thing that ties the button to the
+ *  thing it drops on a car. */
+const TARP_BLUE = 0x2c6bc7;
 
 /** Beats to the bar, and how much of each beat the Beat Lantern spends in its
  *  raised frame — short, so the flick reads as a hit rather than a wobble. */
@@ -538,25 +545,27 @@ export class TrackV3Scene extends Phaser.Scene {
     // lived only on the oval), and squeezing nine controls into one row would
     // give each the ~200 px slot that made the job-bar pictures unreadable.
     // Row 1 is WHERE you are and WHETHER it is playing; row 2 is HOW it plays.
-    this.plate("panel-header-v2", { x: W / 2, y: 205, width: 1980, height: 450 });
-    const cy = 118;
-    // Four across, on the plate's parchment field (~400..2064) — a control
-    // past the gear medallion floats on the sky, which is the exact
-    // "superimposed chrome" this bar replaced. The legend row below uses the
-    // same columns so the two decks read as one frame.
-    this.placeButton("btn-nav-map", { x: 660, y: cy, width: 470, height: 150 },
+    this.plate("panel-header-v2", TRACK_HEADER.plate);
+
+    // Both rows are solved in `scene-layout.ts` against the plate's MEASURED
+    // parchment field, so they share their margins instead of only claiming to.
+    // The x's this replaces were picked by hand against a GUESSED field
+    // ("~400..2064"); it is really 509..2028, so SLOW stood on the left gear
+    // medallion and SEND SONG ran off onto the right-hand rail.
+    const s = trackHeaderSlots();
+    this.placeButton("btn-nav-map", s["map"]!,
       () => void EventBus.emit("track-nav", "map"), "MAP");
-    this.placeButton("btn-track-ride", { x: 1160, y: cy, width: 190, height: 190 },
+    this.placeButton("btn-track-ride", s["ride"]!,
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
-    this.placeButton("btn-transport-stop", { x: 1560, y: cy, width: 190, height: 190 },
+    this.placeButton("btn-transport-stop", s["stop"]!,
       () => void EventBus.emit("transport-stop"), "STOP");
     // Empty the train and start the build over. AR-043's painted plaque is a
     // near-square 512 canvas, so it takes a square slot like RIDE and STOP
     // rather than the landscape one the keycap fallback wanted.
-    this.placeButton("btn-track-clear", { x: 1930, y: cy, width: 185, height: 185 },
+    this.placeButton("btn-track-clear", s["clear"]!,
       () => void EventBus.emit("track-clear-train"), "CLEAR");
 
-    this.buildTransportRow(300);
+    this.buildTransportRow(s);
   }
 
   /**
@@ -572,56 +581,136 @@ export class TrackV3Scene extends Phaser.Scene {
    *   TARP          arms tap-a-car-to-tarp without stealing tap-to-edit
    *   SEND          AR-020's `btn-send-song` plaque
    */
-  private buildTransportRow(cy: number): void {
-    this.placeButton("btn-transport-slow", { x: 470, y: cy, width: 165, height: 165 },
+  private buildTransportRow(s: Record<string, PlacedRect>): void {
+    this.placeButton("btn-transport-slow", s["slow"]!,
       () => void EventBus.emit("tempo-changed", -10), "SLOW");
     // The readout sits BETWEEN the two tempo keycaps, which is where a kid
     // looks when they have just pressed one of them.
-    this.tempoText = this.add
-      .text(700, cy, "120", {
+    //
+    // DARK ink, not the cream every other caption uses: this is the one label
+    // that sits directly on the parchment rather than on a dark keycap, and
+    // cream-on-parchment was very nearly invisible.
+    //
+    // "SPEED" over the number, because a bare 100 on a plank says nothing —
+    // and SPEED is already the word the Workshop's own transport bar uses for
+    // tempo, so the two views name it the same thing.
+    const tempo = s["tempo"]!;
+    this.add
+      .text(tempo.x, tempo.y - 34, "SPEED", {
         fontFamily: "'Press Start 2P', monospace",
-        color: "#ffe9b0",
+        color: "#7a5433",
+      })
+      .setOrigin(0.5)
+      .setFontSize(24)
+      .setDepth(DEPTH.hud + 2);
+    this.tempoText = this.add
+      .text(tempo.x, tempo.y + 16, "120", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#4a2f1c",
       })
       .setOrigin(0.5)
       .setFontSize(44)
       .setDepth(DEPTH.hud + 2);
-    this.placeButton("btn-transport-fast", { x: 930, y: cy, width: 165, height: 165 },
+    this.placeButton("btn-transport-fast", s["fast"]!,
       () => void EventBus.emit("tempo-changed", 10), "FAST");
 
     // How many times round before the train stops. The charter puts "Mute/Loop
     // controls" on the Track's bottom bar; mute became tap-a-car and loop-count
     // was never built at all, so the song only ever looped forever.
+    const loop = s["loop"]!;
     this.loopBtn = this.placeLatchButton(
       "btn-transport-loop",
-      { x: 1270, y: cy, width: 165, height: 165 },
+      loop,
       () => void EventBus.emit("track-loop-cycled"),
       "LOOP",
     );
+    // The count BADGES the key it belongs to. It used to hang 92 px below the
+    // row, which put it past the plate's bottom rail and off the plate — a
+    // stray "∞" lying in the sky with nothing to say it meant LOOP.
+    //
+    // On the CORNER rather than centred on the face: the keycap art has arrows
+    // across its middle and the word LOOP along its foot, so there is no clear
+    // space on it. A chip sitting proud of one corner reads as a badge; the same
+    // chip nudged onto the top edge just reads as a smudge on the key.
+    const badgeX = loop.x + loop.width * 0.35;
+    const badgeY = loop.y - loop.height * 0.35;
+    this.add
+      .circle(badgeX, badgeY, 30, 0x1a1526, 0.92)
+      .setStrokeStyle(3, 0xffd166, 0.9)
+      .setDepth(DEPTH.hud + 1.5);
     this.loopText = this.add
-      .text(1270, cy + 92, "∞", {
+      .text(badgeX, badgeY, "∞", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
       })
       .setOrigin(0.5)
-      .setFontSize(28)
+      .setFontSize(24)
       .setDepth(DEPTH.hud + 2);
 
     // TARP arms the tarp gesture instead of replacing tap-to-edit. Tapping a
     // car on this view opens THAT car in the Workshop — a deliberate choice
     // (edit on the fly, 2026-08-13) that muting must not quietly take back. So
     // muting gets its own latch: arm it, and the next car you tap gets covered.
-    this.tarpLatch = this.placeLatchButton(
-      "btn-transport-loop",
-      { x: 1620, y: cy, width: 165, height: 165 },
+    //
+    // It wore `btn-transport-loop` until 2026-08-16, which paints the word LOOP
+    // into the keycap — so the deck showed TWO buttons both reading LOOP and
+    // nothing anywhere reading TARP. There is no authored tarp keycap, so this
+    // borrows AR-054's blank `pad-key` (the face the sound pads label at run
+    // time, which is exactly this job) tinted the tarp's own blue and captioned.
+    this.tarpLatch = this.placeCaptionedKey(
+      s["tarp"]!,
       () => void EventBus.emit("track-tarp-armed"),
       "TARP",
+      TARP_BLUE,
     );
 
     // Render the song to a WAV and offer share/save. The oval has had this
     // since AR-020; without it the side-scroller could not have become the
     // default without losing the one feature that gets a song off the device.
-    this.placeButton("btn-send-song", { x: 1950, y: cy, width: 300, height: 165 },
+    this.placeButton("btn-send-song", s["send"]!,
       () => void EventBus.emit("track-send"), "SEND");
+  }
+
+  /** A blank `pad-key` slab wearing a run-time caption, for a control the atlas
+   *  has no authored keycap for. Returns the same latch setter
+   *  `placeLatchButton` does. */
+  private placeCaptionedKey(
+    rect: { x: number; y: number; width: number; height: number },
+    fire: () => void,
+    caption: string,
+    tint: number,
+  ): (on: boolean) => void {
+    const def = UI_SPRITES["pad-key"];
+    if (def && this.textures.exists(UI_ATLAS_KEY)) {
+      const img = this.add
+        .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setOrigin(0.5)
+        .setTint(tint)
+        .setDepth(DEPTH.hud + 1);
+      placeUiSprite(img, def, rect);
+      this.pressableAtlas(img, def, fire);
+    } else {
+      this.pressable(
+        this.add
+          .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, tint, 1)
+          .setDepth(DEPTH.hud + 1),
+        fire,
+      );
+    }
+    // Cream on the tinted slab, matching every baked keycap word on this deck.
+    this.add
+      .text(rect.x, rect.y + rect.height * 0.24, caption, {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#ffe9b0",
+      })
+      .setOrigin(0.5)
+      .setFontSize(26)
+      .setDepth(DEPTH.hud + 2);
+    const glow = this.add
+      .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
+      .setDepth(DEPTH.hud)
+      .setVisible(false);
+    return (on: boolean) => glow.setVisible(on);
   }
 
   /** A chrome button that also carries a latched (gold) look, for the two
@@ -694,8 +783,14 @@ export class TrackV3Scene extends Phaser.Scene {
     def: { base: string; states: Record<string, string> },
     fire: () => void,
   ): void {
-    const idle = def.states[def.base] ?? def.base;
-    const down = def.states[`${def.base}-pressed`] ?? idle;
+    // `states` is keyed by ROLE ("idle" / "pressed" / "seated"), not by frame
+    // name — `ui-scene.ts` is the contract. This looked the roles up by frame
+    // name instead (`states["btn-track-ride-idle"]`), so both reads always
+    // missed, `down` collapsed to `idle`, and every authored `-pressed` frame on
+    // this deck was dead: nothing on the side-scroller's header has ever visibly
+    // depressed. `pad-key` calls its pressed state `seated`.
+    const idle = def.states["idle"] ?? def.base;
+    const down = def.states["pressed"] ?? def.states["seated"] ?? idle;
     let armed = false;
     img.setInteractive({ useHandCursor: true });
     img.on("pointerdown", () => { armed = true; img.setFrame(down); });
