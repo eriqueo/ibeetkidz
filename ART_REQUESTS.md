@@ -104,6 +104,28 @@ Rev 5 is the review that followed, on the live screens.
    of a tunnel that a side-scrolling train enters and leaves is a design
    question, not a texture request.
 
+### Added 2026-08-16 (rev 6) — from the Track header review
+
+These are NEW and are not ranked into 1–6 above, which is Eric's call. Filed
+after the first live look at the side-scroller's two-row transport deck.
+
+7. **AR-061 — the TARP keycap — HIGH.** The only control on that header with no
+   picture: a blank `pad-key` slab with a run-time word on it. A four-year-old
+   cannot read TARP, and this repo's own rule is that the icon IS the label for a
+   non-reader. The engine seam for an idle/seated pair is already built.
+8. **AR-062 — a count window on the LOOP keycap — LOW.** The loop count is
+   engine text sitting on painted art because the key has no clear space.
+9. **AR-063 — the Yard crane/siding gap — MEDIUM.** Measured: the hoist starts
+   ~0.4 of the canvas from the painted gantry. A repaint either way; **read the
+   two options in the entry before drawing**, and note it invalidates two
+   measured constants in `scene-layout.ts`.
+
+**Not reopened:** the Track's SPEED readout is still bare engine text on the
+parchment. That is **AR-013, closed by product decision on 2026-08-13** — do not
+generate `panel-lcd.png`. Engineering has given the text a `SPEED nnn` label in
+dark ink so it is legible on the cream; if the closed decision should be
+revisited that is a product call, not an art gap.
+
 ### INTEGRATED 2026-08-13 (engineering)
 
 | Request | Where it now shows |
@@ -125,6 +147,134 @@ costs GPU memory. Where an entry pins a canvas size, that number is derived from
 the slot; do not round it up "for safety". (Measured: the live atlas is 61 frames
 / 34.1 Mpx, plus 28 dead frames / 13.8 Mpx that engineering is deleting
 separately — the live art is correctly sized and does not need re-delivery.)
+
+---
+
+## AR-061 · TARP keycap for the Track header — HIGH
+
+**Target files:**
+- `src/assets/sprites/buttons/btn-track-tarp-idle.png`
+- `src/assets/sprites/buttons/btn-track-tarp-seated.png`
+
+**Why (2026-08-16 header review, Eric's eyes):** TARP is the one control on the
+side-scroller's header with **no picture**. It is a blank AR-054 `pad-key` slab
+with the word TARP drawn onto it at run time. Every other control on that deck —
+MAP, RIDE, STOP, CLEAR, SEND SONG, SLOW, FAST, LOOP — carries painted art with
+its word baked under it. This repo's own rule is that **the icon IS the label for
+a non-reader** (`tool-panels.ts`), and a four-year-old cannot read TARP.
+
+It is filed now rather than earlier because the interim was worse than blank:
+until 2026-08-16 TARP wore `btn-transport-loop`, which paints the word LOOP into
+the keycap, so the deck showed **two buttons both reading LOOP** and nothing
+anywhere reading TARP.
+
+**What the control does** — this decides the drawing. TARP is an **arming
+latch**, not a toggle: you tap TARP, then tap a car, and that car gets covered
+(muted). It is a latch because tapping a car on the Track already opens that car
+in the Workshop, and muting was not allowed to steal that gesture. So the key has
+a resting state and an ARMED state, and the armed state is on screen for as long
+as the kid takes to choose a car.
+
+**Prompt:** "Keycap for a kids' train game, matching the dark stone transport set
+(`btn-transport-loop-idle.png`, `btn-transport-stop-idle.png`): riveted
+stone/steel keycap with brass corner screws. The face shows a **blue canvas tarp
+over a small boxcar** — the tarp blue is `#2c6bc7`, sampled from the game's own
+`src/assets/sprites/tarp.png`. The word TARP is baked along the foot of the key
+in the same cream lettering the sibling keycaps use. Warm 16-colour palette,
+chunky pixels, 1px dark-plum outline, hard shadow only, true alpha 0 outside the
+art."
+
+**Two states, one canvas, matching registration:**
+
+| Frame | Reads as |
+|---|---|
+| `-idle` | Key standing up; the tarp folded or held beside the car — *not yet covering*. |
+| `-seated` | Key pressed down into its socket, the way `pad-key-seated` does; the tarp **down over the car**. |
+
+The seated frame is what shows for the whole time the gesture is armed, so the
+difference between the two has to be readable **at a glance at about 70 px on
+screen** — the key renders at 134 px in the 2560×1440 design space, which is ~70
+px on a 1366-wide browser. A subtle bevel change is not enough; the tarp itself
+should visibly move.
+
+**Sizing:** 512×512 each, transparent, pre-trimmed, per the sizing note above.
+
+**Unblocks (one seam, already built):** `placeCaptionedKey` in
+`TrackV3Scene.ts` already drives an idle/seated pair and already owns the latch
+behaviour — it was written against `pad-key` precisely so this drop would be
+cheap. Integration is a `UI_SPRITES` entry shaped like `pad-key`'s, pointing that
+method at the new id, and deleting the run-time caption and its face-measuring
+arithmetic.
+
+---
+
+## AR-062 · LOOP keycap with a count window — LOW (nothing is blocked)
+
+**Target files:** revision of `src/assets/sprites/buttons/btn-transport-loop-idle.png`
+and `-pressed.png`, or a new `btn-transport-loopcount-{idle,pressed}.png` pair if
+the plain LOOP key is still wanted elsewhere.
+
+**Why (2026-08-16):** the Track's LOOP key cycles how many times the song runs —
+∞ → 1 → 2 → 4 → ∞ — and **the count has nowhere to live on the key.**
+`btn-transport-loop` has circular arrows across its middle and the word LOOP
+along its foot, so the count is currently drawn as small outlined engine text
+tucked over the key's top-right corner, overlapping the painted arrows. It is
+legible, and it is exactly the engine-text-on-painted-art seam this queue exists
+to close. Two worse versions were tried first and rejected on sight: hanging the
+count below the key (it fell off the plate entirely) and putting it in a filled
+dark chip (it read as a black blob stuck to the key).
+
+**Prompt:** "Same keycap, with a small brass-framed **count window** punched into
+the upper-right of the face — an empty cream or dark display window about 22 % of
+the key's width, kept completely plain because the engine renders `∞`, `1x`, `2x`
+or `4x` into it at run time. Shrink or shift the circular arrows left to make
+room; keep the baked word LOOP along the foot."
+
+**Unblocks:** `TrackV3Scene.buildTransportRow` moves `loopText` from a hand-picked
+corner offset onto the measured window rect, and the outline stroke it needs to
+survive the mottled stone comes off.
+
+---
+
+## AR-063 · Yard: the crane and the sidings are 0.4 of the canvas apart — MEDIUM
+
+**Target file:** `src/assets/scenes-v2/yard-scene-clean-v2.png` (2560×1440) —
+repaint. **This is a layout decision, not a texture request; read both options
+before drawing.**
+
+**Why (measured 2026-08-16, and recorded in code at `YARD_CRANE_BEAM_Y`):** in
+the Yard a car is picked up from a siding and flown to the assembly line by the
+gantry crane. Measured off the current plate:
+
+| Thing | Where it is painted |
+|---|---|
+| Sidings (4 rails) | y 0.5278 / 0.6215 / 0.7118 / 0.7993, cars from x ≈ 0.085 |
+| Assembly line | y 0.361 |
+| Gantry legs | x 0.510–0.554 and 0.580–0.622 |
+| Gantry beam | y 0.3007 |
+
+So the hoist **begins about 0.4 of the canvas away from the crane that is
+supposed to be lifting the car.** The crane's VERTICAL story was fixed in code on
+2026-08-16 — it now lifts to the measured beam and lowers onto the line, where it
+used to hoist the car *down* to 0.476 when its destination was 0.361 — but the
+horizontal gap cannot be closed in code without moving the cars off their painted
+rails.
+
+**Two ways to close it:**
+
+- **(a) Repaint the sidings so they run under the gantry.** Truest to a real
+  yard's geometry, but it moves four rails and every car position with them.
+- **(b) Repaint the gantry so its span reaches the sidings** — a longer beam, or
+  a beam on a travelling trolley that can run out over the storage area.
+  Cheaper, and arguably more correct: a real yard gantry spans the whole area it
+  serves. **Engineering's preference, if the art agent has no strong view.**
+
+**Engineering handoff — read before delivering:** `YARD_CRANE_BEAM_Y` and
+`YARD_SIDINGS_V2` in `src/game/scene-layout.ts` are both measured off the CURRENT
+plate. A repaint invalidates both; they must be re-measured and updated in the
+same change. `tests/unit/yard-layout.test.ts` guards the siding pitches and will
+fail loudly if they are not, which is the intended behaviour, not a problem with
+the drop.
 
 ---
 
@@ -2702,7 +2852,31 @@ else about the plate needs to move.
 
 ---
 
-## AR-060 follow-up · the open cars are 4 MB each — LOW, but real
+## ✅ DONE — AR-060 follow-up · the open cars are 4 MB each
+
+**Closed 2026-08-16 by engineering, no art redelivery needed.** All four were
+re-encoded with pngquant in place. Verified on disk 2026-08-17:
+
+| File | Was | Now |
+|---|---|---|
+| `car-open-boxcar.png` | 4.05 MB | **1.23 MB** |
+| `car-open-hopper.png` | 3.88 MB | **1.10 MB** |
+| `car-open-tanker.png` | 3.59 MB | **0.84 MB** |
+| `car-open-flatcar.png` | 1.88 MB | **0.49 MB** |
+
+~13.4 MB down to ~3.7 MB. `map-scene-clean.png` went through the same pass.
+
+**The ask below states its premise wrongly, and the correction is worth keeping**
+— it is why the encoder choice mattered rather than being a formality. It claims
+"the art is flat pixel work with a limited palette". Measured, these files carry
+**190k–271k unique opaque RGB values and ~229 distinct alpha levels** each. They
+are not flat indexed art. That is why the naive quantiser lost: FASTOCTREE
+produced 36 dB PSNR with visible banding, where pngquant held 41–45 dB. Anything
+re-exporting art in this repo should measure the source before assuming a palette.
+
+---
+
+## AR-060 follow-up · the open cars are 4 MB each — ORIGINAL SPEC (premise corrected above)
 
 The four native cutaways are mounted and they are the right art. Their FILE
 sizes are a problem worth one pass: `car-open-boxcar.png` is 4.05 MB,
