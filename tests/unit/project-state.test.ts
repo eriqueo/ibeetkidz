@@ -377,6 +377,22 @@ describe("history", () => {
     h = dispatch(h, { type: "applyEffect", clipId: "ghost", effect: { id: "robot", amount: 1 } });
     expect(h.past).toHaveLength(0);
   });
+
+  it("navigation changes every reachable snapshot without covering content history", () => {
+    let h = initHistory(emptyProject("p"));
+    h = dispatch(h, { type: "addClip", clip: clip("c1") });
+    const contentDepth = h.past.length;
+
+    h = dispatch(h, { type: "setActiveView", view: "yard" });
+
+    expect(h.past).toHaveLength(contentDepth);
+    expect(h.present.activeView).toBe("yard");
+    expect(h.past.every((project) => project.activeView === "yard")).toBe(true);
+    h = undo(h);
+    expect(h.present.clips["c1"]).toBeUndefined();
+    expect(h.present.activeView).toBe("yard");
+    expect(h.future.every((project) => project.activeView === "yard")).toBe(true);
+  });
 });
 
 describe("melody + song settings", () => {

@@ -22,6 +22,7 @@ import {
 } from "../core/project-state.ts";
 import type { Command, Project } from "../core/types.ts";
 import { lostBy, offersUndo } from "../core/undoable.ts";
+import { commandHistoryPolicy } from "../core/command-policy.ts";
 import type { KidMessage } from "../core/project-schema.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
@@ -49,6 +50,34 @@ const MELODY_VOICES: MelodyVoice[] = Object.entries(STATION_VOICE)
 const store: Store = createStore(initHistory(emptyProject(`proj-${Date.now()}`)));
 
 const getProject = (): Project => store.getSnapshot().present;
+
+// The offer is application state, not scene state. A scene may be destroyed
+// while the child travels, but the history entry it describes remains current.
+// Owning the deadline here also prevents every new scene from restarting a
+// fresh seven-second timer for an increasingly stale offer.
+const UNDO_OFFER_MS = 7000;
+let currentUndoOffer: string | null = null;
+let undoOfferTimer: ReturnType<typeof setTimeout> | undefined;
+
+function withdrawUndoOffer(): void {
+  if (undoOfferTimer) clearTimeout(undoOfferTimer);
+  undoOfferTimer = undefined;
+  currentUndoOffer = null;
+  EventBus.emit("undo-withdrawn");
+}
+
+function publishUndoOffer(lost: string): void {
+  if (undoOfferTimer) clearTimeout(undoOfferTimer);
+  currentUndoOffer = lost;
+  EventBus.emit("undo-offered", lost);
+  undoOfferTimer = setTimeout(withdrawUndoOffer, UNDO_OFFER_MS);
+}
+
+// Scenes attach their presentation adapter before announcing readiness. Replay
+// the authoritative current value so navigation cannot make the offer vanish.
+EventBus.on("current-scene-ready", () => {
+  if (currentUndoOffer) EventBus.emit("undo-offered", currentUndoOffer);
+});
 
 // ── Test bridge (dev-server only) ───────────────────────────────────────────
 // The v2 Workshop view is a pure Phaser canvas, so e2e can't click its controls
@@ -143,8 +172,8 @@ function dispatch(cmd: Command): void {
   // the command keeps this honest about what actually happened.
   if (store.getSnapshot() === before) return;
   const lost = offersUndo(cmd) ? lostBy(cmd) : null;
-  if (lost) EventBus.emit("undo-offered", lost);
-  else EventBus.emit("undo-withdrawn");
+  if (lost) publishUndoOffer(lost);
+  else if (commandHistoryPolicy(cmd) !== "navigation") withdrawUndoOffer();
 }
 
 /**
@@ -170,8 +199,8 @@ function dispatchAll(cmds: readonly Command[], offer?: string): void {
   // Same rule as the single-command arm: ask the STORE whether anything moved,
   // not the commands what they intended. A batch can be entirely refused.
   if (store.getSnapshot() === before) return;
-  if (offer) EventBus.emit("undo-offered", offer);
-  else EventBus.emit("undo-withdrawn");
+  if (offer) publishUndoOffer(offer);
+  else withdrawUndoOffer();
 }
 
 // ── "I can't save your song" channel ────────────────────────────────────────
@@ -392,12 +421,12 @@ const api: AppApi = {
   // next tap would undo whatever came before the thing it claims to restore.
   undo: () => {
     store.undo();
-    EventBus.emit("undo-withdrawn");
+    withdrawUndoOffer();
     if (engine.isPlaying) engine.reconcile(getProject());
   },
   redo: () => {
     store.redo();
-    EventBus.emit("undo-withdrawn");
+    withdrawUndoOffer();
     if (engine.isPlaying) engine.reconcile(getProject());
   },
   save: () => void persist(),

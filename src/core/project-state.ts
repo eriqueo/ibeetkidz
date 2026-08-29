@@ -37,6 +37,7 @@ import {
 import { MELODY_ROWS, type ScaleId, type KeyId } from "./scale.ts";
 import { CAR_COLORS, liveryIndexOf, nextCarColor } from "./car-identity.ts";
 import type { PitchPin } from "./types.ts";
+import { commandHistoryPolicy } from "./command-policy.ts";
 
 const clamp = (v: number, lo: number, hi: number): number =>
   Math.max(lo, Math.min(hi, v));
@@ -1033,6 +1034,13 @@ export function initHistory(present: Project): HistoryState {
 export function dispatch(history: HistoryState, cmd: Command): HistoryState {
   const next = reduce(history.present, cmd);
   if (next === history.present) return history; // no-op commands don't pollute history
+  if (commandHistoryPolicy(cmd) === "navigation") {
+    return {
+      past: history.past.map((project) => reduce(project, cmd)),
+      present: next,
+      future: history.future.map((project) => reduce(project, cmd)),
+    };
+  }
   const past = [...history.past, history.present].slice(-HISTORY_LIMIT);
   return { past, present: next, future: [] };
 }

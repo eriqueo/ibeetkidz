@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { tapNamedPhaserObject } from "./phaser-pixels.ts";
 
 // The Track: the side-scroller, which is what you get with no flag at all as of
 // 2026-08-16. `?oval` opts back into the old ring.
@@ -36,12 +37,92 @@ function emit(page: Page, event: string, ...args: unknown[]): Promise<void> {
   );
 }
 
+async function tapMapDestination(page: Page, id: string): Promise<void> {
+  const point = await page.evaluate((spawnId) => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const i = scene.chromeSpawns.findIndex((spawn: any) => spawn.id === spawnId);
+    const hit = scene.chromeHits[i];
+    if (!hit?.input) return { error: `no interactive map spawn ${spawnId}` };
+    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+    const game = scene.scale.gameSize;
+    return {
+      x: canvas.left + hit.x * (canvas.width / game.width),
+      y: canvas.top + hit.y * (canvas.height / game.height),
+    };
+  }, id);
+  expect((point as { error?: string }).error ?? null).toBeNull();
+  await page.mouse.click((point as any).x, (point as any).y);
+}
+
 test("the side-scroller is the Track you get with no flag", async ({ page }) => {
   await bootV3(page);
   const key = await page.evaluate(
     () => (window as any).__ibeetkidz_test__.getScene().scene.key,
   );
   expect(key).toBe("TrackV3Scene");
+});
+
+test("a kid can drive the default Track through its real canvas controls", async ({ page }) => {
+  page.on("pageerror", (e) => console.log("[page-crash]", e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "MapScene",
+  );
+
+  await tapMapDestination(page, "hit-track");
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
+  );
+
+  const before = await state(page);
+  await tapNamedPhaserObject(page, "track-control:btn-track-ride");
+  await expect.poll(async () => (await state(page)).pos).toBeGreaterThan(before.pos);
+
+  const loopText = () =>
+    page.evaluate(() =>
+      (window as any).__ibeetkidz_test__.getScene().children.getByName("track-display:loop").text,
+    );
+  expect(await loopText()).toBe("∞");
+  await tapNamedPhaserObject(page, "track-control:btn-transport-loop");
+  await expect.poll(loopText).toBe("1x");
+
+  await tapNamedPhaserObject(page, "track-mode:hill");
+  await expect.poll(async () => (await state(page)).terrain?.kind ?? null).toBe("hill");
+
+  const muted = () =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted);
+  expect(await muted()).toBe(false);
+  await tapNamedPhaserObject(page, "track-control:tarp");
+  const car = await state(page);
+  const canvasPoint = await page.evaluate(({ x, y }) => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+    const game = scene.scale.gameSize;
+    return {
+      x: canvas.left + x * (canvas.width / game.width),
+      y: canvas.top + y * (canvas.height / game.height),
+    };
+  }, { x: car.soundingCarX, y: car.soundingCarY });
+  await page.mouse.click(canvasPoint.x, canvasPoint.y);
+  await expect.poll(muted).toBe(true);
+
+  await tapNamedPhaserObject(page, "track-control:btn-track-clear");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train.length),
+  ).toBe(0);
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer.offering),
+  ).toBe(true);
+  await tapNamedPhaserObject(page, "undo-action");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train.length),
+  ).toBe(1);
+
+  await tapNamedPhaserObject(page, "track-control:btn-nav-map");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
+  ).toBe("map");
 });
 
 test("?oval opts back into the ring", async ({ page }) => {

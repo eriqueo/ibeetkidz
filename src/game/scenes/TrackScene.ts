@@ -74,6 +74,7 @@ import { VISUAL_STYLES } from "../../visualizer/styles.ts";
 import trackMap from "../../assets/maps/track.json";
 import type { CarType, Project } from "../../core/types.ts";
 import type { LaneGroup } from "../../core/lane-color.ts";
+import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 
 export interface TrackCar {
   readonly id: string;
@@ -121,6 +122,7 @@ const VIZ_DEPTH = 2;
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
+  private undoToast?: UndoToast;
   private path!: Phaser.Curves.Path;
   // Vertical extent of the ride path: y-sorts the train within its depth band,
   // and drives the plate's perspective (`farScale`→`nearScale`, authored on the
@@ -243,7 +245,15 @@ export class TrackScene extends BackgroundScene {
         cameraSize: () => this.scale.gameSize,
       };
     }
+    this.undoToast = attachUndoToast(this);
     this.announceReady();
+  }
+
+  get undoOffer(): { offering: boolean; lost: string } {
+    return {
+      offering: this.undoToast?.offering ?? false,
+      lost: this.undoToast?.lost ?? "",
+    };
   }
 
   // ── data-driven chrome (nav plaques + sprite transport bar + SPEED LCD) ─────

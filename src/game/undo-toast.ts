@@ -20,10 +20,9 @@ const EDGE = 0x2b2440;
 /** How long the offer stands before it withdraws, ms. Long enough for a kid to
  *  notice, register and reach — short enough that it is gone before it becomes
  *  scenery. */
-const LIFETIME_MS = 7000;
 const FADE_MS = 220;
-/** Draw order: above every scene's chrome (Track's hit layer sits at 10). */
-const DEPTH = 40;
+/** Draw order: above scene chrome and Workshop's depth-60 modal. */
+const DEPTH = 100;
 
 export class UndoToast {
   private readonly scene: Phaser.Scene;
@@ -33,7 +32,6 @@ export class UndoToast {
   private readonly lostText: Phaser.GameObjects.Text;
   private readonly actionText: Phaser.GameObjects.Text;
   private readonly hit: Phaser.GameObjects.Rectangle;
-  private timer: Phaser.Time.TimerEvent | undefined;
   private shown = false;
 
   constructor(scene: Phaser.Scene, onUndo: () => void) {
@@ -46,7 +44,7 @@ export class UndoToast {
     this.actionText = scene.add
       .text(0, 0, "PUT IT BACK", { fontFamily: "'Press Start 2P', monospace", color: "#2b2440" })
       .setOrigin(0.5);
-    this.hit = scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0);
+    this.hit = scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setName("undo-action");
     this.container = scene.add
       .container(0, 0, [this.chip, this.lostText, this.actionText, this.hit])
       .setDepth(DEPTH)
@@ -74,13 +72,11 @@ export class UndoToast {
     });
   }
 
-  /** Offer to restore what `lost` describes. Re-offering restarts the clock —
-   *  a kid deleting three lanes in a row gets one chip, not three. */
+  /** Render the composition root's current offer. Its lifetime is owned there,
+   *  so moving between scenes cannot restart or extend the deadline. */
   show(lost: string): void {
     this.lostText.setText(lost.toUpperCase());
     this.layout();
-    this.timer?.remove();
-    this.timer = this.scene.time.delayedCall(LIFETIME_MS, () => this.hide());
     if (this.shown) return;
     this.shown = true;
     this.container.setVisible(true);
@@ -89,8 +85,6 @@ export class UndoToast {
   }
 
   hide(): void {
-    this.timer?.remove();
-    this.timer = undefined;
     if (!this.shown) return;
     this.shown = false;
     this.scene.tweens.killTweensOf(this.container);
@@ -147,15 +141,14 @@ export class UndoToast {
   }
 
   destroy(): void {
-    this.timer?.remove();
     this.container.destroy();
   }
 }
 
 /**
  * Give a scene the undo offer. One line per scene, and the bus wiring lives
- * here rather than being copied into each `create()` — the two scenes that need
- * it would otherwise carry identical subscribe/unsubscribe blocks, which is the
+ * here rather than being copied into each `create()` — scenes would otherwise
+ * carry identical subscribe/unsubscribe blocks, which is the
  * shape that drifts.
  *
  * The withdrawal is not optional politeness: `store.undo()` pops the LAST

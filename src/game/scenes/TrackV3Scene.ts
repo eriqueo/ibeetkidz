@@ -54,7 +54,7 @@ import {
 } from "../terrain-profile.ts";
 import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
-import { attachUndoToast } from "../undo-toast.ts";
+import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import { TRACK_HEADER, trackHeaderSlots, type PlacedRect } from "../scene-layout.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
@@ -258,6 +258,7 @@ export class TrackV3Scene extends Phaser.Scene {
   private pos = 0; // song position in ABSOLUTE bars, fed from the transport
   private moving = false;
   private cars: V3Car[] = [];
+  private undoToast?: UndoToast;
   /** Every geometry mode's committed span, keyed by kind — modes STACK, so a
    *  mound, a deck and a squall can all be in the world at once. The newest
    *  toggle is remembered for the caption and the debug probe. */
@@ -505,7 +506,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.rebuildSlots();
     // CLEAR empties the whole train, so this view must be able to show the
     // "put it back" chip the Workshop and Yard already carry.
-    attachUndoToast(this);
+    this.undoToast = attachUndoToast(this);
     // The SEND result panel. Built here (not on first use) so it is already
     // laid out when React pushes the first state mid-render.
     this.sendPanel = new SendSongPanel(this);
@@ -654,6 +655,7 @@ export class TrackV3Scene extends Phaser.Scene {
         stroke: "#1a1526",
         strokeThickness: 8,
       })
+      .setName("track-display:loop")
       .setOrigin(0.5)
       .setFontSize(24)
       .setDepth(DEPTH.hud + 2);
@@ -703,6 +705,7 @@ export class TrackV3Scene extends Phaser.Scene {
       // brass corners already belong to the header's material language.
       const key = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setName("track-control:tarp")
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       placeUiSprite(key, def, rect);
@@ -721,6 +724,7 @@ export class TrackV3Scene extends Phaser.Scene {
       this.pressable(
         this.add
           .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x8d8878, 1)
+          .setName("track-control:tarp")
           .setDepth(DEPTH.hud + 1),
         fire,
       );
@@ -798,6 +802,7 @@ export class TrackV3Scene extends Phaser.Scene {
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
       const img = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setName(`track-control:${sprite}`)
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       // Content-fit through the shared helper, so these sit at the same
@@ -809,6 +814,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.pressable(
       this.add
         .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x3a3350, 1)
+        .setName(`track-control:${sprite}`)
         .setDepth(DEPTH.hud + 1),
       fire,
     );
@@ -960,7 +966,10 @@ export class TrackV3Scene extends Phaser.Scene {
       if (this.textures.exists(idle)) {
         // Picture buttons: the player is four and cannot read. The caption is
         // for the adult, so it is only drawn when there is no picture.
-        const btn = this.add.image(x, y, idle).setDepth(DEPTH.hud + 1);
+        const btn = this.add
+          .image(x, y, idle)
+          .setName(`track-mode:${id}`)
+          .setDepth(DEPTH.hud + 1);
         // Contain-fit each button's MEASURED content into the identical slot,
         // rather than drawing every canvas at one scale. The eight files share
         // a 260x120 canvas but not the plaque inside it — hill fills 258x120,
@@ -976,7 +985,10 @@ export class TrackV3Scene extends Phaser.Scene {
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
         return (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
       }
-      const swatch = this.add.rectangle(x, y, SWITCH_W, SWITCH_H, 0x3a3350, 1).setDepth(DEPTH.hud + 1);
+      const swatch = this.add
+        .rectangle(x, y, SWITCH_W, SWITCH_H, 0x3a3350, 1)
+        .setName(`track-mode:${id}`)
+        .setDepth(DEPTH.hud + 1);
       const cap = this.add
         .text(x, y, label, {
           fontFamily: "'Press Start 2P', monospace",
@@ -1580,6 +1592,14 @@ export class TrackV3Scene extends Phaser.Scene {
       soundingCarY: now ? RAIL_Y - pose.lift : null,
       soundingCarAngle: pose.angle,
       terrain: span && newest ? { ...span, kind: newest.kind } : null,
+    };
+  }
+
+  /** Exposed for end-to-end observation; interaction still uses real pixels. */
+  get undoOffer(): { offering: boolean; lost: string } {
+    return {
+      offering: this.undoToast?.offering ?? false,
+      lost: this.undoToast?.lost ?? "",
     };
   }
 

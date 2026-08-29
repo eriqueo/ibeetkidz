@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { tapNamedPhaserObject } from "./phaser-pixels.ts";
 
 // The v2 sprite flow. Every view — Map landing, Workshop, Yard, Track — is now a
 // pure Phaser canvas (nav + transport migrated off HTML into Tiled hit-areas), so
@@ -409,6 +410,31 @@ test("deleting a track offers to put it back, and putting it back works", async 
   });
   await expect.poll(async () => (await getProject(page)).parts.length).toBe(1);
   expect((await offer()).offering, "a refused delete must not offer a rescue").toBe(false);
+});
+
+test("a put-it-back offer follows navigation and restores content in the new scene", async ({ page }) => {
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+  await emit(page, "workshop-add-melody", "guitar");
+  const layerId: string = await page.evaluate(() => {
+    const t = (window as any).__ibeetkidz_test__;
+    const p = t.getProject();
+    const part = p.parts.find((candidate: any) => candidate.id === p.activePartId);
+    return part.layers.find((candidate: any) => candidate.kind === "melody").id;
+  });
+  await emit(page, "workshop-layer-delete", layerId);
+  await expect.poll(async () => activeMelodyCount(await getProject(page))).toBe(0);
+
+  await emit(page, "nav-map");
+  await waitForScene(page, "MapScene");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer.offering),
+  ).toBe(true);
+
+  await tapNamedPhaserObject(page, "undo-action");
+  await expect.poll(async () => activeMelodyCount(await getProject(page))).toBe(1);
+  expect((await getProject(page)).activeView).toBe("map");
 });
 
 test("the undo offer withdraws once the kid does something else", async ({ page }) => {

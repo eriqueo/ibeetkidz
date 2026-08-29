@@ -48,6 +48,7 @@ import { LocalStoragePort } from "../../src/adapters/local-storage-port.ts";
 import { ToneSoundPort } from "../../src/adapters/tone-sound-port.ts";
 import { StorageError } from "../../src/ports/storage-port.ts";
 import { QuotaExceededError } from "../../src/ports/storage-port.ts";
+import { EventBus } from "../../src/game/EventBus.ts";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -104,6 +105,31 @@ afterEach(async () => {
 });
 
 describe("BootGate failure paths", () => {
+  it("the composition root expires undo offers once, independent of scenes", async () => {
+    vi.useFakeTimers();
+    await mount(createElement("span", null));
+    api?.dispatch({
+      type: "addClip",
+      clip: {
+        id: "clip-undo-expiry",
+        source: { kind: "builtin", assetId: "kick" },
+        effects: [],
+        color: "#ffffff",
+        label: "Undo expiry test",
+      },
+    });
+    const emit = vi.spyOn(EventBus, "emit");
+
+    api?.dispatch({ type: "removeClip", clipId: "clip-undo-expiry" });
+    expect(emit).toHaveBeenCalledWith("undo-offered", "Sound gone");
+    emit.mockClear();
+
+    await vi.advanceTimersByTimeAsync(6999);
+    expect(emit).not.toHaveBeenCalledWith("undo-withdrawn");
+    await vi.advanceTimersByTimeAsync(1);
+    expect(emit).toHaveBeenCalledWith("undo-withdrawn");
+  });
+
   it("persists recording blobs before publishing their project index", async () => {
     vi.useFakeTimers();
     const blob = new Blob(["recording"], { type: "audio/webm" });

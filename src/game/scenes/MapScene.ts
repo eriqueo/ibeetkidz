@@ -12,6 +12,7 @@ import { spawnTiledScene, relayoutSpawns } from "../TiledSceneAdapter.ts";
 import mapMap from "../../assets/maps/map.json";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import type { AppView } from "../../core/types.ts";
+import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 
 /** The three destinations the handcar marker can sit at. Derived from `AppView`
  *  rather than from a coordinate table, so adding a view is a compile error in
@@ -31,6 +32,7 @@ export class MapScene extends BackgroundScene {
   private handcarSpawns: readonly TiledSpawn[] = [];
   private handcar?: Phaser.GameObjects.Image;
   private location: LandmarkView = "workshop";
+  private undoToast?: UndoToast;
 
   constructor() {
     super(MapScene.KEY);
@@ -70,7 +72,15 @@ export class MapScene extends BackgroundScene {
         cameraSize: () => this.scale.gameSize,
       };
     }
+    this.undoToast = attachUndoToast(this);
     this.announceReady();
+  }
+
+  get undoOffer(): { offering: boolean; lost: string } {
+    return {
+      offering: this.undoToast?.offering ?? false,
+      lost: this.undoToast?.lost ?? "",
+    };
   }
 
   /** React → scene: position the handcar marker over the kid's current location. */
