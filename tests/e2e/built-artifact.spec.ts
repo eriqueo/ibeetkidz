@@ -109,6 +109,17 @@ function isBrowserNoise(pathname: string): boolean {
   );
 }
 
+/** Browser-owned install metadata is not evidence that a canvas tap navigated. */
+function isInstallMetadata(url: string): boolean {
+  const pathname = new URL(url).pathname;
+  return (
+    pathname.endsWith("/manifest.webmanifest") ||
+    pathname.endsWith("/favicon.ico") ||
+    pathname.endsWith("/apple-touch-icon-180x180.png") ||
+    /\/(?:maskable-icon|pwa)-[^/]+\.png$/.test(pathname)
+  );
+}
+
 interface Observation {
   /** Requests the deployment could not answer, plus any uncaught page error. */
   failures: string[];
@@ -221,7 +232,11 @@ async function driveToTrack(page: Page, url: string, obs: Observation): Promise<
   // go quiet so the tap can't land on a scene that has not wired itself up yet.
   await page.waitForLoadState("networkidle");
   const beforeNav = obs.requests.length;
-  const sceneRequests = (): string[] => obs.requests.slice(beforeNav);
+  // A browser may fetch install metadata after `networkidle` (notably on slow
+  // CI). That traffic proves nothing about the canvas tap and must not stop the
+  // safe re-tap loop below. It remains in `obs` so a 404 still fails the test.
+  const sceneRequests = (): string[] =>
+    obs.requests.slice(beforeNav).filter((url) => !isInstallMetadata(url));
 
   // A settled MapScene issues no further requests, so the first new request is
   // the navigation itself. Re-tap ONLY while nothing has happened — that way a
