@@ -103,7 +103,10 @@ test("a kid can drive the default Track through its real canvas controls", async
       x: canvas.left + x * (canvas.width / game.width),
       y: canvas.top + y * (canvas.height / game.height),
     };
-  }, { x: car.soundingCarX, y: car.soundingCarY });
+  // `soundingCarY` is the railhead (the body’s bottom anchor), while the
+  // playing car bobs. Clicking that edge can land just below the hit area on a
+  // downbeat; keep the real canvas tap safely inside every car body instead.
+  }, { x: car.soundingCarX, y: car.soundingCarY - 80 });
   await page.mouse.click(canvasPoint.x, canvasPoint.y);
   await expect.poll(muted).toBe(true);
 
