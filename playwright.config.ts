@@ -6,9 +6,12 @@ import { defineConfig, devices } from "@playwright/test";
 // default 5173 can't get reused out from under us (set PW_PORT to override).
 const PORT = Number(process.env.PW_PORT ?? 5173);
 const ORIGIN = `http://localhost:${PORT}`;
+const PWA_PORT = Number(process.env.PW_PWA_PORT ?? 4173);
+const PWA_ORIGIN = `http://localhost:${PWA_PORT}/ibeetkidz/`;
 
 export default defineConfig({
   testDir: "./tests/e2e",
+  metadata: { pwaOrigin: PWA_ORIGIN },
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -20,13 +23,22 @@ export default defineConfig({
     // device, which zeroes the audio-output spec's master-peak proof.
     headless: !process.env.PW_HEADED,
   },
-  webServer: {
-    command: `npm run dev -- --port ${PORT} --strictPort`,
-    url: ORIGIN,
-    // Only reuse a server we can trust is ours — i.e. when a port was pinned.
-    reuseExistingServer: !process.env.CI && !process.env.PW_PORT,
-    timeout: 60_000,
-  },
+  webServer: [
+    {
+      command: `npm run dev -- --port ${PORT} --strictPort`,
+      url: ORIGIN,
+      // Only reuse a server we can trust is ours — i.e. when a port was pinned.
+      reuseExistingServer: !process.env.CI && !process.env.PW_PORT,
+      timeout: 60_000,
+    },
+    {
+      // This is the actual Pages artifact, not Vite's source-serving dev mode.
+      command: `npm run preview -- --mode gh --port ${PWA_PORT} --strictPort`,
+      url: PWA_ORIGIN,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+  ],
   projects: [
     {
       name: "chromium",

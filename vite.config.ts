@@ -1,5 +1,6 @@
 import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath, URL } from "node:url";
 import { ibkMapWriter } from "./vite-plugins/ibk-map-writer.ts";
 
@@ -12,7 +13,49 @@ export default defineConfig(({ mode }) => {
     base: isGh ? "/ibeetkidz/" : "/",
     // `ibkMapWriter` is `apply: "serve"` and additionally gated on IBK_EDIT=1,
     // so it is absent from every build and inert in an ordinary `npm run dev`.
-    plugins: [react(), ibkMapWriter()],
+    plugins: [
+      react(),
+      ibkMapWriter(),
+      VitePWA({
+        // A generated manifest keeps the service worker's revision list tied to
+        // the bytes Vite actually emitted. There is deliberately no runtime
+        // network cache: every dependency the game needs ships with the app.
+        strategies: "generateSW",
+        injectRegister: "inline",
+        manifest: {
+          id: "./",
+          name: "iBeetKidz",
+          short_name: "iBeetKidz",
+          description: "A kid-friendly sound playground for making and riding songs.",
+          start_url: "./",
+          scope: "./",
+          display: "standalone",
+          orientation: "landscape",
+          background_color: "#1a1430",
+          theme_color: "#1a1430",
+          categories: ["education", "games", "music"],
+          icons: [
+            { src: "pwa-64x64.png", sizes: "64x64", type: "image/png" },
+            { src: "pwa-192x192.png", sizes: "192x192", type: "image/png" },
+            { src: "pwa-512x512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+            {
+              src: "maskable-icon-512x512.png",
+              sizes: "512x512",
+              type: "image/png",
+              purpose: "maskable",
+            },
+          ],
+        },
+        workbox: {
+          cleanupOutdatedCaches: true,
+          // The largest measured game asset is just under 2 MB.
+          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+          // The plugin adds manifest.webmanifest itself; including it here
+          // would create two revisions for one URL and invalidate the worker.
+          globPatterns: ["**/*.{html,js,css,png,jpg,jpeg,webp,svg,ico,json,woff,woff2,ttf,wav,mp3}"],
+        },
+      }),
+    ],
     build: {
       outDir: isGh ? "dist-gh" : "dist",
       emptyOutDir: true,

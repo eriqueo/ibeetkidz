@@ -109,9 +109,12 @@ Downloads folder, never to us.
 
 ### Known gaps
 
-**Not offline yet.** There's no service worker and no web app manifest, so a
-cold load still needs the network and the app can't be installed to the home
-screen. That work is planned, not built.
+**Installable and offline after the first load.** Open the live site once while
+online and let it finish loading. On iPad, use Safari's Share menu → **Add to
+Home Screen** → **Open as Web App**. On Samsung/Android, use the browser's
+**Install app** or **Add to Home screen** action. The installed game can then
+start without a connection. A first-ever visit still needs HTTPS and a network,
+and the operating system can reclaim browser storage when space is low.
 
 **Every finished piece has a way in now.** This paragraph used to list three
 tool panels and the "Surprise me" generator as built-but-unreachable. All eight

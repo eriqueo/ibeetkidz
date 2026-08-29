@@ -3,12 +3,13 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Kidpix for audio \u2014 a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
+  "description": "Kidpix for audio — a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && npm run build:gh && npm run check:no-editor",
+    "build": "tsc && vite build && npm run build:gh && npm run check:no-editor && npm run check:pwa",
     "build:gh": "vite build --mode gh",
     "check:no-editor": "bash scripts/check-no-editor-in-dist.sh",
+    "check:pwa": "node scripts/check-pwa-build.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -42,6 +43,7 @@
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^6.4.1",
+    "vite-plugin-pwa": "^1.3.0",
     "vitest": "^3.2.3"
   }
 }

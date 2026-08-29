@@ -80,7 +80,7 @@ export default tseslint.config(
   // are also OUTSIDE tsconfig's `include` (["src", "tests"]), so ESLint is the
   // only checker that sees them at all.
   {
-    files: ["*.config.{ts,js}", "vite-plugins/**/*.{ts,js}"],
+    files: ["*.config.{ts,js}", "vite-plugins/**/*.{ts,js}", "scripts/**/*.mjs"],
     languageOptions: { globals: { ...globals.node } },
   },
 
