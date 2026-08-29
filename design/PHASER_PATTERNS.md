@@ -9,7 +9,8 @@
 Ten structural patterns from a Zelda-like Phaser course, restated as Phaser 4
 advice and mapped against this repo.
 
-This is a **reference and a backlog**. Every pattern carries a status —
+This was written as a **reference and backlog**. Every pattern carries its
+then-current status —
 ✅ ALREADY DONE / 🟡 PARTIALLY DONE / ❌ NOT DONE — with `file:line` evidence,
 so the doc tells you both how to build the thing and whether you already have it.
 

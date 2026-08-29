@@ -7,7 +7,7 @@ stand-in for the keys this folder does NOT provide.
 
 So `sky.png` becomes the texture `trk-sky` and replaces the generated sky.
 
-**Slots the scene draws today** (drop-in, zero code):
+**World slots the scene draws today** (drop-in, zero code):
 
 | file | replaces |
 |---|---|
@@ -21,7 +21,17 @@ So `sky.png` becomes the texture `trk-sky` and replaces the generated sky.
 | `rain.png` | the tiling rain streak sheet |
 | `wheel.png` | the rotating wheel |
 
-The scene also draws `loco.png`, `car-*.png`, `btn-*.png`, and `shadow.png`.
-`now-post.png` is the intentional fallback when `beat-lantern.png` is absent.
+Other live families are:
+
+- atmosphere: `sky-night.png`, `raincloud.png`, `splash.png`, and `smoke.png`
+- train: `loco.png`, `car-*.png`, `wheel.png`, `shadow.png`, and
+  `ride-<instrument>-<car-type>.png`
+- controls: `btn-<mode>.png` plus matching `-pressed` frames
+- readout: `beat-lantern-low.png` and `beat-lantern-high.png`
+
+`now-post.png` is the intentional fallback when the Beat Lantern frames are
+absent. It is load-bearing even though the complete production art set normally
+wins that branch.
+
 Because the loader globs every PNG in this directory, do not leave drafts or
 unused variants here: they ship in both production bundles.

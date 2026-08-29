@@ -1,5 +1,9 @@
 # PLAYTEST_FINDINGS — 2026-08-01
 
+> Historical incident report. Findings and measurements describe the tree on
+> 2026-08-01 unless a later resolution is explicitly recorded. For current
+> behavior use `PROJECT_CHARTER.md`, `design/HISTORY.md`, and the code.
+
 Eric play-tested the deployed build and reported five problems, plus one
 structural question: *why is a small kids' toy as heavy as an open-world game,
 and is there a better way to fix layout than describing a position in prose and
@@ -269,21 +273,14 @@ oversample, then pad the canvas — and state the padding fraction, because
 
 ---
 
-## 8 · Open questions for Eric
+## 8 · Later resolutions
 
-1. **Should re-skinning an existing car come back?** (§4) Decides whether
-   `setCarType` + `workshop-car-type-changed` get wired or deleted.
-2. **The violin has no sound.** There is no bowed-string voice in `INSTRUMENTS`.
-   `inst-violin` used to emit `"violin"`, which is not a `SynthInstrumentId` at
-   all, so it silently fell back to the default synth and the lane was labelled
-   "Melody". It now emits `pluck` — same instrument family, pizzicato — as a
-   **placeholder**. A real bowed voice is an audio ticket.
-3. **Does LOOP mean the right thing now?** `btn-play` and `btn-loop` both emitted
-   `transport-play("loop")` — the same button twice. LOOP now plays the ACTIVE
-   car alone via `AudioEngine.playCarLoop`, which had been fully implemented with
-   zero callers since the v2 data model landed. PLAY still lays out the whole
-   train. That reading fits a Workshop (where you edit one car), but it is an
-   interpretation, not a spec.
+1. The retired `workshop-car-type-changed` event was deleted on 2026-08-28;
+   `setCarType` remains live through the NEW CAR empty-car path (§4).
+2. The violin received its own bowed `MonoSynth` voice in commit `368b203`; the
+   pizzicato fallback described by this report is no longer current.
+3. Workshop LOOP plays the active car through `AudioEngine.playCarLoop`; PLAY
+   lays out the train. That distinction remains the shipped behavior.
 
 ---
 
