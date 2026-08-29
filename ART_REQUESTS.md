@@ -104,10 +104,9 @@ Rev 5 is the review that followed, on the live screens.
 These are NEW and are not ranked into 1–6 above, which is Eric's call. Filed
 after the first live look at the side-scroller's two-row transport deck.
 
-7. **AR-061 — the TARP keycap — HIGH.** The only control on that header with no
-   picture: a blank `pad-key` slab with a run-time word on it. A four-year-old
-   cannot read TARP, and this repo's own rule is that the icon IS the label for a
-   non-reader. The engine seam for an idle/seated pair is already built.
+7. **AR-061 — the TARP keycap — superseded by AR-064.** AR-064 keeps the
+   idle/seated header keycap, and adds the visible covered-car state the live
+   playtest found missing.
 8. **AR-062 — a count window on the LOOP keycap — LOW.** The loop count is
    engine text sitting on painted art because the key has no clear space.
 9. **AR-063 — the Yard crane/siding gap — MEDIUM.** Measured: the hoist starts
@@ -120,6 +119,192 @@ parchment. That is **AR-013, closed by product decision on 2026-08-13** — do n
 generate `panel-lcd.png`. Engineering has given the text a `SPEED nnn` label in
 dark ink so it is legible on the cream; if the closed decision should be
 revisited that is a product call, not an art gap.
+
+### Added 2026-08-29 (rev 7) — live Track playtest correction batch
+
+This batch records the live review, superseding the earlier decision not to make
+art for SPEED. It is deliberately **not** a request to make a new screen out of
+separate decorations: the train, its wheels, bridge and tunnel must still read
+as one moving world. Match the shipped Track V3 assets in
+`src/assets/sprites/track3/` and the dark stone/brass control family in
+`src/assets/sprites/buttons/`. Do not use gradients, glows, fake transparency,
+or a coloured full-canvas backdrop.
+
+**What art cannot solve:**
+
+- A car tap needs a clear action choice (at minimum **EDIT CAR** and
+  **TARP / UNCOVER**) before it navigates away. That is an interaction and
+  engineering decision; do not hide it inside a decorative car sprite.
+- The visualizer is currently a large, noisy object in the sky. Its removal or
+  relocation is an engineering/layout change; no replacement visualizer art is
+  requested in this batch.
+- Tunnel motion needs the renderer to scroll and sequence the delivered layers.
+  The art below supplies those layers; it must not be baked into one opaque
+  full-screen image.
+
+#### AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
+
+**Supersedes:** AR-061's header-only scope. AR-061's idle/seated keycap pair is
+still required, but a pressed key alone does not show which car was covered.
+
+**Deliverables:**
+
+| File | Canvas | Purpose |
+|---|---:|---|
+| `src/assets/sprites/buttons/btn-track-tarp-idle.png` | 512 × 512 | Resting header keycap. |
+| `src/assets/sprites/buttons/btn-track-tarp-seated.png` | 512 × 512 | Armed header keycap, visibly depressed. |
+| `src/assets/sprites/track3/tarp-cover-boxcar.png` | 300 × 190 | Covered-car overlay, registered to `car-boxcar.png`. |
+| `src/assets/sprites/track3/tarp-cover-tanker.png` | 300 × 170 | Covered-car overlay, registered to `car-tanker.png`. |
+| `src/assets/sprites/track3/tarp-cover-hopper.png` | 300 × 190 | Covered-car overlay, registered to `car-hopper.png`. |
+| `src/assets/sprites/track3/tarp-cover-flatcar.png` | 300 × 110 | Covered-car overlay, registered to `car-flatcar.png`. |
+
+**Prompt:** “For a four-year-old's side-on pixel-art train game: make one dark
+stone-and-brass header keycap and four transparent tarp overlays. The keycap
+shows a small boxcar and a folded blue canvas tarp; the baked word TARP is part
+of the art. Its seated state is physically down in its socket and shows the tarp
+unfurled. The car overlays are the same blue canvas tarp, `#2c6bc7` as the
+starting blue, draped over each car's cargo/body without covering its wheels,
+number plate, couplers, or crew. Include a few chunky folds, tied rope ends,
+and a short hard shadow so it reads as fabric rather than a translucent filter.
+Warm 16-colour Nintendo palette, 1px dark-plum outlines, hard 2–3px shadows,
+no gradients.”
+
+**Registration/export contract:** true alpha 0 outside art; the tarp overlays
+share their corresponding car canvas exactly and must leave the bottom wheel
+clearance transparent. Idle and seated keycaps share a canvas and content box.
+At the actual ~70px header size, the difference must be readable without text.
+
+**Engineering handoff:** integrate the keycap through `UI_SPRITES`; mount the
+matching cover overlay in the car container only when that car is muted. The
+tap-action choice remains a separate product/engineering task.
+
+#### AR-065 · Make the Track header one coherent control family, including SPEED — HIGH
+
+**Why:** the top deck currently mixes cream plaques, dark stone keycaps,
+different accent colours and bare parchment text. SPEED needs a real home, and
+the controls should look selected from one physical brass-and-stone machine,
+not collected from unrelated menus.
+
+**Targets:** redraw these as one coordinated family, retaining their existing
+file names and same idle/pressed canvases so engineering can swap the atlas
+without changing layout:
+
+- `btn-nav-map-{idle,pressed}.png`
+- `btn-track-ride-{idle,pressed}.png`
+- `btn-transport-stop-{idle,pressed}.png`
+- `btn-track-clear-{idle,pressed}.png`
+- `btn-send-song-{idle,pressed}.png`
+- `btn-transport-slow-{idle,pressed}.png`
+- `btn-transport-fast-{idle,pressed}.png`
+- `btn-transport-loop-{idle,pressed}.png`
+- the AR-064 TARP pair
+- `src/assets/sprites/buttons/track-speed-readout.png` (512 × 512, transparent)
+
+**Prompt:** “A unified set of steampunk pixel-art controls for a children's
+train music game. Every control uses the same charcoal stone face, brass rim,
+brass corner screws, warm cream lettering, 1px dark-plum outline and hard
+shadow. Colour is semantic and restrained: STOP may retain one muted signal-red
+square; SLOW/FAST share one cyan-blue arrow family; MAP, RIDE, CLEAR, SEND,
+LOOP and TARP use brass/cream icons rather than random new colours. Make a
+matching SPEED readout keycap with a brass-framed dark display window kept
+empty for engine-rendered `SPEED` and a number; do not bake a value into it.
+Each picture must read at ~70px to a non-reader. No parchment plaques mixed
+into this family, no glow, no gradients.”
+
+**Rules:** no button may use a different palette/material language; preserve
+true alpha and identical canvas/registration per state. The SPEED display is a
+new asset, so its measured display-window rectangle must be supplied alongside
+the PNG.
+
+#### AR-066 · Tunnel traversal: layered entrance, roof and exit — P0
+
+**Why:** a flat dark wash says “the screen got dimmer,” not “the train entered a
+tunnel.” The player needs an approach, a short enclosed passage, and daylight
+at the exit while the world continues to move.
+
+**Deliverables:**
+
+| File | Canvas | Layer / constraint |
+|---|---:|---|
+| `src/assets/sprites/track3/tunnel-mouth-left.png` | 640 × 640 | Entry rock face; transparent opening aligned to the railhead at y=1010 in the 2560 × 1440 scene. |
+| `src/assets/sprites/track3/tunnel-roof.png` | 640 × 520 | Horizontally tileable ceiling and near rock edge; lower edge irregular and transparent below it. |
+| `src/assets/sprites/track3/tunnel-wall.png` | 640 × 720 | Horizontally tileable back wall, visibly darker than the roof but never a flat black fill. |
+| `src/assets/sprites/track3/tunnel-mouth-right.png` | 640 × 640 | Exit mouth, mirroring the same rail registration and daylight reveal. |
+| `src/assets/sprites/track3/tunnel-lamp-0.png` | 96 × 128 | Unlit wall lamp, transparent canvas. |
+| `src/assets/sprites/track3/tunnel-lamp-1.png` | 96 × 128 | Lit lamp, same canvas/registration; warm light only inside the lamp halo. |
+
+**Prompt:** “Side-on pixel-art railway tunnel for a kids’ 16-bit train game:
+weathered stone portal, timber/stone ceiling, receding rock wall, and small
+brass lamps. It must feel like the same side-scrolling world continues through
+the tunnel—rails, train and wheels remain visible; the near roof and portal can
+occlude the train briefly. Give the wall enough uneven stone rhythm to scroll
+without looking like a static black rectangle. Use charcoal, indigo and warm
+stone, with small amber lamps; 1px dark-plum outline, hard shadows, no gradient
+fog and no opaque canvas background.”
+
+**Animation contract:** the roof and wall must tile seamlessly left-to-right;
+the two lamp frames must differ only in their painted lamp/light, not their
+position. Engineering will scroll these layers and alternate the lamp frames;
+the art agent should not deliver a GIF or a full-screen darkness overlay.
+
+#### AR-067 · Replace the bridge decal with a traversable bridge kit — P0
+
+**Why:** the current bridge artwork is structurally detailed but is stretched as
+one slab over a rectangular void. It reads stuck onto the landscape instead of
+being a place the moving train crosses.
+
+**Deliverables:**
+
+| File | Canvas | Layer / constraint |
+|---|---:|---|
+| `src/assets/sprites/track3/bridge-deck-tile.png` | 640 × 170 | Seamless horizontal deck/fascia tile, railhead at y=0. |
+| `src/assets/sprites/track3/bridge-pier.png` | 160 × 360 | One transparent stone/wood pier whose top meets deck underside at y=0. |
+| `src/assets/sprites/track3/bridge-far-bank-left.png` | 320 × 250 | Left approach bank, transparent around its silhouette. |
+| `src/assets/sprites/track3/bridge-far-bank-right.png` | 320 × 250 | Right approach bank, same rail registration. |
+| `src/assets/sprites/track3/bridge-water.png` | 640 × 150 | Seamless, subtle moving-water tile below the deck—not a second rail/ground strip. |
+
+**Prompt:** “A native side-on timber trestle bridge kit for a moving pixel-art
+train world. Build a repeatable deck with varied plank and iron-brace rhythm, a
+small set of solid piers, grassy/rocky approach banks, and a quiet river below.
+The train’s independently rotating wheels must sit on the game’s existing
+railhead, so draw no wheels and no baked duplicate track below the railhead.
+Make transparent bays between braces so train, far hills and water can read in
+separate depth layers. Warm Nintendo palette, dark-plum outlines, hard shadows,
+no full-width background.”
+
+**Engineering handoff:** tile deck/water by travel distance; place piers at a
+fixed world rhythm; draw the near deck in front of the wheel contact line and
+far bank behind the train. Do not stretch a single bridge sprite to the ride
+width.
+
+#### AR-068 · Wheel/contact repair reference — HIGH
+
+**Why:** the wheels look undersized and disconnected from the cars. The
+renderer already rotates independent wheels, so the repair is registration and
+contact—not a new baked wheel on each vehicle. This replaces AR-041's wheel and
+shadow portion; its separate requirement to remove baked track from vehicle
+bodies remains open.
+
+**Deliverables:**
+
+- Revised `src/assets/sprites/track3/wheel.png`, 76 × 76, perfectly centred;
+  provide its exact hub centre in pixels.
+- Revised `src/assets/sprites/track3/shadow.png`, 300 × 44, transparent outside
+  a restrained contact shadow.
+- Four annotated, non-shipping registration sheets—one per car body—marking
+  both axle centres, wheel radius, railhead and body baseline. Add one for the
+  locomotive with its driver and pilot centres.
+
+**Prompt:** “A chunky, steel pixel-art train wheel for a children’s side-on
+train game. It must look substantial enough to carry the car: a thick tyre,
+visible hub and 4–5 spokes/counterweight, centred exactly so it rotates without
+wobble. Make the wheel read as nested under the chassis rather than pasted in
+front of it. Add a soft, compact contact shadow that sits directly beneath the
+wheel line. No baked rails, no vehicle body, no gradients.”
+
+**Acceptance:** engineering will reject a wheel export unless its hub is exactly
+centred and the supplied registration sheet puts every tyre tangent on the same
+railhead. The body canvases are not being redrawn in this request.
 
 ### INTEGRATED 2026-08-13 (engineering)
 
@@ -145,7 +330,7 @@ separately — the live art is correctly sized and does not need re-delivery.)
 
 ---
 
-## AR-061 · TARP keycap for the Track header — HIGH
+## AR-061 · TARP keycap for the Track header — SUPERSEDED BY AR-064
 
 **Target files:**
 - `src/assets/sprites/buttons/btn-track-tarp-idle.png`
