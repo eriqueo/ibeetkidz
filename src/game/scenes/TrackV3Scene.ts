@@ -218,8 +218,11 @@ const DEPTH = {
   // its structure draw IN FRONT of the near fringe — otherwise the fringe (a
   // full-width strip that cannot have a hole punched in it) covers the whole
   // thing, which is exactly how the first pass shipped an invisible bridge.
-  gap: 7.05,
-  deck: 7.1,
+  gap: 3.2,
+  // The train rides ON a bridge, so its wheels must draw over the deck. The
+  // former foreground depth put the deck over the train, making it read as a
+  // sticker pinned across the scene instead of a structure in the world.
+  deck: 5.8,
   rain: 7.5,
   playhead: 8,
   hud: 10,
@@ -230,10 +233,10 @@ const CAR_W = 300;
  *  the arches the frame art is drawn with (centres at 24% and 76% of a 300 px
  *  canvas) rather than guessed. It was 0.28, which stood the wheels a little
  *  outside their own arches. */
-const WHEEL_AT = 0.258;
+const WHEEL_AT = 0.24;
 /** Distance between the axles, as a fraction of a bar, in a 640 px bar. */
 const WHEELBASE_BARS = (CAR_W * WHEEL_AT * 2) / 640;
-const WHEEL_R = 30;
+const WHEEL_R = 38;
 
 /**
  * The locomotive's wheels, as offsets from its centre in its own 380 px art.
@@ -245,8 +248,8 @@ const WHEEL_R = 30;
  * wheel land in the holes the art already cut for them.
  */
 const LOCO_WHEELS: readonly { dx: number; r: number }[] = [
-  { dx: -112, r: 30 },
-  { dx: 80, r: 19 },
+  { dx: -112, r: 38 },
+  { dx: 80, r: 24 },
 ];
 
 export class TrackV3Scene extends Phaser.Scene {
@@ -268,6 +271,10 @@ export class TrackV3Scene extends Phaser.Scene {
   private trainScale = 1;
   private nightShade?: Phaser.GameObjects.Rectangle | undefined;
   private tunnelShade?: Phaser.GameObjects.Rectangle | undefined;
+  /** Moving rock rim: tunnel is a place the train enters, not only a dark tint. */
+  private tunnelRim?: Phaser.GameObjects.Graphics | undefined;
+  private tunnelActive = false;
+  private tunnelRimPhase = 0;
   /** AR-053's painted night band, drawn OVER the day sky in the same rect. */
   private nightSky?: Phaser.GameObjects.TileSprite | undefined;
 
@@ -306,6 +313,9 @@ export class TrackV3Scene extends Phaser.Scene {
   private splashDebt = 0;
   private splashSeed = 0;
   private terrainLabel?: Phaser.GameObjects.Text;
+  /** The car the in-scene action chooser currently belongs to. */
+  private carAction: { id: string; number: number } | null = null;
+  private carActionNodes: Phaser.GameObjects.GameObject[] = [];
   private lastPos = 0;
   private speedBars = 0; // bars per second, smoothed
   private lastAt = -1;
@@ -500,6 +510,7 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0)
       .setDepth(DEPTH.hud - 1)
       .setVisible(false);
+    this.tunnelRim = this.add.graphics().setDepth(DEPTH.hud - 0.9).setVisible(false);
 
     this.buildTopBar();
     this.buildLegend();
@@ -603,10 +614,28 @@ export class TrackV3Scene extends Phaser.Scene {
     // and SPEED is already the word the Workshop's own transport bar uses for
     // tempo, so the two views name it the same thing.
     const tempo = s["tempo"]!;
+    // The tempo readout used to be bare ink on parchment, the only second-row
+    // control outside the dark keycap family. A small recessed stone display
+    // keeps SPEED legible and makes the whole deck speak one material language.
+    const speedFace = this.add.graphics().setDepth(DEPTH.hud + 1);
+    speedFace.fillStyle(0x2b2440, 1).fillRoundedRect(
+      tempo.x - tempo.width * 0.38,
+      tempo.y - tempo.height * 0.41,
+      tempo.width * 0.76,
+      tempo.height * 0.82,
+      16,
+    );
+    speedFace.lineStyle(5, 0xb9b9c4, 1).strokeRoundedRect(
+      tempo.x - tempo.width * 0.38,
+      tempo.y - tempo.height * 0.41,
+      tempo.width * 0.76,
+      tempo.height * 0.82,
+      16,
+    );
     this.add
       .text(tempo.x, tempo.y - 34, "SPEED", {
         fontFamily: "'Press Start 2P', monospace",
-        color: "#7a5433",
+        color: "#ffe9b0",
       })
       .setOrigin(0.5)
       .setFontSize(24)
@@ -614,7 +643,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tempoText = this.add
       .text(tempo.x, tempo.y + 16, "120", {
         fontFamily: "'Press Start 2P', monospace",
-        color: "#4a2f1c",
+        color: "#fff0bf",
       })
       .setOrigin(0.5)
       .setFontSize(44)
@@ -744,13 +773,24 @@ export class TrackV3Scene extends Phaser.Scene {
     const faceW = (PAD_KEY_FACE.x1 - PAD_KEY_FACE.x0) * (img?.displayWidth ?? rect.width);
     const faceCx = (img?.x ?? rect.x)
       + ((PAD_KEY_FACE.x0 + PAD_KEY_FACE.x1) / 2 - 0.5) * (img?.displayWidth ?? rect.width);
+    // A blue tarp over a little boxcar is the non-reader label. This uses the
+    // same tarp blue that AR-061 specifies, while the reusable stone slab
+    // remains the button's material; when the final raster pair is delivered
+    // it can replace this local glyph without changing the interaction seam.
+    const pictogram = this.add.graphics().setDepth(DEPTH.hud + 2);
+    const iconY = rect.y - rect.height * 0.15;
+    pictogram.fillStyle(0x1a1526, 1).fillRect(rect.x - 34, iconY + 14, 68, 10);
+    pictogram.fillStyle(0x795333, 1).fillRect(rect.x - 28, iconY + 2, 56, 16);
+    pictogram.fillStyle(0x2c6bc7, 1).fillRoundedRect(rect.x - 31, iconY - 22, 62, 30, 7);
+    pictogram.lineStyle(4, 0xffd166, 1).strokeRoundedRect(rect.x - 31, iconY - 22, 62, 30, 7);
+    pictogram.fillStyle(0xb9b9c4, 1).fillCircle(rect.x - 20, iconY + 18, 7).fillCircle(rect.x + 20, iconY + 18, 7);
     this.add
-      .text(faceCx, rect.y, caption, {
+      .text(faceCx, rect.y + rect.height * 0.25, caption, {
         fontFamily: "'Press Start 2P', monospace",
         color: "#33302b",
       })
       .setOrigin(0.5)
-      .setFontSize(Math.floor((faceW * 0.86) / caption.length))
+      .setFontSize(Math.floor((faceW * 0.7) / caption.length))
       .setDepth(DEPTH.hud + 2);
     const glow = this.add
       .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
@@ -1082,6 +1122,7 @@ export class TrackV3Scene extends Phaser.Scene {
       getProject,
       styles: VISUAL_STYLES,
       depth: DEPTH.hud - 1,
+      maxVisibility: 0.6,
     });
     this.viz = viz;
     let armed = false;
@@ -1092,7 +1133,10 @@ export class TrackV3Scene extends Phaser.Scene {
       armed = false;
       viz.cycleStyle();
     });
-    viz.layout({ x: W / 2 - 330, y: 560, width: 660, height: 190 });
+    // The visualizer stays available, but no longer competes with the train
+    // and terrain. It is a small signal box in the quiet left sky, not a second
+    // headline-sized panel across the meadow.
+    viz.layout({ x: 420, y: 565, width: 340, height: 102 });
   }
 
   /** Exposed for the e2e bridge: what the jumbotron is showing, and how visible
@@ -1121,6 +1165,8 @@ export class TrackV3Scene extends Phaser.Scene {
     this.nightSky?.setVisible(night);
     this.nightShade?.setVisible(night);
     this.tunnelShade?.setVisible(tunnel);
+    this.tunnelRim?.setVisible(tunnel);
+    this.tunnelActive = tunnel;
   }
 
   /** React → scene: the tiny/giant switches' train size. The whole consist —
@@ -1183,6 +1229,7 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.trees) this.trees.tilePositionX = parallaxOffset(this.pos, this.view, 0.42);
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     if (this.fore) this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45);
+    if (this.tunnelActive) this.drawTunnelRim(travelPx(this.pos, this.view));
 
 
     this.layoutTerrain();
@@ -1278,7 +1325,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
         .setRotation(pose.angle)
         .setScale(S)
-        .setAlpha(car.muted ? 0.45 : 1); // tarped = still there, not sounding
+        .setAlpha(1); // tarp has its own visible material; muting is not fading
       // The coat and the lift are the SAME silhouette as the body, so a car-type
       // swap has to move all of them or the colour ends up on last frame's shape.
       const tex = CAR_BODY_KEY[car.carType] ?? CAR_BODY_KEY.boxcar;
@@ -1300,6 +1347,17 @@ export class TrackV3Scene extends Phaser.Scene {
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
+      if (s.tarpedDrawn !== car.muted) {
+        s.tarpedDrawn = car.muted;
+        s.tarp.setVisible(car.muted);
+        if (car.muted) {
+          // The cover falls into place rather than blinking on. The tween is
+          // bounded and does not drive state; its only job is the immediate
+          // physical confirmation that this car was just tarped.
+          s.tarp.setScale(1, 0.16);
+          this.tweens.add({ targets: s.tarp, scaleY: 1, duration: 160, ease: "Quad.out" });
+        }
+      }
       s.shadow
         .setVisible(true)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
@@ -1568,6 +1626,9 @@ export class TrackV3Scene extends Phaser.Scene {
     soundingCarY: number | null;
     soundingCarAngle: number;
     terrain: { x: number; width: number; kind: string } | null;
+    carAction: { id: string; number: number } | null;
+    tunnel: { active: boolean; rimPhase: number };
+    tarpedCarCount: number;
   } {
     const dist = travelPx(this.pos, this.view);
     const n = Math.max(1, this.cars.length);
@@ -1592,6 +1653,9 @@ export class TrackV3Scene extends Phaser.Scene {
       soundingCarY: now ? RAIL_Y - pose.lift : null,
       soundingCarAngle: pose.angle,
       terrain: span && newest ? { ...span, kind: newest.kind } : null,
+      carAction: this.carAction,
+      tunnel: { active: this.tunnelActive, rimPhase: this.tunnelRimPhase },
+      tarpedCarCount: this.slots.filter((slot) => slot.root.visible && slot.tarp.visible).length,
     };
   }
 
@@ -1725,6 +1789,18 @@ export class TrackV3Scene extends Phaser.Scene {
       .setAlpha(0)
       .setTint(0xffe9b0)
       .setTintMode(Phaser.TintModes.FILL);
+    // The tarp shares the car's container, so it follows the wheels over hills
+    // and never looks like a screen-space sticker. It covers the load but leaves
+    // the wheels and numberplate readable: a muted car is still one car in the
+    // train, not an absent one.
+    const tarp = this.add.graphics().setVisible(false);
+    tarp.fillStyle(0x1a1526, 1).fillRoundedRect(-132, -152, 264, 92, 14);
+    tarp.fillStyle(0x2c6bc7, 1).fillRoundedRect(-126, -146, 252, 76, 12);
+    tarp.lineStyle(7, 0xffd166, 1).strokeRoundedRect(-126, -146, 252, 76, 12);
+    tarp.lineStyle(5, 0x17457e, 1)
+      .lineBetween(-82, -142, -82, -73)
+      .lineBetween(0, -142, 0, -73)
+      .lineBetween(82, -142, 82, -73);
     // Wheels go on AFTER the wash: they are iron on every car, and a red or
     // yellow wheel would be the one part of the tint that reads as a mistake.
     const wheelA = this.add.image(-CAR_W * WHEEL_AT, -WHEEL_R, "trk-wheel");
@@ -1738,13 +1814,14 @@ export class TrackV3Scene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setFontSize(NAMEPLATE.fontPx);
-    root.add([body, coat.fill, lift, wheelA, wheelB, label]);
+    root.add([body, coat.fill, lift, wheelA, wheelB, tarp, label]);
     const view: SlotView = {
-      root, body, coat, lift, wheelA, wheelB, label, shadow,
+      root, body, coat, lift, tarp, wheelA, wheelB, label, shadow,
       riderImgs: [],
       crewDrawn: "",
       liveryDrawn: -1,
       soundingDrawn: false,
+      tarpedDrawn: false,
       show: () => {
         root.setVisible(true);
         shadow.setVisible(true);
@@ -1776,16 +1853,82 @@ export class TrackV3Scene extends Phaser.Scene {
       armed = false;
       const car = this.cars[index];
       if (!car) return;
-      // Armed by the TARP keycap: cover this car instead of opening it. The
-      // default stays tap-to-edit, which is what the side-scroller was designed
-      // around ("fix a lane and hear it on the song's next pass") — muting is
-      // the guest here, so it announces itself with a latch rather than
-      // silently changing what a tap means.
-      if (this.tarpArmed) EventBus.emit("track-car-mute-toggled", car.id);
-      else EventBus.emit("track-car-edit", car.id);
+      // A car tap never navigates or mutes immediately. The original hidden
+      // tarp arming state made the same gesture mean two unrelated things;
+      // this chooser exposes both outcomes before the typed boundary event is
+      // emitted. A lit TARP key simply makes its corresponding choice obvious.
+      this.showCarAction(car);
     });
     view.hide();
     return view;
+  }
+
+  /** Draw a small, fixed HUD chooser rather than a world-space popup that would
+   *  drift away with the car while a song is riding. */
+  private showCarAction(car: V3Car): void {
+    this.dismissCarAction();
+    this.carAction = { id: car.id, number: car.number };
+    const x = W / 2;
+    const y = 690;
+    const panel = this.add.graphics().setDepth(DEPTH.hud - 0.2);
+    panel.fillStyle(0x1a1526, 0.96).fillRoundedRect(x - 405, y - 86, 810, 172, 22);
+    panel.lineStyle(7, 0xe9d7ac, 1).strokeRoundedRect(x - 405, y - 86, 810, 172, 22);
+    const title = this.add.text(x, y - 52, `CAR ${car.number} — WHAT NEXT?`, {
+      fontFamily: "'Press Start 2P', monospace", color: "#ffe9b0",
+    }).setOrigin(0.5).setFontSize(23).setDepth(DEPTH.hud);
+
+    const action = (name: string, cx: number, label: string, fire: () => void, active = false): void => {
+      const key = this.add.rectangle(cx, y + 25, 330, 70, active ? 0x2c6bc7 : 0x463a53)
+        .setStrokeStyle(5, active ? 0xffd166 : 0xb9b9c4)
+        .setName(name)
+        .setDepth(DEPTH.hud)
+        .setInteractive({ useHandCursor: true });
+      const text = this.add.text(cx, y + 25, label, {
+        fontFamily: "'Press Start 2P', monospace", color: "#fff0bf",
+      }).setOrigin(0.5).setFontSize(21).setDepth(DEPTH.hud + 0.1);
+      key.on("pointerup", () => {
+        this.dismissCarAction();
+        fire();
+      });
+      this.carActionNodes.push(key, text);
+    };
+    action("track-car-action:edit", x - 180, "EDIT CAR", () => void EventBus.emit("track-car-edit", car.id));
+    action(
+      "track-car-action:tarp",
+      x + 180,
+      car.muted ? "UNCOVER" : "TARP CAR",
+      () => void EventBus.emit("track-car-mute-toggled", car.id),
+      this.tarpArmed,
+    );
+    this.carActionNodes.push(panel, title);
+  }
+
+  private dismissCarAction(): void {
+    this.carActionNodes.forEach((node) => node.destroy());
+    this.carActionNodes = [];
+    this.carAction = null;
+  }
+
+  /** The rock face scrolls by with the world distance, so it freezes with the
+   *  train and cannot look like a screen-darkening filter. The centre stays
+   *  open: the player sees the consist enter the tunnel rather than being
+   *  covered by a full foreground plate. */
+  private drawTunnelRim(distance: number): void {
+    const rim = this.tunnelRim;
+    if (!rim) return;
+    const shift = ((Math.floor(distance * 0.8) % 76) + 76) % 76;
+    this.tunnelRimPhase = shift;
+    rim.clear();
+    rim.fillStyle(0x181522, 0.98);
+    rim.fillRect(0, 370, 250, 720).fillRect(W - 250, 370, 250, 720).fillRect(0, 370, W, 105);
+    rim.fillStyle(0x352b38, 1);
+    for (let y = 400 - shift; y < 1080; y += 76) {
+      rim.fillRect(0, y, 232, 18).fillRect(W - 232, y + 22, 232, 18);
+    }
+    rim.lineStyle(10, 0x6f5b52, 1)
+      .strokeLineShape(new Phaser.Geom.Line(235, 1080, 235, 490))
+      .strokeLineShape(new Phaser.Geom.Line(W - 235, 1080, W - 235, 490));
+    rim.lineStyle(8, 0x8a7355, 1).strokeLineShape(new Phaser.Geom.Line(235, 490, W - 235, 490));
   }
 }
 
@@ -1796,6 +1939,8 @@ interface SlotView {
   readonly coat: LiveryCoat;
   /** The sounding-car lift — the same silhouette, flooded cream. */
   readonly lift: Phaser.GameObjects.Image;
+  /** The visible blue canvas cover for a muted car. */
+  readonly tarp: Phaser.GameObjects.Graphics;
   readonly wheelA: Phaser.GameObjects.Image;
   readonly wheelB: Phaser.GameObjects.Image;
   readonly label: Phaser.GameObjects.Text;
@@ -1809,6 +1954,7 @@ interface SlotView {
    *  than every frame for every car. */
   liveryDrawn: number;
   soundingDrawn: boolean;
+  tarpedDrawn: boolean;
   readonly show: () => void;
   readonly hide: () => void;
 }

@@ -129,6 +129,26 @@ function build(textures = fakeTextures()) {
 // ── tests ───────────────────────────────────────────────────────────────────
 
 describe("SceneVisualizer", () => {
+  it("can be deliberately recessed without changing its authoritative audio gate", () => {
+    const analyser = fakeAnalyser();
+    const styles = [styleSpy("a")];
+    const scene = fakeScene(fakeTextures());
+    const viz = new SceneVisualizer(scene.scene, {
+      analyser: analyser.node,
+      getProject: () => PROJECT,
+      styles,
+      depth: 2,
+      maxVisibility: 0.6,
+    });
+    viz.layout({ x: 100, y: 100, width: 400, height: 120 });
+    analyser.setLevel(0.4);
+    for (let i = 0; i < 120; i++) viz.update(FRAME_MS);
+
+    expect(viz.visibility).toBeGreaterThan(0.55);
+    expect(viz.visibility).toBeLessThanOrEqual(0.6);
+    expect(styles[0]!.calls).toBeGreaterThan(100);
+  });
+
   it("stays invisible and does no drawing while the output is silent", () => {
     const { viz, styles, textures } = build();
     for (let i = 0; i < 200; i++) viz.update(FRAME_MS);

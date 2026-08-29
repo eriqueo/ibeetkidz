@@ -84,6 +84,9 @@ export interface SceneVisualizerOptions {
   readonly styles: readonly VisualStyle[];
   /** Draw order. Must sit above the background and below the train. */
   readonly depth: number;
+  /** Optional ceiling for a scene where the screen is a supporting instrument,
+   *  not the focal point. It never changes the authoritative audio gate. */
+  readonly maxVisibility?: number;
 }
 
 export class SceneVisualizer {
@@ -213,7 +216,8 @@ export class SceneVisualizer {
     this.env = Math.max(rms, this.env * Math.exp(-dt / ENV_TAU_S));
     const live = this.env > SILENCE_RMS;
 
-    const ceiling = this.reduced ? 0.55 : 1;
+    const sceneCeiling = Math.min(1, Math.max(0, this.opts.maxVisibility ?? 1));
+    const ceiling = Math.min(sceneCeiling, this.reduced ? 0.55 : 1);
     const tau = live ? FADE_IN_TAU_S : FADE_OUT_TAU_S;
     this.alpha += ((live ? ceiling : 0) - this.alpha) * (1 - Math.exp(-dt / tau));
     if (this.alpha < 0.004) this.alpha = 0;
