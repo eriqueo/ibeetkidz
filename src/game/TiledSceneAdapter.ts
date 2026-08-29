@@ -14,6 +14,7 @@
 import type Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import type { TiledSpawn } from "./TiledParser.ts";
+import { emitTiledAction } from "./tiled-actions.ts";
 
 export interface Rect {
   x: number;
@@ -101,11 +102,6 @@ export interface AdapterResult {
   hits: Phaser.GameObjects.Rectangle[];
 }
 
-// Emit through the typed bus with a runtime-supplied action string. The
-// action/arg pairing is data-authored (validated for shape by TiledParser, not
-// for type against EventMap), so we cast at this single boundary.
-const emit = EventBus.emit.bind(EventBus) as (event: string, ...args: unknown[]) => boolean;
-
 /**
  * Build the interactive layer for a scene from parsed spawns:
  *  1. a cover-fit base-plate background Image,
@@ -168,8 +164,7 @@ export function spawnTiledScene(
         restore();
         if (!armed) return;
         armed = false;
-        if (arg !== undefined) emit(action, arg);
-        else emit(action);
+        emitTiledAction(EventBus, action, arg);
       });
       hit.on("pointerout", () => {
         armed = false;

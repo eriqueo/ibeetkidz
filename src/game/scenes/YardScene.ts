@@ -147,6 +147,15 @@ export class YardScene extends BackgroundScene {
     return { offering: this.undoToast?.offering ?? false, lost: this.undoToast?.lost ?? "" };
   }
 
+  /** Authoritative scene-side model received through React's ready callback. */
+  get debugModel(): { carCount: number; trainCount: number; selectedId: string | null } {
+    return {
+      carCount: this.cars.length,
+      trainCount: this.train.length,
+      selectedId: this.selectedId,
+    };
+  }
+
 
   // YardScene owns the palette selection, so the animated/selection-aware action
   // intents are translated here: a Tiled "yard-add"/"yard-depart" tap runs the

@@ -71,12 +71,12 @@ test("every view is still wired to React on its SECOND visit", async ({ page }) 
 
   await go(page, "yard");
   await waitForScene(page, "YardScene");
-  // The Yard's undo chip is attached in `create`; its React wiring is the
-  // dispatch funnel, so assert the scene object itself is the LIVE one by
-  // driving a real state change through it.
+  // `onSceneReady` is the only path that pushes the project cars/train into a
+  // fresh YardScene. Zero is its constructor state, so this cannot pass if the
+  // second synchronous create outruns React's subscription again.
   await expect
-    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer.offering))
-    .toBe(false);
+    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().debugModel.carCount))
+    .toBeGreaterThan(0);
 
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });

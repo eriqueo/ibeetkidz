@@ -21,16 +21,69 @@
 
 import type { Command } from "./types.ts";
 
-/** Kid words for what just disappeared. Present ⇒ offer to put it back. */
-const LOST: Partial<Record<Command["type"], string>> = {
-  removeLayer: "Track gone",
-  removeCar: "Car gone",
-  removeFromTrain: "Car unhitched",
-  removeClip: "Sound gone",
-  removeEffect: "Effect gone",
-  removePattern: "Pattern gone",
-  removeNote: "Note gone",
-};
+type UndoPolicy =
+  | { readonly kind: "offer"; readonly lost: string }
+  | { readonly kind: "silent" };
+
+const silent = { kind: "silent" } as const;
+const offer = (lost: string): UndoPolicy => ({ kind: "offer", lost });
+
+/**
+ * Exhaustive policy for the complete Command vocabulary. This is deliberately
+ * a Record rather than a remove-name heuristic: adding any command is a compile
+ * error until its undo affordance has been considered.
+ */
+export const UNDO_POLICY = {
+  addClip: silent,
+  removeClip: offer("Sound gone"),
+  applyEffect: silent,
+  removeEffect: offer("Effect gone"),
+  renameClip: silent,
+  setClipLoop: silent,
+  addLayer: silent,
+  removeLayer: offer("Track gone"),
+  moveLayer: silent,
+  setLayerVolume: silent,
+  toggleLayerMuted: silent,
+  toggleStep: silent,
+  toggleNote: silent,
+  addNote: silent,
+  removeNote: silent,
+  resizeNote: silent,
+  setRoll: silent,
+  addPin: silent,
+  clearPins: offer("Bend gone"),
+  tuneDrum: silent,
+  setLayerWave: silent,
+  setLayerInstrument: silent,
+  setLayerEcho: silent,
+  setLayerTone: silent,
+  setLayerSwing: silent,
+  setLayerWobble: silent,
+  setLayerCrunch: silent,
+  setTempo: silent,
+  setScale: silent,
+  setKey: silent,
+  setSwing: silent,
+  setActiveMachine: silent,
+  setActiveView: silent,
+  setActivePart: silent,
+  addCar: silent,
+  selectCar: silent,
+  renameCar: silent,
+  removeCar: offer("Car gone"),
+  addToTrain: silent,
+  removeFromTrain: offer("Car unhitched"),
+  reorderTrain: silent,
+  muteCar: silent,
+  setCarType: silent,
+  setCarColor: silent,
+  addPattern: silent,
+  selectPattern: silent,
+  removePattern: offer("Pattern gone"),
+  duplicateCar: silent,
+  copyLayerToCar: silent,
+} as const satisfies Record<Command["type"], UndoPolicy>;
 
 /**
  * What this command took away, or null if it took nothing.
@@ -41,20 +94,11 @@ const LOST: Partial<Record<Command["type"], string>> = {
  * completeness test below can tell "considered and excluded" from "forgotten".
  */
 export function lostBy(cmd: Command): string | null {
-  return LOST[cmd.type] ?? null;
+  const policy: UndoPolicy = UNDO_POLICY[cmd.type];
+  return policy.kind === "offer" ? policy.lost : null;
 }
-
-/** Commands whose undo offer would be noise rather than rescue. */
-const TOO_SMALL_TO_OFFER: ReadonlySet<Command["type"]> = new Set<Command["type"]>([
-  "removeNote",
-]);
 
 /** Should destroying this earn a visible "put it back"? */
 export function offersUndo(cmd: Command): boolean {
-  return lostBy(cmd) !== null && !TOO_SMALL_TO_OFFER.has(cmd.type);
+  return UNDO_POLICY[cmd.type].kind === "offer";
 }
-
-/** Every command type this module has an opinion about — the completeness test
- *  compares this against the `Command` union so a new `remove*` cannot land
- *  unclassified. */
-export const CLASSIFIED: readonly Command["type"][] = Object.keys(LOST) as Command["type"][];

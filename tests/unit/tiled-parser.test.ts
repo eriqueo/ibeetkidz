@@ -227,9 +227,10 @@ describe("property coercion", () => {
     return out[0];
   };
 
-  it("ignores a non-string/number arg (e.g. a bool)", () => {
-    const s = withProps([{ name: "arg", type: "bool", value: true }]);
-    expect(s.arg).toBeUndefined();
+  it("rejects an arg without an action", () => {
+    expect(() => withProps([{ name: "arg", type: "bool", value: true }])).toThrow(
+      /arg but no action/,
+    );
   });
 
   it("drops an empty-string action (treated as non-interactive)", () => {
@@ -266,6 +267,28 @@ describe("property coercion", () => {
 });
 
 describe("validation errors", () => {
+  const actionObject = (action: string, arg?: string | number) =>
+    obj({
+      properties: [
+        { name: "action", type: "string", value: action },
+        ...(arg === undefined ? [] : [{ name: "arg", type: typeof arg === "number" ? "int" : "string", value: arg }]),
+      ],
+    });
+
+  it("rejects an action outside the Tiled EventBus vocabulary", () => {
+    expect(() => parseTiledLayer(makeMap([actionObject("launch-missiles")]), "ui-layer"))
+      .toThrow(/Unknown Tiled action/);
+  });
+
+  it("rejects missing, extra, and invalid action payloads", () => {
+    expect(() => parseTiledLayer(makeMap([actionObject("map-nav")]), "ui-layer"))
+      .toThrow(/Invalid Tiled payload for map-nav/);
+    expect(() => parseTiledLayer(makeMap([actionObject("nav-map", "yard")]), "ui-layer"))
+      .toThrow(/Invalid Tiled payload for nav-map/);
+    expect(() => parseTiledLayer(makeMap([actionObject("map-nav", "moon")]), "ui-layer"))
+      .toThrow(/Invalid Tiled payload for map-nav/);
+  });
+
   it("rejects JSON that is not a Tiled map", () => {
     expect(() => parseTiledLayer({ foo: 1 }, "ui-layer")).toThrow();
   });

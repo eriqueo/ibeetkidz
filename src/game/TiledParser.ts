@@ -19,6 +19,11 @@
 //       arg    (string|int) → single payload for that event (e.g. a toolId/delta)
 //       anchor (string) → "bg" (default) | "top-right" | "bottom-center"
 import { z } from "zod";
+import {
+  parseTiledAction,
+  type TiledActionName,
+  type TiledActionArg,
+} from "./tiled-actions.ts";
 
 // ── Tiled 1.10 JSON shapes (only the parts we consume; rest passes through) ──
 const PropValue = z.union([z.string(), z.number(), z.boolean()]);
@@ -102,9 +107,9 @@ export interface TiledSpawn {
   w: number;
   h: number;
   /** EventBus event to emit on tap; absent ⇒ non-interactive (e.g. an LCD anchor). */
-  action?: string;
+  action?: TiledActionName;
   /** Single payload to emit with `action` (toolId, nav view, tempo delta, …). */
-  arg?: string | number;
+  arg?: TiledActionArg;
   /** Viewport safe-zone behaviour for the spawned sprite. */
   anchor: Anchor;
 }
@@ -187,8 +192,7 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
   return (layer.objects ?? []).map((o) => {
     const props = recordOf(o.properties);
     const { cx, cy } = centrePx(o);
-    const action = props["action"];
-    const arg = props["arg"];
+    const intent = parseTiledAction(props["action"], props["arg"]);
     const sprite = props["sprite"];
     const label = props["label"];
     const labelColor = props["labelColor"];
@@ -205,8 +209,10 @@ export function parseTiledLayer(mapJson: unknown, layerName: string): TiledSpawn
       anchor: toAnchor(props["anchor"]),
     };
     // exactOptionalPropertyTypes: only attach optional keys when truly present.
-    if (typeof action === "string" && action.length > 0) spawn.action = action;
-    if (typeof arg === "string" || typeof arg === "number") spawn.arg = arg;
+    if (intent) {
+      spawn.action = intent.action;
+      if ("arg" in intent) spawn.arg = intent.arg;
+    }
     if (typeof sprite === "string" && sprite.length > 0) spawn.sprite = sprite;
     if (typeof label === "string" && label.length > 0) spawn.label = label;
     if (typeof labelColor === "string" && labelColor.length > 0) spawn.labelColor = labelColor;

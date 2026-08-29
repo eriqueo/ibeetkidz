@@ -19,6 +19,7 @@
 import type Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import type { TiledSpawn } from "./TiledParser.ts";
+import { emitTiledAction } from "./tiled-actions.ts";
 import { placeSpawn, type Rect, type CameraSize } from "./TiledSceneAdapter.ts";
 import {
   UI_ATLAS_KEY,
@@ -56,12 +57,9 @@ export interface UiLayerOptions {
 
 // Emit through the typed bus with a runtime-supplied action string (validated for
 // shape by TiledParser, not against EventMap) — cast at this single boundary.
-const emit = EventBus.emit.bind(EventBus) as (event: string, ...args: unknown[]) => boolean;
-
 function fire(spawn: TiledSpawn): void {
   if (spawn.action === undefined) return;
-  if (spawn.arg !== undefined) emit(spawn.action, spawn.arg);
-  else emit(spawn.action);
+  emitTiledAction(EventBus, spawn.action, spawn.arg);
 }
 
 function defFor(spawn: TiledSpawn): UiSpriteDef | undefined {

@@ -368,6 +368,27 @@ test("Track: the jumbotron lights up from real audio, and dark otherwise", async
     .toBe(0);
 });
 
+test("a SEND render finishing after navigation cannot touch the destroyed Track", async ({ page }) => {
+  const crashes: string[] = [];
+  page.on("pageerror", (error) => crashes.push(error.message));
+  await boot(page);
+  await gotoFromMap(page, "track");
+  await waitForScene(page, "TrackV3Scene");
+
+  await emit(page, "track-send");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().sendUiState.kind),
+  ).toBe("recording");
+  await emit(page, "track-nav", "map");
+  await waitForScene(page, "MapScene");
+
+  // One bar plus render tail completes comfortably inside this window. The old
+  // callback retained the destroyed scene refs and wrote through them here.
+  await page.waitForTimeout(8000);
+  expect((await getProject(page)).activeView).toBe("map");
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
+
 test("deleting a track offers to put it back, and putting it back works", async ({ page }) => {
   // "Forgiving UX. Undo everywhere" is a stated rule that shipped as a lie: the
   // UndoStack, the store method and `AppApi.undo()` all existed with ZERO

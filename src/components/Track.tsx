@@ -176,7 +176,7 @@ export const Track: FC = () => {
       v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
     };
 
-    const onPlay = () => engine.playRide(projectRef.current);
+    const onPlay = () => { void engine.playRide(projectRef.current); };
     const onStop = () => {
       engine.stop(); // also drops every mode latch — flat ground on stop
       latchedRidesRef.current.clear();
@@ -303,10 +303,12 @@ export const Track: FC = () => {
   useEffect(() => {
     let rendering = false;
     let file: File | null = null;
+    let active = true;
     // Whichever Track is mounted gets the SEND state. Both scenes take the
     // same `SendUiState` and both mount the same `SendSongPanel`, so this is
     // one flow with two hosts rather than two flows.
     const setUi = (s: Parameters<TrackScene["setSendState"]>[0]): void => {
+      if (!active) return;
       sceneRef.current?.setSendState(s);
       v3Ref.current?.setSendState(s);
     };
@@ -358,6 +360,9 @@ export const Track: FC = () => {
     EventBus.on("track-send-save", onSave);
     EventBus.on("track-send-close", onClose);
     return () => {
+      // An offline render cannot be canceled, but its former scene can lose
+      // authority immediately. Late completion is intentionally discarded.
+      active = false;
       EventBus.off("track-send", onSendVoid);
       EventBus.off("track-send-share", onShare);
       EventBus.off("track-send-save", onSave);

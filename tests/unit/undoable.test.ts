@@ -14,7 +14,7 @@
 //      would undo the wrong thing.
 
 import { describe, expect, it } from "vitest";
-import { CLASSIFIED, lostBy, offersUndo } from "../../src/core/undoable.ts";
+import { UNDO_POLICY, lostBy, offersUndo } from "../../src/core/undoable.ts";
 import type { Command } from "../../src/core/types.ts";
 
 // The same import-the-real-artifact idiom `architecture.test.ts` and
@@ -39,23 +39,15 @@ describe("undoable", () => {
 
   it("does not offer for a single note tap — that is drawing, not losing work", () => {
     const cmd: Command = { type: "removeNote", layerId: "l", index: 0, row: 0 };
-    // Classified (so the completeness check below sees it was considered)…
-    expect(lostBy(cmd)).not.toBeNull();
-    // …but deliberately not offered, or the chip would live on screen.
+    // Deliberately silent, or the chip would live on screen while drawing.
+    expect(lostBy(cmd)).toBeNull();
     expect(offersUndo(cmd)).toBe(false);
   });
 
-  it("classifies EVERY remove* command the vocabulary has", () => {
-    // The guard that keeps the promise. Reads the `Command` union straight out
-    // of `types.ts` rather than restating it here — a restated list is exactly
-    // what goes stale, and going stale means a kid loses work with no way back.
-    const declared = [...TYPES_SRC.matchAll(/type:\s*"(remove[A-Za-z]*)"/g)].map((m) => m[1]!);
-    expect(declared.length, "found no remove* commands — the regex is broken").toBeGreaterThan(4);
-    const missing = [...new Set(declared)].filter((t) => !CLASSIFIED.includes(t as Command["type"]));
-    expect(
-      missing,
-      `unclassified destructive command(s) — add them to LOST in src/core/undoable.ts, ` +
-        `or a kid deletes this and cannot get it back`,
-    ).toEqual([]);
+  it("classifies the complete Command vocabulary, not only remove* names", () => {
+    const declared = [...TYPES_SRC.matchAll(/readonly type:\s*"([A-Za-z]+)"/g)].map((m) => m[1]!);
+    expect(declared.length, "found no commands — the source scan is broken").toBeGreaterThan(40);
+    expect(Object.keys(UNDO_POLICY).sort()).toEqual([...new Set(declared)].sort());
+    expect(offersUndo({ type: "clearPins", layerId: "l", index: 0, row: 0 })).toBe(true);
   });
 });
