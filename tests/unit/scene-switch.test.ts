@@ -107,4 +107,38 @@ describe("SceneSwitch", () => {
     const removed = log.filter((entry) => entry.startsWith("remove:"));
     expect(added.length - removed.length).toBe(1);
   });
+
+  it("coalesces rapid navigation during boot to the last requested view", () => {
+    // React can publish several activeView changes before Phaser's asynchronous
+    // READY event. Starting each intermediate scene would waste its loaders and
+    // let a stale `current-scene-ready` race the view that actually won.
+    const { log, hub } = harness();
+    hub.show(Workshop);
+    hub.show(Yard);
+    hub.show(Workshop);
+
+    expect(log).toEqual([]);
+    hub.markReady();
+    expect(log).toEqual(["add:WorkshopScene"]);
+    expect(hub.runningKey).toBe("WorkshopScene");
+  });
+
+  it("keeps exactly one registered scene through a rapid post-boot burst", () => {
+    const { log, hub } = harness();
+    hub.markReady();
+    hub.show(Workshop);
+    hub.show(Yard);
+    hub.show(Workshop);
+    hub.show(Yard);
+
+    const added = log.filter((entry) => entry.startsWith("add:"));
+    const removed = log.filter((entry) => entry.startsWith("remove:"));
+    expect(added.length - removed.length).toBe(1);
+    expect(hub.runningKey).toBe("YardScene");
+    expect(log.slice(-3)).toEqual([
+      "stop:WorkshopScene",
+      "remove:WorkshopScene",
+      "add:YardScene",
+    ]);
+  });
 });

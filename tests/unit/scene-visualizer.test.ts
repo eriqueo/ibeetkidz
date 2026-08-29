@@ -14,7 +14,7 @@
 // exact Phaser surface this class touches, so widening that surface has to be a
 // visible edit here.
 
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { SceneVisualizer } from "../../src/game/scene-visualizer.ts";
 import type { VisualStyle } from "../../src/ports/renderer-port.ts";
 import type { Project } from "../../src/core/types.ts";
@@ -97,6 +97,10 @@ const PROJECT = {} as Project;
 /** One 60 fps frame. The class eases on the real delta, not on frame COUNT, so
  *  these tests are stating durations: 60 iterations here means one second. */
 const FRAME_MS = 1000 / 60;
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+});
 
 function styleSpy(id: string): VisualStyle & { calls: number } {
   const s = {
@@ -187,6 +191,32 @@ describe("SceneVisualizer", () => {
     analyser.setLevel(0.02);
     for (let i = 0; i < 200; i++) viz.update(FRAME_MS);
     expect(viz.visibility).toBeGreaterThan(0.9);
+  });
+
+  it("still reacts to quiet output just above the authoritative analyser floor", () => {
+    // A quiet voice must not disappear merely because it has less headroom than
+    // the synthetic 0.4 signal used by the main visibility test. This sits only
+    // 25% above SILENCE_RMS, making the boundary itself the regression target.
+    const { viz, analyser } = build();
+    analyser.setLevel(0.005);
+    for (let i = 0; i < 240; i++) viz.update(FRAME_MS);
+    expect(viz.visibility).toBeGreaterThan(0.9);
+  });
+
+  it("honours reduced motion with a dimmer ceiling and lower draw cadence", () => {
+    const matchMedia = vi.fn(() => ({ matches: true }));
+    vi.stubGlobal("matchMedia", matchMedia);
+    const { viz, analyser, styles } = build();
+    analyser.setLevel(0.4);
+    for (let i = 0; i < 120; i++) viz.update(FRAME_MS);
+
+    expect(matchMedia).toHaveBeenCalledWith("(prefers-reduced-motion: reduce)");
+    expect(viz.visibility).toBeGreaterThan(0.5);
+    expect(viz.visibility).toBeLessThanOrEqual(0.55);
+    // REDUCED_SKIP is six frames: at 120 updates this should draw around 20
+    // times, never at the full-frame cadence that can strobe.
+    expect(styles[0]!.calls).toBeGreaterThan(10);
+    expect(styles[0]!.calls).toBeLessThan(30);
   });
 
   it("cycles through every style and wraps", () => {
