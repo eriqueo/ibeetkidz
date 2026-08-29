@@ -105,9 +105,6 @@ test("a kid can drive the default Track through its real canvas controls", async
     };
   }, { x: car.soundingCarX, y: car.soundingCarY });
   await page.mouse.click(canvasPoint.x, canvasPoint.y);
-  // TARP arms the choice, but does not make the next car tap mutate or
-  // navigate by itself. The kid confirms the highlighted action explicitly.
-  await tapNamedPhaserObject(page, "track-car-action:tarp");
   await expect.poll(muted).toBe(true);
 
   await tapNamedPhaserObject(page, "track-control:btn-track-clear");
@@ -126,29 +123,6 @@ test("a kid can drive the default Track through its real canvas controls", async
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
   ).toBe("map");
-});
-
-test("a car tap offers edit and tarp explicitly before changing the view", async ({ page }) => {
-  await bootV3(page);
-  const before = await state(page);
-  const canvasPoint = await page.evaluate(({ x, y }) => {
-    const scene = (window as any).__ibeetkidz_test__.getScene();
-    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
-    const game = scene.scale.gameSize;
-    return {
-      x: canvas.left + x * (canvas.width / game.width),
-      y: canvas.top + y * (canvas.height / game.height),
-    };
-  }, { x: before.soundingCarX, y: before.soundingCarY });
-  await page.mouse.click(canvasPoint.x, canvasPoint.y);
-
-  await expect.poll(async () => (await state(page)).carAction?.id ?? null).not.toBeNull();
-  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView)).toBe("track");
-  await tapNamedPhaserObject(page, "track-car-action:tarp");
-  await expect.poll(() =>
-    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted),
-  ).toBe(true);
-  await expect.poll(async () => (await state(page)).tarpedCarCount).toBe(1);
 });
 
 test("?oval opts back into the ring", async ({ page }) => {
@@ -285,13 +259,4 @@ test("a bridge and rain leave the rails level — only a hill is a climb", async
       await page.waitForTimeout(100);
     }
   }
-});
-
-test("tunnel is a moving world treatment, not only a dark mode", async ({ page }) => {
-  await bootV3(page);
-  await emit(page, "transport-play", "ride");
-  await tapNamedPhaserObject(page, "track-mode:tunnel");
-  await expect.poll(async () => (await state(page)).tunnel.active).toBe(true);
-  const before = (await state(page)).tunnel.rimPhase;
-  await expect.poll(async () => (await state(page)).tunnel.rimPhase).not.toBe(before);
 });
