@@ -82,6 +82,12 @@ export interface SoundPort {
   /** Trigger a clip once, now. */
   play(clip: Clip): void;
 
+  /** Resolve any asynchronous sample/effect work needed before a transport
+   *  schedule is committed. Idempotent and cached by the adapter. The engine
+   *  awaits this for every sounding clip before it starts the transport, so a
+   *  cold bake cannot miss the first pass of the song. */
+  prepareClip(clip: Clip): Promise<void>;
+
   /** Audition a single melody note now (used when a kid taps a note cell), so
    *  the grid gives instant feedback without waiting for Play. Voiced with the
    *  lane's `instrument` so the preview matches what Play will sound like.

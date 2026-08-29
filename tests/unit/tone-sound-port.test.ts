@@ -46,11 +46,15 @@ const h = vi.hoisted(() => {
 
   // The transport is a plain value holder here — the point of the test is that
   // the bake does NOT consult it.
+  const repeats: unknown[][] = [];
   const transport = {
     bpm: { value: 120 },
     state: "stopped",
     nextSubdivision: () => 0,
-    scheduleRepeat: () => 0,
+    scheduleRepeat: (...args: unknown[]) => {
+      repeats.push(args);
+      return repeats.length;
+    },
     cancel: () => {},
     start: () => {},
     stop: () => {},
@@ -98,7 +102,7 @@ const h = vi.hoisted(() => {
     return { get: () => baked };
   };
 
-  return { SR, ctx, transport, destination, played, FakePlayer, Offline, makeBuffer };
+  return { SR, ctx, transport, destination, played, repeats, FakePlayer, Offline, makeBuffer };
 });
 
 vi.mock("tone", async (importOriginal) => {
@@ -174,6 +178,26 @@ describe("loopCacheKey", () => {
 });
 
 describe("ToneSoundPort beat-snap cache", () => {
+  it("registers a prepared cold clip on the transport synchronously", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = snappedClip();
+    await port.prepareClip(clip);
+    h.repeats.length = 0;
+
+    port.scheduleStep(clip, 0, 16, {
+      volume: 1,
+      swing: 0,
+      echo: 0,
+      tone: 1,
+      laneKey: "lane-1",
+    });
+
+    // No flush: prepareClip's promise is the boundary. Once it resolves, the
+    // transport registration must already exist in this same call stack.
+    expect(h.repeats).toHaveLength(1);
+  });
+
   it("bakes at the tempo in force when playback was asked for, not the one it lands in", async () => {
     const port = new ToneSoundPort();
     await port.resume();

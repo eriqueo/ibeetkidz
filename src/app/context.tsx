@@ -166,7 +166,11 @@ if (
 function dispatch(cmd: Command): void {
   const before = store.getSnapshot();
   store.dispatch(cmd);
-  if (engine.isPlaying) engine.reconcile(getProject());
+  if (engine.isPlaying) {
+    void engine.reconcile(getProject()).catch((err: unknown) => {
+      console.warn("audio reconcile failed", err);
+    });
+  }
   // A no-op command changes nothing and pushes no history entry, so there would
   // be nothing for "put it back" to restore — checking the store rather than
   // the command keeps this honest about what actually happened.
@@ -195,7 +199,11 @@ function dispatchAll(cmds: readonly Command[], offer?: string): void {
   if (cmds.length === 0) return;
   const before = store.getSnapshot();
   store.dispatchAll(cmds);
-  if (engine.isPlaying) engine.reconcile(getProject());
+  if (engine.isPlaying) {
+    void engine.reconcile(getProject()).catch((err: unknown) => {
+      console.warn("audio reconcile failed", err);
+    });
+  }
   // Same rule as the single-command arm: ask the STORE whether anything moved,
   // not the commands what they intended. A batch can be entirely refused.
   if (store.getSnapshot() === before) return;
@@ -422,12 +430,20 @@ const api: AppApi = {
   undo: () => {
     store.undo();
     withdrawUndoOffer();
-    if (engine.isPlaying) engine.reconcile(getProject());
+    if (engine.isPlaying) {
+      void engine.reconcile(getProject()).catch((err: unknown) => {
+        console.warn("audio reconcile failed", err);
+      });
+    }
   },
   redo: () => {
     store.redo();
     withdrawUndoOffer();
-    if (engine.isPlaying) engine.reconcile(getProject());
+    if (engine.isPlaying) {
+      void engine.reconcile(getProject()).catch((err: unknown) => {
+        console.warn("audio reconcile failed", err);
+      });
+    }
   },
   save: () => void persist(),
   // ONE undo step, not fifteen. A surprise is ~15 commands and used to dispatch

@@ -75,7 +75,9 @@ export const Yard: FC = () => {
     // been started by the boot gesture, so this touches nothing before then.
     const onSelect = (partId: string) => {
       dispatch({ type: "setActivePart", partId });
-      engine.playCarLoop(partId, projectRef.current);
+      void engine.playCarLoop(partId, projectRef.current).catch((err: unknown) => {
+        console.warn("audio playback failed", err);
+      });
     };
     const onAdd = (partId: string) =>
       dispatch({ type: "addToTrain", instanceId: newInstanceId(), partId });

@@ -26,6 +26,8 @@ interface Sched {
 
 class FakeSoundPort implements SoundPort {
   readonly scheduled: Sched[] = [];
+  readonly events: string[] = [];
+  prepareClipImpl: (clip: Clip) => Promise<void> = async () => {};
   clears = 0;
   /** Bars requested of the last captureBars call, with the schedule snapshot
    *  visible at capture time (renderSong must schedule BEFORE capturing). */
@@ -48,6 +50,7 @@ class FakeSoundPort implements SoundPort {
     barOffset = 0,
   ): void {
     this.scheduled.push({ clipId: clip.id, cycleBars, barOffset, stepIndex, totalSteps });
+    this.events.push(`schedule:${clip.id}`);
   }
   clearScheduled(): void {
     this.clears++;
@@ -90,6 +93,11 @@ class FakeSoundPort implements SoundPort {
     return "b";
   }
   async rehydrate(): Promise<void> {}
+  async prepareClip(clip: Clip): Promise<void> {
+    this.events.push(`prepare:${clip.id}`);
+    await this.prepareClipImpl(clip);
+    this.events.push(`prepared:${clip.id}`);
+  }
   getRecordingBlob(): Blob | null {
     return null;
   }
@@ -104,7 +112,9 @@ class FakeSoundPort implements SoundPort {
   thereminOff(): void {}
   setThereminWaveform(): void {}
   setTempo(): void {}
-  startTransport(): void {}
+  startTransport(): void {
+    this.events.push(`start:${this.scheduled.length}`);
+  }
   stopTransport(): void {}
   stopAll(): void {}
   setQuantize(): void {}
@@ -144,6 +154,12 @@ async function booted(sound: FakeSoundPort): Promise<AudioEngine> {
   return engine;
 }
 
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
 /** Just the BAR placement of everything scheduled. The arrangement tests are
  *  about which bar a car lands in; where the hit sits inside that bar is the
  *  BACKWARDS tests' business, and mixing the two would make every arrangement
@@ -170,10 +186,79 @@ function twoCarTrain(): Project {
 }
 
 describe("AudioEngine play modes", () => {
+  it("prepares every cold clip before registering schedules and starting transport", async () => {
+    const sound = new FakeSoundPort();
+    const gate = deferred();
+    sound.prepareClipImpl = () => gate.promise;
+    const engine = await booted(sound);
+
+    const play = engine.playLoop(oneHitCar());
+    await Promise.resolve();
+    expect(sound.events).toEqual(["prepare:d1"]);
+    expect(sound.scheduled).toHaveLength(0);
+
+    gate.resolve();
+    await play;
+    expect(sound.events).toEqual([
+      "prepare:d1",
+      "prepared:d1",
+      "schedule:d1",
+      "start:1",
+    ]);
+  });
+
+  it("never commits a stale preparation after a newer play intent", async () => {
+    const sound = new FakeSoundPort();
+    const stale = deferred();
+    sound.prepareClipImpl = (clip) => clip.id === "d1" ? stale.promise : Promise.resolve();
+    const engine = await booted(sound);
+
+    const first = engine.playLoop(oneHitCar());
+    await Promise.resolve();
+    await engine.playRide(twoCarTrain());
+    expect(sound.events.filter((event) => event.startsWith("start:"))).toEqual(["start:2"]);
+    expect(bars(sound).map((entry) => entry.clipId)).toEqual(["carA", "carB"]);
+
+    stale.resolve();
+    await first;
+    expect(sound.events.filter((event) => event.startsWith("start:"))).toEqual(["start:2"]);
+    expect(bars(sound).map((entry) => entry.clipId)).toEqual(["carA", "carB"]);
+  });
+
+  it("keeps the old schedule until the newest rapid reconcile is ready", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    await engine.playRide(twoCarTrain());
+    const before = bars(sound);
+    const stale = deferred();
+    sound.prepareClipImpl = (clip) => clip.id === "d1" ? stale.promise : Promise.resolve();
+
+    const first = engine.reconcile(oneHitCar());
+    await Promise.resolve();
+    expect(bars(sound)).toEqual(before);
+
+    await engine.reconcile(twoCarTrain());
+    expect(bars(sound).map((entry) => entry.clipId)).toEqual(["carA", "carB"]);
+    stale.resolve();
+    await first;
+    expect(bars(sound).map((entry) => entry.clipId)).toEqual(["carA", "carB"]);
+  });
+
+  it("does not start transport when cold preparation fails", async () => {
+    const sound = new FakeSoundPort();
+    sound.prepareClipImpl = async () => { throw new Error("bake failed"); };
+    const engine = await booted(sound);
+
+    await expect(engine.playLoop(oneHitCar())).rejects.toThrow("bake failed");
+    expect(sound.scheduled).toHaveLength(0);
+    expect(sound.events.some((event) => event.startsWith("start:"))).toBe(false);
+    expect(engine.isPlaying).toBe(false);
+  });
+
   it("loop mode schedules the active car at one bar, offset 0", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    engine.playLoop(oneHitCar());
+    await engine.playLoop(oneHitCar());
     expect(engine.playMode).toBe("loop");
     expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
@@ -187,7 +272,7 @@ describe("AudioEngine play modes", () => {
     const base = oneHitCar();
     let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
-    engine.playRide(project);
+    await engine.playRide(project);
     expect(engine.playMode).toBe("ride");
     // Each slot's lane scheduled at cycleBars = 2 (song length), at bars 0 and 1.
     expect(bars(sound)).toEqual([
@@ -205,7 +290,7 @@ describe("AudioEngine play modes", () => {
     const car1 = project.parts[0]!.id;
     project = reduce(project, { type: "addToTrain", instanceId: "r2", partId: car1 });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
-    engine.playRide(project);
+    await engine.playRide(project);
     expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 3, barOffset: 0 },
       { clipId: "d1", cycleBars: 3, barOffset: 1 },
@@ -223,7 +308,7 @@ describe("AudioEngine play modes", () => {
     project = reduce(project, { type: "addToTrain", instanceId: "mid", partId: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "last", partId: car1 });
     project = reduce(project, { type: "muteCar", instanceId: "mid", muted: true });
-    engine.playRide(project);
+    await engine.playRide(project);
     // Bars 0 and 2 sound at cycleBars = 3; bar 1 (muted) is skipped.
     expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 3, barOffset: 0 },
@@ -237,7 +322,7 @@ describe("AudioEngine play modes", () => {
     const base = oneHitCar();
     let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
-    engine.playCarLoop(project.parts[0]!.id, project);
+    await engine.playCarLoop(project.parts[0]!.id, project);
     expect(engine.playMode).toBe("loop");
     expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
@@ -247,7 +332,7 @@ describe("AudioEngine play modes", () => {
   it("a one-car ride is identical to a loop (byte-for-byte schedule)", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    engine.playRide(oneHitCar());
+    await engine.playRide(oneHitCar());
     expect(bars(sound)).toEqual([
       { clipId: "d1", cycleBars: 1, barOffset: 0 },
     ]);
@@ -285,9 +370,9 @@ describe("AudioEngine play modes", () => {
     const base = oneHitCar();
     let project = reduce(base, { type: "duplicateCar", partId: base.activePartId!, id: "car-2" });
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
-    engine.playRide(project);
+    await engine.playRide(project);
     const clearsAfterPlay = sound.clears;
-    engine.reconcile(project); // an edit while riding
+    await engine.reconcile(project); // an edit while riding
     expect(sound.clears).toBe(clearsAfterPlay + 1);
     expect(sound.scheduled).toHaveLength(2); // still the whole song
   });
@@ -302,7 +387,7 @@ describe("AudioEngine terrain", () => {
     engine.applyTerrain("hill", project); // stopped — nothing to ride through
     expect(sound.terrains).toHaveLength(0);
 
-    engine.playRide(project);
+    await engine.playRide(project);
     engine.applyTerrain("hill", project);
     expect(sound.terrains).toHaveLength(1);
 
@@ -315,7 +400,7 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = { ...oneHitCar(), tempoBpm: 96 };
-    engine.playRide(project);
+    await engine.playRide(project);
 
     engine.applyTerrain("bridge", project, 3);
     expect(sound.terrains[0]).toEqual({
@@ -329,7 +414,7 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = oneHitCar();
-    engine.playRide(project);
+    await engine.playRide(project);
     engine.applyTerrain("rain", project);
     expect(sound.terrains[0]?.holdBars).toBe(2);
   });
@@ -338,7 +423,7 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = oneHitCar();
-    engine.playRide(project);
+    await engine.playRide(project);
     const clearsBefore = sound.clears;
     const scheduledBefore = sound.scheduled.length;
 
@@ -361,7 +446,7 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = oneHitCar();
-    engine.playRide(project);
+    await engine.playRide(project);
 
     // On: the mode's own effect, held effectively forever (the latch).
     const on = engine.toggleMode("hill", project);
@@ -395,7 +480,7 @@ describe("AudioEngine terrain", () => {
     expect(sound.terrains).toHaveLength(0);
     expect(engine.latchedModes.size).toBe(0);
 
-    engine.playRide(project);
+    await engine.playRide(project);
     engine.toggleMode("night", project);
     engine.toggleMode("tiny", project);
     expect(engine.latchedModes.size).toBe(2);
@@ -407,15 +492,15 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = oneHitCar();
-    engine.playRide(project);
+    await engine.playRide(project);
     const clearsBefore = sound.clears;
 
-    expect(engine.toggleReversed(project)).toBe(true);
+    expect(await engine.toggleReversed(project)).toBe(true);
     expect(sound.reversedStates).toEqual([true]);
     // The flip is HEARD without stopping: a reconcile, not a stop/start.
     expect(sound.clears).toBe(clearsBefore + 1);
 
-    expect(engine.toggleReversed(project)).toBe(false);
+    expect(await engine.toggleReversed(project)).toBe(false);
     expect(sound.reversedStates).toEqual([true, false]);
   });
 
@@ -424,11 +509,11 @@ describe("AudioEngine terrain", () => {
     const engine = await booted(sound);
     // One hit, on the downbeat.
     const project = oneHitCar();
-    engine.playRide(project);
+    await engine.playRide(project);
     const forward = sound.scheduled.at(-1)!;
     expect(forward.stepIndex).toBe(0);
 
-    engine.toggleReversed(project);
+    await engine.toggleReversed(project);
     const back = sound.scheduled.at(-1)!;
     // Played backwards, the FIRST hit of the bar is the LAST thing you hear.
     // This is the assertion the shipped version would have failed: it flipped
@@ -436,7 +521,7 @@ describe("AudioEngine terrain", () => {
     expect(back.stepIndex).toBe(forward.totalSteps - 1);
     expect(back.totalSteps).toBe(forward.totalSteps);
 
-    engine.toggleReversed(project);
+    await engine.toggleReversed(project);
     expect(sound.scheduled.at(-1)!.stepIndex).toBe(0);
   });
 
@@ -444,12 +529,12 @@ describe("AudioEngine terrain", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     const project = twoCarTrain();
-    engine.playRide(project);
+    await engine.playRide(project);
     const forward = sound.scheduled.map((s) => s.barOffset);
     expect(new Set(forward)).toEqual(new Set([0, 1]));
 
     sound.scheduled.length = 0;
-    engine.toggleReversed(project);
+    await engine.toggleReversed(project);
     // Same two bars, opposite order: the car that played second now plays
     // first. A song run backwards has to end at its beginning.
     const byClip = (id: string): number =>
@@ -463,7 +548,7 @@ describe("ride loop count", () => {
   it("rides for ever by default — the behaviour the Track has always had", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    engine.playRide(twoCarTrain());
+    await engine.playRide(twoCarTrain());
     expect(engine.rideLoopCount).toBe(null);
     // Far past any plausible song length; still going.
     sound.bar = 9999;
@@ -475,7 +560,7 @@ describe("ride loop count", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     engine.setRideLoops(2);
-    engine.playRide(twoCarTrain()); // a two-bar song
+    await engine.playRide(twoCarTrain()); // a two-bar song
     // Bar 3 is the last bar of the second time round — not done yet.
     for (const bar of [0, 1, 2, 3]) {
       sound.bar = bar;
@@ -494,7 +579,7 @@ describe("ride loop count", () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
     engine.setRideLoops(1);
-    engine.playRide(twoCarTrain());
+    await engine.playRide(twoCarTrain());
     sound.bar = 1;
     expect(engine.tickRide()).toBe(false);
     sound.bar = 2;
@@ -510,7 +595,7 @@ describe("ride loop count", () => {
     expect(engine.tickRide()).toBe(false);
     // LOOP mode is the Workshop's play-one-car; a ride count must not stop it.
     const project = twoCarTrain();
-    engine.playLoop(project);
+    await engine.playLoop(project);
     sound.bar = 500;
     expect(engine.tickRide()).toBe(false);
     expect(engine.isPlaying).toBe(true);

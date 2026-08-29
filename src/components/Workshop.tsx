@@ -301,13 +301,20 @@ export const Workshop: FC = () => {
     const onCarColor = (color: string): void =>
       dispatch({ type: "setCarColor", partId: activePart(projectRef.current).id, color });
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
-    const onPlay = (): void => engine.playLoop(projectRef.current);
+    const onPlay = (): void => {
+      void engine.playLoop(projectRef.current).catch((err: unknown) => {
+        console.warn("audio playback failed", err);
+      });
+    };
     // LOOP hears the car you are working on, alone. `playCarLoop` has existed in
     // the engine since the v2 data model landed and had no caller at all — the
     // Tiled LOOP button was authored to emit `transport-play("loop")`, i.e. the
     // exact same event as PLAY, so the two buttons were the same button.
-    const onLoopCar = (): void =>
-      engine.playCarLoop(activePart(projectRef.current).id, projectRef.current);
+    const onLoopCar = (): void => {
+      void engine.playCarLoop(activePart(projectRef.current).id, projectRef.current).catch(
+        (err: unknown) => { console.warn("audio playback failed", err); },
+      );
+    };
     const onStop = (): void => engine.stop();
     const onTempo = (delta: number): void => {
       const bpm = Math.max(40, Math.min(220, projectRef.current.tempoBpm + delta));

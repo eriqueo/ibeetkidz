@@ -176,7 +176,11 @@ export const Track: FC = () => {
       v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
     };
 
-    const onPlay = () => { void engine.playRide(projectRef.current); };
+    const onPlay = () => {
+      void engine.playRide(projectRef.current).catch((err: unknown) => {
+        console.warn("audio playback failed", err);
+      });
+    };
     const onStop = () => {
       engine.stop(); // also drops every mode latch — flat ground on stop
       latchedRidesRef.current.clear();
@@ -248,8 +252,11 @@ export const Track: FC = () => {
     };
     // BACKWARDS: everything sampled plays tape-reversed until toggled again.
     const onBackwards = () => {
-      const on = engine.toggleReversed(projectRef.current);
-      v3Ref.current?.setBackwards(on);
+      void engine.toggleReversed(projectRef.current).then((on) => {
+        v3Ref.current?.setBackwards(on);
+      }).catch((err: unknown) => {
+        console.warn("audio reconcile failed", err);
+      });
     };
     // LOOP: how many times round before the train stops. ∞ → 1 → 2 → 4 → ∞.
     // Forever stays the DEFAULT and the cycle returns to it, because a song

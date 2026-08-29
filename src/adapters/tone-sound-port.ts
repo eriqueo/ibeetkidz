@@ -238,6 +238,11 @@ export class ToneSoundPort implements SoundPort {
   private bakeQueue: Promise<unknown> = Promise.resolve();
   /** Beat-snapped (looped/trimmed) buffers, keyed by source+chain+beats@bpm. */
   private readonly loopCache = new Map<string, AudioBuffer>();
+  /** Fully resolved schedule buffers. Unlike the component caches above, this
+   *  map is also the synchronous hand-off between prepareClip and scheduleStep:
+   *  once preparation resolves, scheduleStep must register before Transport
+   *  starts rather than crossing another promise turn. */
+  private readonly preparedClips = new Map<string, AudioBuffer>();
   /** Silence-trimmed copies of recordings, keyed by buffer id, used as the
    *  Voice Keys sampler one-shot so a note speaks immediately (a raw take has
    *  dead air before the voice starts — a short note would otherwise be silent). */
@@ -794,6 +799,14 @@ export class ToneSoundPort implements SoundPort {
     return buf;
   }
 
+  async prepareClip(clip: Clip): Promise<void> {
+    const bpm = this.tempoBpm;
+    const key = preparedClipKey(clip, bpm);
+    if (this.preparedClips.has(key)) return;
+    const buf = await this.resolveClip(clip, bpm);
+    if (buf) this.preparedClips.set(key, buf);
+  }
+
   private resolveSource(source: ClipSource): AudioBuffer | undefined {
     switch (source.kind) {
       case "builtin":
@@ -1040,9 +1053,7 @@ export class ToneSoundPort implements SoundPort {
       return;
     }
 
-    const gen = this.scheduleGen;
-    void this.resolveClip(clip, this.tempoBpm).then((buf) => {
-      if (!buf || gen !== this.scheduleGen) return;
+    const register = (buf: AudioBuffer): void => {
       const player = new Tone.Player({ url: this.playable(buf), context: this.liveCtx }).connect(
         this.scheduledDestination(opts),
       );
@@ -1052,6 +1063,21 @@ export class ToneSoundPort implements SoundPort {
         this.recordSchedTiming(time);
         startAll(player, time);
       }, interval, offset);
+    };
+    const key = preparedClipKey(clip, this.tempoBpm);
+    const prepared = this.preparedClips.get(key);
+    if (prepared) {
+      register(prepared);
+      return;
+    }
+
+    // Reconcile while already playing remains fire-and-forget, but a stale
+    // resolve may never commit after clearScheduled advances the generation.
+    const gen = this.scheduleGen;
+    void this.resolveClip(clip, this.tempoBpm).then((buf) => {
+      if (!buf || gen !== this.scheduleGen) return;
+      this.preparedClips.set(key, buf);
+      register(buf);
     });
   }
 
@@ -2081,6 +2107,12 @@ function bakeKey(clip: Clip): string {
         : `s:${clip.source.note}`;
   const fx = clip.effects.map((e) => `${e.id}@${e.amount.toFixed(3)}`).join(",");
   return `${srcKey}|${fx}`;
+}
+
+function preparedClipKey(clip: Clip, bpm: number): string {
+  return clip.loopBeats === undefined
+    ? bakeKey(clip)
+    : loopCacheKey(clip, bpm);
 }
 
 /** The DrumKind of a clip IFF it's a plain built-in drum (no effects, not

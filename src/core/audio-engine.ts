@@ -50,6 +50,12 @@ export class AudioEngine {
    *  line under a song that is already running. */
   private rideLoops: number | null = null;
   private rideBars = 1;
+  /** Supersedes an in-flight cold-cache play request. Preparation may await an
+   *  offline bake; only the newest intent may commit a schedule or start audio. */
+  private playGen = 0;
+  /** Supersedes in-flight live reconciliations. The old schedule stays intact
+   *  while a cold clip prepares; only the newest project may replace it. */
+  private reconcileGen = 0;
 
   constructor(private readonly sound: SoundPort) {}
 
@@ -156,10 +162,10 @@ export class AudioEngine {
    */
   private reversed = false;
 
-  toggleReversed(project: Project): boolean {
+  async toggleReversed(project: Project): Promise<boolean> {
     this.reversed = !this.reversed;
     this.sound.setReversed(this.reversed);
-    if (this.playing) this.reconcile(project);
+    if (this.playing) await this.reconcile(project);
     return this.reversed;
   }
 
@@ -176,12 +182,20 @@ export class AudioEngine {
    *  reschedules WITHOUT stopping the transport, so the groove keeps playing
    *  seamlessly while the kid edits. Honors the current play mode: "loop" rides
    *  the active car alone (one bar); "ride" lays out the whole arrangement. */
-  reconcile(project: Project): void {
+  async reconcile(project: Project): Promise<void> {
     if (!this.started) return;
+    await this.reconcileIn(this.mode, project);
+  }
+
+  private async reconcileIn(mode: PlayMode, project: Project): Promise<boolean> {
+    const gen = ++this.reconcileGen;
     this.sound.setTempo(project.tempoBpm);
+    await this.prepareMode(mode, project);
+    if (gen !== this.reconcileGen) return false;
     this.sound.clearScheduled();
-    if (this.mode === "ride") this.scheduleArrangement(project);
+    if (mode === "ride") this.scheduleArrangement(project);
     else this.scheduleLayers(project, activeLayers(project), 1, 0);
+    return true;
   }
 
   /** Lay out the whole train as one long, repeating loop: each slot occupies one
@@ -206,12 +220,16 @@ export class AudioEngine {
 
   /** Track view: stop everything, then loop just one library car (one bar). Used
    *  when a single car should sound on its own — independent of the train order. */
-  playCarLoop(partId: string, project: Project): void {
+  async playCarLoop(partId: string, project: Project): Promise<void> {
     if (!this.started) return;
     const part = project.parts.find((p) => p.id === partId);
     if (!part) return;
-    this.mode = "loop";
+    const gen = ++this.playGen;
+    this.reconcileGen++;
     this.sound.setTempo(project.tempoBpm);
+    await this.prepareLayers(project, part.layers);
+    if (gen !== this.playGen) return;
+    this.mode = "loop";
     this.sound.clearScheduled();
     this.scheduleLayers(project, part.layers, 1, 0);
     this.sound.startTransport();
@@ -281,25 +299,53 @@ export class AudioEngine {
     }
   }
 
+  /** Prepare each sounding sample once. Melody voices are constructed
+   *  synchronously and need no preparation. */
+  private async prepareLayers(project: Project, layers: readonly Layer[]): Promise<void> {
+    const clips = new Map<string, (typeof project.clips)[string]>();
+    for (const layer of layers) {
+      if (layer.muted || layer.kind === "melody") continue;
+      const clip = project.clips[layer.clipId];
+      if (clip) clips.set(clip.id, clip);
+    }
+    await Promise.all([...clips.values()].map((clip) => this.sound.prepareClip(clip)));
+  }
+
+  private async prepareMode(mode: PlayMode, project: Project): Promise<void> {
+    if (mode === "loop") {
+      await this.prepareLayers(project, activeLayers(project));
+      return;
+    }
+    await Promise.all(
+      liveTrain(project).map((car) => {
+        if (car.muted) return Promise.resolve();
+        const part = partForCar(project, car);
+        return part ? this.prepareLayers(project, part.layers) : Promise.resolve();
+      }),
+    );
+  }
+
   /** Start (or restart) playback in a mode: reschedule for it, then run the
    *  transport. "loop" = Home's Play (active car); "ride" = the whole song. */
-  private playIn(mode: PlayMode, project: Project): void {
+  private async playIn(mode: PlayMode, project: Project): Promise<void> {
     if (!this.started) return;
+    const gen = ++this.playGen;
+    const committed = await this.reconcileIn(mode, project);
+    if (!committed || gen !== this.playGen) return;
     this.mode = mode;
-    this.reconcile(project);
     this.sound.startTransport();
     this.playing = true;
   }
 
   /** Home's Play: loop the active car forever (unchanged single-loop behavior). */
-  playLoop(project: Project): void {
-    this.playIn("loop", project);
+  playLoop(project: Project): Promise<void> {
+    return this.playIn("loop", project);
   }
 
   /** The Tracks strip's Ride: play through the whole arrangement, then loop it. */
-  playRide(project: Project): void {
+  playRide(project: Project): Promise<void> {
     this.rideBars = Math.max(1, liveTrain(project).length);
-    this.playIn("ride", project);
+    return this.playIn("ride", project);
   }
 
   /**
@@ -345,9 +391,13 @@ export class AudioEngine {
    *  Resolves with the file; playback is fully stopped afterwards. */
   async renderSong(project: Project): Promise<Blob> {
     if (!this.started) throw new Error("audio not started");
+    const gen = ++this.playGen;
+    this.reconcileGen++;
     this.sound.stopTransport();
     this.mode = "ride";
     this.sound.setTempo(project.tempoBpm);
+    await this.prepareMode("ride", project);
+    if (gen !== this.playGen) throw new Error("audio render superseded");
     this.sound.clearScheduled();
     this.scheduleArrangement(project);
     this.playing = true;
@@ -370,6 +420,8 @@ export class AudioEngine {
   }
 
   stop(): void {
+    this.playGen++;
+    this.reconcileGen++;
     this.sound.stopTransport();
     this.playing = false;
     // Latches are a property of the RIDE; stopping the ride is flat ground.
