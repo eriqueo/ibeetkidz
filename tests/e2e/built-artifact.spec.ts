@@ -109,14 +109,10 @@ function isBrowserNoise(pathname: string): boolean {
   );
 }
 
-/** Browser-owned install metadata is not evidence that a canvas tap navigated. */
-function isInstallMetadata(url: string): boolean {
-  const pathname = new URL(url).pathname;
-  return (
-    pathname.endsWith("/manifest.webmanifest") ||
-    pathname.endsWith("/favicon.ico") ||
-    pathname.endsWith("/apple-touch-icon-180x180.png") ||
-    /\/(?:maskable-icon|pwa)-[^/]+\.png$/.test(pathname)
+/** A request only TrackScene's loaders make — authoritative navigation proof. */
+function isTrackLoaderRequest(url: string): boolean {
+  return /\/assets\/spritesheets\/(?:train|tarp|smoke|signal|ui-atlas)(?:-[0-9]+)?\.(?:json|png)$/.test(
+    new URL(url).pathname,
   );
 }
 
@@ -232,11 +228,11 @@ async function driveToTrack(page: Page, url: string, obs: Observation): Promise<
   // go quiet so the tap can't land on a scene that has not wired itself up yet.
   await page.waitForLoadState("networkidle");
   const beforeNav = obs.requests.length;
-  // A browser may fetch install metadata after `networkidle` (notably on slow
-  // CI). That traffic proves nothing about the canvas tap and must not stop the
-  // safe re-tap loop below. It remains in `obs` so a 404 still fails the test.
+  // Browsers may issue delayed install-metadata or Map requests after
+  // `networkidle`. Only TrackScene's own loader traffic proves the canvas tap
+  // navigated; all requests remain in `obs` so any 404 still fails the test.
   const sceneRequests = (): string[] =>
-    obs.requests.slice(beforeNav).filter((url) => !isInstallMetadata(url));
+    obs.requests.slice(beforeNav).filter(isTrackLoaderRequest);
 
   // A settled MapScene issues no further requests, so the first new request is
   // the navigation itself. Re-tap ONLY while nothing has happened — that way a
