@@ -10,7 +10,7 @@ degrades compliance on the rules that ARE instructions (see the plan at
 
 ## Current state
 
-### The sprite game (verified against the tree 2026-07-31)
+### The sprite game (verified against the tree 2026-08-28)
 
 The app is a **Phaser sprite game** with four views (`Project.activeView`):
 **Map** (the boot default — `activeView: "map"` in `project-state.ts`) →
@@ -114,14 +114,13 @@ inversion). **This is a decided architecture, not an accident — see
   fixtures (`WORKSHOP_GRID_V2`, `YARD_LAYOUT_V2`, `TRACK_LAYOUT_V2`);
   `WORKSHOP_LAYOUT_V2` was retired with the AR-016 layered scene.
 - **Art inputs are out of git.** Ticket M3 moved `references/`, the `sprites-v2/`
-  sources and `art_gen/` into a **gitignored `art/` at the repo root** and
-  repointed `scripts/pack-sprites.py`; `slice_sprites.py` (hardcoded
-  `/home/ubuntu/...`, unrunnable) was deleted. **There are no `*_original.png`
-  files anywhere in the tree** — verified this session with `git ls-files` and
-  `find`. Shipped sprites are `src/assets/sprites/` (~9 MB) and
-  `public/assets/spritesheets/`. `src/assets/spritesheets/ar015/` is the in-flight
-  loco reference batch and is **protected — do not delete it** until Eric releases
-  it.
+  sources and `art_gen/` into a **gitignored `art/` at the repo root**. The old
+  loose-sprite packer and `slice_sprites.py` were later retired after the
+  runtime moved to the public atlases. **There are no `*_original.png`
+  files anywhere in the tree. Shipped sprites are `src/assets/sprites/` and
+  `public/assets/spritesheets/`. The retired 16-direction train reference batch
+  moved to the gitignored `art/` tree on 2026-08-16; the committed runtime atlas
+  remains reproducible through `scripts/build_train_atlas.py`.
 - **The v1 DOM shell is gone** (ticket M1): `src/machines/**` (including
   `tools.tsx` and `TOOLS`), `PixelButton.tsx`, `src/app/use-viewport.ts` /
   `usePhoneLayout`, and `Shell.tsx`'s kidpix 4-region body. The only survivor is
@@ -167,21 +166,22 @@ inversion). **This is a decided architecture, not an accident — see
   would undo the wrong thing), and a **refused** command offers nothing (the
   funnel checks whether the STORE moved, not what the command intended —
   `removeCar` declines to delete the last car).
-- **The visualizer is LIVE, in the Track view** (decision A1's re-home, done).
-  `src/game/scene-visualizer.ts` is a jumbotron standing in the middle of the
-  oval: a Graphics cabinet in the scene's chip language wrapping a 320×96
+- **The visualizer is LIVE, in both Track implementations.**
+  `src/game/scene-visualizer.ts` is a Phaser jumbotron: a Graphics cabinet in
+  the scene's chip language wrapping a 320×96
   `CanvasTexture` that the **unchanged** `VisualStyle`s draw into, so the three
   styles that shipped for the old DOM panel run verbatim. React pushes the
-  analyser in via `TrackScene.attachVisualizer` (the scene never reaches for
-  audio); placement is the `viz-screen` rect in `track.json`'s geometry-layer.
+  analyser in through each scene's `attachVisualizer` port (the scene never
+  reaches for audio). The oval uses `track.json`'s `viz-screen`; the current
+  side-scroller places the same component in its world.
   Visibility follows a peak-hold envelope on the master output — **not raw RMS,
   which chases the rests between notes and strobes** — so it fades up on sound,
   rides through musical rests, and clears after STOP. Tap the screen to cycle
   styles. `src/visualizer/spectrum.ts` is the one producer of the FFT→bars
   reduction (log-spaced bands, peak per band; a linear sweep put a kid's whole
-  melody in the first two bars). `VizPanel.tsx`, `src/visualizer/visualizer.ts`,
-  the `RendererPort` interface and the `.viz-*` CSS are **deleted** — do not
-  describe the visualizer as parked.
+  melody in the first two bars). The old DOM host and `.viz-*` CSS are deleted;
+  `RendererPort` remains the framework-free drawing contract used by the three
+  styles.
 
 ---
 
@@ -234,8 +234,7 @@ rail became a slide-up bottom sheet so the canvas stayed full-width; iPad/deskto
 kept the side-by-side rail. **Both the grid and `use-viewport.ts` were deleted by
 M1** — the Phaser views size themselves off the camera instead.
 
-Notes carry length + roll (Capability 1 of `design/PLAN_notes-and-song.md`) —
-**still live in core.** Melody and drum cells are
+Notes carry length + roll — **still live in core.** Melody and drum cells are
 `StepNote { row, length, roll?, pins? }`; `pins` is the pitch-bend path that the
 later bend pass shipped (an earlier revision of this file called that field
 `slideTo`, which never existed). Drag a note's right-edge handle to
@@ -301,4 +300,3 @@ scroll together. (Still TODO per Eric — brainstorm: the train/tunnel metaphor
 tighter car↔segment alignment.)
 
 ---
-

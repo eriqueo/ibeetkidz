@@ -21,6 +21,7 @@ So `sky.png` becomes the texture `trk-sky` and replaces the generated sky.
 | `rain.png` | the tiling rain streak sheet |
 | `wheel.png` | the rotating wheel |
 
-Files for slots the scene does not draw yet (`loco.png`, `car-*.png`,
-`btn-*.png`, `now-post.png`, `shadow.png`) load harmlessly and sit unused until
-the code that places them lands. See `ART_REQUESTS.md`, AR-034 … AR-039.
+The scene also draws `loco.png`, `car-*.png`, `btn-*.png`, and `shadow.png`.
+`now-post.png` is the intentional fallback when `beat-lantern.png` is absent.
+Because the loader globs every PNG in this directory, do not leave drafts or
+unused variants here: they ship in both production bundles.

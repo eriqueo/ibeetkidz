@@ -1,4 +1,10 @@
-# PHASER_PATTERNS — architecture for a real game, and what this repo is missing
+# PHASER_PATTERNS — historical architecture research
+
+> This is a dated research snapshot, not the current backlog or architecture
+> inventory. Status marks and line-number evidence below were recorded before
+> the scrolling Track and subsequent lifecycle work. Use current code,
+> `PROJECT_CHARTER.md`, and `design/HISTORY.md` for present behavior; use this
+> document only for the Phaser 4 API notes and the rationale it preserves.
 
 Ten structural patterns from a Zelda-like Phaser course, restated as Phaser 4
 advice and mapped against this repo.

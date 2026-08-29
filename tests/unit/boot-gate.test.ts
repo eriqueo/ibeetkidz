@@ -45,6 +45,7 @@ import {
 } from "../../src/app/context.tsx";
 import { AudioEngine } from "../../src/core/audio-engine.ts";
 import { LocalStoragePort } from "../../src/adapters/local-storage-port.ts";
+import { ToneSoundPort } from "../../src/adapters/tone-sound-port.ts";
 import { StorageError } from "../../src/ports/storage-port.ts";
 import { QuotaExceededError } from "../../src/ports/storage-port.ts";
 
@@ -96,12 +97,81 @@ afterEach(async () => {
   container.remove();
   api = null;
   clearStorageTrouble();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
   localStorage.clear();
 });
 
 describe("BootGate failure paths", () => {
+  it("persists recording blobs before publishing their project index", async () => {
+    vi.useFakeTimers();
+    const blob = new Blob(["recording"], { type: "audio/webm" });
+    vi.spyOn(ToneSoundPort.prototype, "getRecordingBlob").mockReturnValue(blob);
+    const putBlob = vi
+      .spyOn(LocalStoragePort.prototype, "putBlob")
+      .mockResolvedValue(undefined);
+    const saveProject = vi
+      .spyOn(LocalStoragePort.prototype, "saveProject")
+      .mockResolvedValue(undefined);
+    await mount(createElement("span", null));
+    api?.dispatch({
+      type: "addClip",
+      clip: {
+        id: "clip-persist-order",
+        source: { kind: "recording", bufferId: "buffer-persist-order" },
+        effects: [],
+        color: "#ffffff",
+        label: "Persistence test",
+      },
+    });
+
+    await act(async () => {
+      api?.save();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(saveProject).toHaveBeenCalledOnce();
+    expect(putBlob).toHaveBeenCalledWith("buffer-persist-order", blob);
+    expect(putBlob.mock.invocationCallOrder[0]).toBeLessThan(
+      saveProject.mock.invocationCallOrder[0] ?? 0,
+    );
+    expect(saveProject.mock.calls[0]?.[1]).toBe(api?.store.getSnapshot());
+  });
+
+  it("does not publish a project index when a recording blob fails", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(ToneSoundPort.prototype, "getRecordingBlob").mockReturnValue(
+      new Blob(["recording"], { type: "audio/webm" }),
+    );
+    vi.spyOn(LocalStoragePort.prototype, "putBlob").mockRejectedValue(
+      new Error("IndexedDB unavailable"),
+    );
+    const saveProject = vi.spyOn(LocalStoragePort.prototype, "saveProject");
+    await mount(createElement("span", null));
+    api?.dispatch({
+      type: "addClip",
+      clip: {
+        id: "clip-failed-blob",
+        source: { kind: "recording", bufferId: "buffer-failed-blob" },
+        effects: [],
+        color: "#ffffff",
+        label: "Failed recording test",
+      },
+    });
+
+    await act(async () => {
+      api?.save();
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+    expect(container.querySelector("#storage-notice")?.textContent).toContain(
+      "can't save here",
+    );
+    expect(saveProject).not.toHaveBeenCalled();
+  });
+
   it("a rejected engine.start() leaves a working retry, not a dead button", async () => {
     const started = vi.fn();
     const start = vi

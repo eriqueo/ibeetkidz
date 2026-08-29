@@ -122,7 +122,7 @@ test("a denied mic leaves the whole app usable", async ({ page }) => {
   await page.waitForTimeout(600);
   await emit(page, "transport-stop");
 
-  await emit(page, "workshop-nav", "yard");
+  await emit(page, "nav-yard");
   await waitForScene(page, "YardScene");
   await expect.poll(async () => (await project(page)).activeView).toBe("yard");
 

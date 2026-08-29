@@ -1,7 +1,7 @@
 // Three-Zone UI sprite manifest + loader + content-aware placement.
 //
-// The v2→v3 refactor (UI_REFACTOR_DELEGATION.md) moves the scenes' static chrome
-// off baked-in base-plate art and onto STANDALONE sprites placed by Tiled data:
+// The v2→v3 refactor moved the scenes' static chrome off baked-in base-plate art
+// and onto STANDALONE sprites placed by Tiled data:
 //   - panels     (panel-header / panel-transport): the Top Bar + Bottom Bar plates
 //   - buttons    (btn-*): idle ⇄ pressed on press, emit an EventBus action
 //   - instruments(inst-*): passive → hover → active state art in the Field

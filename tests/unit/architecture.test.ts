@@ -21,6 +21,7 @@
 
 import { describe, expect, it } from "vitest";
 import { INSTRUMENTS } from "../../src/core/instruments.ts";
+import packageText from "../../package.json?raw";
 
 const RAW = import.meta.glob("../../src/**/*.{ts,tsx}", {
   query: "?raw",
@@ -116,6 +117,16 @@ describe("architecture guards (source text over src/**)", () => {
     ).toEqual([]);
   });
 
+  // The React UI was retired in M1, but its two large stylesheets stayed in the
+  // composition root and kept shipping the old machine shell plus 44 icon
+  // assets. The DOM now owns only boot, storage notice and the Phaser host.
+  it("ships CSS only for the surviving DOM shell", () => {
+    const main = SOURCES.find(([p]) => p === "src/main.tsx")?.[1] ?? "";
+    expect(main.match(/import\s+["'][^"']+\.css["']/g)).toEqual([
+      'import "./style.css"',
+    ]);
+  });
+
   // 6. The dev-only scene editor is reachable ONLY through a dynamic import.
   //
   // Not one of CLAUDE.md's original five — this one guards a NEW seam. The
@@ -134,6 +145,16 @@ describe("architecture guards (source text over src/**)", () => {
     const DYNAMIC = /import\s*\(\s*["'][^"']*editor\/[^"']*["']\s*\)/;
     const dynamic = offenders(DYNAMIC, outside).map((hit) => hit.split(":")[0]);
     expect(dynamic).toEqual(["src/app/context.tsx"]);
+  });
+
+  it("makes the production build reject leaked editor code", () => {
+    const scripts = (JSON.parse(packageText) as {
+      scripts?: Record<string, string>;
+    }).scripts;
+    expect(scripts?.build).toContain("npm run check:no-editor");
+    expect(scripts?.["check:no-editor"]).toBe(
+      "bash scripts/check-no-editor-in-dist.sh",
+    );
   });
 
   // 7. Every loader call is guarded by a cache check.

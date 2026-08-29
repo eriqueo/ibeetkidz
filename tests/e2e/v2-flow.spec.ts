@@ -268,8 +268,8 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   await waitForScene(page, "WorkshopScene");
   await emit(page, "workshop-add-melody", "guitar"); // give the active car content
 
-  // Travel to the Yard (Workshop handles `workshop-nav`).
-  await emit(page, "workshop-nav", "yard");
+  // Travel to the Yard through the live Workshop navigation command.
+  await emit(page, "nav-yard");
   await waitForScene(page, "YardScene");
 
   const project = await getProject(page);

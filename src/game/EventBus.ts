@@ -10,8 +10,6 @@ import type { LaneKind, CarType, EffectId, ThereminWave, AppView } from "../core
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
   "current-scene-ready": [scene: Phaser.Scene];
-  // Phaser -> React: the kid tapped a car sprite in the Yard.
-  "car-selected": [partId: string];
   // Phaser -> React: a transport button was pressed in the scene.
   "transport-play": [mode: "loop" | "ride"];
   "transport-stop": [];
@@ -86,8 +84,7 @@ export interface EventMap {
   // Tiled button -> React (Workshop): top-bar nav plaques (Map / Send to Yard).
   "nav-map": [];
   "nav-yard": [];
-  // Tiled button -> WorkshopScene: toggle the car-type picker dropdown (handled
-  // inside the scene; choosing a tile emits `workshop-car-type-changed`).
+  // Tiled button -> WorkshopScene: toggle the NEW CAR type picker dropdown.
   "toggle-car-picker": [];
   // Phaser -> React (Workshop): a sequencer cell was tapped; `on` is the desired
   // next state (the scene shows it optimistically; the store flip is the truth).
@@ -101,8 +98,6 @@ export interface EventMap {
   // character the kid actually chose. `game/instrument-station.ts` maps one to
   // the other.
   "workshop-add-melody": [station: string];
-  // Phaser -> React (Workshop): the kid picked a (cosmetic) car type.
-  "workshop-car-type-changed": [carType: CarType];
   // Phaser -> React (Workshop): the kid painted the car from the colour picker.
   // Payload is a `CAR_COLORS` entry; the reducer refuses anything else and
   // refuses a colour another car is already wearing (see `setCarColor`).
@@ -124,7 +119,6 @@ export interface EventMap {
   // React (the conductor's floor slot) -> WorkshopScene: open the whole-train
   // chalkboard — the conductor's meta view of every lane in the car.
   "workshop-open-board": [];
-  "workshop-nav": [view: AppView];               // travel to another view
   // Add a FRESH EMPTY car to the library (clears the board — design doc §5).
   // The optional carType comes from the NEW CAR dropdown picker tile.
   "workshop-new-car": [carType?: CarType];

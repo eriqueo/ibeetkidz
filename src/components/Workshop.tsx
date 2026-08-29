@@ -9,7 +9,6 @@ import {
   type ThereminWave,
   type Clip,
   type Command,
-  type AppView,
 } from "../core/types.ts";
 import { MELODY_ROWS, degreeToNote } from "../core/scale.ts";
 import {
@@ -299,7 +298,6 @@ export const Workshop: FC = () => {
       dispatch({ type: "addLayer", layer: makeLayer({ id: layerId, clipId, kind, ...(kind === "melody" ? { wave: "triangle" } : {}) }) });
       sound.play({ id: clipId, source: { kind: "builtin", assetId }, effects: [], color: catalog.color, label: catalog.label });
     };
-    const onCarType = (carType: CarType): void => dispatch({ type: "setCarType", partId: activePart(projectRef.current).id, carType });
     const onCarColor = (color: string): void =>
       dispatch({ type: "setCarColor", partId: activePart(projectRef.current).id, color });
     const onSelect = (layerId: string): void => setSelectedLayer(layerId);
@@ -332,7 +330,6 @@ export const Workshop: FC = () => {
       }
       setOpenTool((cur) => (cur === toolId ? null : toolId));
     };
-    const onNav = (view: AppView): void => dispatch({ type: "setActiveView", view });
     // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
     const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
     const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });
@@ -662,12 +659,12 @@ export const Workshop: FC = () => {
 
     const subs = [
       ["workshop-cell-toggled", onCell], ["workshop-instrument-added", onInstrument],
-      ["workshop-car-type-changed", onCarType], ["workshop-car-color-picked", onCarColor],
+      ["workshop-car-color-picked", onCarColor],
       ["workshop-layer-selected", onSelect],
       ["transport-play", onPlay], ["transport-stop", onStop], ["tempo-changed", onTempo],
       ["workshop-loop-car", onLoopCar],
       ["tool-closed", onToolClosed],
-      ["workshop-open-tool", onOpenTool], ["workshop-nav", onNav],
+      ["workshop-open-tool", onOpenTool],
       ["nav-map", onNavMap], ["nav-yard", onNavYard],
       ["workshop-send-to-yard", onSendToYard], ["workshop-car-departed", onCarDeparted],
       ["workshop-new-car", onNewCar], ["workshop-surprise", onSurprise],

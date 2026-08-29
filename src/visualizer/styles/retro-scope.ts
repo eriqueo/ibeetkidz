@@ -7,7 +7,7 @@ import type { Project } from "../../core/types.ts";
 import { bandLevels } from "../spectrum.ts";
 
 // iBeetKidz dark theme (Gruvbox-dark × Dracula). The visualizer glows behind the
-// cream-on-plum panels — the theme.css canvas runs it at mix-blend-mode: screen
+// cream-on-plum panels — the Track jumbotron hosts it directly in Phaser
 // (~0.42 opacity), so these are picked to read as a calm, recessed glow on the
 // #29242e ground rather than a neon rave.
 const SPECTRUM = ["#fe8019", "#fabd2f", "#79c0e8", "#b8bb26", "#bd93f9"]; // orange → sun → sky (+ leaf, grape accents)

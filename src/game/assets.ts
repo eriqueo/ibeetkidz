@@ -85,9 +85,8 @@ export const SCENE_BG_V2 = {
     url: new URL("../assets/scenes-v2/map-scene-clean.png", import.meta.url).href,
   },
 } as const satisfies Record<string, ImageAsset>;
-// `workshop` (workshop-scene-base.png) was dropped with the glob: it was
-// declared here but loaded by no scene — WorkshopScene loads `workshopInterior`.
-// The file is still in `src/assets/scenes-v2/`, it just no longer ships.
+// WorkshopScene loads only `workshopInterior`; superseded full-scene plates are
+// deliberately absent from both this manifest and the source asset tree.
 
 // AR-016 side-on car sprites (Workshop Layer 2). All four share one 2560×1440
 // canvas, wheels on the same baseline, and an IDENTICAL punched interior void
@@ -100,9 +99,8 @@ export const CAR_SIDE_SPRITES = {
   flatcar: { key: "car-side-flatcar", url: new URL("../assets/sprites/cars/car-side-flatcar.png", import.meta.url).href },
 } as const satisfies Record<string, ImageAsset>;
 
-/** The standardized interior void every car-side sprite punches, in the car
- *  canvas's own pixels (2560×1440) — shipped with the AR-016 drop
- *  (scripts/punch_void.py). The chalkboard mounts relative to this rect. */
+/** The standardized interior void in every legacy car-side sprite, in the car
+ *  canvas's own pixels (2560×1440). The chalkboard mounts relative to it. */
 export const CAR_SIDE_CANVAS = { w: 2560, h: 1440 } as const;
 export const CAR_SIDE_VOID = { x: 474, y: 280, w: 1612, h: 430 } as const;
 

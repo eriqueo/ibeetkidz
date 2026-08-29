@@ -49,7 +49,7 @@ is vendor-free. Everything external is a **port** with a swappable **adapter**:
 | `SoundPort` | `ToneSoundPort` | all DSP, recording, transport, offline render (Tone.js) |
 | `StoragePort` | `LocalStoragePort` | save/load projects + recorded blobs (IndexedDB) |
 | `RngPort` | `createRng` | seeded randomness ("make it crazy", generative beats) |
-| `RendererPort` | `Visualizer` | analyser-driven canvas visuals — **parked, see below** |
+| `RendererPort` | Track visual styles | analyser-driven jumbotron rendering |
 
 **"Everything is a clip"** — built-in sounds, recordings, drum hits, and synth
 notes all reduce to one `Clip` type. The UI emits `Command`s; `reduce` applies
@@ -75,6 +75,19 @@ npm run test         # unit
 npm run test:e2e     # Playwright (Chromium) — pin a port: PW_PORT=<free>
 npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
 ```
+
+## Documentation map
+
+- `PROJECT_CHARTER.md`: binding product and architecture decisions.
+- `CLAUDE.md` / `AGENTS.md`: engineering workflow and contributor rules.
+- `design/HISTORY.md`: current architecture plus rationale retained from retired designs.
+- `BASELINE.md`: dated, measured verification records; never infer current counts from prose.
+- `SCENE_AUTHORING_GUIDE.md`: Tiled scene-authoring workflow.
+- `ART_REQUESTS.md`: active art contract and delivery record.
+- `design/GAME_FEEL.md`: animation and world-integration laws.
+
+Completed plans and superseded briefs live in Git history rather than beside
+current instructions.
 
 ## Status
 
@@ -123,5 +136,5 @@ kept and re-hosted; `VizPanel` and the DOM render loop are gone.)
 **Gates:** `npm run typecheck` clean, the Vitest unit suite, and the Playwright
 E2E suite. For the current counts see **`BASELINE.md`** — it is the single
 producer of that fact, and the E2E number differs local vs CI (two hardware-audio
-specs `test.skip` themselves when `CI` is set). See `BUILD_RUNBOOK.md` for the
-build history.
+specs `test.skip` themselves when `CI` is set). `design/HISTORY.md` carries the
+architectural history.

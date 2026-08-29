@@ -86,8 +86,8 @@ hazard and is out of scope permanently.
 *   A visual that disagrees with the audio is a rendering bug, to be fixed on the visual
     side.
 
-*(Decision A4 of `WORK_ORDERS_v2.md` §A. It retired `IMPLEMENTATION_ROADMAP.md` Phase E
-item 3, which had proposed the inverse; that item is deleted, not deferred.)*
+This decision retired an earlier proposal to let train position trigger audio;
+Git history retains that rejected design. It is deleted, not deferred.
 
 ---
 
@@ -98,7 +98,7 @@ item 3, which had proposed the inverse; that item is deleted, not deferred.)*
 | **Map** | World navigation | N/A | Clickable buildings (Workshop, Yard, Track) | N/A |
 | **Workshop** | Music studio | Nav + Car Type Switcher | Instruments (tap to add lane) | Transport (Stop/Play/Loop/Tempo) |
 | **Yard** | Train assembly | Nav | Train cars on sidings | Add/Reorder/Delete controls |
-| **Track** | Song playback | Nav | Track oval, crossing signal | Mute/Loop controls |
+| **Track** | Song playback | Nav + transport | Side-scrolling train, terrain, modes, visualizer | Tarp/loop/send controls |
 
 ### The Satellite Tools
 These are Phaser-native panels that open over the Workshop when an instrument is tapped:

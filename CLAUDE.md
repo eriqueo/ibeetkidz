@@ -145,14 +145,11 @@ engine. `design/PERF_SINGLE_PHASER_GAME.md` has the measurements.
 `typecheck` clean, unit suite green, `eslint .` exit 0. **The counts are in
 `BASELINE.md`** — see "Gate numbers live in `BASELINE.md`" above, including the
 local-vs-CI e2e split and the flakiness warning. E2E coverage today is
-`v2-flow.spec` (boot → Map → Workshop → Yard → Track, plus tool panels and the
-Track guard) and `audio-output.spec` (hardware-audio proof, local only); ticket S8
-is adding a built-artifact spec. The v1 machine-shell e2e specs were retired with
-the looper-stage landing; **rebuilding deep per-tool e2e through the Workshop
-tool-panel nav is a follow-up.**
+`v2-flow.spec` (boot → Map → Workshop → Yard → Track), dedicated tool-panel and
+built-artifact specs, and hardware-audio proofs that deliberately differ between
+local and CI runs. The v1 machine-shell specs were retired with that shell.
 
-`BUILD_RUNBOOK.md` retains the original build order. Note: looped clips schedule
-through `resolveClip` (async, baked + cached), so effected voice lanes loop with
+Looped clips schedule through `resolveClip` (async, baked + cached), so effected voice lanes loop with
 their effects — and a `scheduleGen` guard discards stale async (re)schedules.
 Ticket S3 fixed `resolveClip`'s cache key: it now takes `bpm` as an explicit
 argument, captured from the adapter's own `tempoBpm` (written only by `setTempo`)

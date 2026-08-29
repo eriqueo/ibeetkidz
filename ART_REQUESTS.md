@@ -5,7 +5,7 @@
 > logged here and the code ships the best *honest* interim. Each entry says
 > exactly what to generate, where the file goes, and what unblocks when it lands.
 >
-> **House style (from PROJECT_CHARTER / STYLE_GUIDE):** warm 16-color Nintendo
+> **House style (from `PROJECT_CHARTER.md`):** warm 16-color Nintendo
 > palette, chunky pixels, 1px dark-plum outlines, hard 2–3px drop shadows, no
 > gradients/glow. UI chrome = steampunk wood/brass/stone plaques matching the
 > existing `src/assets/sprites/buttons/` set. All sprites are transparent PNGs
@@ -19,12 +19,7 @@
 
 ---
 
-## CURRENT VISUAL DIRECTION (2026-08-10) — read this before generating anything
-
-**`STYLE_GUIDE.md`, `ART_BRIEF.md` and `ART_GENERATION_PROMPTS.md` are STALE and
-carry deprecation headers. Do not generate from them.** They were written in late
-June and describe a game that has changed materially since. In particular
-`STYLE_GUIDE.md` still says the Track is a top-down oval; it is not.
+## Current visual direction
 
 ### Projection is per scene. There is no global "isometric".
 
@@ -33,7 +28,7 @@ June and describe a game that has changed materially since. In particular
 | **Map** | Top-down, floating island on black void | The one scene that still matches the old style guide. |
 | **Yard** | Shallow 3/4, night lighting | Sidings recede; cars are drawn side-on within it. |
 | **Workshop** | **Side-on** | A car on rails, seen from the side. Not isometric. |
-| **Track** | **Side-on side-scroller** (since 2026-08-07) | Daylight sky, parallax bands, world scrolls right-to-left past a fixed marker. **The oval is retired.** This is what AR-034 … AR-039 are for. |
+| **Track** | **Side-on side-scroller** (default since 2026-08-16) | Daylight sky, parallax bands, world scrolls right-to-left past a fixed marker. The legacy oval remains available through `?oval`; new Track art targets the side-scroller. |
 
 A vehicle drawn for one of these does not transfer to another — the Workshop's
 side-on car set and the retired oval's 8-heading set were always different art.
@@ -44,9 +39,9 @@ than the AR-031 it replaces.
 
 | For | Read |
 |---|---|
-| The palette | `design/palette-nintendo.json` — the single producer, mapped to the app's CSS vars. Not the hexes in `STYLE_GUIDE.md`. |
+| The palette | `design/palette-nintendo.json` — the single producer. |
 | What the style looks like NOW | The shipped sprites in `src/assets/sprites/` — `buttons/`, `instruments/`, `cars/`, `panels/`. **Trust these over any prose in this repo, including this file.** |
-| What the game currently IS | `design/HISTORY.md` (why it is shaped this way) + `BASELINE.md` (what is measured and when). **Not `STATUS_LOG.md`,** which stopped being maintained on 2026-08-01. |
+| What the game currently IS | `README.md` (shipped behavior), `design/HISTORY.md` (why it is shaped this way), and `BASELINE.md` (what was measured and when). |
 | The animation rules art has to support | `design/GAME_FEEL.md` — eight laws, each with the concrete way this project broke it. Laws 2 (contact shadows) and 3 (an actor must be able to pass behind something) are art dependencies, not code ones. |
 
 ### Bootstrapping a fresh art session

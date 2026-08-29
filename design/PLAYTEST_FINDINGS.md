@@ -124,14 +124,10 @@ was presentation:
 - `addCar` **silently no-ops at `MAX_CARS` (12)**. Past the cap the picker closed
   and genuinely nothing happened.
 
-**Left alone, on purpose — these are Eric's calls, not engineering's:**
-
-`workshop-car-type-changed` (`EventBus.ts`) and the `setCarType` reducer
-(`project-state.ts`) are unreachable from the running app and kept alive only by
-`project-state.test.ts`. They are what survives of the ORIGINAL car-type picker,
-which re-skinned the current car. **Question: should re-skinning an existing car
-come back?** If yes, they are the wiring. If no, they should be deleted. Either
-answer is fine; the current state — dead code that looks live — is not.
+The retired `workshop-car-type-changed` event was removed during the 2026-08-28
+cleanup. The `setCarType` reducer remains live: NEW CAR uses it when the active
+car is already empty, changing that car's type without minting another empty
+car.
 
 ---
 

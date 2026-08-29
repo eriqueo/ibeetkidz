@@ -297,13 +297,17 @@ export function probeEnvironment(): BootProbe {
 async function persist(): Promise<void> {
   try {
     const project = getProject();
-    await storage.saveProject(project);
     for (const clip of Object.values(project.clips)) {
       if (clip.source.kind === "recording") {
         const blob = sound.getRecordingBlob(clip.source.bufferId);
         if (blob) await storage.putBlob(clip.source.bufferId, blob);
       }
     }
+    // Blobs are the transaction's payload; the project index is its commit
+    // point. Never publish an index that names audio we failed to persist.
+    // Passing the whole history also lets the adapter collect recordings that
+    // no reachable undo/redo state can restore.
+    await storage.saveProject(project, store.getSnapshot());
   } catch (err) {
     // Autosave fires on a timer; it must never take the app down. Record the
     // failure instead so the kid finds out that saving stopped working.

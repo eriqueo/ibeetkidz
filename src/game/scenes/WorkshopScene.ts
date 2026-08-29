@@ -1,4 +1,4 @@
-// The Workshop view (v3 — Three-Zone refactor, UI_REFACTOR_DELEGATION.md):
+// The Workshop view (v3 — Three-Zone refactor):
 //
 //   • Top bar    (panel-header):    ◀ nav → Map, ▶ nav → Yard.
 //   • Field:      the open boxcar interior holds the sequencer grid; four
@@ -16,16 +16,15 @@
 // fixtures that are gameplay, not chrome: the sequencer grid and the LCD text
 // (anchored to the `lcd-transport` display object).
 //
-// The base plate is the CLEAN open-boxcar environment (workshop-boxcar-open.png)
-// — no painted toolbar, transport, LCDs, or instruments. All UI is sprites on top.
+// The base plate is the clean depot interior (`workshop-interior-clean.png`),
+// with the open car and all UI drawn as separate sprites on top.
 //
 // (The old 8-icon toolbar and the SONG/SPEED baked chrome were retired here.
 // So was the 4-way car-type picker in its ORIGINAL sense — a control that
-// re-skinned the CURRENT car. `workshop-car-type-changed` and the `setCarType`
-// reducer are what survive from it: both are unreachable from the running app
-// and kept alive only by project-state.test.ts, awaiting a decision on whether
-// re-skinning comes back. The dropdown below shares its ART but is a different
-// control — it STARTS A NEW CAR, and is labelled to say so.)
+// re-skinned the CURRENT car. The dropdown below shares its ART but is a
+// different control: it STARTS A NEW CAR and is labelled to say so. The
+// `setCarType` command remains live because choosing a different shape while an
+// empty car is already on the bench changes that car rather than adding one.)
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
@@ -434,7 +433,7 @@ export class WorkshopScene extends BackgroundScene {
     const asset = open.url ? open : CAR_SIDE_SPRITES[type];
 
     const apply = (): void => {
-      // The scene can be torn down mid-flight (every nav destroys the game).
+      // The scene can be torn down mid-flight when navigation swaps scenes.
       if (!this.car?.scene || this.model.carType !== type) return;
       if (!this.textures.exists(asset.key)) return;
       this.car.setTexture(asset.key);
@@ -470,8 +469,8 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── the layered field: car sprite + chalkboard in its void ─────────────────
   private buildCarLayer(): void {
-    // The car's interior, BEHIND the body. `punch_void.py` cut a real hole in
-    // the car art so the chalkboard could show through it; with the board gone,
+    // The car's interior, BEHIND the body. The legacy car art has a real hole
+    // where the chalkboard used to show through; with the board gone,
     // that hole shows the workshop's brick wall, and the crew stands in what
     // reads as a black rectangle. This is the inside of the car — no art has
     // ever existed for it, because it was covered from the day it was cut.

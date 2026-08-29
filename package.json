@@ -6,8 +6,9 @@
   "description": "Kidpix for audio \u2014 a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && npm run build:gh",
+    "build": "tsc && vite build && npm run build:gh && npm run check:no-editor",
     "build:gh": "vite build --mode gh",
+    "check:no-editor": "bash scripts/check-no-editor-in-dist.sh",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
