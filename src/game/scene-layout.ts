@@ -217,12 +217,13 @@ export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
   ) as Record<TrackJobId, PlacedRect>;
 }
 
-/** Fixed jumbotron placement; release evidence asserts it clears the header. */
+/** Compact signal-box placement: below the header and outside the central
+ *  train/playhead corridor. Release evidence captures it while audio is live. */
 export const TRACK_VISUALIZER: PlacedRect = {
-  x: 1280,
-  y: 535,
-  width: 480,
-  height: 120,
+  x: 420,
+  y: 565,
+  width: 340,
+  height: 102,
 };
 
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track

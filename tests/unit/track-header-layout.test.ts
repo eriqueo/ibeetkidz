@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   HEADER_PLATE_FIELD,
   TRACK_HEADER,
+  TRACK_VISUALIZER,
   headerColumnCentres,
   headerPlateField,
   trackHeaderSlots,
@@ -57,6 +58,30 @@ describe("headerColumnCentres", () => {
   it("keeps the outer columns symmetric about the field", () => {
     const xs = headerColumnCentres({ x0: 200, x1: 800 }, 4);
     expect(xs[0]! - 200).toBeCloseTo(800 - xs[3]!, 6);
+  });
+});
+
+describe("Track visualizer placement", () => {
+  it("is the compact left-side signal box approved for the side-scroller", () => {
+    expect(TRACK_VISUALIZER).toEqual({
+      x: 420,
+      y: 565,
+      width: 340,
+      height: 102,
+    });
+  });
+
+  it("stays below the header and outside the central focus corridor", () => {
+    const top = TRACK_VISUALIZER.y - TRACK_VISUALIZER.height / 2;
+    const right = TRACK_VISUALIZER.x + TRACK_VISUALIZER.width / 2;
+    expect(top).toBeGreaterThanOrEqual(plateBottom);
+    expect(right).toBeLessThanOrEqual(640);
+  });
+
+  it("preserves the visualizer aspect while bounding its footprint", () => {
+    expect(TRACK_VISUALIZER.width / TRACK_VISUALIZER.height).toBeCloseTo(320 / 96, 6);
+    expect(TRACK_VISUALIZER.width).toBeLessThanOrEqual(340);
+    expect(TRACK_VISUALIZER.height).toBeLessThanOrEqual(102);
   });
 });
 
