@@ -32,6 +32,7 @@ import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
+import { workshopBoardActionSlots, type WorkshopBoardActionSlot } from "../workshop-board-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
@@ -314,6 +315,7 @@ export class WorkshopScene extends BackgroundScene {
   private board: Phaser.GameObjects.Image | undefined;
   private boardModal: Phaser.GameObjects.Container | undefined;
   private boardBackdrop: Phaser.GameObjects.Rectangle | undefined;
+  private boardSounds: Phaser.GameObjects.Container | undefined;
   private boardDone: Phaser.GameObjects.Container | undefined;
   private boardOpen = false;
   // The paint rack: one plate, one Graphics for all the chips (redrawn only on
@@ -528,8 +530,8 @@ export class WorkshopScene extends BackgroundScene {
   }
 
   /** The sequencer, as a popup: a dimmed backdrop, the chalkboard at full size,
-   *  and a DONE chip. The grid rows are added to this container as they are
-   *  built, so they ride above the backdrop without depth bookkeeping. */
+   *  and SOUNDS / DONE chips. The grid rows are added to this container as they
+   *  are built, so they ride above the backdrop without depth bookkeeping. */
   private buildBoardModal(): void {
     this.boardBackdrop = this.add
       .rectangle(0, 0, 10, 10, 0x000000, 0.66)
@@ -539,31 +541,52 @@ export class WorkshopScene extends BackgroundScene {
     // the explicit chip. (Eric: "then you click okay when you're ready".)
     this.boardBackdrop.on("pointerup", () => this.closeBoard());
     this.board = this.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["sequencer-chalkboard"]!.base);
-    this.boardDone = this.makeDoneChip();
+    this.boardSounds = this.makeBoardChip(
+      "SOUNDS",
+      "workshop-board:sounds",
+      () => EventBus.emit("workshop-open-tool", "sound-pads"),
+      "♫",
+    );
+    this.boardDone = this.makeBoardChip("DONE", "workshop-board:done", () => this.closeBoard(), null);
     this.boardModal = this.add
-      .container(0, 0, [this.boardBackdrop, this.board, this.boardDone])
+      .container(0, 0, [this.boardBackdrop, this.board, this.boardSounds, this.boardDone])
       .setDepth(DEPTH_BOARD)
       .setVisible(false);
   }
 
-  /** "DONE" on the cream chip this app uses for every affirmative — the same
-   *  face/edge pair as the LCD, the undo offer and the empty prompt. */
-  private makeDoneChip(): Phaser.GameObjects.Container {
+  /** A board action on the cream chip this app uses for every affirmative. */
+  private makeBoardChip(
+    text: string,
+    name: string,
+    onPress: () => void,
+    pictogram: string | null,
+  ): Phaser.GameObjects.Container {
     const chip = this.add.graphics();
+    const icon = this.add
+      .text(0, 0, pictogram ?? "", { fontFamily: "system-ui, sans-serif", fontSize: "24px", color: "#2b2440" })
+      .setOrigin(0.5)
+      .setVisible(pictogram !== null);
     const label = this.add
-      .text(0, 0, "DONE", { ...LCD_STYLE, fontSize: "20px" })
+      .text(0, 0, text, { ...LCD_STYLE, fontSize: "20px" })
       .setOrigin(0.5);
-    const hit = this.add.rectangle(0, 0, 10, 10, 0xffffff, 0.001).setInteractive({ useHandCursor: true });
+    const hit = this.add
+      .rectangle(0, 0, 10, 10, 0xffffff, 0.001)
+      .setName(name)
+      .setInteractive({ useHandCursor: true });
+    const setContentScale = (scale: number): void => {
+      icon.setScale(scale);
+      label.setScale(scale);
+    };
     let armed = false;
-    hit.on("pointerdown", () => { armed = true; label.setScale(0.94); });
-    hit.on("pointerout", () => { armed = false; label.setScale(1); });
+    hit.on("pointerdown", () => { armed = true; setContentScale(0.94); });
+    hit.on("pointerout", () => { armed = false; setContentScale(1); });
     hit.on("pointerup", () => {
-      label.setScale(1);
+      setContentScale(1);
       if (!armed) return;
       armed = false;
-      this.closeBoard();
+      onPress();
     });
-    return this.add.container(0, 0, [chip, label, hit]);
+    return this.add.container(0, 0, [chip, icon, label, hit]);
   }
 
   /** Open the board on a lane. Selecting it is what makes "tap the drummer, edit
@@ -612,7 +635,7 @@ export class WorkshopScene extends BackgroundScene {
    */
   private layoutBoard(): void {
     const b = this.board;
-    if (!b || !this.boardBackdrop || !this.boardDone) return;
+    if (!b || !this.boardBackdrop || !this.boardSounds || !this.boardDone) return;
     const { width, height } = this.scale.gameSize;
     this.boardBackdrop.setSize(width, height);
 
@@ -643,25 +666,38 @@ export class WorkshopScene extends BackgroundScene {
       h: (sy1 - sy0) * b.height * b.scaleY,
     };
 
-    // The DONE chip sits under the board, clear of the chalk tray.
-    const [chipG, label, hit] = this.boardDone.list as [
+    const slots = workshopBoardActionSlots({ centerX: width / 2, centerY: cy, width: w, height: h });
+    this.layoutBoardChip(this.boardSounds, slots.sounds);
+    this.layoutBoardChip(this.boardDone, slots.done);
+    this.boardModal?.bringToTop(this.boardSounds);
+    this.boardModal?.bringToTop(this.boardDone);
+  }
+
+  private layoutBoardChip(
+    chip: Phaser.GameObjects.Container,
+    slot: WorkshopBoardActionSlot,
+  ): void {
+    const [chipG, icon, label, hit] = chip.list as [
       Phaser.GameObjects.Graphics,
+      Phaser.GameObjects.Text,
       Phaser.GameObjects.Text,
       Phaser.GameObjects.Rectangle,
     ];
-    const cw = Math.max(180, w * 0.16);
-    const ch = Math.max(64, h * 0.11);
-    const dx = width / 2;
-    const dy = cy + h / 2 + ch * 0.85;
-    label.setFontSize(Math.max(14, Math.round(ch * 0.34))).setPosition(dx, dy);
-    hit.setPosition(dx, dy).setSize(cw * 1.15, ch * 1.25);
+    const { x, y, faceWidth, faceHeight, hitWidth, hitHeight } = slot;
+    const hasPictogram = icon.visible;
+    icon
+      .setFontSize(Math.max(20, Math.round(faceHeight * 0.46)))
+      .setPosition(x - faceWidth * 0.31, y);
+    label
+      .setFontSize(Math.max(14, Math.round(faceHeight * (hasPictogram ? 0.28 : 0.34))))
+      .setPosition(x + (hasPictogram ? faceWidth * 0.1 : 0), y);
+    hit.setPosition(x, y).setSize(hitWidth, hitHeight);
     chipG
       .clear()
       .fillStyle(LCD_CREAM, 1)
-      .fillRoundedRect(dx - cw / 2, dy - ch / 2, cw, ch, Math.min(ch * 0.3, 18))
-      .lineStyle(Math.max(2, ch * 0.06), 0x2b2440, 1)
-      .strokeRoundedRect(dx - cw / 2, dy - ch / 2, cw, ch, Math.min(ch * 0.3, 18));
-    this.boardModal?.bringToTop(this.boardDone);
+      .fillRoundedRect(x - faceWidth / 2, y - faceHeight / 2, faceWidth, faceHeight, Math.min(faceHeight * 0.3, 18))
+      .lineStyle(Math.max(2, faceHeight * 0.06), 0x2b2440, 1)
+      .strokeRoundedRect(x - faceWidth / 2, y - faceHeight / 2, faceWidth, faceHeight, Math.min(faceHeight * 0.3, 18));
   }
 
   /** Place the car on its Tiled anchor (wheels on the rails), then stand the
@@ -929,9 +965,8 @@ export class WorkshopScene extends BackgroundScene {
     const onSend = (): void => this.departCar();
     EventBus.on("workshop-send-to-yard", onSend);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("workshop-send-to-yard", onSend));
-    // The conductor's view: the whole-train chalkboard, opened from React
-    // (the conductor's floor slot) rather than from a rider — riders go
-    // straight to their own editors now.
+    // The conductor's view: its Tiled floor object emits this separate
+    // whole-train intent. Riders still go straight to their own editors.
     const onOpenBoard = (): void => this.openBoard(null);
     EventBus.on("workshop-open-board", onOpenBoard);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => EventBus.off("workshop-open-board", onOpenBoard));
@@ -976,6 +1011,9 @@ export class WorkshopScene extends BackgroundScene {
       panelDepth: 1,
       hitDepth: 10,
     });
+    for (const element of this.chrome) {
+      (element.image ?? element.hit)?.setName(`workshop-control:${element.spawn.id}`);
+    }
 
     // CAR + SPEED LCD: dark-plum text on a cream chip drawn over the panel.
     //

@@ -411,12 +411,7 @@
             {
               "name": "action",
               "type": "string",
-              "value": "workshop-open-tool"
-            },
-            {
-              "name": "arg",
-              "type": "string",
-              "value": "sound-pads"
+              "value": "workshop-open-board"
             },
             {
               "name": "sprite",

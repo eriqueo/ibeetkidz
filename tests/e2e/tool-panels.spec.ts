@@ -1,4 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  screenshotNamedPhaserObject,
+  tapNamedPhaserObject,
+} from "./phaser-pixels.ts";
 
 // Deep coverage of the Workshop's satellite tool panels (W5-04 in the backlog —
 // "rebuilding deep per-tool e2e through the Workshop tool-panel nav" has been a
@@ -164,12 +168,62 @@ test("every instrument character's panel opens and closes cleanly", async ({ pag
   await emit(page, "tool-closed");
   await expect.poll(() => activeTool(page)).toBeNull();
 
-  // The conductor's slot is NOT a panel: it opens the whole-train chalkboard
-  // (the meta view), which is the raccoon-to-conductor rework's contract.
-  await emit(page, "workshop-open-tool", "sound-pads");
+  // The conductor's separate no-argument intent opens the whole-train board.
+  await emit(page, "workshop-open-board");
   await expect
     .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible))
     .toBe(true);
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
+
+test("the conductor's board reaches a recording already in the project through the real Sound Library", async ({ page }) => {
+  const crashes = await openWorkshop(page);
+  const clipId = "prior-recording";
+  await page.evaluate((id) => {
+    (window as any).__ibeetkidz_test__.dispatch({
+      type: "addClip",
+      clip: {
+        id,
+        // Recording-kind makes this appear on YOUR SOUNDS. This journey pins
+        // route and car-state behavior; persisted-blob rehydration and audible
+        // playback have their own adapter/storage boundaries.
+        source: { kind: "recording", bufferId: "builtin:kick" },
+        effects: [],
+        color: "#ffd166",
+        label: "Old Boom",
+      },
+    });
+  }, clipId);
+
+  await tapNamedPhaserObject(page, "workshop-control:inst-conductor");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible))
+    .toBe(true);
+
+  await tapNamedPhaserObject(page, "workshop-board:sounds");
+  await expect.poll(() => activeTool(page)).toBe("sound-pads");
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible))
+    .toBe(false);
+
+  const padName = `workshop-sound:clip:${clipId}`;
+  const before = await screenshotNamedPhaserObject(page, padName);
+  await tapNamedPhaserObject(page, padName);
+  await expect.poll(async () => (await layers(page)).filter((l: any) => l.clipId === clipId).length).toBe(1);
+  const seated = await screenshotNamedPhaserObject(page, padName);
+  expect(seated.equals(before), "the pad must visibly seat/check when the sound enters the car").toBe(false);
+
+  await tapNamedPhaserObject(page, padName);
+  await page.waitForTimeout(150);
+  expect((await layers(page)).filter((l: any) => l.clipId === clipId)).toHaveLength(1);
+
+  await emit(page, "undo-requested");
+  await expect.poll(async () => (await layers(page)).filter((l: any) => l.clipId === clipId).length).toBe(0);
+  expect(Object.keys((await getProject(page)).clips)).toContain(clipId);
+
+  await tapNamedPhaserObject(page, "workshop-sound:done");
+  await expect.poll(() => activeTool(page)).toBeNull();
+  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible)).toBe(false);
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 
@@ -180,9 +234,8 @@ test("Sound Pads: a pad tap puts that sound in the car, as ONE undo step", async
   // car — so nothing a kid tapped in here ever looped, or survived the panel
   // closing. Runs everywhere: the outcome is Project state, not sound.
   //
-  // The PANEL is parked (the conductor took its slot), but the pad HANDLER —
-  // and its one-undo-step guarantee — still stands and still needs this pin
-  // until the sound library finds its new home (AR-045's engineering note).
+  // This direct event test pins the handler's one-undo-step guarantee. The
+  // production conductor -> board -> SOUNDS route is exercised above.
   const crashes = await openWorkshop(page);
 
   const laneIds = async (): Promise<string[]> => (await layers(page)).map((l) => l.id);

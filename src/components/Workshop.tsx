@@ -160,10 +160,9 @@ export const Workshop: FC = () => {
   const toolModel = useMemo<ToolModel>(() => {
     const onHome = (id: string | null): boolean => (id ? layers.some((l) => l.id === id) : false);
     const has = (id: string | null): boolean => !!(id && project.clips[id]);
-    // Sound Pads: the sound LIBRARY. Every built-in sound plus every recording
-    // the child has ever made — this panel is the only place a past recording is
-    // reachable at all, which is why it survives into v2 (the tools that made
-    // them only ever offer the take you just recorded).
+    // Sound Pads: the sound LIBRARY. Every built-in sound plus the newest shelf
+    // of recordings — this panel is the only place an earlier take is reachable
+    // at all (the tools that made them only offer the take just recorded).
     //
     // `inCar` is what makes a pad tap legible: the pad shows whether that sound
     // is already a lane in THIS car, so the outcome is visible on the control the
@@ -335,20 +334,11 @@ export const Workshop: FC = () => {
     };
     const onToolClosed = (): void => { setOpenTool(null); setEditMelodyId(null); };
 
-    // Painted toolbar: nav + new car + surprise + open a tool panel.
-    //
-    // "sound-pads" is the CONDUCTOR's slot now (Eric, 2026-08-12): the raccoon
-    // becomes a train conductor whose tap opens the whole-train chalkboard —
-    // the meta view — while every instrument character opens its own editor.
-    // The Sound Pads panel this retires was the only surface listing PAST
-    // recordings; that gap is logged in ART_REQUESTS AR-045's note.
-    const onOpenTool = (toolId: string | null): void => {
-      if (toolId === "sound-pads") {
-        EventBus.emit("workshop-open-board");
-        return;
-      }
+    // Painted toolbar and board actions open their named tool panel. The
+    // conductor's Tiled object emits the separate whole-board intent directly;
+    // SOUNDS on that board is the route into the recording library.
+    const onOpenTool = (toolId: string | null): void =>
       setOpenTool((cur) => (cur === toolId ? null : toolId));
-    };
     // Three-Zone top-bar nav plaques (btn-map / btn-sendtoyard).
     const onNavMap = (): void => dispatch({ type: "setActiveView", view: "map" });
     const onNavYard = (): void => dispatch({ type: "setActiveView", view: "yard" });

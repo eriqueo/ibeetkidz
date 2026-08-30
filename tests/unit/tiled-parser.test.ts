@@ -5,6 +5,7 @@ import {
   ANCHORS,
   type TiledSpawn,
 } from "../../src/game/TiledParser.ts";
+import { parseTiledAction } from "../../src/game/tiled-actions.ts";
 // The real fixture (a valid Tiled 1.10 export) — imported so the test exercises
 // the on-disk artifact verbatim.
 import WORKSHOP from "../../src/assets/maps/workshop.json";
@@ -158,6 +159,26 @@ describe("field instrument objects", () => {
     expect(need("inst-violin").arg).toBe("violin");
     expect(need("inst-piano").action).toBe("workshop-add-melody");
     expect(need("inst-piano").arg).toBe("piano");
+  });
+
+  it("gives the conductor its own no-argument whole-board intent", () => {
+    const conductor = need("inst-conductor");
+    expect(conductor.action).toBe("workshop-open-board");
+    expect(conductor.arg).toBeUndefined();
+  });
+});
+
+describe("Tiled action vocabulary", () => {
+  it("accepts the conductor's no-argument board action", () => {
+    expect(parseTiledAction("workshop-open-board", undefined)).toEqual({
+      action: "workshop-open-board",
+    });
+  });
+
+  it("rejects a payload on the no-argument board action", () => {
+    expect(() => parseTiledAction("workshop-open-board", "sound-pads")).toThrow(
+      /Invalid Tiled payload/,
+    );
   });
 });
 

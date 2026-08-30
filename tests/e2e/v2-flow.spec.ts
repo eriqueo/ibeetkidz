@@ -194,8 +194,8 @@ test("Workshop: a character rides the car, and tapping it opens ITS editor", asy
   await expect.poll(async () => (await scene()).tool).toBe("melody-editor");
   await emit(page, "tool-closed");
 
-  // The conductor's slot opens the whole-train chalkboard.
-  await emit(page, "workshop-open-tool", "sound-pads");
+  // The conductor's separate no-argument intent opens the whole-train board.
+  await emit(page, "workshop-open-board");
   await expect.poll(async () => (await scene()).open).toBe(true);
 
   // …and deleting the last lane puts the car back on screen rather than leaving

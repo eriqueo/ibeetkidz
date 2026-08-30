@@ -17,6 +17,7 @@ export const TILED_ACTION_ARGS = {
   "transport-stop": noArg,
   "workshop-add-melody": z.enum(["guitar", "violin", "piano"]),
   "workshop-loop-car": noArg,
+  "workshop-open-board": noArg,
   "workshop-open-tool": z.enum([
     "beat-grid",
     "record-voicefx",

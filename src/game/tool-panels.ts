@@ -600,9 +600,9 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
 
 // ── Sound Pads ────────────────────────────────────────────────────────────────
 //
-// The sound LIBRARY: every built-in sound plus every recording the child has
-// made. Tapping a pad hears it AND puts it in the car (see `onPadsPlay` in
-// Workshop.tsx for why that is the tool's job).
+// The sound LIBRARY: every built-in sound plus the newest bounded shelf of the
+// child's recordings. Tapping a pad hears it AND puts it in the car (see
+// `onPadsPlay` in Workshop.tsx for why that is the tool's job).
 //
 // Three things this panel has to do that the old flat grid did not:
 //
@@ -685,6 +685,12 @@ class PadKey {
     this.container = scene.add.container(0, 0, [this.chip, this.glyph, this.caption, this.tick, this.hit]);
   }
 
+  /** Give the live hit target a stable production-E2E identity. */
+  setName(name: string): this {
+    this.hit.setName(name);
+    return this;
+  }
+
   /** Is this sound already a lane in the car? Seats the keycap and lights it. */
   setInCar(v: boolean): void {
     if (v === this.inCar) return;
@@ -746,11 +752,9 @@ class PadKey {
   destroy(): void { this.container.destroy(); }
 }
 
-// PARKED, deliberately not deleted (2026-08-12): the conductor took the
-// raccoon's floor slot, so nothing opens this panel any more — but it is the
-// ONLY surface that lists a kid's PAST recordings (the voice tools offer just
-// the newest take). Remove it once the sound library has a new home, or wire
-// that home out of this class; see ART_REQUESTS AR-045's engineering note.
+// The conductor's SOUNDS board chip opens this library. It remains the one
+// surface that lists a kid's past recordings (the voice tools offer just the
+// newest take), alongside the built-in drum and tone shelves.
 export class PadsToolPanel extends BaseToolPanel {
   private pads: { id: string; group: string; key: PadKey }[] = [];
   private shelves: {
@@ -766,7 +770,10 @@ export class PadsToolPanel extends BaseToolPanel {
    *  one under the child's finger. */
   private signature = "";
 
-  constructor(scene: Phaser.Scene) { super(scene, "🥁 Sound Pads"); }
+  constructor(scene: Phaser.Scene) {
+    super(scene, "🥁 Sound Pads");
+    this.doneBtn.container.setName("workshop-sound:done");
+  }
 
   protected buildContent(): void {
     this.shelves = PAD_SHELVES.map((s) => {
@@ -855,6 +862,7 @@ export class PadsToolPanel extends BaseToolPanel {
           p.label,
           () => EventBus.emit("tool-pads-play", p.id),
         );
+        key.setName(`workshop-sound:${p.id}`);
         this.add(key.container);
         return { id: p.id, group: p.group, key };
       });

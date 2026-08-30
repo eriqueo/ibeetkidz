@@ -1178,12 +1178,12 @@ the existing `inst-*` family):
 - `src/assets/sprites/instruments/inst-pads-passive.png` / `-hover.png` / `-active.png`
 - `src/assets/sprites/instruments/inst-magic-passive.png` / `-hover.png` / `-active.png`
 
-**Context:** the Workshop field row is data-driven from `workshop.json`, and an
-instrument only exists there if it has art. Two fully-built tool panels are
+**Original context (before this delivered request was wired):** the Workshop field row is data-driven from `workshop.json`, and an
+instrument only exists there if it has art. Two fully-built tool panels were
 stranded behind that: `sound-pads` (`PadsToolPanel` — the soundboard of the
 built-in pack plus your own recordings) and `theremin-xy` (`MagicToolPanel` —
-the live oscillator+filter Magic Pad). Both are reachable today only by emitting
-`workshop-open-tool` by hand; a kid has no way in.
+the live oscillator+filter Magic Pad). At that time both were reachable only by
+emitting `workshop-open-tool` by hand; a kid had no way in.
 
 **Note — `inst-keys` is NOT part of this request.** Its art already shipped (a
 `UI_SPRITES` entry with all three frames in the packed atlas); it was simply
@@ -2336,7 +2336,7 @@ the UI atlas regenerated (75 sprites, now 4 pages — the multiatlas loader
 takes its page list from the JSON, so no code change). The tap still routes
 to the whole-train chalkboard. `inst-pads` stays in the atlas: it remains the
 tone-family fallback picture (`livery-style.ts`) and the icon on lanes made
-by the retired Sound Pads panel.
+through the Sound Library.
 
 ---
 
@@ -2364,10 +2364,12 @@ the art, same framing as the other eight characters). The Tiled workshop map
 and the shelf keep the raccoon's slot; engineering swaps the sprite id when
 the files land.
 
-**Engineering note (for whoever wires it):** the retired Sound Pads panel was
-the only surface listing a kid's PAST recordings (`PadsToolPanel`, parked in
-`tool-panels.ts` with this note referenced). The sound library needs a new
-home before that class is deleted.
+**Engineering follow-up completed 2026-08-30:** the conductor's whole-train
+board now has a **SOUNDS** action that opens `PadsToolPanel` as the Sound
+Library. Past recordings are reachable again without turning the conductor
+back into an instrument, and the board and panel remain separate event intents.
+The shelf intentionally shows the newest 12 recordings; paging older recordings
+is a remaining product gap, not an art deliverable.
 
 ## AR-046 · The crew INSIDE the cars — per-car integrated riding art — HIGH
 

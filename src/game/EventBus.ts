@@ -116,8 +116,9 @@ export interface EventMap {
   "workshop-layer-selected": [layerId: string];
   // Phaser -> React (Workshop): painted toolbar actions (all in-canvas now).
   "workshop-open-tool": [toolId: string | null]; // open/close a satellite panel
-  // React (the conductor's floor slot) -> WorkshopScene: open the whole-train
-  // chalkboard — the conductor's meta view of every lane in the car.
+  // The conductor's Tiled object -> WorkshopScene: open the whole-train
+  // chalkboard. Its SOUNDS chip then uses `workshop-open-tool` to enter the
+  // recording library without overloading this no-argument board intent.
   "workshop-open-board": [];
   // Add a FRESH EMPTY car to the library (clears the board — design doc §5).
   // The optional carType comes from the NEW CAR dropdown picker tile.
@@ -176,9 +177,9 @@ export interface EventMap {
   "tool-keys-audition": [row: number];
   // Voice Keys: send the take to the car as a melody lane.
   "tool-keys-send": [];
-  // Sound Pads: a pad was hit (builtin assetId or recorded clip id). The panel
-  // is parked (see PadsToolPanel), but the handler and its one-undo-step
-  // guarantee stand until the sound library has a new home (AR-045's note).
+  // Sound Library: a pad was hit (builtin assetId or recorded clip id). The
+  // conductor's board routes here through its SOUNDS chip; the handler adds the
+  // sound to the current car as one undoable step.
   "tool-pads-play": [padId: string];
   // Magic Pad: pointer activity over the XY zone (x,y normalized 0..1, y from top).
   "tool-magic-pointer": [phase: "down" | "move" | "up", x: number, y: number];
