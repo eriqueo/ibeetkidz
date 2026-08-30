@@ -144,10 +144,15 @@ async function tapDesignPoint(page: Page, x: number, y: number): Promise<void> {
     const c = element as HTMLCanvasElement;
     return { width: c.width, height: c.height };
   });
-  await page.mouse.click(
-    box!.x + x * (box!.width / intrinsic.width),
-    box!.y + y * (box!.height / intrinsic.height),
-  );
+  const screenX = box!.x + x * (box!.width / intrinsic.width);
+  const screenY = box!.y + y * (box!.height / intrinsic.height);
+  await page.mouse.move(screenX, screenY);
+  await page.mouse.down();
+  // Phaser samples pointer state on its game loop. A zero-dwell Playwright
+  // click can deliver down + up between two frames on a loaded CI runner and
+  // is less representative than even a very quick human tap.
+  await page.waitForTimeout(80);
+  await page.mouse.up();
 }
 
 function decodePng(bytes: Uint8Array): DecodedPng {
