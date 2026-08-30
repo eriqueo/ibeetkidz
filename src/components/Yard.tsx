@@ -14,6 +14,7 @@ export const Yard: FC = () => {
   const { dispatch, engine } = useApp();
   const project = useProject();
   const sceneRef = useRef<YardScene | null>(null);
+  const selectedTrainRef = useRef<string | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   // Identity is DERIVED, never stored: which livery a car wears comes from its
@@ -56,6 +57,7 @@ export const Yard: FC = () => {
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     sceneRef.current = scene as YardScene;
+    selectedTrainRef.current = null;
     sceneRef.current.setCars(
       carsRef.current,
       trainRef.current,
@@ -88,9 +90,14 @@ export const Yard: FC = () => {
     const onAdd = (partId: string) =>
       dispatch({ type: "addToTrain", instanceId: newInstanceId(), partId });
     const onSend = () => dispatch({ type: "setActiveView", view: "track" });
+    const onTrainSelect = (instanceId: string | null) => {
+      selectedTrainRef.current = instanceId;
+    };
     const onRemoveFromTrain = () => {
-      const last = liveTrain(projectRef.current).at(-1);
-      if (last) dispatch({ type: "removeFromTrain", instanceId: last.instanceId });
+      const train = liveTrain(projectRef.current);
+      const selected = train.find((car) => car.instanceId === selectedTrainRef.current);
+      const target = selected ?? train.at(-1);
+      if (target) dispatch({ type: "removeFromTrain", instanceId: target.instanceId });
     };
     // A car was dragged to a new place on the assembly line. The scene sends
     // the whole new order and the reducer takes the whole new order, so there
@@ -111,6 +118,7 @@ export const Yard: FC = () => {
       dispatch({ type: "setActiveView", view });
     };
     EventBus.on("yard-car-selected", onSelect);
+    EventBus.on("yard-train-selected", onTrainSelect);
     EventBus.on("yard-add-to-train", onAdd);
     EventBus.on("yard-send-to-track", onSend);
     EventBus.on("yard-remove-from-train", onRemoveFromTrain);
@@ -120,6 +128,7 @@ export const Yard: FC = () => {
     EventBus.on("yard-nav", onNav);
     return () => {
       EventBus.off("yard-car-selected", onSelect);
+      EventBus.off("yard-train-selected", onTrainSelect);
       EventBus.off("yard-add-to-train", onAdd);
       EventBus.off("yard-send-to-track", onSend);
       EventBus.off("yard-remove-from-train", onRemoveFromTrain);

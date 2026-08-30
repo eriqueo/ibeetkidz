@@ -21,6 +21,9 @@ export interface EventMap {
   // Phaser -> React (Yard): the kid picked a palette car (selection reflected;
   // React makes it the active car so edit/delete target it).
   "yard-car-selected": [partId: string];
+  // Phaser -> React (Yard): the kid picked one assembled train SLOT. This is
+  // deliberately an instanceId, separate from the palette's partId selection.
+  "yard-train-selected": [instanceId: string | null];
   // Tiled hit -> YardScene: the kid tapped the "couple" (Add to Train) button.
   // YardScene runs the crane animation, then emits `yard-add-to-train` on its
   // onComplete (intent in, animated dispatch out). Handled in the scene.
@@ -33,7 +36,8 @@ export interface EventMap {
   "yard-add-to-train": [partId: string];
   // Phaser -> React (Yard): the assembled train has departed; navigate to Track.
   "yard-send-to-track": [];
-  // Tiled hit -> React (Yard): pop the last car off the assembled train.
+  // Tiled hit -> React (Yard): remove the selected assembled slot, falling
+  // back to the tail when this visit has no train selection.
   "yard-remove-from-train": [];
   // Tiled hit -> React (Yard): open the Workshop on the active (selected) car.
   "yard-edit-car": [];

@@ -112,6 +112,7 @@ export class YardScene extends BackgroundScene {
   private cars: YardCar[] = [];
   private train: YardTrainCar[] = [];
   private selectedId: string | null = null;
+  private selectedTrainId: string | null = null;
   private paletteTokens = new Map<string, CarToken>();
   private trainTokens: CarToken[] = [];
   private busy = false; // a crane/departure tween is in flight — ignore presses
@@ -144,6 +145,7 @@ export class YardScene extends BackgroundScene {
     // calling their completion handlers, so a visit must never inherit the
     // previous visit's animation latch.
     this.busy = false;
+    this.selectedTrainId = null;
     this.addBackground("contain");
     this.chrome = spawnUiLayer(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
@@ -182,19 +184,31 @@ export class YardScene extends BackgroundScene {
   get debugModel(): {
     carCount: number;
     trainCount: number;
+    trainIds: string[];
     selectedId: string | null;
     selectedRingIds: string[];
+    selectedTrainId: string | null;
+    selectedTrainRingIds: string[];
     busy: boolean;
     rebuildCount: number;
   } {
     return {
       carCount: this.cars.length,
       trainCount: this.train.length,
+      trainIds: this.train.map((slot) => slot.instanceId),
       selectedId: this.selectedId,
       selectedRingIds: [...this.paletteTokens.entries()]
         .filter(([, token]) =>
           (token.car.getData("ring") as Phaser.GameObjects.Graphics).visible)
         .map(([id]) => id),
+      selectedTrainId: this.selectedTrainId,
+      selectedTrainRingIds: this.train
+        .filter((_slot, index) => {
+          const token = this.trainTokens[index];
+          return token !== undefined
+            && (token.car.getData("ring") as Phaser.GameObjects.Graphics).visible;
+        })
+        .map((slot) => slot.instanceId),
       busy: this.busy,
       rebuildCount: this.rebuildCount,
     };
@@ -385,8 +399,15 @@ export class YardScene extends BackgroundScene {
     });
     // A selected car may have been removed; drop a stale highlight.
     if (this.selectedId && !this.paletteTokens.has(this.selectedId)) this.selectedId = null;
+    const trainSelectionWentStale = this.selectedTrainId !== null
+      && !this.train.some((slot) => slot.instanceId === this.selectedTrainId);
+    if (trainSelectionWentStale) {
+      this.selectedTrainId = null;
+      EventBus.emit("yard-train-selected", null);
+    }
     this.layout();
     this.setSelectedPalette(this.selectedId);
+    this.setSelectedTrain(this.selectedTrainId);
   }
 
   /** Make a palette car token tap-to-select. The hit area is the car's opaque
@@ -442,6 +463,17 @@ export class YardScene extends BackgroundScene {
     this.input.setDraggable(token);
     const homeY = token.y;
     const homeDepth = token.depth;
+    let armed = false;
+    let dragged = false;
+
+    token.on("pointerdown", () => { armed = true; dragged = false; });
+    token.on("dragstart", () => { dragged = true; });
+    token.on("pointerup", () => {
+      const shouldSelect = armed && !dragged && !this.busy;
+      armed = false;
+      if (shouldSelect) this.selectTrainCar(slot.instanceId);
+    });
+    token.on("pointerout", () => { if (!dragged) armed = false; });
 
     token.on("drag", (_p: Phaser.Input.Pointer, dragX: number) => {
       // x only — the car stays on its rail. Lifted a little and brought to the
@@ -473,6 +505,20 @@ export class YardScene extends BackgroundScene {
     if (this.busy) return;
     this.setSelectedPalette(partId);
     EventBus.emit("yard-car-selected", partId);
+  }
+
+  private selectTrainCar(instanceId: string): void {
+    this.setSelectedTrain(instanceId);
+    EventBus.emit("yard-train-selected", instanceId);
+  }
+
+  private setSelectedTrain(instanceId: string | null): void {
+    this.selectedTrainId = instanceId;
+    this.trainTokens.forEach((token, index) => {
+      const slot = this.train[index];
+      (token.car.getData("ring") as Phaser.GameObjects.Graphics)
+        .setVisible(slot?.instanceId === instanceId);
+    });
   }
 
   private layout(): void {
@@ -542,7 +588,9 @@ export class YardScene extends BackgroundScene {
     // stands ~30 px off a flatcar on every side and reads as its own object.
     const ring = this.add.graphics();
     const pad = 5;
-    ring.lineStyle(4, 0xffd166, 1).strokeRect(-bw / 2 - pad, -bh - pad, bw + pad * 2, bh + pad * 2);
+    ring
+      .lineStyle(4, isTrain ? 0x06d6a0 : 0xffd166, 1)
+      .strokeRect(-bw / 2 - pad, -bh - pad, bw + pad * 2, bh + pad * 2);
     ring.setVisible(false);
 
     const c = this.add.container(0, 0, [ring, body]);
