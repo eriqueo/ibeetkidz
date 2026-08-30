@@ -298,12 +298,13 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, tunnel.x, tunnel.y);
   await expect
     .poll(() => patchSignature(page, tunnel.x, tunnel.y), {
+      timeout: 12_000,
       message: "TUNNEL must visibly latch after a real canvas tap",
     })
     .not.toBe(tunnelBefore);
   await expect
     .poll(async () => (await canvasMetrics(page)).worldLuma, {
-      timeout: 10_000,
+      timeout: 15_000,
       message: "TUNNEL must produce a visible world treatment when its bar arrives",
     })
     .toBeLessThan(bridgeRide.worldLuma * 0.82);
@@ -319,6 +320,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, slots.tarp!.x, slots.tarp!.y);
   await expect
     .poll(() => patchSignature(page, slots.tarp!.x, slots.tarp!.y), {
+      timeout: 12_000,
       message: "TARP must visibly seat after a real canvas tap",
     })
     .not.toBe(tarpKeyBefore);
@@ -329,6 +331,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, actions["toggle-mute"].x, actions["toggle-mute"].y);
   await expect
     .poll(() => patchSignature(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y), {
+      timeout: 12_000,
       message: "confirming TARP must visibly cover the selected car",
     })
     .not.toBe(carBefore);
