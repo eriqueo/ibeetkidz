@@ -49,7 +49,7 @@ interface DecodedPng {
   readonly data: Uint8Array;
 }
 
-function savedAuditProject(): string {
+function savedAuditProject(trainCars = 1): string {
   const clipId = "visual-release-tone";
   const layerId = "visual-release-lane";
   let project = emptyProject("visual-release-project", "Visual release check");
@@ -74,6 +74,13 @@ function savedAuditProject(): string {
       volume: 0.8,
     }),
   });
+  for (let i = 1; i < trainCars; i++) {
+    project = reduce(project, {
+      type: "addToTrain",
+      instanceId: `visual-release-train-${i + 1}`,
+      partId: project.activePartId!,
+    });
+  }
   return JSON.stringify({
     [project.id]: { name: project.name, savedAt: 1, json: serialize(project) },
   });
@@ -100,10 +107,10 @@ function observeBrowser(page: Page): BrowserFailures {
   return failures;
 }
 
-async function bootPagesTrack(page: Page, appUrl: string): Promise<void> {
+async function bootPagesTrack(page: Page, appUrl: string, trainCars = 1): Promise<void> {
   await page.addInitScript(
     ({ key, value }) => localStorage.setItem(key, value),
-    { key: PROJECTS_KEY, value: savedAuditProject() },
+    { key: PROJECTS_KEY, value: savedAuditProject(trainCars) },
   );
   await page.goto(appUrl);
   const start = page.getByRole("button", { name: /tap to start/i });
@@ -343,4 +350,80 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
     body: JSON.stringify({ idle, bridgeRide, failures }, null, 2),
     contentType: "application/json",
   });
+});
+
+test("a finite Track ride auto-stops with neutral mode visuals in the Pages canvas", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60_000);
+  const configuredUrl = testInfo.project.metadata.pwaOrigin;
+  if (typeof configuredUrl !== "string") {
+    throw new Error("playwright config must provide pwaOrigin");
+  }
+  // Production deliberately exposes only this read-only diagnostic. Inputs
+  // still enter through real canvas pixels; there is no dev EventBus bridge in
+  // the Pages artifact.
+  const appUrl = new URL(configuredUrl);
+  appUrl.searchParams.set("audiodiag", "");
+  const failures = observeBrowser(page);
+  // Four bars leave enough real ride time to observe NIGHT before the 1x
+  // finish edge; the contract is still one complete song, not a wall-clock
+  // delay tuned around screenshot cost.
+  await bootPagesTrack(page, appUrl.href, 4);
+
+  const header = trackHeaderSlots();
+  const night = trackJobSlots().night;
+  const transportState = () => page.evaluate(
+    () => (window as any).__ibeetkidz_audio__?.diag().transportState ?? "missing",
+  );
+
+  const idleLoop = await patchSignature(page, header.loop!.x, header.loop!.y);
+  const idleNight = await patchSignature(page, night.x, night.y);
+  const idleWorld = await canvasMetrics(page);
+
+  await tapDesignPoint(page, header.loop!.x, header.loop!.y); // ∞ → 1x
+  await expect
+    .poll(() => patchSignature(page, header.loop!.x, header.loop!.y))
+    .not.toBe(idleLoop);
+  const finiteLoop = await patchSignature(page, header.loop!.x, header.loop!.y);
+
+  // No separate RIDE tap: NIGHT's existing compound intent starts the train,
+  // then latches the mode against the authoritative transport.
+  await tapDesignPoint(page, night.x, night.y);
+  await expect.poll(transportState, { timeout: 12_000 }).toBe("started");
+  await expect
+    .poll(() => patchSignature(page, night.x, night.y), { timeout: 12_000 })
+    .not.toBe(idleNight);
+  const latchedNight = await patchSignature(page, night.x, night.y);
+  const nightWorld = await canvasMetrics(page);
+  expect(nightWorld.worldLuma).toBeLessThan(idleWorld.worldLuma * 0.9);
+
+  await expect.poll(transportState, {
+    timeout: 20_000,
+    message: "the 1x ride must reach AudioEngine's finite completion edge",
+  }).toBe("stopped");
+
+  await expect
+    .poll(async () => Math.abs((await patchSignature(page, night.x, night.y)) - idleNight), {
+      timeout: 5_000,
+      message: "NIGHT must unlatch when the finite ride ends without a STOP tap",
+    })
+    // Chromium's canvas screenshot can vary by a few antialiasing levels even
+    // for the same untinted pixels. Compare against the measured latch delta,
+    // not exact PNG arithmetic: neutral must return within 5% of idle.
+    .toBeLessThan(Math.max(1, Math.abs(latchedNight - idleNight) * 0.05));
+  await expect
+    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+      timeout: 5_000,
+      message: "the world must return to its neutral treatment at finite completion",
+    })
+    .toBeGreaterThan(nightWorld.worldLuma * 1.1);
+
+  // LOOP is the next Ride's configuration, not a ride-mode latch. Auto-stop
+  // keeps its visible 1x setting while clearing NIGHT and the world treatment.
+  expect(Math.abs((await patchSignature(page, header.loop!.x, header.loop!.y)) - finiteLoop))
+    .toBeLessThan(10);
+  expect(failures.page, "uncaught browser errors").toEqual([]);
+  expect(failures.console, "browser console errors").toEqual([]);
+  expect(failures.network, "failed release requests").toEqual([]);
 });

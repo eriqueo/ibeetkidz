@@ -123,6 +123,27 @@ export const Track: FC = () => {
   // registered once, and neither drives any React render — the scene is told.
   const loopsRef = useRef<number | null>(null);
   const tarpArmedRef = useRef(false);
+  const modeIntentsRef = useRef<TrackModeIntentCoordinator | null>(null);
+
+  // One visual projection of AudioEngine's latched ride modes. Both a manual
+  // STOP and the engine's finite-loop finish edge use the same neutralization
+  // path below, so the switches, world treatment and terrain spans cannot
+  // disagree about whether a ride still exists.
+  const pushModesToScene = useCallback(() => {
+    const v3 = v3Ref.current;
+    if (!v3) return;
+    const modes = engine.latchedModes;
+    v3.setTerrainRides([...latchedRidesRef.current.values()]);
+    v3.setModeLatched(new Set(modes));
+    v3.setNightTunnel(modes.has("night"), modes.has("tunnel"));
+    v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
+  }, [engine]);
+
+  const reconcileStoppedRideVisuals = useCallback(() => {
+    modeIntentsRef.current?.clear();
+    latchedRidesRef.current.clear();
+    pushModesToScene();
+  }, [pushModesToScene]);
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     if (scene instanceof TrackV3Scene) {
@@ -164,19 +185,6 @@ export const Track: FC = () => {
       dispatch({ type: "setTempo", bpm });
       engine.setTempo(bpm);
     };
-    // Push the whole latched-mode picture into the v3 scene in one place, so
-    // the buttons, the shades, the train's size and the drawn spans can never
-    // disagree about what is on.
-    const pushModesToScene = () => {
-      const v3 = v3Ref.current;
-      if (!v3) return;
-      const modes = engine.latchedModes;
-      v3.setTerrainRides([...latchedRidesRef.current.values()]);
-      v3.setModeLatched(new Set(modes));
-      v3.setNightTunnel(modes.has("night"), modes.has("tunnel"));
-      v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
-    };
-
     // Commit one mode only after a Ride is authoritative. AudioEngine remains
     // strict: it owns the transport timestamp and may still refuse with null.
     const commitMode = (kind: Parameters<typeof engine.toggleMode>[0]) => {
@@ -203,15 +211,14 @@ export const Track: FC = () => {
       setPendingModes: (kinds) => v3Ref.current?.setModePending(kinds),
       onStartFailed: (err) => console.warn("audio playback failed", err),
     });
+    modeIntentsRef.current = modeIntents;
 
     const onPlay = () => {
       modeIntents.startRide();
     };
     const onStop = () => {
-      modeIntents.clear();
       engine.stop(); // also drops every mode latch — flat ground on stop
-      latchedRidesRef.current.clear();
-      pushModesToScene();
+      reconcileStoppedRideVisuals();
     };
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
     const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
@@ -238,8 +245,8 @@ export const Track: FC = () => {
         (c) => ({ type: "removeFromTrain", instanceId: c.instanceId }) as const,
       );
       if (cmds.length === 0) return;
-      modeIntents.clear();
       engine.stop();
+      reconcileStoppedRideVisuals();
       dispatchAll(cmds, "The whole train");
     };
     // A ride mode toggled: LATCHED, STACKING — every mode is independent, tap
@@ -301,6 +308,7 @@ export const Track: FC = () => {
     EventBus.on("track-tarp-armed", onTarpArmed);
     return () => {
       modeIntents.dispose();
+      if (modeIntentsRef.current === modeIntents) modeIntentsRef.current = null;
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);
@@ -314,7 +322,7 @@ export const Track: FC = () => {
       EventBus.off("track-loop-cycled", onLoopCycled);
       EventBus.off("track-tarp-armed", onTarpArmed);
     };
-  }, [dispatch, dispatchAll, engine]);
+  }, [dispatch, dispatchAll, engine, pushModesToScene, reconcileStoppedRideVisuals]);
 
   // SEND flow: the scene owns the plaque + result panel (in-scene, charter-
   // styled); this side owns the audio render and the share/download side
@@ -396,7 +404,7 @@ export const Track: FC = () => {
       // Ask the engine whether the song has run its requested number of times.
       // The DECISION is the engine's (it reads the transport itself); this is
       // only the heartbeat, because the Track is the view that has one.
-      engine.tickRide();
+      if (engine.tickRide()) reconcileStoppedRideVisuals();
       const v3scene = v3Ref.current;
       if (v3scene) {
         const riding = engine.isPlaying && engine.playMode === "ride";
@@ -458,7 +466,7 @@ export const Track: FC = () => {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [engine, sound]);
+  }, [engine, reconcileStoppedRideVisuals, sound]);
 
   return (
     <div style={VIEW_OVERLAY}>

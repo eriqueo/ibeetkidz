@@ -573,6 +573,24 @@ describe("ride loop count", () => {
     expect(engine.isPlaying).toBe(false);
   });
 
+  it("reports one finite finish edge after dropping the ride's mode latches", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = twoCarTrain();
+    engine.setRideLoops(1);
+    await engine.playRide(project);
+    engine.toggleMode("night", project);
+    expect([...engine.latchedModes]).toEqual(["night"]);
+
+    sound.bar = 2;
+    expect(engine.tickRide()).toBe(true);
+    expect(engine.isPlaying).toBe(false);
+    expect(engine.latchedModes.size).toBe(0);
+    // The true value is an edge for the Track to consume, not a level that
+    // would re-run visual teardown (or a second stop) every animation frame.
+    expect(engine.tickRide()).toBe(false);
+  });
+
   it("holds the finish line it started with when the train is edited mid-ride", async () => {
     // `rideBars` is captured at playRide on purpose: a kid deleting a car while
     // the song runs must not make the song end early (or never), because the
