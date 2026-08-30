@@ -78,6 +78,7 @@ import {
   TRACK_CAR_ACTION_LAYOUT,
   trackCarActionChoices,
   trackCarActionDisarmsTarp,
+  trackCarActionSlots,
   type TrackCarActionKind,
 } from "../track-car-actions.ts";
 
@@ -1816,7 +1817,7 @@ export class TrackV3Scene extends Phaser.Scene {
 
     const layout = TRACK_CAR_ACTION_LAYOUT;
     const panelX = (W - layout.panelWidth) / 2;
-    const panelY = 555;
+    const panelY = layout.panelY;
     const drop = 10;
     const root = this.add.container(0, 0).setDepth(DEPTH.hud + 20);
     const backdrop = this.add
@@ -1845,7 +1846,7 @@ export class TrackV3Scene extends Phaser.Scene {
       .setStrokeStyle(6, PANEL_EDGE)
       .setOrigin(0);
     const title = this.add
-      .text(W / 2, panelY + 72, `CAR ${car.number} — WHAT NEXT?`, {
+      .text(W / 2, panelY + layout.titleOffsetY, `CAR ${car.number} — WHAT NEXT?`, {
         fontFamily: FONT,
         color: INK,
         align: "center",
@@ -1855,12 +1856,10 @@ export class TrackV3Scene extends Phaser.Scene {
     root.add([backdrop, shadow, frame, title]);
 
     const choices = trackCarActionChoices(car.muted);
-    const rowWidth =
-      choices.length * layout.buttonWidth + (choices.length - 1) * layout.buttonGap;
-    const rowX = (W - rowWidth) / 2;
-    const rowY = panelY + 150;
-    choices.forEach((choice, index) => {
+    const slots = trackCarActionSlots(W);
+    choices.forEach((choice) => {
       const highlighted = choice.kind === "toggle-mute" && this.tarpArmed;
+      const slot = slots[choice.kind];
       const button = new PanelButton(
         this,
         choice.label,
@@ -1870,10 +1869,10 @@ export class TrackV3Scene extends Phaser.Scene {
       button.container.setName(choice.objectName);
       button.place(
         {
-          x: rowX + index * (layout.buttonWidth + layout.buttonGap),
-          y: rowY,
-          w: layout.buttonWidth,
-          h: layout.buttonHeight,
+          x: slot.x - slot.width / 2,
+          y: slot.y - slot.height / 2,
+          w: slot.width,
+          h: slot.height,
         },
         24,
       );

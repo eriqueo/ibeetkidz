@@ -7,6 +7,7 @@ import {
   trackHeaderSlots,
   trackJobSlots,
 } from "../../src/game/scene-layout.ts";
+import { trackCarActionSlots } from "../../src/game/track-car-actions.ts";
 import mapMap from "../../src/assets/maps/map.json" with { type: "json" };
 // Playwright explicitly exports this bundle path, but does not publish its
 // declarations. Reuse its pinned PNG decoder instead of adding a second image
@@ -289,16 +290,22 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await capture(page, testInfo, "track-05-tunnel");
 
   // One seeded car has a stable, generous body target around the middle-left
-  // of the consist. Reaching Workshop proves this production canvas target is
-  // real; the build has no EventBus bridge to make a false-positive shortcut.
+  // of the consist. The first tap is selection only; the explicit EDIT choice
+  // proves the production canvas journey without a dev EventBus shortcut.
+  await tapDesignPoint(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
+  await capture(page, testInfo, "track-06-car-actions");
   const workshopLoaded = page.waitForResponse(
     (response) => /\/assets\/workshop-interior-clean-[^/]+\.png$/.test(
       new URL(response.url()).pathname,
     ),
     { timeout: 15_000 },
   );
-  await tapDesignPoint(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
-  await expect((await workshopLoaded).ok(), "tapping the visible car body must open Workshop").toBe(true);
+  const edit = trackCarActionSlots(2560).edit;
+  await tapDesignPoint(page, edit.x, edit.y);
+  await expect(
+    (await workshopLoaded).ok(),
+    "choosing EDIT after tapping the visible car body must open Workshop",
+  ).toBe(true);
 
   expect(failures.page, "uncaught browser errors").toEqual([]);
   expect(failures.console, "browser console errors").toEqual([]);

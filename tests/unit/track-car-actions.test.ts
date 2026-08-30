@@ -3,6 +3,7 @@ import {
   TRACK_CAR_ACTION_LAYOUT,
   trackCarActionChoices,
   trackCarActionDisarmsTarp,
+  trackCarActionSlots,
 } from "../../src/game/track-car-actions.ts";
 
 describe("Track car action choices", () => {
@@ -27,5 +28,20 @@ describe("Track car action choices", () => {
     expect(trackCarActionDisarmsTarp("toggle-mute")).toBe(true);
     expect(trackCarActionDisarmsTarp("close")).toBe(false);
     expect(trackCarActionDisarmsTarp("edit")).toBe(false);
+  });
+
+  it("lays out three equal, centered, non-overlapping action targets", () => {
+    const slots = trackCarActionSlots(2560);
+    expect(Object.keys(slots).sort()).toEqual(["close", "edit", "toggle-mute"]);
+    expect(slots.edit.x + slots.close.x).toBe(2560);
+    expect(slots.edit.y).toBe(slots["toggle-mute"].y);
+    expect(slots.close.y).toBe(slots["toggle-mute"].y);
+    expect(slots["toggle-mute"].x - slots.edit.x).toBe(
+      TRACK_CAR_ACTION_LAYOUT.buttonWidth + TRACK_CAR_ACTION_LAYOUT.buttonGap,
+    );
+    for (const slot of Object.values(slots)) {
+      expect(slot.width).toBe(TRACK_CAR_ACTION_LAYOUT.buttonWidth);
+      expect(slot.height).toBe(TRACK_CAR_ACTION_LAYOUT.buttonHeight);
+    }
   });
 });
