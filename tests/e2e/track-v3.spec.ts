@@ -62,6 +62,75 @@ test("the side-scroller is the Track you get with no flag", async ({ page }) => 
   expect(key).toBe("TrackV3Scene");
 });
 
+test("a failed Track art request uses its generated fallback, never Phaser's missing texture", async ({
+  page,
+}) => {
+  let failedSkyRequests = 0;
+  const observedSkyRequests: string[] = [];
+  page.on("request", (request) => {
+    if (request.url().includes("/sky")) {
+      observedSkyRequests.push(`${request.resourceType()} ${request.url()}`);
+    }
+  });
+  await page.route(/\/src\/assets\/sprites\/track3\/sky\.png(?:\?|$)/, (route) => {
+    if (route.request().resourceType() !== "xhr") return route.continue();
+    failedSkyRequests += 1;
+    return route.abort("failed");
+  });
+
+  await bootV3(page);
+
+  expect(
+    failedSkyRequests,
+    `the test must exercise the real dropped-art request; saw ${JSON.stringify(observedSkyRequests)}`,
+  ).toBeGreaterThan(0);
+  const texture = await page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    return {
+      requestedKey: "trk-sky",
+      renderedKey: scene.sky.texture.key,
+      fallbackExists: scene.textures.exists("trk-sky"),
+    };
+  });
+  expect(texture).toEqual({
+    requestedKey: "trk-sky",
+    renderedKey: "trk-sky",
+    fallbackExists: true,
+  });
+});
+
+test("a failed required Track asset stops loudly before a missing texture can render", async ({
+  page,
+}) => {
+  const failures: string[] = [];
+  page.on("pageerror", (error) => failures.push(error.message));
+  await page.route(/\/src\/assets\/sprites\/track3\/loco\.png(?:\?|$)/, (route) => {
+    if (route.request().resourceType() !== "xhr") return route.continue();
+    return route.abort("failed");
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "MapScene",
+  );
+  await emit(page, "map-nav", "track");
+
+  await expect
+    .poll(() => failures.find((message) => message.includes("TRACK_ART_LOAD_FAILED")) ?? "")
+    .toContain("trk-loco");
+  const boundary = await page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    return {
+      activeScene: scene.scene.key,
+      renderedMissingTextures: scene.children.list.filter(
+        (child: any) => child.texture?.key === "__MISSING",
+      ).length,
+    };
+  });
+  expect(boundary).toEqual({ activeScene: "MapScene", renderedMissingTextures: 0 });
+});
+
 test("a kid can drive the default Track through its real canvas controls", async ({ page }) => {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
   await page.goto("/");

@@ -316,8 +316,13 @@ export class TrackV3Scene extends Phaser.Scene {
   private lastPos = 0;
   private speedBars = 0; // bars per second, smoothed
   private lastAt = -1;
+  /** Declared Track files that failed and have no generated replacement.
+   *  `create` refuses to draw them, because Phaser otherwise substitutes its
+   *  neon `__MISSING` texture and turns one broken request into a corrupt scene. */
+  private readonly unrecoveredArtLoads = new Set<string>();
 
   preload(): void {
+    this.unrecoveredArtLoads.clear();
     // The same packed chrome atlas every other view uses, so this scene's nav
     // and transport are the SAME buttons as the Workshop, Yard and oval Track —
     // not a second set that drifts. Idempotent; the atlas is already resident
@@ -331,9 +336,29 @@ export class TrackV3Scene extends Phaser.Scene {
       if (!this.textures.exists(key)) this.load.image(key, url);
     }
     makeGreyboxTextures(this, delivered);
+
+    // `delivered` means Vite declared a URL, not that the browser fetched it.
+    // If that request fails, restore the existing per-slot greybox while the
+    // loader is still running. Slots without a generator fail at the scene
+    // boundary below instead of being silently replaced by Phaser's marker.
+    const recoverFailedTrackArt = (file: Phaser.Loader.File): void => {
+      const key = String(file.key);
+      if (!delivered.delete(key)) return;
+      makeGreyboxTextures(this, delivered);
+      if (!this.textures.exists(key)) this.unrecoveredArtLoads.add(key);
+    };
+    this.load.on(Phaser.Loader.Events.FILE_LOAD_ERROR, recoverFailedTrackArt);
+    this.load.once(Phaser.Loader.Events.COMPLETE, () => {
+      this.load.off(Phaser.Loader.Events.FILE_LOAD_ERROR, recoverFailedTrackArt);
+    });
   }
 
   create(): void {
+    if (this.unrecoveredArtLoads.size > 0) {
+      const keys = [...this.unrecoveredArtLoads].sort().join(", ");
+      throw new Error(`TRACK_ART_LOAD_FAILED: ${keys}`);
+    }
+
     this.cameras.main.setBackgroundColor("#87ceeb");
 
     this.sky = this.add

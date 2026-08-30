@@ -1,6 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { parseTiledLayer } from "../../src/game/TiledParser.ts";
-import mapMap from "../../src/assets/maps/map.json" with { type: "json" };
+import { MAP_VIEWPORT, tapMapLandmark } from "./map-landmark.ts";
 
 // Ticket S8 — verify the thing kids actually touch.
 //
@@ -95,13 +94,6 @@ const MIME: Record<string, string> = {
   txt: "text/plain",
 };
 
-// The Tiled authoring canvas, derived from the map itself rather than hardcoded
-// — it is also the pixel size of the painted background art, which is the
-// contract the whole Tiled workflow rests on.
-const ART_W = mapMap.width * mapMap.tilewidth;
-const ART_H = mapMap.height * mapMap.tileheight;
-const VIEWPORT = { width: 1280, height: 720 };
-
 /** Requests the browser makes on its own that no deployment owns. */
 function isBrowserNoise(pathname: string): boolean {
   return (
@@ -187,31 +179,6 @@ async function bootBuilt(page: Page, url: string): Promise<void> {
 }
 
 /**
- * Tap the Map's painted landmark for `destination`.
- *
- * The built artifact has no test bridge (`__ibeetkidz_test__` is gated behind
- * `import.meta.env.DEV`), so this is a real click on the real canvas — which is
- * also what a kid does. The point comes from the app's OWN data and parser
- * (`map.json` + `parseTiledLayer`), never from copied coordinates, so
- * re-authoring the map moves the click with it. The cover-fit mirrors
- * `TiledSceneAdapter.coverRect` (unit-tested in
- * `tests/unit/tiled-scene-adapter.test.ts`); it is four lines here rather than
- * an import because `TiledSceneAdapter` pulls in `EventBus`, which imports
- * Phaser and touches `window` — neither survives Playwright's Node context.
- */
-async function tapMapLandmark(page: Page, destination: string): Promise<void> {
-  const spawn = parseTiledLayer(mapMap, "ui-layer").find((s) => s.arg === destination);
-  expect(spawn, `map.json must still carry a nav hit-area for "${destination}"`).toBeDefined();
-
-  const scale = Math.max(VIEWPORT.width / ART_W, VIEWPORT.height / ART_H);
-  const bgW = ART_W * scale;
-  const bgH = ART_H * scale;
-  const bgX = (VIEWPORT.width - bgW) / 2;
-  const bgY = (VIEWPORT.height - bgH) / 2;
-  await page.mouse.click(bgX + spawn!.cx * bgW, bgY + spawn!.cy * bgH);
-}
-
-/**
  * Boot the artifact at `url`, tap through to the Track, and wait until that
  * scene's loaders have actually run. Returns the requests made after the tap.
  *
@@ -220,7 +187,7 @@ async function tapMapLandmark(page: Page, destination: string): Promise<void> {
  * seeing a page proves both halves of the multiatlas path resolved.
  */
 async function driveToTrack(page: Page, url: string, obs: Observation): Promise<string[]> {
-  await page.setViewportSize(VIEWPORT);
+  await page.setViewportSize(MAP_VIEWPORT);
   await bootBuilt(page, url);
 
   // MapScene's hit-areas are spawned in `create()`, which runs only after its
