@@ -263,6 +263,7 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted),
   ).toBe(!projectBefore.muted);
+  await expect.poll(async () => (await state(page)).tarpedCars).toBe(1);
   await expect.poll(async () => (await state(page)).tarpArmed).toBe(false);
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView))
     .toBe("track");
@@ -410,6 +411,10 @@ test("a bridge and rain leave the rails level — only a hill is a climb", async
 
   for (const kind of ["bridge", "rain"]) {
     await emit(page, "terrain-picked", kind);
+    if (kind === "bridge") {
+      await expect.poll(async () => (await state(page)).bridge.deckWidth).toBeGreaterThan(640);
+      await expect.poll(async () => (await state(page)).bridge.visiblePiers).toBeGreaterThan(1);
+    }
     for (let i = 0; i < 25; i++) {
       const s = await state(page);
       expect(s.soundingCarAngle).toBe(0);
@@ -417,4 +422,25 @@ test("a bridge and rain leave the rails level — only a hill is a climb", async
       await page.waitForTimeout(100);
     }
   }
+});
+
+test("a tunnel enters, scrolls with the train, and exits instead of dimming in place", async ({
+  page,
+}) => {
+  await bootV3(page);
+  const registered = await state(page);
+  expect(registered.tunnel.phase).toBe("off");
+  expect(registered.wheel).toEqual({ diameter: 60, axleOffset: 73 });
+
+  await emit(page, "transport-play", "ride");
+  await emit(page, "track-mode-toggled", "tunnel");
+  await expect.poll(async () => (await state(page)).tunnel.phase).toMatch(/entering|inside/);
+  await expect.poll(async () => (await state(page)).tunnel.visibleLamps).toBeGreaterThan(1);
+  const before = (await state(page)).tunnel.wallOffset;
+  await expect
+    .poll(async () => (await state(page)).tunnel.wallOffset, { timeout: 8_000 })
+    .not.toBe(before);
+
+  await emit(page, "track-mode-toggled", "tunnel");
+  await expect.poll(async () => (await state(page)).tunnel.phase).toMatch(/exiting|off/);
 });

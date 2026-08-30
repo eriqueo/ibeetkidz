@@ -288,19 +288,40 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
     })
     .toBeLessThan(bridgeRide.worldLuma * 0.82);
   await capture(page, testInfo, "track-05-tunnel");
+  await tapDesignPoint(page, slots.stop!.x, slots.stop!.y);
+  await page.waitForTimeout(400);
 
   // One seeded car has a stable, generous body target around the middle-left
-  // of the consist. The first tap is selection only; the explicit EDIT choice
-  // proves the production canvas journey without a dev EventBus shortcut.
+  // of the consist. Arm the authored TARP key, select the car, then confirm the
+  // explicit action: this proves both key state and the registered cover in the
+  // production canvas before EDIT takes the same two-step path.
+  const tarpKeyBefore = await patchSignature(page, slots.tarp!.x, slots.tarp!.y);
+  await tapDesignPoint(page, slots.tarp!.x, slots.tarp!.y);
+  await expect
+    .poll(() => patchSignature(page, slots.tarp!.x, slots.tarp!.y), {
+      message: "TARP must visibly seat after a real canvas tap",
+    })
+    .not.toBe(tarpKeyBefore);
+  const carBefore = await patchSignature(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
   await tapDesignPoint(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
   await capture(page, testInfo, "track-06-car-actions");
+  const actions = trackCarActionSlots(2560);
+  await tapDesignPoint(page, actions["toggle-mute"].x, actions["toggle-mute"].y);
+  await expect
+    .poll(() => patchSignature(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y), {
+      message: "confirming TARP must visibly cover the selected car",
+    })
+    .not.toBe(carBefore);
+  await capture(page, testInfo, "track-07-tarped-car");
+
+  await tapDesignPoint(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
   const workshopLoaded = page.waitForResponse(
     (response) => /\/assets\/workshop-interior-clean-[^/]+\.png$/.test(
       new URL(response.url()).pathname,
     ),
     { timeout: 15_000 },
   );
-  const edit = trackCarActionSlots(2560).edit;
+  const edit = actions.edit;
   await tapDesignPoint(page, edit.x, edit.y);
   await expect(
     (await workshopLoaded).ok(),

@@ -44,6 +44,16 @@ describe("UI_SPRITES manifest", () => {
     expect(UI_SPRITES["panel-header"]!.stretch).toBe(true);
     expect(UI_SPRITES["btn-transport-play"]!.stretch).toBe(false);
   });
+
+  it("registers the authored Track tarp latch and speed readout vocabulary", () => {
+    expect(UI_SPRITES["btn-track-tarp"]!.states).toEqual({
+      idle: "btn-track-tarp-idle",
+      seated: "btn-track-tarp-seated",
+    });
+    expect(UI_SPRITES["track-speed-readout"]!.states).toEqual({
+      base: "track-speed-readout",
+    });
+  });
 });
 
 describe("placeUiSprite", () => {

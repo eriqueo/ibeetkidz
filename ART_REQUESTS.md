@@ -142,6 +142,41 @@ or a coloured full-canvas backdrop.
   The art below supplies those layers; it must not be baked into one opaque
   full-screen image.
 
+### Added 2026-08-30 (rev 8) — integration QA correction
+
+#### AR-069 · Make the unified Track controls readable at their real size — P0
+
+**Why this is reopened:** AR-064/065 passed canvas, alpha, palette and paired-
+state registration checks, but failed the production-size review after the
+atlas was rebuilt and the Pages artifact was exercised. At the actual ~70 px
+button size, LOOP is effectively two yellow pixels; RIDE and TARP do not convey
+their actions to a non-reader; MAP and CLEAR are weak. The TARP idle/seated
+difference is too small to show that the gesture is armed. The car-cover
+overlays themselves passed and must not be redrawn.
+
+**Redraw only these control faces, preserving every filename and canvas:**
+
+- `btn-nav-map-{idle,pressed}.png`
+- `btn-track-ride-{idle,pressed}.png`
+- `btn-track-clear-{idle,pressed}.png`
+- `btn-transport-loop-{idle,pressed}.png`
+- `btn-track-tarp-{idle,seated}.png`
+
+Keep AR-065's shared charcoal/brass machine, alpha registration and restrained
+palette. Enlarge each action symbol to occupy roughly **45–60% of the dark face
+in both axes**, with a bold silhouette that survives nearest-neighbour reduction
+to 70 px. MAP/CLEAR use brass/cream, not signal red; STOP alone owns red. LOOP
+needs two thick circular arrows. RIDE needs an unmistakable side-on locomotive.
+TARP idle shows the folded blue tarp clearly beside a car; seated shows the same
+tarp covering most of that car, changing at least 20% of the face silhouette.
+Keep baked labels large enough to remain readable at 70 px.
+
+**Required proof with delivery:** add a non-shipping contact sheet at
+`design/review/ar069-controls-70px.png` containing idle and pressed/seated states
+rendered at exactly 70 × 70 px on both cream and sky-blue backgrounds. If the
+action or state change cannot be named from that sheet without zooming, the
+delivery is not ready.
+
 #### ✅ DELIVERED 2026-08-30 — AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
 
 **Supersedes:** AR-061's header-only scope. AR-061's idle/seated keycap pair is

@@ -155,7 +155,7 @@ export const TRACK_HEADER = {
         { id: "slow", width: 134, height: 134 },
         // Drawn text, not a sprite: `lcd-transport` is a Tiled display anchor
         // the oval mounts from its map, and this scene has no map.
-        { id: "tempo", width: 260, height: 134 },
+        { id: "tempo", width: 134, height: 134 },
         { id: "fast", width: 134, height: 134 },
         { id: "loop", width: 134, height: 134 },
         { id: "tarp", width: 134, height: 134 },
@@ -219,10 +219,10 @@ export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
 
 /** Fixed jumbotron placement; release evidence asserts it clears the header. */
 export const TRACK_VISUALIZER: PlacedRect = {
-  x: 950,
-  y: 560,
-  width: 660,
-  height: 190,
+  x: 1280,
+  y: 535,
+  width: 480,
+  height: 120,
 };
 
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track

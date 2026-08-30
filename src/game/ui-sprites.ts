@@ -52,6 +52,9 @@ export interface UiSpriteDef {
 // simpler and steadier across the idle/pressed pair. Labelled steampunk plaques
 // (map / newcar / sendtoyard / picker tiles) are landscape and pass their own box.
 const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
+/** AR-065's coordinated Track controls share measured alpha registration. */
+const TRACK_CONTROL_CONTENT: ContentBox = [0.082, 0.082, 0.9395, 0.9551];
+const TRACK_PLAQUE_CONTENT: ContentBox = [0.083, 0.082, 0.9277, 0.9473];
 
 function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;
@@ -92,17 +95,29 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // Bottom-bar transport: the unified dark steampunk keycap set (AR-010) —
   // baked labels, same family as the yard keycaps, shared by Workshop + Track.
   // Content boxes measured from each idle PNG's solid-alpha bbox.
-  "btn-transport-stop": buttonDef("btn-transport-stop", { content: [0.181, 0.155, 0.819, 0.845] }),
+  "btn-transport-stop": buttonDef("btn-transport-stop", { content: TRACK_CONTROL_CONTENT }),
   "btn-transport-play": buttonDef("btn-transport-play", { content: [0.18, 0.155, 0.841, 0.833] }),
-  "btn-transport-loop": buttonDef("btn-transport-loop", { content: [0.179, 0.134, 0.821, 0.847] }),
-  "btn-transport-slow": buttonDef("btn-transport-slow", { content: [0.181, 0.129, 0.819, 0.882] }),
-  "btn-transport-fast": buttonDef("btn-transport-fast", { content: [0.181, 0.155, 0.819, 0.845] }),
+  "btn-transport-loop": buttonDef("btn-transport-loop", { content: TRACK_CONTROL_CONTENT }),
+  "btn-transport-slow": buttonDef("btn-transport-slow", { content: TRACK_CONTROL_CONTENT }),
+  "btn-transport-fast": buttonDef("btn-transport-fast", { content: TRACK_CONTROL_CONTENT }),
   // Track: the dedicated RIDE keycap (golden loco, baked label — no caption).
-  "btn-track-ride": buttonDef("btn-track-ride"),
+  "btn-track-ride": buttonDef("btn-track-ride", { content: TRACK_CONTROL_CONTENT }),
   // AR-043: the painted CLEAR plaque that retires the Track header's keycap
   // fallback. AR-020: the SEND SONG plaque on the oval Track's header.
-  "btn-track-clear": buttonDef("btn-track-clear", { content: [0.1836, 0.1328, 0.8281, 0.8223] }),
-  "btn-send-song": buttonDef("btn-send-song", { content: [0.0352, 0.0893, 0.9785, 0.896] }),
+  "btn-track-clear": buttonDef("btn-track-clear", { content: TRACK_CONTROL_CONTENT }),
+  "btn-send-song": buttonDef("btn-send-song", { content: TRACK_PLAQUE_CONTENT }),
+  "btn-track-tarp": {
+    states: { idle: "btn-track-tarp-idle", seated: "btn-track-tarp-seated" },
+    base: "btn-track-tarp-idle",
+    content: TRACK_CONTROL_CONTENT,
+    stretch: false,
+  },
+  "track-speed-readout": {
+    states: { base: "track-speed-readout" },
+    base: "track-speed-readout",
+    content: TRACK_CONTROL_CONTENT,
+    stretch: false,
+  },
   // AR-057: the shared tool-panel chrome — a recessed ✕ socket and the wide
   // DONE plaque, in the same slot on every machine. Boxes measured off the
   // delivered idle PNGs.
@@ -126,7 +141,7 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // Cross-scene nav plaques (landscape parchment signs, baked text + arrows).
   // Content boxes measured from each idle PNG's solid-alpha bbox (alpha > 220).
   // Only MAP has pressed art so far (ART_REQUESTS AR-006 covers the rest).
-  "btn-nav-map": buttonDef("btn-nav-map", { content: [0.036, 0.234, 0.961, 0.719] }),
+  "btn-nav-map": buttonDef("btn-nav-map", { content: TRACK_PLAQUE_CONTENT }),
   "btn-nav-workshop": buttonDef("btn-nav-workshop", { pressed: false, content: [0.044, 0.254, 0.965, 0.703] }),
   "btn-nav-yard": buttonDef("btn-nav-yard", { pressed: false, content: [0.049, 0.225, 0.951, 0.733] }),
   "btn-nav-track": buttonDef("btn-nav-track", { pressed: false, content: [0.067, 0.255, 0.948, 0.734] }),
