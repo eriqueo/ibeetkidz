@@ -65,6 +65,13 @@ import type { CarType, Project } from "../../core/types.ts";
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
 import { SceneVisualizer } from "../scene-visualizer.ts";
 import { VISUAL_STYLES } from "../../visualizer/styles.ts";
+import { PanelButton, FONT, INK, PANEL_BG, PANEL_EDGE } from "../tool-panels.ts";
+import {
+  TRACK_CAR_ACTION_LAYOUT,
+  trackCarActionChoices,
+  trackCarActionDisarmsTarp,
+  type TrackCarActionKind,
+} from "../track-car-actions.ts";
 
 /**
  * Real art, if any has been delivered. Vite resolves this at build time, so an
@@ -920,6 +927,10 @@ export class TrackV3Scene extends Phaser.Scene {
   private modeBtns: Record<string, { setLatched: (on: boolean) => void }> = {};
   /** The BACKWARDS switch's latched look — picture or keycap alike. */
   private backwardsLatch: (on: boolean) => void = () => {};
+  /** Temporary in-scene chooser for one car. It deliberately uses the existing
+   *  panel chrome so Manus can replace the faces later without changing what
+   *  the choices emit. */
+  private carActionPanel: Phaser.GameObjects.Container | null = null;
 
   /** The Lemmings job bar — on the shared transport plate, docked to the
    *  bottom edge. EIGHT switches (geometry trio + night/tunnel/tiny/giant +
@@ -1558,12 +1569,13 @@ export class TrackV3Scene extends Phaser.Scene {
     }
   }
 
-  /** Read-only geometry for tests. A screenshot cannot test speed-scaling, or
-   *  whether the train is standing ON the hill it is drawn over. */
+  /** Read-only scene state for tests. A screenshot cannot test speed-scaling,
+   *  latch lifecycle, or whether the train stands ON the hill it is drawn over. */
   debugState(): {
     pos: number;
     playheadX: number;
     wheelAngle: number;
+    tarpArmed: boolean;
     soundingCarX: number | null;
     soundingCarY: number | null;
     soundingCarAngle: number;
@@ -1588,6 +1600,7 @@ export class TrackV3Scene extends Phaser.Scene {
       pos: this.pos,
       playheadX: playheadX(this.view),
       wheelAngle: wheelAngle(dist, WHEEL_R),
+      tarpArmed: this.tarpArmed,
       soundingCarX: now ? now.centreX : null,
       soundingCarY: now ? RAIL_Y - pose.lift : null,
       soundingCarAngle: pose.angle,
@@ -1754,11 +1767,11 @@ export class TrackV3Scene extends Phaser.Scene {
         shadow.setVisible(false);
       },
     };
-    // Tap a car → edit it in the Workshop, mid-ride included. Armed press like
-    // every other control; the press feedback borrows the sounding lift (the
-    // cream flood), so no new art channel is invented. Slots are pooled by
-    // INDEX and cars are laid out by index, so `this.cars[index]` is always
-    // the car this slot is currently wearing.
+    // Tap a car → choose what to do with THAT car. Armed press like every other
+    // control; the press feedback borrows the sounding lift (the cream flood),
+    // so no new art channel is invented. Slots are pooled by INDEX and cars are
+    // laid out by index, so `this.cars[index]` is always the car this slot is
+    // currently wearing.
     const restLift = (): number => (view.soundingDrawn ? SOUNDING_LIFT : 0);
     let armed = false;
     body.setInteractive({ useHandCursor: true });
@@ -1776,16 +1789,105 @@ export class TrackV3Scene extends Phaser.Scene {
       armed = false;
       const car = this.cars[index];
       if (!car) return;
-      // Armed by the TARP keycap: cover this car instead of opening it. The
-      // default stays tap-to-edit, which is what the side-scroller was designed
-      // around ("fix a lane and hear it on the song's next pass") — muting is
-      // the guest here, so it announces itself with a latch rather than
-      // silently changing what a tap means.
-      if (this.tarpArmed) EventBus.emit("track-car-mute-toggled", car.id);
-      else EventBus.emit("track-car-edit", car.id);
+      // The tap itself is selection only. Navigation and muting happen only
+      // after a second, explicit choice; the TARP latch merely highlights the
+      // corresponding choice instead of secretly changing this gesture.
+      this.showCarAction(car);
     });
     view.hide();
     return view;
+  }
+
+  /** A fixed HUD chooser rather than a world-space popup that would drift away
+   *  from its car during a ride. Existing panel chrome is an honest temporary
+   *  surface; the named choices are stable integration points for painted art. */
+  private showCarAction(car: V3Car): void {
+    this.dismissCarAction();
+
+    const layout = TRACK_CAR_ACTION_LAYOUT;
+    const panelX = (W - layout.panelWidth) / 2;
+    const panelY = 555;
+    const drop = 10;
+    const root = this.add.container(0, 0).setDepth(DEPTH.hud + 20);
+    const backdrop = this.add
+      .rectangle(0, 0, W, H, 0x000000, 0.48)
+      .setOrigin(0)
+      .setInteractive();
+    const shadow = this.add
+      .rectangle(
+        panelX + drop,
+        panelY + drop,
+        layout.panelWidth,
+        layout.panelHeight,
+        PANEL_EDGE,
+        0.55,
+      )
+      .setOrigin(0);
+    const frame = this.add
+      .rectangle(
+        panelX,
+        panelY,
+        layout.panelWidth,
+        layout.panelHeight,
+        PANEL_BG,
+        1,
+      )
+      .setStrokeStyle(6, PANEL_EDGE)
+      .setOrigin(0);
+    const title = this.add
+      .text(W / 2, panelY + 72, `CAR ${car.number} — WHAT NEXT?`, {
+        fontFamily: FONT,
+        color: INK,
+        align: "center",
+      })
+      .setOrigin(0.5)
+      .setFontSize(28);
+    root.add([backdrop, shadow, frame, title]);
+
+    const choices = trackCarActionChoices(car.muted);
+    const rowWidth =
+      choices.length * layout.buttonWidth + (choices.length - 1) * layout.buttonGap;
+    const rowX = (W - rowWidth) / 2;
+    const rowY = panelY + 150;
+    choices.forEach((choice, index) => {
+      const highlighted = choice.kind === "toggle-mute" && this.tarpArmed;
+      const button = new PanelButton(
+        this,
+        choice.label,
+        () => this.chooseCarAction(choice.kind, car.id),
+        highlighted ? 0x2c6bc7 : undefined,
+      );
+      button.container.setName(choice.objectName);
+      button.place(
+        {
+          x: rowX + index * (layout.buttonWidth + layout.buttonGap),
+          y: rowY,
+          w: layout.buttonWidth,
+          h: layout.buttonHeight,
+        },
+        24,
+      );
+      root.add(button.container);
+    });
+
+    this.carActionPanel = root;
+  }
+
+  private chooseCarAction(kind: TrackCarActionKind, instanceId: string): void {
+    this.dismissCarAction();
+    if (kind === "edit") EventBus.emit("track-car-edit", instanceId);
+    if (kind === "toggle-mute") EventBus.emit("track-car-mute-toggled", instanceId);
+    // React owns the latch truth. Confirmation consumes an existing arm through
+    // the same typed toggle event the header uses; choosing TARP directly while
+    // unarmed must not accidentally arm it for the next car.
+    if (this.tarpArmed && trackCarActionDisarmsTarp(kind)) {
+      EventBus.emit("track-tarp-armed");
+    }
+  }
+
+  private dismissCarAction(): void {
+    this.carActionPanel?.destroy(true);
+    this.carActionPanel = null;
   }
 }
 

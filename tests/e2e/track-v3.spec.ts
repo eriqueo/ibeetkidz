@@ -108,6 +108,9 @@ test("a kid can drive the default Track through its real canvas controls", async
   // downbeat; keep the real canvas tap safely inside every car body instead.
   }, { x: car.soundingCarX, y: car.soundingCarY - 80 });
   await page.mouse.click(canvasPoint.x, canvasPoint.y);
+  // TARP makes the intended choice prominent, but the car tap itself remains
+  // non-mutating; confirm the action through the same real canvas path.
+  await tapNamedPhaserObject(page, "track-car-action:tarp");
   await expect.poll(muted).toBe(true);
 
   await tapNamedPhaserObject(page, "track-control:btn-track-clear");
@@ -126,6 +129,89 @@ test("a kid can drive the default Track through its real canvas controls", async
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
   ).toBe("map");
+});
+
+test("a car tap waits for an explicit edit, tarp, or close choice", async ({ page }) => {
+  await bootV3(page);
+
+  const projectBefore = await page.evaluate(() => {
+    const project = (window as any).__ibeetkidz_test__.getProject();
+    return {
+      activeView: project.activeView,
+      activePartId: project.activePartId,
+      muted: project.train[0]?.muted,
+    };
+  });
+  const tapCar = async (): Promise<void> => {
+    const car = await state(page);
+    const point = await page.evaluate(({ x, y }) => {
+      const scene = (window as any).__ibeetkidz_test__.getScene();
+      const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+      const game = scene.scale.gameSize;
+      return {
+        x: canvas.left + x * (canvas.width / game.width),
+        y: canvas.top + y * (canvas.height / game.height),
+      };
+    }, { x: car.soundingCarX, y: car.soundingCarY - 80 });
+    await page.mouse.click(point.x, point.y);
+  };
+  const menuVisible = () => page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const find = (objects: any[]): any => {
+      for (const object of objects) {
+        if (object.name === "track-car-action:close") return object;
+        const nested = Array.isArray(object.list) ? find(object.list) : undefined;
+        if (nested) return nested;
+      }
+      return undefined;
+    };
+    const close = find(scene.children.getChildren());
+    return Boolean(close?.visible && close.parentContainer?.visible);
+  });
+
+  await tapCar();
+  await expect.poll(menuVisible).toBe(true);
+  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView))
+    .toBe(projectBefore.activeView);
+  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted))
+    .toBe(projectBefore.muted);
+
+  await tapNamedPhaserObject(page, "track-car-action:close");
+  await expect.poll(menuVisible).toBe(false);
+  expect((await state(page)).tarpArmed).toBe(false);
+  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activePartId))
+    .toBe(projectBefore.activePartId);
+
+  await tapNamedPhaserObject(page, "track-control:tarp");
+  await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
+  await tapCar();
+  await tapNamedPhaserObject(page, "track-car-action:close");
+  await expect.poll(menuVisible).toBe(false);
+  expect((await state(page)).tarpArmed).toBe(true);
+
+  await tapCar();
+  await tapNamedPhaserObject(page, "track-car-action:tarp");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted),
+  ).toBe(!projectBefore.muted);
+  await expect.poll(async () => (await state(page)).tarpArmed).toBe(false);
+  expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView))
+    .toBe("track");
+
+  await tapNamedPhaserObject(page, "track-control:tarp");
+  await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
+  await tapCar();
+  await page.evaluate(() => {
+    (window as any).__track_car_scene_before_edit =
+      (window as any).__ibeetkidz_test__.getScene();
+  });
+  await tapNamedPhaserObject(page, "track-car-action:edit");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
+  ).toBe("workshop");
+  expect(await page.evaluate(() =>
+    (window as any).__track_car_scene_before_edit.debugState().tarpArmed,
+  )).toBe(true);
 });
 
 test("?oval opts back into the ring", async ({ page }) => {
