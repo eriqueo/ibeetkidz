@@ -341,18 +341,20 @@ wheel line. No baked rails, no vehicle body, no gradients.”
 centred and the supplied registration sheet puts every tyre tangent on the same
 railhead. The body canvases are not being redrawn in this request.
 
-### Delivered 2026-08-30 — art exports; engineering integration pending
+### Remade 2026-08-30 — true low-resolution pixel art; engineering integration pending
 
-| Request | Delivered files | Engineering handoff measurement |
+> **Reason for remake.** The prior AR-064–069 delivery passed canvas, alpha and registration checks, but it was **pixel-styled illustration rather than true pixel art**. The replacement set is authored on 2×, 4× or 5× smaller integer-grid masters with a fixed warm Nintendo palette and is enlarged with nearest-neighbour only. No generated artwork, anti-aliased edges, smooth resampling, colour quantisation, gradients or blurred shadows are shipped in this pass.
+
+| Request | Replacement delivery | Engineering handoff measurement |
 |---|---|---|
-| **AR-069** | Corrected MAP, RIDE, CLEAR, LOOP, and TARP source pairs, plus `design/review/ar069-controls-70px.png`. | The sparse flat keycaps were replaced with bottom-panel-style iron/plum plaques: brass cog corners, riveted rails, recessed brass-edged action vignettes, cream engraved nameplates, and hard physical shadows. All ten faces retain their filenames/canvases and matching paired alpha boxes. The literal 70×70px cream/sky proof and the Track V3 in-scene check passed; the packed UI atlas was rebuilt. |
-| **AR-064** | TARP idle/seated keycap pair plus four car-specific tarp overlays. | Keycap states have identical content boxes; covers retain transparent wheel clearance and livery/nameplate aperture. |
-| **AR-065** | Unified MAP, RIDE, STOP, CLEAR, SEND, SLOW, FAST, LOOP, and TARP control family plus `track-speed-readout.png`. | SPEED display window: `x=122, y=168, w=268, h=128` in the native 512² canvas. |
-| **AR-066** | Left/right portals, tileable roof and wall, and matched unlit/lit lamp frames. | Roof and wall have matching left/right pixel seams; mount them as independent scrolling layers. |
-| **AR-067** | Tileable deck/water, one pier, and left/right approach banks. | Deck railhead registration is `y=0`; water and deck seam checks passed across all rows. |
-| **AR-068** | Revised 76² wheel, 300×44 contact shadow, and five non-shipping registration sheets in `design/registration/`. | Wheel hub centre is **(38, 38)**. Car axles: **(77, 160)** and **(223, 160)** on 300×190 bodies; see individual sheets for tanker, flatcar, and locomotive values. |
+| **AR-064** | `fca52fc` remakes the TARP idle/seated keycap pair and four car-specific tarp overlays. Boxcar, tanker, hopper and flatcar covers now have distinct cargo silhouettes, chunky folds, rope ties, transparent wheel clearance and livery apertures. | The paired TARP controls have an identical alpha content box: `(44, 16, 428, 452)`. |
+| **AR-065** | `7dfd651` remakes STOP, SEND, SLOW, FAST and the matching SPEED housing; the AR-064/069 controls complete the shared family. Each action uses a large single semantic pictogram on the same charcoal/brass pixel keycap. | SPEED display window is a grid-exact native rectangle: `x=120, y=168, w=268, h=128`. It is empty for engine-rendered text/value. |
+| **AR-066** | `115f64d` remakes the left/right stepped rock portal, tileable roof and wall, and unlit/lit brass-lamp pair. | Roof/wall have exact matching left/right pixel seams. The lamp pair shares an identical alpha content box. |
+| **AR-067** | `2921867` remakes the timber deck, braced pier, approach banks and water tile. | Deck railhead is `y=0`; deck/water have exact horizontal pixel seams. The 170px deck retains a 168px 4× grid plate plus a transparent 2px bottom pad. |
+| **AR-068** | `77165ba` remakes the 76² wheel, 300×44 two-step contact shadow, and all five native-scale registration sheets. | Wheel hub centre is **(38, 38)**. Axles: boxcar/hopper `(77,160)/(223,160)`; tanker `(77,140)/(223,140)`; flatcar `(77,80)/(223,80)`; locomotive driver `(78,190), r30` and pilot `(277,201), r19`. |
+| **AR-069** | `35fea64` remakes MAP, RIDE, CLEAR and LOOP source pairs and the real-size review sheet; AR-064 supplies the replacement TARP pair. | Each pair has matching alpha content bounds. `design/review/ar069-controls-70px.png` shows both states at exactly 70 × 70px over cream and sky-blue surfaces. |
 
-> **Export validation:** Every discrete sprite has RGBA mode, its exact requested canvas, and four alpha-0 corners. Full-frame tiling layers were checked for matching left/right seams rather than corner transparency. All AR64/AR65 paired controls have identical alpha content boxes.
+> **Validation.** `scripts/validate_track_pixel_art.py` verifies every replacement has RGBA mode, exact requested canvas size, allowed palette/alpha values and alpha-zero corners when discrete. It verifies X seams for the four scrolling plates and exact content bounds for every control/lamp state pair. The full gate passes after the remake.
 
 ### INTEGRATED 2026-08-13 (engineering)
 
