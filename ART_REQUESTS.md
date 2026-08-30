@@ -142,7 +142,7 @@ or a coloured full-canvas backdrop.
   The art below supplies those layers; it must not be baked into one opaque
   full-screen image.
 
-#### AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
+#### ✅ DELIVERED 2026-08-30 — AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
 
 **Supersedes:** AR-061's header-only scope. AR-061's idle/seated keycap pair is
 still required, but a pressed key alone does not show which car was covered.
@@ -178,7 +178,7 @@ At the actual ~70px header size, the difference must be readable without text.
 matching cover overlay in the car container only when that car is muted. The
 tap-action choice remains a separate product/engineering task.
 
-#### AR-065 · Make the Track header one coherent control family, including SPEED — HIGH
+#### ✅ DELIVERED 2026-08-30 — AR-065 · Make the Track header one coherent control family, including SPEED — HIGH
 
 **Why:** the top deck currently mixes cream plaques, dark stone keycaps,
 different accent colours and bare parchment text. SPEED needs a real home, and
@@ -216,7 +216,7 @@ true alpha and identical canvas/registration per state. The SPEED display is a
 new asset, so its measured display-window rectangle must be supplied alongside
 the PNG.
 
-#### AR-066 · Tunnel traversal: layered entrance, roof and exit — P0
+#### ✅ DELIVERED 2026-08-30 — AR-066 · Tunnel traversal: layered entrance, roof and exit — P0
 
 **Why:** a flat dark wash says “the screen got dimmer,” not “the train entered a
 tunnel.” The player needs an approach, a short enclosed passage, and daylight
@@ -247,7 +247,7 @@ the two lamp frames must differ only in their painted lamp/light, not their
 position. Engineering will scroll these layers and alternate the lamp frames;
 the art agent should not deliver a GIF or a full-screen darkness overlay.
 
-#### AR-067 · Replace the bridge decal with a traversable bridge kit — P0
+#### ✅ DELIVERED 2026-08-30 — AR-067 · Replace the bridge decal with a traversable bridge kit — P0
 
 **Why:** the current bridge artwork is structurally detailed but is stretched as
 one slab over a rectangular void. It reads stuck onto the landscape instead of
@@ -277,7 +277,7 @@ fixed world rhythm; draw the near deck in front of the wheel contact line and
 far bank behind the train. Do not stretch a single bridge sprite to the ride
 width.
 
-#### AR-068 · Wheel/contact repair reference — HIGH
+#### ✅ DELIVERED 2026-08-30 — AR-068 · Wheel/contact repair reference — HIGH
 
 **Why:** the wheels look undersized and disconnected from the cars. The
 renderer already rotates independent wheels, so the repair is registration and
@@ -305,6 +305,18 @@ wheel line. No baked rails, no vehicle body, no gradients.”
 **Acceptance:** engineering will reject a wheel export unless its hub is exactly
 centred and the supplied registration sheet puts every tyre tangent on the same
 railhead. The body canvases are not being redrawn in this request.
+
+### Delivered 2026-08-30 — art exports; engineering integration pending
+
+| Request | Delivered files | Engineering handoff measurement |
+|---|---|---|
+| **AR-064** | TARP idle/seated keycap pair plus four car-specific tarp overlays. | Keycap states have identical content boxes; covers retain transparent wheel clearance and livery/nameplate aperture. |
+| **AR-065** | Unified MAP, RIDE, STOP, CLEAR, SEND, SLOW, FAST, LOOP, and TARP control family plus `track-speed-readout.png`. | SPEED display window: `x=122, y=168, w=268, h=128` in the native 512² canvas. |
+| **AR-066** | Left/right portals, tileable roof and wall, and matched unlit/lit lamp frames. | Roof and wall have matching left/right pixel seams; mount them as independent scrolling layers. |
+| **AR-067** | Tileable deck/water, one pier, and left/right approach banks. | Deck railhead registration is `y=0`; water and deck seam checks passed across all rows. |
+| **AR-068** | Revised 76² wheel, 300×44 contact shadow, and five non-shipping registration sheets in `design/registration/`. | Wheel hub centre is **(38, 38)**. Car axles: **(77, 160)** and **(223, 160)** on 300×190 bodies; see individual sheets for tanker, flatcar, and locomotive values. |
+
+> **Export validation:** Every discrete sprite has RGBA mode, its exact requested canvas, and four alpha-0 corners. Full-frame tiling layers were checked for matching left/right seams rather than corner transparency. All AR64/AR65 paired controls have identical alpha content boxes.
 
 ### INTEGRATED 2026-08-13 (engineering)
 
