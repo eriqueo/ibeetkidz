@@ -16,10 +16,27 @@ export async function tapMapLandmark(page: Page, destination: string): Promise<v
   const spawn = parseTiledLayer(mapMap, "ui-layer").find((candidate) => candidate.arg === destination);
   expect(spawn, `map.json must still carry a nav hit-area for "${destination}"`).toBeDefined();
 
-  const scale = Math.max(MAP_VIEWPORT.width / ART_W, MAP_VIEWPORT.height / ART_H);
+  const canvas = page.locator("canvas").first();
+  const box = await canvas.boundingBox();
+  expect(box, "Phaser canvas must have a layout box").not.toBeNull();
+  const scale = Math.max(box!.width / ART_W, box!.height / ART_H);
   const bgW = ART_W * scale;
   const bgH = ART_H * scale;
-  const bgX = (MAP_VIEWPORT.width - bgW) / 2;
-  const bgY = (MAP_VIEWPORT.height - bgH) / 2;
-  await page.mouse.click(bgX + spawn!.cx * bgW, bgY + spawn!.cy * bgH);
+  const clientX = box!.x + (box!.width - bgW) / 2 + spawn!.cx * bgW;
+  const clientY = box!.y + (box!.height - bgH) / 2 + spawn!.cy * bgH;
+  expect(
+    await page.evaluate(
+      ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
+      { x: clientX, y: clientY },
+    ),
+    "the Map landmark must resolve to the unobstructed Phaser canvas",
+  ).toBe("CANVAS");
+
+  // Phaser samples pointer state on its game loop. Keep the press visible for
+  // several frames so a loaded runner cannot receive down and up between ticks.
+  const pressed = { clientX, clientY, button: 0, buttons: 1 };
+  await canvas.dispatchEvent("mousemove", pressed);
+  await canvas.dispatchEvent("mousedown", pressed);
+  await page.waitForTimeout(80);
+  await canvas.dispatchEvent("mouseup", { ...pressed, buttons: 0 });
 }

@@ -1,5 +1,4 @@
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import { parseTiledLayer } from "../../src/game/TiledParser.ts";
 import { emptyProject, makeLayer, reduce, serialize } from "../../src/core/project-state.ts";
 import {
   TRACK_HEADER,
@@ -8,7 +7,7 @@ import {
   trackJobSlots,
 } from "../../src/game/scene-layout.ts";
 import { trackCarActionSlots } from "../../src/game/track-car-actions.ts";
-import mapMap from "../../src/assets/maps/map.json" with { type: "json" };
+import { tapMapLandmark } from "./map-landmark.ts";
 // Playwright explicitly exports this bundle path, but does not publish its
 // declarations. Reuse its pinned PNG decoder instead of adding a second image
 // stack solely for release tests.
@@ -113,25 +112,11 @@ async function bootPagesTrack(page: Page, appUrl: string): Promise<void> {
   await expect(page.locator("canvas").first()).toBeVisible();
   await page.waitForLoadState("networkidle");
 
-  const spawn = parseTiledLayer(mapMap, "ui-layer").find((entry) => entry.arg === "track");
-  expect(spawn, "map.json must retain the Track landmark hit area").toBeDefined();
-
-  const canvas = page.locator("canvas").first();
-  const box = await canvas.boundingBox();
-  expect(box, "Phaser canvas must have a layout box").not.toBeNull();
-  const artWidth = mapMap.width * mapMap.tilewidth;
-  const artHeight = mapMap.height * mapMap.tileheight;
-  const scale = Math.max(box!.width / artWidth, box!.height / artHeight);
-  const bgWidth = artWidth * scale;
-  const bgHeight = artHeight * scale;
-  const bgX = box!.x + (box!.width - bgWidth) / 2;
-  const bgY = box!.y + (box!.height - bgHeight) / 2;
-
   const trackLoaded = page.waitForResponse(
     (response) => /\/assets\/sky-[^/]+\.png$/.test(new URL(response.url()).pathname),
     { timeout: 20_000 },
   );
-  await page.mouse.click(bgX + spawn!.cx * bgWidth, bgY + spawn!.cy * bgHeight);
+  await tapMapLandmark(page, "track");
   await expect((await trackLoaded).ok(), "the Pages build must load Track sky art").toBe(true);
   await page.waitForLoadState("networkidle");
   await page.waitForTimeout(500);
