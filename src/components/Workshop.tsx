@@ -261,6 +261,18 @@ export const Workshop: FC = () => {
   useEffect(() => { sceneRef.current?.setModel(model); }, [model]);
   useEffect(() => { sceneRef.current?.setToolModel(toolModel); }, [toolModel]);
 
+  // A held pointer belongs to this mounted Workshop. Navigation destroys its
+  // release listener, so explicitly abandon any opening/live mic take here;
+  // otherwise the singleton audio adapter keeps the browser mic alive in Map,
+  // Yard, or Track until the 30-second safety cap. `cancelRecording` also owns
+  // the getUserMedia race where permission resolves after this cleanup.
+  useEffect(() => () => {
+    const hasAbandonedTake = voicePhase.current !== "idle" || keysPhase.current !== "idle";
+    voicePhase.current = "idle";
+    keysPhase.current = "idle";
+    if (hasAbandonedTake) sound.cancelRecording();
+  }, [sound]);
+
   // Open/close the Phaser tool panel; release the theremin whenever a tool closes.
   useEffect(() => {
     sceneRef.current?.setActiveTool(openTool);

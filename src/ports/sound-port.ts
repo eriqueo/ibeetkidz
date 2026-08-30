@@ -56,6 +56,11 @@ export interface SoundPort {
    *  Rejects with MicDeniedError / NoMicError on permission/hardware failure. */
   startRecording(): Promise<void>;
   stopRecording(): Promise<BufferId>;
+  /** Abandon a take that is opening or live. Idempotent and non-retriable: it
+   *  invalidates this take, releases any browser capture tracks, and discards
+   *  its bytes without creating a BufferId. A late getUserMedia resolution is
+   *  released by the adapter before it can become the active recorder. */
+  cancelRecording(): void;
 
   /** Capture a live Magic Pad performance: start a recorder that the theremin
    *  voice feeds into, then resolve with a new BufferId on stop. No mic needed —

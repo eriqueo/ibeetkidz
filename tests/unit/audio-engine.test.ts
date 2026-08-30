@@ -85,6 +85,7 @@ class FakeSoundPort implements SoundPort {
   async stopRecording(): Promise<string> {
     return "b";
   }
+  cancelRecording(): void {}
   async startPerformanceRecording(): Promise<void> {}
   async stopPerformanceRecording(): Promise<string> {
     return "b";

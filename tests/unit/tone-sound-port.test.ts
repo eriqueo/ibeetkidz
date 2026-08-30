@@ -382,6 +382,98 @@ describe("ToneSoundPort recording cap", () => {
     await vi.advanceTimersByTimeAsync(MAX_RECORD_SEC * 1000);
     expect(FakeMediaRecorder.instances).toHaveLength(1);
   });
+
+  it("cancels a live take idempotently and leaves the next take usable", async () => {
+    const port = await bootedPort();
+    await port.startRecording();
+
+    port.cancelRecording();
+    port.cancelRecording();
+    expect(tracks[0]?.stopped).toBe(true);
+    expect(FakeMediaRecorder.instances[0]?.state).toBe("inactive");
+    // Let the recorder's already-queued, now-handlerless stop event drain.
+    await vi.advanceTimersByTimeAsync(1);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await port.startRecording();
+    await vi.advanceTimersByTimeAsync(1500);
+    const id = await settle(port.stopRecording());
+    expect(tracks[1]?.stopped).toBe(true);
+    expect(port.getBufferDuration(id)).toBeCloseTo(1.5, 1);
+    expect(port.getRecordingBlob(id)).not.toBeNull();
+  });
+
+  it("stops a stream that resolves after its take was cancelled", async () => {
+    let releaseFirst: ((stream: { getTracks: () => FakeTrack[] }) => void) | undefined;
+    let request = 0;
+    Object.defineProperty(navigator, "mediaDevices", {
+      configurable: true,
+      value: {
+        getUserMedia: () => {
+          request++;
+          if (request > 1) {
+            const track = new FakeTrack();
+            tracks.push(track);
+            return Promise.resolve({ getTracks: () => [track] });
+          }
+          return new Promise<{ getTracks: () => FakeTrack[] }>((resolve) => {
+            releaseFirst = resolve;
+          });
+        },
+      },
+    });
+
+    const port = await bootedPort();
+    const opening = port.startRecording();
+    port.cancelRecording();
+    const abandonedTrack = new FakeTrack();
+    tracks.push(abandonedTrack);
+    releaseFirst?.({ getTracks: () => [abandonedTrack] });
+    await opening;
+
+    expect(abandonedTrack.stopped).toBe(true);
+    expect(FakeMediaRecorder.instances).toHaveLength(0);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await port.startRecording();
+    expect(FakeMediaRecorder.instances).toHaveLength(1);
+    port.cancelRecording();
+    expect(tracks[1]?.stopped).toBe(true);
+  });
+
+  it("disposes a fallback stream tap that resolves after cancellation", async () => {
+    vi.stubGlobal("MediaRecorder", undefined);
+    const disposed = vi.fn();
+    const started = vi.fn();
+    let releaseTap: ((tap: {
+      sampleRate: number;
+      start: () => void;
+      stop: () => { left: Float32Array; right: Float32Array };
+      dispose: () => void;
+    }) => void) | undefined;
+    const port = await bootedPort();
+    (port as unknown as {
+      openStreamTap: () => Promise<unknown>;
+    }).openStreamTap = () => new Promise((resolve) => { releaseTap = resolve; });
+
+    const opening = port.startRecording();
+    // Cross the getUserMedia await so cancellation lands specifically inside
+    // the WebKit openStreamTap await.
+    await Promise.resolve();
+    port.cancelRecording();
+    releaseTap?.({
+      sampleRate: 8000,
+      start: started,
+      stop: () => ({ left: new Float32Array(), right: new Float32Array() }),
+      dispose: disposed,
+    });
+    await opening;
+
+    expect(tracks[0]?.stopped).toBe(true);
+    expect(disposed).toHaveBeenCalledOnce();
+    expect(started).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 // ── normalizeBuffer: the microphone-static fix ──────────────────────────────

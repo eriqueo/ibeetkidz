@@ -256,6 +256,10 @@ export class ToneSoundPort implements SoundPort {
   private micStream?: MediaStream | undefined;
   private micRecorder?: MediaRecorder | undefined;
   private micChunks: Blob[] = [];
+  /** Ownership token for the take that may cross getUserMedia/openStreamTap
+   *  awaits. Cancellation invalidates it synchronously, so a late browser
+   *  result can release its own resources without touching a future take. */
+  private micGeneration = 0;
   /** Raw-sample fallback for engines without MediaRecorder (some WebKit builds). */
   private micTap?: StreamTap | undefined;
   /** Armed while the mic is open; fires the MAX_RECORD_SEC auto-stop. */
@@ -500,6 +504,7 @@ export class ToneSoundPort implements SoundPort {
   // ── Recording ──────────────────────────────────────────────────────────
 
   async startRecording(): Promise<void> {
+    const generation = ++this.micGeneration;
     // A fresh take: drop any blob the previous one left memoized.
     this.micTake = undefined;
     // The "playback" session blocks mic capture on iOS — switch to
@@ -510,10 +515,15 @@ export class ToneSoundPort implements SoundPort {
       // See the micStream field note: the raw stream is recorded directly —
       // never routed through WebAudio — so the iOS session-flip sample-rate
       // mismatch can't silence the take.
-      this.micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      if (generation !== this.micGeneration) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      this.micStream = stream;
       if (typeof MediaRecorder === "function") {
         this.micChunks = [];
-        this.micRecorder = new MediaRecorder(this.micStream);
+        this.micRecorder = new MediaRecorder(stream);
         this.micRecorder.ondataavailable = (e) => {
           if (e.data.size > 0) this.micChunks.push(e.data);
         };
@@ -521,8 +531,14 @@ export class ToneSoundPort implements SoundPort {
       } else {
         // Engines without MediaRecorder: tap the stream with the same native
         // worklet/ScriptProcessor used for the song capture.
-        this.micTap = await this.openStreamTap(this.micStream);
-        this.micTap.start();
+        const tap = await this.openStreamTap(stream);
+        if (generation !== this.micGeneration) {
+          tap.dispose();
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+        this.micTap = tap;
+        tap.start();
       }
       // Auto-stop the held take at MAX_RECORD_SEC. This closes the take exactly
       // as a release would — the audio is kept and the mic hardware is freed —
@@ -533,6 +549,9 @@ export class ToneSoundPort implements SoundPort {
         });
       }, MAX_RECORD_SEC * 1000);
     } catch (err) {
+      // Cancellation owns this stale attempt. It is an expected lifecycle
+      // outcome, not a device failure, and must never close a newer take.
+      if (generation !== this.micGeneration) return;
       // Log the ORIGINAL failure before collapsing it into the kid-safe error
       // types — otherwise a platform-specific getUserMedia/recorder failure is
       // indistinguishable from "no mic" in the field.
@@ -558,6 +577,16 @@ export class ToneSoundPort implements SoundPort {
     this.buffers.set(id, audioBuf);
     this.recordingBlobs.set(id, blob);
     return id;
+  }
+
+  cancelRecording(): void {
+    // Stopping browser capture is an idempotent, non-retriable external effect:
+    // invalidate ownership before touching the recorder so any late async
+    // continuation can only clean up its own returned resource and exit.
+    this.micGeneration++;
+    this.micTake = undefined;
+    this.closeMic();
+    setAudioSession("playback");
   }
 
   /** Close out the current take once, whoever asks first — the release gesture
@@ -605,7 +634,11 @@ export class ToneSoundPort implements SoundPort {
     this.micTap?.dispose();
     this.micTap = undefined;
     if (this.micRecorder) {
-      this.micRecorder.ondataavailable = null;
+      const recorder = this.micRecorder;
+      recorder.ondataavailable = null;
+      recorder.onerror = null;
+      recorder.onstop = null;
+      if (recorder.state !== "inactive") recorder.stop();
       this.micRecorder = undefined;
     }
     this.micStream?.getTracks().forEach((t) => t.stop());
