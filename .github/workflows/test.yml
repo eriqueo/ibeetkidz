@@ -25,6 +25,18 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    # Permanent by design: the production Track release journey is long and
+    # graphics/audio heavy. A fresh runner keeps its physical-input verdict
+    # independent of the preceding ~10 minutes of WebAudio/WebGL churn while
+    # both matrix legs remain blocking dependencies of the reusable workflow.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: main
+            browsers: chromium webkit firefox
+          - suite: track-release
+            browsers: chromium
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -32,19 +44,26 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
-      - run: npx playwright install --with-deps chromium webkit firefox
+      - run: npx playwright install --with-deps ${{ matrix.browsers }}
       # WebAudio needs a real audio sink; a headless runner has none, so start
       # PulseAudio — with no hardware it auto-creates a null sink. Chromium
       # additionally only pumps its audio graph when HEADED, so the suite runs
       # headed under a virtual display (xvfb) — otherwise the audio-output
       # spec's master-peak proof reads permanent silence.
       - run: sudo apt-get install -y pulseaudio && pulseaudio --start
-      - run: xvfb-run --auto-servernum npm run test:e2e
+      - name: Run the main browser suite
+        if: matrix.suite == 'main'
+        run: xvfb-run --auto-servernum npm run test:e2e -- --grep-invert track-release-evidence
         env:
           PW_CROSS_ENGINE: "1"
           PW_HEADED: "1"
+      - name: Run Track release evidence on a fresh runner
+        if: matrix.suite == 'track-release'
+        run: xvfb-run --auto-servernum npm run test:e2e -- tests/e2e/track-release-evidence.spec.ts --project=chromium
+        env:
+          PW_HEADED: "1"
       - name: Upload Track visual release evidence
-        if: always()
+        if: always() && matrix.suite == 'track-release'
         uses: actions/upload-artifact@v4
         with:
           name: track-visual-release-evidence
