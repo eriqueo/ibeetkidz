@@ -50,6 +50,12 @@ interface DecodedPng {
   readonly data: Uint8Array;
 }
 
+interface PixelPatch {
+  readonly width: number;
+  readonly height: number;
+  readonly data: Uint8Array;
+}
+
 function savedAuditProject(trainCars = 1): string {
   const clipId = "visual-release-tone";
   const layerId = "visual-release-lane";
@@ -186,12 +192,12 @@ async function canvasMetrics(page: Page): Promise<CanvasMetrics> {
   return metricsOf(decodePng(bytes));
 }
 
-async function patchSignature(
+async function patchPixels(
   page: Page,
   x: number,
   y: number,
   designHalf = 28,
-): Promise<number> {
+): Promise<PixelPatch> {
   const canvas = page.locator("canvas").first();
   const intrinsic = await canvas.evaluate((element) => {
     const source = element as HTMLCanvasElement;
@@ -201,15 +207,45 @@ async function patchSignature(
   const px = Math.round(x * (image.width / intrinsic.width));
   const py = Math.round(y * (image.height / intrinsic.height));
   const half = Math.max(8, Math.round(designHalf * (image.width / intrinsic.width)));
-  let signature = 0;
-  for (let sy = Math.max(0, py - half); sy < Math.min(image.height, py + half); sy++) {
-    for (let sx = Math.max(0, px - half); sx < Math.min(image.width, px + half); sx++) {
+  const x0 = Math.max(0, px - half);
+  const x1 = Math.min(image.width, px + half);
+  const y0 = Math.max(0, py - half);
+  const y1 = Math.min(image.height, py + half);
+  const data = new Uint8Array((x1 - x0) * (y1 - y0) * 3);
+  let at = 0;
+  for (let sy = y0; sy < y1; sy++) {
+    for (let sx = x0; sx < x1; sx++) {
       const i = (sy * image.width + sx) * 4;
-      signature +=
-        (image.data[i] ?? 0) +
-        3 * (image.data[i + 1] ?? 0) +
-        7 * (image.data[i + 2] ?? 0);
+      data[at++] = image.data[i] ?? 0;
+      data[at++] = image.data[i + 1] ?? 0;
+      data[at++] = image.data[i + 2] ?? 0;
     }
+  }
+  return { width: x1 - x0, height: y1 - y0, data };
+}
+
+function patchDifference(a: PixelPatch, b: PixelPatch): number {
+  expect({ width: a.width, height: a.height }).toEqual({ width: b.width, height: b.height });
+  let total = 0;
+  for (let i = 0; i < a.data.length; i++) {
+    total += Math.abs((a.data[i] ?? 0) - (b.data[i] ?? 0));
+  }
+  return total / Math.max(1, a.data.length);
+}
+
+async function patchSignature(
+  page: Page,
+  x: number,
+  y: number,
+  designHalf = 28,
+): Promise<number> {
+  const patch = await patchPixels(page, x, y, designHalf);
+  let signature = 0;
+  for (let i = 0; i < patch.data.length; i += 3) {
+    signature +=
+      (patch.data[i] ?? 0) +
+      3 * (patch.data[i + 1] ?? 0) +
+      7 * (patch.data[i + 2] ?? 0);
   }
   return signature;
 }
@@ -382,7 +418,7 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
   // the key face itself correctly returns to idle after release. Sample the
   // whole slot instead of accidentally treating a transient pressed frame as
   // proof that the finite setting latched.
-  const loopSignature = () => patchSignature(
+  const loopPixels = () => patchPixels(
     page,
     header.loop!.x,
     header.loop!.y,
@@ -392,15 +428,18 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
     () => (window as any).__ibeetkidz_audio__?.diag().transportState ?? "missing",
   );
 
-  const idleLoop = await loopSignature();
+  const idleLoop = await loopPixels();
   const idleNight = await patchSignature(page, night.x, night.y);
   const idleWorld = await canvasMetrics(page);
 
   await tapDesignPoint(page, header.loop!.x, header.loop!.y); // ∞ → 1x
   await expect
-    .poll(loopSignature)
-    .not.toBe(idleLoop);
-  const finiteLoop = await loopSignature();
+    .poll(async () => patchDifference(await loopPixels(), idleLoop), {
+      message: "LOOP must visibly hold its finite badge and latch after release",
+    })
+    .toBeGreaterThan(0.5);
+  const finiteLoop = await loopPixels();
+  const loopLatchDelta = patchDifference(finiteLoop, idleLoop);
 
   // No separate RIDE tap: NIGHT's existing compound intent starts the train,
   // then latches the mode against the authoritative transport.
@@ -465,8 +504,13 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
 
   // LOOP is the next Ride's configuration, not a ride-mode latch. Auto-stop
   // keeps its visible 1x setting while clearing NIGHT and the world treatment.
-  expect(Math.abs((await loopSignature()) - finiteLoop))
-    .toBeLessThan(10);
+  const loopPersistenceTolerance = Math.max(0.25, loopLatchDelta * 0.05);
+  await testInfo.attach("finite-loop-baseline", {
+    body: JSON.stringify({ loopLatchDelta, loopPersistenceTolerance }, null, 2),
+    contentType: "application/json",
+  });
+  expect(patchDifference(await loopPixels(), finiteLoop))
+    .toBeLessThanOrEqual(loopPersistenceTolerance);
   expect(failures.page, "uncaught browser errors").toEqual([]);
   expect(failures.console, "browser console errors").toEqual([]);
   expect(failures.network, "failed release requests").toEqual([]);

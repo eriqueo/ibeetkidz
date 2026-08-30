@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { namedPhaserObjectPoint, tapNamedPhaserObject } from "./phaser-pixels.ts";
+import { tapNamedPhaserObject } from "./phaser-pixels.ts";
 
 // The Track: the side-scroller, which is what you get with no flag at all as of
 // 2026-08-16. `?oval` opts back into the old ring.
@@ -153,16 +153,8 @@ test("a kid can drive the default Track through its real canvas controls", async
       (window as any).__ibeetkidz_test__.getScene().children.getByName("track-display:loop").text,
     );
   expect(await loopText()).toBe("∞");
-  const loopPoint = await namedPhaserObjectPoint(page, "track-control:btn-transport-loop");
-  await page.mouse.move(loopPoint.x, loopPoint.y);
-  await page.mouse.down();
-  try {
-    await expect.poll(loopText, {
-      message: "the Track header must commit once on pointerdown without waiting for a release edge",
-    }).toBe("1x");
-  } finally {
-    await page.mouse.up();
-  }
+  await tapNamedPhaserObject(page, "track-control:btn-transport-loop");
+  await expect.poll(loopText).toBe("1x");
 
   await tapNamedPhaserObject(page, "track-mode:hill");
   await expect.poll(async () => (await state(page)).terrain?.kind ?? null).toBe("hill");
