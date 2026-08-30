@@ -80,6 +80,32 @@ interface CarToken {
   readonly plate: CarNamePlate;
 }
 
+function samePalette(a: readonly YardCar[], b: readonly YardCar[]): boolean {
+  return a.length === b.length && a.every((car, index) => {
+    const next = b[index];
+    return next !== undefined
+      && car.id === next.id
+      && car.livery === next.livery
+      && car.cargo === next.cargo
+      && car.name === next.name
+      && car.carType === next.carType;
+  });
+}
+
+function sameTrain(a: readonly YardTrainCar[], b: readonly YardTrainCar[]): boolean {
+  return a.length === b.length && a.every((car, index) => {
+    const next = b[index];
+    return next !== undefined
+      && car.instanceId === next.instanceId
+      && car.partId === next.partId
+      && car.livery === next.livery
+      && car.cargo === next.cargo
+      && car.name === next.name
+      && car.carType === next.carType
+      && car.muted === next.muted;
+  });
+}
+
 export class YardScene extends BackgroundScene {
   static readonly KEY = "YardScene";
 
@@ -89,6 +115,7 @@ export class YardScene extends BackgroundScene {
   private paletteTokens = new Map<string, CarToken>();
   private trainTokens: CarToken[] = [];
   private busy = false; // a crane/departure tween is in flight — ignore presses
+  private rebuildCount = 0;
   // Data-driven static chrome (yard.json): nav plaques + the interim action
   // strip, spawned by the generic Three-Zone engine. The action buttons are
   // labelled transparent hits over the strip's baked tiles until the individual
@@ -113,6 +140,10 @@ export class YardScene extends BackgroundScene {
   }
 
   create(): void {
+    // Scene instances are reused. Shutdown kills in-flight tweens without
+    // calling their completion handlers, so a visit must never inherit the
+    // previous visit's animation latch.
+    this.busy = false;
     this.addBackground("contain");
     this.chrome = spawnUiLayer(this, this.chromeSpawns, {
       bgRect: this.backgroundRect,
@@ -148,11 +179,24 @@ export class YardScene extends BackgroundScene {
   }
 
   /** Authoritative scene-side model received through React's ready callback. */
-  get debugModel(): { carCount: number; trainCount: number; selectedId: string | null } {
+  get debugModel(): {
+    carCount: number;
+    trainCount: number;
+    selectedId: string | null;
+    selectedRingIds: string[];
+    busy: boolean;
+    rebuildCount: number;
+  } {
     return {
       carCount: this.cars.length,
       trainCount: this.train.length,
       selectedId: this.selectedId,
+      selectedRingIds: [...this.paletteTokens.entries()]
+        .filter(([, token]) =>
+          (token.car.getData("ring") as Phaser.GameObjects.Graphics).visible)
+        .map(([id]) => id),
+      busy: this.busy,
+      rebuildCount: this.rebuildCount,
     };
   }
 
@@ -174,13 +218,21 @@ export class YardScene extends BackgroundScene {
     });
   }
 
-  /** React → scene: the palette (built cars) + the assembled train. This is the
-   *  scene's only train state — it renders from it and reads `train.length` to
-   *  gate Send to Track; it never mutates or keeps a separate copy. */
-  setCars(palette: YardCar[], train: YardTrainCar[]): void {
+  /** React → scene: the palette, assembled train and authoritative active car.
+   *  Keeping selection in the same push means a rebuild cannot leave the Yard
+   *  showing no car while the project's active car is already known. */
+  setCars(
+    palette: YardCar[],
+    train: YardTrainCar[],
+    selectedId: string | null,
+  ): void {
+    const modelChanged = !samePalette(this.cars, palette) || !sameTrain(this.train, train);
     this.cars = palette;
     this.train = train;
-    if (this.ready) this.rebuild();
+    this.selectedId = palette.some((car) => car.id === selectedId) ? selectedId : null;
+    if (!this.ready) return;
+    if (modelChanged) this.rebuild();
+    else this.setSelectedPalette(this.selectedId);
   }
 
   setSelectedPalette(id: string | null): void {
@@ -315,6 +367,7 @@ export class YardScene extends BackgroundScene {
   // ── internals ──────────────────────────────────────────────────────────────
 
   private rebuild(): void {
+    this.rebuildCount += 1;
     this.paletteTokens.forEach((t) => this.destroyToken(t));
     this.paletteTokens.clear();
     this.trainTokens.forEach((t) => this.destroyToken(t));
@@ -417,6 +470,7 @@ export class YardScene extends BackgroundScene {
 
   /** Deselect the previous car, highlight + store the new one, tell React. */
   private selectPaletteCar(partId: string): void {
+    if (this.busy) return;
     this.setSelectedPalette(partId);
     EventBus.emit("yard-car-selected", partId);
   }

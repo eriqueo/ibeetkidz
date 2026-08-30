@@ -56,10 +56,16 @@ export const Yard: FC = () => {
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
     sceneRef.current = scene as YardScene;
-    sceneRef.current.setCars(carsRef.current, trainRef.current);
+    sceneRef.current.setCars(
+      carsRef.current,
+      trainRef.current,
+      projectRef.current.activePartId,
+    );
   }, []);
 
-  useEffect(() => { sceneRef.current?.setCars(cars, train); }, [cars, train]);
+  useEffect(() => {
+    sceneRef.current?.setCars(cars, train, project.activePartId);
+  }, [cars, train, project.activePartId]);
 
   // Phaser (YardScene) + the data-driven Tiled hits → state, across the EventBus.
   // The crane/departure ANIMATIONS live in YardScene: the panel "couple"/"send"
