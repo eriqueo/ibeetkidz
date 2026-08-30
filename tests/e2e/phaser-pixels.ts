@@ -1,7 +1,10 @@
 import type { Page } from "@playwright/test";
 
-/** Click the centre of a named live Phaser input object through the canvas. */
-export async function tapNamedPhaserObject(page: Page, name: string): Promise<void> {
+/** Resolve the centre of a named live Phaser input object to browser pixels. */
+export async function namedPhaserObjectPoint(
+  page: Page,
+  name: string,
+): Promise<{ x: number; y: number }> {
   const point = await page.evaluate((objectName) => {
     const scene = (window as any).__ibeetkidz_test__.getScene();
     const find = (objects: any[]): any => {
@@ -26,5 +29,11 @@ export async function tapNamedPhaserObject(page: Page, name: string): Promise<vo
     };
   }, name);
   if ("error" in point) throw new Error(point.error);
+  return point;
+}
+
+/** Click the centre of a named live Phaser input object through the canvas. */
+export async function tapNamedPhaserObject(page: Page, name: string): Promise<void> {
+  const point = await namedPhaserObjectPoint(page, name);
   await page.mouse.click(point.x, point.y);
 }

@@ -832,20 +832,16 @@ export class TrackV3Scene extends Phaser.Scene {
       // brass corners already belong to the header's material language.
       const key = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
-        .setName("track-control:tarp")
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       placeUiSprite(key, def, rect);
-      let armed = false;
-      key.setInteractive({ useHandCursor: true });
-      key.on("pointerdown", () => { armed = true; key.setFrame(seated); });
-      key.on("pointerout", () => { armed = false; key.setFrame(restFrame()); });
-      key.on("pointerup", () => {
-        key.setFrame(restFrame());
-        if (!armed) return;
-        armed = false;
-        fire();
-      });
+      this.stableDownTarget(
+        rect,
+        "track-control:tarp",
+        () => key.setFrame(seated),
+        () => key.setFrame(restFrame()),
+        fire,
+      );
       img = key;
     } else {
       this.pressable(
@@ -932,13 +928,12 @@ export class TrackV3Scene extends Phaser.Scene {
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
       const img = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
-        .setName(`track-control:${sprite}`)
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       // Content-fit through the shared helper, so these sit at the same
       // optical size as the identical buttons in every other scene.
       placeUiSprite(img, def, rect);
-      this.pressableAtlas(img, def, fire);
+      this.pressableAtlas(img, def, rect, `track-control:${sprite}`, fire);
       return;
     }
     this.pressable(
@@ -958,11 +953,13 @@ export class TrackV3Scene extends Phaser.Scene {
       .setDepth(DEPTH.hud + 2);
   }
 
-  /** Armed press on an atlas button, swapping to its `-pressed` frame when the
-   *  sprite ships one — the same idle/pressed contract `ui-scene.ts` uses. */
+  /** Down-edge activation on an atlas button, swapping to its `-pressed` frame
+   *  when the sprite ships one. */
   private pressableAtlas(
     img: Phaser.GameObjects.Image,
     def: { base: string; states: Record<string, string> },
+    rect: { x: number; y: number; width: number; height: number },
+    name: string,
     fire: () => void,
   ): void {
     // `states` is keyed by ROLE ("idle" / "pressed" / "seated"), not by frame
@@ -973,16 +970,40 @@ export class TrackV3Scene extends Phaser.Scene {
     // depressed. `pad-key` calls its pressed state `seated`.
     const idle = def.states["idle"] ?? def.base;
     const down = def.states["pressed"] ?? def.states["seated"] ?? idle;
-    let armed = false;
-    img.setInteractive({ useHandCursor: true });
-    img.on("pointerdown", () => { armed = true; img.setFrame(down); });
-    img.on("pointerout", () => { armed = false; img.setFrame(idle); });
-    img.on("pointerup", () => {
-      img.setFrame(idle);
-      if (!armed) return;
-      armed = false;
+    this.stableDownTarget(
+      rect,
+      name,
+      () => img.setFrame(down),
+      () => img.setFrame(idle),
+      fire,
+    );
+  }
+
+  /** Commit a Track header action on its trusted down edge and use release only
+   *  to restore the artwork. Headed browsers can deliver `pointerdown`, render
+   *  several game frames, then lose Phaser's game-object `pointerup` as atlas
+   *  art and hit lists reconcile. A fixed slot-sized Zone makes the touch area
+   *  independent of the animated frame; firing once on down means a dropped
+   *  release can never turn a visibly pressed control into a no-op. It also
+   *  prevents a release from leaking into the scene revealed by MAP. */
+  private stableDownTarget(
+    rect: { x: number; y: number; width: number; height: number },
+    name: string,
+    press: () => void,
+    rest: () => void,
+    fire: () => void,
+  ): void {
+    const hit = this.add
+      .zone(rect.x, rect.y, rect.width, rect.height)
+      .setName(name)
+      .setDepth(DEPTH.hud + 3)
+      .setInteractive({ useHandCursor: true });
+    hit.on("pointerdown", () => {
+      press();
       fire();
     });
+    hit.on("pointerout", rest);
+    hit.on("pointerup", rest);
   }
 
   /** Armed press: pointerdown arms, pointerout cancels, pointerup fires. The
