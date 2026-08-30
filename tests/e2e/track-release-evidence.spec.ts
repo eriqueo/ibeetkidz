@@ -356,7 +356,11 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
 test("a finite Track ride auto-stops with neutral mode visuals in the Pages canvas", async ({
   page,
 }, testInfo) => {
-  test.setTimeout(60_000);
+  // The sequential contract windows below total more than 90 seconds before
+  // boot and compositor screenshot overhead. Keep each product assertion's
+  // tight 5–20 second deadline, but give the complete journey enough room to
+  // reach its final post-stop persistence proof on a loaded headed runner.
+  test.setTimeout(120_000);
   const configuredUrl = testInfo.project.metadata.pwaOrigin;
   if (typeof configuredUrl !== "string") {
     throw new Error("playwright config must provide pwaOrigin");
