@@ -832,16 +832,20 @@ export class TrackV3Scene extends Phaser.Scene {
       // brass corners already belong to the header's material language.
       const key = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setName("track-control:tarp")
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       placeUiSprite(key, def, rect);
-      this.stablePressTarget(
-        rect,
-        "track-control:tarp",
-        () => key.setFrame(seated),
-        () => key.setFrame(restFrame()),
-        fire,
-      );
+      let armed = false;
+      key.setInteractive({ useHandCursor: true });
+      key.on("pointerdown", () => { armed = true; key.setFrame(seated); });
+      key.on("pointerout", () => { armed = false; key.setFrame(restFrame()); });
+      key.on("pointerup", () => {
+        key.setFrame(restFrame());
+        if (!armed) return;
+        armed = false;
+        fire();
+      });
       img = key;
     } else {
       this.pressable(
@@ -928,12 +932,13 @@ export class TrackV3Scene extends Phaser.Scene {
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
       const img = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setName(`track-control:${sprite}`)
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 1);
       // Content-fit through the shared helper, so these sit at the same
       // optical size as the identical buttons in every other scene.
       placeUiSprite(img, def, rect);
-      this.pressableAtlas(img, def, rect, `track-control:${sprite}`, fire);
+      this.pressableAtlas(img, def, fire);
       return;
     }
     this.pressable(
@@ -958,8 +963,6 @@ export class TrackV3Scene extends Phaser.Scene {
   private pressableAtlas(
     img: Phaser.GameObjects.Image,
     def: { base: string; states: Record<string, string> },
-    rect: { x: number; y: number; width: number; height: number },
-    name: string,
     fire: () => void,
   ): void {
     // `states` is keyed by ROLE ("idle" / "pressed" / "seated"), not by frame
@@ -970,38 +973,12 @@ export class TrackV3Scene extends Phaser.Scene {
     // depressed. `pad-key` calls its pressed state `seated`.
     const idle = def.states["idle"] ?? def.base;
     const down = def.states["pressed"] ?? def.states["seated"] ?? idle;
-    this.stablePressTarget(
-      rect,
-      name,
-      () => img.setFrame(down),
-      () => img.setFrame(idle),
-      fire,
-    );
-  }
-
-  /** Keep the interactive geometry independent of the artwork it animates.
-   *  Atlas frames can live on different pages and Phaser may recalculate an
-   *  Image's input state when `setFrame` runs. Binding the gesture to that same
-   *  Image produced a visible down frame followed by a cancelled release: the
-   *  button looked pressed but did nothing. A fixed slot-sized Zone preserves
-   *  the armed-release rule while the art changes underneath it. */
-  private stablePressTarget(
-    rect: { x: number; y: number; width: number; height: number },
-    name: string,
-    press: () => void,
-    rest: () => void,
-    fire: () => void,
-  ): void {
     let armed = false;
-    const hit = this.add
-      .zone(rect.x, rect.y, rect.width, rect.height)
-      .setName(name)
-      .setDepth(DEPTH.hud + 3)
-      .setInteractive({ useHandCursor: true });
-    hit.on("pointerdown", () => { armed = true; press(); });
-    hit.on("pointerout", () => { armed = false; rest(); });
-    hit.on("pointerup", () => {
-      rest();
+    img.setInteractive({ useHandCursor: true });
+    img.on("pointerdown", () => { armed = true; img.setFrame(down); });
+    img.on("pointerout", () => { armed = false; img.setFrame(idle); });
+    img.on("pointerup", () => {
+      img.setFrame(idle);
       if (!armed) return;
       armed = false;
       fire();

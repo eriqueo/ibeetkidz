@@ -186,7 +186,12 @@ async function canvasMetrics(page: Page): Promise<CanvasMetrics> {
   return metricsOf(decodePng(bytes));
 }
 
-async function patchSignature(page: Page, x: number, y: number): Promise<number> {
+async function patchSignature(
+  page: Page,
+  x: number,
+  y: number,
+  designHalf = 28,
+): Promise<number> {
   const canvas = page.locator("canvas").first();
   const intrinsic = await canvas.evaluate((element) => {
     const source = element as HTMLCanvasElement;
@@ -195,7 +200,7 @@ async function patchSignature(page: Page, x: number, y: number): Promise<number>
   const image = decodePng(await canvas.screenshot({ animations: "allow" }));
   const px = Math.round(x * (image.width / intrinsic.width));
   const py = Math.round(y * (image.height / intrinsic.height));
-  const half = Math.max(8, Math.round(28 * (image.width / intrinsic.width)));
+  const half = Math.max(8, Math.round(designHalf * (image.width / intrinsic.width)));
   let signature = 0;
   for (let sy = Math.max(0, py - half); sy < Math.min(image.height, py + half); sy++) {
     for (let sx = Math.max(0, px - half); sx < Math.min(image.width, px + half); sx++) {
@@ -369,19 +374,29 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
 
   const header = trackHeaderSlots();
   const night = trackJobSlots().night;
+  // LOOP's persistent state is the offset `1x` badge plus the gold surround;
+  // the key face itself correctly returns to idle after release. Sample the
+  // whole slot instead of accidentally treating a transient pressed frame as
+  // proof that the finite setting latched.
+  const loopSignature = () => patchSignature(
+    page,
+    header.loop!.x,
+    header.loop!.y,
+    header.loop!.width * 0.6,
+  );
   const transportState = () => page.evaluate(
     () => (window as any).__ibeetkidz_audio__?.diag().transportState ?? "missing",
   );
 
-  const idleLoop = await patchSignature(page, header.loop!.x, header.loop!.y);
+  const idleLoop = await loopSignature();
   const idleNight = await patchSignature(page, night.x, night.y);
   const idleWorld = await canvasMetrics(page);
 
   await tapDesignPoint(page, header.loop!.x, header.loop!.y); // ∞ → 1x
   await expect
-    .poll(() => patchSignature(page, header.loop!.x, header.loop!.y))
+    .poll(loopSignature)
     .not.toBe(idleLoop);
-  const finiteLoop = await patchSignature(page, header.loop!.x, header.loop!.y);
+  const finiteLoop = await loopSignature();
 
   // No separate RIDE tap: NIGHT's existing compound intent starts the train,
   // then latches the mode against the authoritative transport.
@@ -446,7 +461,7 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
 
   // LOOP is the next Ride's configuration, not a ride-mode latch. Auto-stop
   // keeps its visible 1x setting while clearing NIGHT and the world treatment.
-  expect(Math.abs((await patchSignature(page, header.loop!.x, header.loop!.y)) - finiteLoop))
+  expect(Math.abs((await loopSignature()) - finiteLoop))
     .toBeLessThan(10);
   expect(failures.page, "uncaught browser errors").toEqual([]);
   expect(failures.console, "browser console errors").toEqual([]);
