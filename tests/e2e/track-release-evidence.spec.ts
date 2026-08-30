@@ -18,7 +18,8 @@ import { PNG } from "playwright-core/lib/utilsBundle";
 // Production-shaped visual release evidence for the default Track.
 //
 // Unlike track-v3.spec.ts, this boots dist-gh/ under its real /ibeetkidz/ base
-// and has no dev bridge. Every action below is a browser click on the canvas.
+// and has no dev bridge. Every action below enters through Phaser's browser-
+// event listeners on the canvas.
 // The video and screenshots are disposable Playwright artifacts; objective
 // failures (asset/network errors, Phaser's missing-texture green, controls that
 // do not visibly latch, or a car tap that cannot reach Workshop) fail the run.
@@ -146,18 +147,23 @@ async function tapDesignPoint(page: Page, x: number, y: number): Promise<void> {
   });
   const screenX = box!.x + x * (box!.width / intrinsic.width);
   const screenY = box!.y + y * (box!.height / intrinsic.height);
+  expect(
+    await page.evaluate(
+      ({ clientX, clientY }) => document.elementFromPoint(clientX, clientY)?.tagName,
+      { clientX: screenX, clientY: screenY },
+    ),
+    "the design point must resolve to the unobstructed Phaser canvas",
+  ).toBe("CANVAS");
   // Phaser samples pointer state on its game loop. A zero-dwell Playwright
   // click can deliver down + up between two frames on a loaded CI runner and
-  // is less representative than even a very quick human tap. Going through
-  // the canvas locator also makes Playwright prove that this point is visible
-  // and unobstructed before it dispatches the pointer sequence.
-  await canvas.click({
-    position: {
-      x: screenX - box!.x,
-      y: screenY - box!.y,
-    },
-    delay: 80,
-  });
+  // is less representative than even a very quick human tap. Dispatch through
+  // the real canvas listener after the hit-test above rather than depending on
+  // Chromium's worker-global mouse state late in a long serial CI run.
+  const event = { clientX: screenX, clientY: screenY, button: 0, buttons: 1 };
+  await canvas.dispatchEvent("mousemove", event);
+  await canvas.dispatchEvent("mousedown", event);
+  await page.waitForTimeout(80);
+  await canvas.dispatchEvent("mouseup", { ...event, buttons: 0 });
 }
 
 function decodePng(bytes: Uint8Array): DecodedPng {
