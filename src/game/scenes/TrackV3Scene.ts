@@ -1717,7 +1717,10 @@ export class TrackV3Scene extends Phaser.Scene {
       this.bridgeWater.setPosition(x, RAIL_Y + 140).setSize(w, 150);
       this.bridgeWater.tilePositionX = parallaxOffset(this.pos, this.view, 0.45);
       this.bridgeDeck.setPosition(x, RAIL_Y).setSize(w, 170);
-      this.bridgeDeck.tilePositionX = parallaxOffset(this.pos, this.view, 1);
+      // The deck is one rigid structure with its banks and piers. Its span
+      // already moves with transport distance, so scrolling the texture too
+      // makes planks and braces slide inside the bridge like a conveyor belt.
+      this.bridgeDeck.tilePositionX = 0;
       this.bridgeBankLeft?.setPosition(x, RAIL_Y);
       this.bridgeBankRight?.setPosition(x + w, RAIL_Y);
 
@@ -1779,7 +1782,13 @@ export class TrackV3Scene extends Phaser.Scene {
     soundingCarAngle: number;
     terrain: { x: number; width: number; kind: string } | null;
     tarpedCars: number;
-    bridge: { deckWidth: number; visiblePiers: number };
+    bridge: {
+      deckWidth: number;
+      visiblePiers: number;
+      deckX: number | null;
+      deckTilePositionX: number | null;
+      firstVisiblePierX: number | null;
+    };
     tunnel: { phase: string; wallOffset: number; visibleLamps: number };
     wheel: { diameter: number; axleOffset: number };
   } {
@@ -1811,6 +1820,11 @@ export class TrackV3Scene extends Phaser.Scene {
       bridge: {
         deckWidth: this.bridgeDeck?.visible ? this.bridgeDeck.width : 0,
         visiblePiers: this.bridgePiers.filter((pier) => pier.visible).length,
+        deckX: this.bridgeDeck?.visible ? this.bridgeDeck.x : null,
+        deckTilePositionX: this.bridgeDeck?.visible
+          ? this.bridgeDeck.tilePositionX
+          : null,
+        firstVisiblePierX: this.bridgePiers.find((pier) => pier.visible)?.x ?? null,
       },
       tunnel: {
         phase: this.tunnelPhase,

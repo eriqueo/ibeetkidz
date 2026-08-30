@@ -424,6 +424,39 @@ test("a bridge and rain leave the rails level — only a hill is a climb", async
   }
 });
 
+test("a bridge deck remains registered to its piers while the world advances", async ({
+  page,
+}) => {
+  await bootV3(page);
+  await emit(page, "transport-play", "ride");
+  await emit(page, "terrain-picked", "bridge");
+  await expect.poll(async () => (await state(page)).bridge.visiblePiers).toBeGreaterThan(1);
+
+  const before = await state(page);
+  expect(before.bridge.deckX).not.toBeNull();
+  expect(before.bridge.deckTilePositionX).not.toBeNull();
+  expect(before.bridge.firstVisiblePierX).not.toBeNull();
+
+  await expect
+    .poll(async () => Math.abs((await state(page)).bridge.deckX - before.bridge.deckX), {
+      timeout: 8_000,
+      message: "the production bridge span must advance by more than 100px",
+    })
+    .toBeGreaterThan(100);
+  const after = await state(page);
+  const deckDelta = after.bridge.deckX - before.bridge.deckX;
+  const pierDelta = after.bridge.firstVisiblePierX - before.bridge.firstVisiblePierX;
+
+  expect(
+    after.bridge.deckTilePositionX,
+    "solid planks and braces must not scroll inside the moving bridge span",
+  ).toBe(before.bridge.deckTilePositionX);
+  expect(
+    Math.abs(deckDelta - pierDelta),
+    "the deck and its first pier must move as one rigid world structure",
+  ).toBeLessThanOrEqual(1);
+});
+
 test("a tunnel enters, scrolls with the train, and exits instead of dimming in place", async ({
   page,
 }) => {
