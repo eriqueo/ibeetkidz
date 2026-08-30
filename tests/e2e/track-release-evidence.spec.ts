@@ -394,9 +394,18 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
   await expect
     .poll(() => patchSignature(page, night.x, night.y), { timeout: 12_000 })
     .not.toBe(idleNight);
+  // The first patch delta is allowed to be the coordinator's cream PENDING
+  // acknowledgement. AudioEngine publishes `started` before its async start
+  // flight drains the queued NIGHT intent, so wait on the actual world
+  // projection before treating the switch as authoritatively latched.
+  await expect
+    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+      timeout: 12_000,
+      message: "NIGHT must darken the world after the cold Ride start settles",
+    })
+    .toBeLessThan(idleWorld.worldLuma * 0.9);
   const latchedNight = await patchSignature(page, night.x, night.y);
   const nightWorld = await canvasMetrics(page);
-  expect(nightWorld.worldLuma).toBeLessThan(idleWorld.worldLuma * 0.9);
 
   await expect.poll(transportState, {
     timeout: 20_000,
