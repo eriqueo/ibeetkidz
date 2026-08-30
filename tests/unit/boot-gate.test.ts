@@ -49,6 +49,7 @@ import { ToneSoundPort } from "../../src/adapters/tone-sound-port.ts";
 import { StorageError } from "../../src/ports/storage-port.ts";
 import { QuotaExceededError } from "../../src/ports/storage-port.ts";
 import { EventBus } from "../../src/game/EventBus.ts";
+import { emptyProject, reduce } from "../../src/core/project-state.ts";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT =
   true;
@@ -322,5 +323,70 @@ describe("BootGate failure paths", () => {
     expect(notice).not.toBeNull();
     // The SPECIFIC words, not the generic "I can't save here" fallback.
     expect(notice?.textContent).toContain("too new for me");
+  });
+
+  it("publishes a valid saved project even when one recording cannot decode", async () => {
+    const started = vi.fn();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    let saved = emptyProject("saved-with-corrupt-recording", "Still My Song");
+    for (const [id, bufferId] of [
+      ["good-before", "buffer-good-before"],
+      ["corrupt", "buffer-corrupt"],
+      ["good-after", "buffer-good-after"],
+    ] as const) {
+      saved = reduce(saved, {
+        type: "addClip",
+        clip: {
+          id,
+          source: { kind: "recording", bufferId },
+          effects: [],
+          color: "#ffffff",
+          label: id,
+        },
+      });
+    }
+    vi.spyOn(LocalStoragePort.prototype, "listProjects").mockResolvedValue([
+      { id: saved.id, name: saved.name, savedAt: 1 },
+    ]);
+    vi.spyOn(LocalStoragePort.prototype, "loadProject").mockResolvedValue(saved);
+    vi.spyOn(LocalStoragePort.prototype, "getBlob").mockResolvedValue(
+      new Blob(["recording"], { type: "audio/webm" }),
+    );
+    const publishedProjectIdsAtHydration: string[] = [];
+    const rehydrate = vi
+      .spyOn(ToneSoundPort.prototype, "rehydrate")
+      .mockImplementation(async (bufferId) => {
+        publishedProjectIdsAtHydration.push(api?.store.getSnapshot().present.id ?? "missing");
+        if (bufferId === "buffer-corrupt") {
+          throw new DOMException("could not decode audio", "EncodingError");
+        }
+      });
+    vi.spyOn(AudioEngine.prototype, "start").mockResolvedValue(undefined);
+    await mount(createElement(BootGate, { onStarted: started }));
+
+    await tapBoot();
+
+    expect(started).toHaveBeenCalledOnce();
+    const restored = api?.store.getSnapshot().present;
+    expect(restored?.id).toBe(saved.id);
+    expect(Object.keys(restored?.clips ?? {})).toEqual([
+      "good-before",
+      "corrupt",
+      "good-after",
+    ]);
+    expect(rehydrate.mock.calls.map(([bufferId]) => bufferId)).toEqual([
+      "buffer-good-before",
+      "buffer-corrupt",
+      "buffer-good-after",
+    ]);
+    expect(publishedProjectIdsAtHydration).toEqual([
+      saved.id,
+      saved.id,
+      saved.id,
+    ]);
+    expect(warn).toHaveBeenCalledWith(
+      "could not hydrate recording buffer-corrupt",
+      expect.any(DOMException),
+    );
   });
 });

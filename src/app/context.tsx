@@ -391,13 +391,23 @@ export async function loadLast(): Promise<void> {
     return;
   }
   if (!project) return;
+  // Parsed project metadata is authoritative independently of optional audio
+  // hydration. A single corrupt recording must not make the child's whole song
+  // disappear behind the initial empty project.
+  store.replace(initHistory(project));
   for (const clip of Object.values(project.clips)) {
     if (clip.source.kind === "recording") {
       const blob = await storage.getBlob(clip.source.bufferId);
-      if (blob) await sound.rehydrate(clip.source.bufferId, blob);
+      if (!blob) continue;
+      try {
+        await sound.rehydrate(clip.source.bufferId, blob);
+      } catch (err) {
+        // Hydration is isolated per recording so valid siblings still wake up.
+        // The clip metadata and persisted blob remain intact for a later reload.
+        console.warn(`could not hydrate recording ${clip.source.bufferId}`, err);
+      }
     }
   }
-  store.replace(initHistory(project));
 }
 
 export interface AppApi {
