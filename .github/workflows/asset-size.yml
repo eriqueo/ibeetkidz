@@ -33,7 +33,5 @@ jobs:
       # Repack and diff. Byte-identical or it failed.
       - name: ui atlas is regenerable from its sprites
         run: |
-          python3 -m pip install --quiet pillow
-          python3 scripts/build_ui_atlas.py
-          git diff --exit-code -- public/assets/spritesheets \
-            || { echo "::error::ui-atlas is stale — run scripts/build_ui_atlas.py and commit the result"; exit 1; }
+          python3 -m pip install --quiet -r scripts/requirements-ui-atlas.txt
+          bash scripts/check-ui-atlas-fresh.sh
