@@ -40,16 +40,26 @@ than the AR-031 it replaces.
 | For | Read |
 |---|---|
 | The palette | `design/palette-nintendo.json` — the single producer. |
-| What the style looks like NOW | The shipped sprites in `src/assets/sprites/` — `buttons/`, `instruments/`, `cars/`, `panels/`. **Trust these over any prose in this repo, including this file.** |
+| What the approved style looks like | Use the named positive references below. Do **not** treat every shipped sprite as approved: a rejected candidate can remain wired into the game while it is being corrected. |
 | What the game currently IS | `README.md` (shipped behavior), `design/HISTORY.md` (why it is shaped this way), and `BASELINE.md` (what was measured and when). |
 | The animation rules art has to support | `design/GAME_FEEL.md` — eight laws, each with the concrete way this project broke it. Laws 2 (contact shadows) and 3 (an actor must be able to pass behind something) are art dependencies, not code ones. |
 
 ### Bootstrapping a fresh art session
 
 Minimum read set, in order: `PROJECT_CHARTER.md` → this file (contract block +
-this section + the queue) → `design/GAME_FEEL.md` → **then open three shipped
-sprites and look at them** (`instruments/inst-drums-passive.png`,
-`buttons/btn-nav-yard.png`, `cars/boxcar.png`) before drawing a line.
+this section + the queue) → `design/GAME_FEEL.md` → **then open the named
+positive references before drawing a line**:
+
+- `src/assets/sprites/panels/panel-header-v2.png`
+- `src/assets/sprites/track3/loco.png`
+- `src/assets/sprites/track3/car-boxcar.png`
+- `src/assets/sprites/track3/btn-bridge.png`
+- `src/assets/sprites/instruments/inst-drums-passive.png`
+
+For the Track controls, the flat AR-065 faces are a **negative** reference, not
+the style source. The accepted direction within candidate `aaad950` is its
+MAP/RIDE/CLEAR/LOOP/TARP material language; complete that family without
+copying its registration error described in AR-069.
 
 ### Two export lessons, learned the hard way — these are the contract now
 
@@ -144,7 +154,31 @@ or a coloured full-canvas backdrop.
 
 ### Added 2026-08-30 (rev 8) — integration QA correction
 
-#### ✅ CORRECTED 2026-08-30 — AR-069 · Make the unified Track controls readable at their real size — P0
+#### ❌ REOPENED 2026-08-30 — AR-069 · Make the unified Track controls readable at their real size — P0
+
+**Candidate review (`aaad950`):** keep its MAP, RIDE, CLEAR, LOOP, and TARP
+pixels as the approved direction, but do not mark the request corrected. The
+candidate changed only 10 of the contracted 19 faces. STOP, SEND, SLOW, SPEED,
+and FAST remain byte-identical to the rejected AR-065 flat family, so the real
+header is visibly split between two art directions. Its five-face proof sheet
+hides that mismatch.
+
+**Second candidate review (`d632456`): release rejected.** The low-grid remake
+changes all 19 faces, but discards the approved `aaad950` plaque material,
+changes MAP and SEND from landscape canvases to square canvases without changing
+their production slots, and leaves the committed UI atlas byte-identical to
+`aaad950`. The running artifact therefore combines stale controls with the new
+world sprites. The bridge, tunnel, tarp covers, and wheel pass the candidate's
+palette/grid checks but render as flat orange, purple, and cyan primitives
+against the detailed train, trees, ground, and panel. Mechanical pixel validity
+is not visual acceptance.
+
+The candidate also changed the visible alpha bounds without changing the
+runtime content boxes. Its square faces moved from `439×447+42+42` to
+`464×468+28+28`; MAP moved from `865×590+85+56` to `1000×664+16+16`.
+Production `placeUiSprite` placement therefore clips/overdraws the new outer
+frames. This is a registration failure even though the canvases and paired
+states match.
 
 **Why this is reopened:** AR-064/065 passed canvas, alpha, palette and paired-
 state registration checks, but failed the production-size review after the
@@ -154,7 +188,7 @@ their actions to a non-reader; MAP and CLEAR are weak. The TARP idle/seated
 difference is too small to show that the gesture is armed. The car-cover
 overlays themselves passed and must not be redrawn.
 
-**Redraw only these control faces, preserving every filename and canvas:**
+**The first correction redrew these faces; retain them as the direction:**
 
 - `btn-nav-map-{idle,pressed}.png`
 - `btn-track-ride-{idle,pressed}.png`
@@ -171,11 +205,29 @@ TARP idle shows the folded blue tarp clearly beside a car; seated shows the same
 tarp covering most of that car, changing at least 20% of the face silhouette.
 Keep baked labels large enough to remain readable at 70 px.
 
-**Required proof with delivery:** add a non-shipping contact sheet at
-`design/review/ar069-controls-70px.png` containing idle and pressed/seated states
-rendered at exactly 70 × 70 px on both cream and sky-blue backgrounds. If the
-action or state change cannot be named from that sheet without zooming, the
-delivery is not ready.
+**Complete the same family treatment for the five unresolved controls:**
+
+- `btn-transport-stop-{idle,pressed}.png`
+- `btn-send-song-{idle,pressed}.png`
+- `btn-transport-slow-{idle,pressed}.png`
+- `track-speed-readout.png`
+- `btn-transport-fast-{idle,pressed}.png`
+
+STOP retains the sole signal-red action mark. SLOW and FAST retain the shared
+cyan arrow vocabulary. SEND needs an unmistakable send/export metaphor. SPEED
+must read as the same physical instrument family, with its existing numeric
+window kept clear for runtime text.
+
+**Required proof with delivery:** replace the partial sheet with all 19 faces
+for MAP, RIDE, STOP, CLEAR, SEND, SLOW, SPEED, FAST, LOOP, and TARP, shown at
+literal 70 px on both cream and sky-blue backgrounds. Also provide assembled
+idle and all-state Track headers at the production 2560-wide design coordinates
+using the same content-box contain-fit as `placeUiSprite`, plus a narrow runtime
+screenshot. Use one measured alpha/content registration policy for the entire
+family and update `TRACK_CONTROL_CONTENT` / `TRACK_PLAQUE_CONTENT` when that
+measurement changes. If any frame clips, any family member retains the flat
+AR-065 slab, or an action/state cannot be named without zooming, the delivery
+is still a candidate.
 
 #### ✅ DELIVERED 2026-08-30 — AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
 
@@ -341,20 +393,28 @@ wheel line. No baked rails, no vehicle body, no gradients.”
 centred and the supplied registration sheet puts every tyre tangent on the same
 railhead. The body canvases are not being redrawn in this request.
 
-### Remade 2026-08-30 — true low-resolution pixel art; engineering integration pending
+### Remade 2026-08-30 — candidate batch release-rejected; art revision pending
 
-> **Reason for remake.** The prior AR-064–069 delivery passed canvas, alpha and registration checks, but it was **pixel-styled illustration rather than true pixel art**. The replacement set is authored on 2×, 4× or 5× smaller integer-grid masters with a fixed warm Nintendo palette and is enlarged with nearest-neighbour only. No generated artwork, anti-aliased edges, smooth resampling, colour quantisation, gradients or blurred shadows are shipped in this pass.
+> **Candidate intent, not acceptance.** This set is authored on 2×, 4× or 5×
+> smaller integer-grid masters and enlarged with nearest-neighbour. That method
+> is reproducible and its registration/seam helpers are useful, but the isolated
+> validation sheets did not preserve full-scene material richness. Keep the
+> tooling as a candidate production aid; do not make its fixed low-grid palette
+> the visual target.
 
 | Request | Replacement delivery | Engineering handoff measurement |
 |---|---|---|
-| **AR-064** | `fca52fc` remakes the TARP idle/seated keycap pair and four car-specific tarp overlays. Boxcar, tanker, hopper and flatcar covers now have distinct cargo silhouettes, chunky folds, rope ties, transparent wheel clearance and livery apertures. | The paired TARP controls have an identical alpha content box: `(44, 16, 428, 452)`. |
-| **AR-065** | `7dfd651` remakes STOP, SEND, SLOW, FAST and the matching SPEED housing; the AR-064/069 controls complete the shared family. Each action uses a large single semantic pictogram on the same charcoal/brass pixel keycap. | SPEED display window is a grid-exact native rectangle: `x=120, y=168, w=268, h=128`. It is empty for engine-rendered text/value. |
-| **AR-066** | `115f64d` remakes the left/right stepped rock portal, tileable roof and wall, and unlit/lit brass-lamp pair. | Roof/wall have exact matching left/right pixel seams. The lamp pair shares an identical alpha content box. |
-| **AR-067** | `2921867` remakes the timber deck, braced pier, approach banks and water tile. | Deck railhead is `y=0`; deck/water have exact horizontal pixel seams. The 170px deck retains a 168px 4× grid plate plus a transparent 2px bottom pad. |
-| **AR-068** | `77165ba` remakes the 76² wheel, 300×44 two-step contact shadow, and all five native-scale registration sheets. | Wheel hub centre is **(38, 38)**. Axles: boxcar/hopper `(77,160)/(223,160)`; tanker `(77,140)/(223,140)`; flatcar `(77,80)/(223,80)`; locomotive driver `(78,190), r30` and pilot `(277,201), r19`. |
-| **AR-069** | `35fea64` remakes MAP, RIDE, CLEAR and LOOP source pairs and the real-size review sheet; AR-064 supplies the replacement TARP pair. | Each pair has matching alpha content bounds. `design/review/ar069-controls-70px.png` shows both states at exactly 70 × 70px over cream and sky-blue surfaces. |
+| **AR-064 — REJECT** | `fca52fc` remakes the TARP pair and four covers, despite the prior review saying the covers must not be redrawn. | Pair bounds `(44,16,428,452)` and type-specific contours are reusable; the flat cyan slabs fail the cloth/material and full-car composite gate. |
+| **AR-065 — REWORK** | `7dfd651` remakes STOP, SEND, SLOW, FAST, and SPEED in one low-grid family. | Symbols and state pairs are mechanically readable, but the plaque material is too flat, SEND reads ambiguously, MAP/SEND production shapes are wrong, and SPEED has conflicting window measurements. |
+| **AR-066 — REJECT** | `115f64d` remakes portals, roof, wall, and lamps. | Seams, separation, and paired lamp bounds are reusable; the enormous regular purple/orange interior fails the assembled scene and terminal-daylight release gate. |
+| **AR-067 — REJECT** | `2921867` remakes deck, pier, banks, and water. | Railhead/seam architecture is reusable; orange triangular banks, cyan slab water, and purple footing fail the current forest/train composite. |
+| **AR-068 — REJECT / SHADOW HOLD** | `77165ba` remakes the wheel, shadow, and registration sheets. | Hub/axle measurements are reusable. The wheel reads as a purple token rather than rolling steel; the shadow needs visible motion/contact proof. |
+| **AR-069 — REWORK** | `35fea64` remakes MAP, RIDE, CLEAR, and LOOP; AR-064 supplies TARP. | All 19 source faces now exist, but the atlas is stale, MAP/SEND became square inside landscape slots, content boxes are stale, and no complete assembled runtime header was accepted. |
 
-> **Validation.** `scripts/validate_track_pixel_art.py` verifies every replacement has RGBA mode, exact requested canvas size, allowed palette/alpha values and alpha-zero corners when discrete. It verifies X seams for the four scrolling plates and exact content bounds for every control/lamp state pair. The full gate passes after the remake.
+> **Validation boundary.** `scripts/validate_track_pixel_art.py` passes for this
+> candidate and proves dimensions, palette/alpha, seams, and paired bounds. It
+> does not check atlas freshness, runtime content boxes, positive-reference
+> fidelity, or full-scene coherence, and no blocking workflow invokes it yet.
 
 ### INTEGRATED 2026-08-13 (engineering)
 
