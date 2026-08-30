@@ -152,6 +152,14 @@ test("a kid can drive the default Track through its real canvas controls", async
     page.evaluate(() =>
       (window as any).__ibeetkidz_test__.getScene().children.getByName("track-display:loop").text,
     );
+  expect(await page.evaluate(() => {
+    const children = (window as any).__ibeetkidz_test__.getScene().children;
+    return [
+      children.getByName("track-control:btn-transport-loop").type,
+      children.getByName("track-control:tarp").type,
+    ];
+  }), "pressed artwork must not also own the guarded release hit target")
+    .toEqual(["Zone", "Zone"]);
   expect(await loopText()).toBe("∞");
   await tapNamedPhaserObject(page, "track-control:btn-transport-loop");
   await expect.poll(loopText).toBe("1x");
