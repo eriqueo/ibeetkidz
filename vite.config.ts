@@ -21,7 +21,9 @@ export default defineConfig(({ mode }) => {
         // the bytes Vite actually emitted. There is deliberately no runtime
         // network cache: every dependency the game needs ships with the app.
         strategies: "generateSW",
-        injectRegister: "inline",
+        // Registration belongs to the application composition root so an
+        // already-waiting release can be activated at an explicit load boundary.
+        injectRegister: false,
         manifest: {
           id: "./",
           name: "iBeetKidz",
@@ -48,6 +50,11 @@ export default defineConfig(({ mode }) => {
         },
         workbox: {
           cleanupOutdatedCaches: true,
+          // Legacy releases only emitted Workbox's inline registration and
+          // cannot message the first waiting handshake-capable worker. This
+          // imported script performs that migration once, then leaves every
+          // later release on the explicit-load handshake.
+          importScripts: ["pwa-handshake-migration.js"],
           // The largest measured game asset is just under 2 MB.
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           // The plugin adds manifest.webmanifest itself; including it here

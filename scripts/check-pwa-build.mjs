@@ -1,10 +1,12 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative, sep } from "node:path";
+import updateProtocol from "../src/pwa-update-protocol.json" with { type: "json" };
 
 const builds = [
   { dir: "dist", base: "/" },
   { dir: "dist-gh", base: "/ibeetkidz/" },
 ];
+const migrationScript = "pwa-handshake-migration.js";
 
 function filesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -27,8 +29,39 @@ for (const { dir, base } of builds) {
   if (!html.includes(`href="${base}manifest.webmanifest"`)) {
     throw new Error(`${dir}/index.html does not reference its base-scoped manifest`);
   }
-  if (!html.includes(`register('${base}sw.js'`) || !html.includes(`scope: '${base}'`)) {
-    throw new Error(`${dir}/index.html does not register its service worker at ${base}`);
+  if (html.includes("vite-plugin-pwa:inline-sw")) {
+    throw new Error(`${dir}/index.html bypasses the safe composition-root update handshake`);
+  }
+  if (!sw.includes(updateProtocol.messageType)) {
+    throw new Error(`${dir}/sw.js cannot receive the shared update activation message`);
+  }
+  if (!sw.includes(`importScripts("${migrationScript}")`)) {
+    throw new Error(`${dir}/sw.js cannot migrate clients installed before the update handshake`);
+  }
+  const migrationSource = readFileSync(join(dir, migrationScript), "utf8");
+  for (const token of [
+    "HANDSHAKE_MARKER_CACHE",
+    "migrationPending",
+    "self.registration.active",
+    "skipWaiting",
+    "MAX_LEGACY_CLIENTS_TO_NAVIGATE",
+    "client.navigate",
+    "event.request.mode",
+  ]) {
+    if (!migrationSource.includes(token)) {
+      throw new Error(`${dir}/${migrationScript} is missing migration guard: ${token}`);
+    }
+  }
+  const entryUrls = [...html.matchAll(/<script[^>]+src="([^"]+\.js)"/g)].map((match) => match[1]);
+  const entrySource = entryUrls.map((url) => {
+    const relativeUrl = url?.startsWith(base) ? url.slice(base.length) : undefined;
+    if (!relativeUrl) throw new Error(`${dir}/index.html has an invalid module entry URL: ${url}`);
+    return readFileSync(join(dir, relativeUrl), "utf8");
+  }).join("\n");
+  for (const token of [updateProtocol.messageType, updateProtocol.controllerChangeEvent]) {
+    if (!entrySource.includes(token)) {
+      throw new Error(`${dir} entry chunk is missing the safe PWA update token: ${token}`);
+    }
   }
 
   for (const icon of manifest.icons ?? []) {

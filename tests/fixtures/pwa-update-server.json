@@ -1,0 +1,6 @@
+{
+  "switchPath": "/__pwa_update__/current",
+  "nextPath": "/__pwa_update__/next",
+  "oldReleaseMeta": "ibk-pwa-fixture-release",
+  "nextReleaseMeta": "ibk-pwa-fixture-next-release"
+}

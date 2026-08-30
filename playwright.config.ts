@@ -8,10 +8,16 @@ const PORT = Number(process.env.PW_PORT ?? 5173);
 const ORIGIN = `http://localhost:${PORT}`;
 const PWA_PORT = Number(process.env.PW_PWA_PORT ?? 4173);
 const PWA_ORIGIN = `http://localhost:${PWA_PORT}/ibeetkidz/`;
+const PWA_UPDATE_PORT = Number(process.env.PW_PWA_UPDATE_PORT ?? 4183);
+const PWA_UPDATE_ORIGIN = `http://localhost:${PWA_UPDATE_PORT}/ibeetkidz/`;
+const PWA_UPDATE_OLD_DIST = process.env.PW_PWA_UPDATE_OLD_DIST;
+const PWA_UPDATE_OLD_DIST_ARG = PWA_UPDATE_OLD_DIST
+  ? ` --old-dist ${JSON.stringify(PWA_UPDATE_OLD_DIST)}`
+  : "";
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  metadata: { pwaOrigin: PWA_ORIGIN },
+  metadata: { pwaOrigin: PWA_ORIGIN, pwaUpdateOrigin: PWA_UPDATE_ORIGIN },
   fullyParallel: false,
   workers: 1,
   retries: 0,
@@ -35,6 +41,13 @@ export default defineConfig({
       // This is the actual Pages artifact, not Vite's source-serving dev mode.
       command: `npm run preview -- --mode gh --port ${PWA_PORT} --strictPort`,
       url: PWA_ORIGIN,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      command:
+        `node scripts/serve-pwa-update-fixture.mjs --port ${PWA_UPDATE_PORT} --dist dist-gh${PWA_UPDATE_OLD_DIST_ARG}`,
+      url: PWA_UPDATE_ORIGIN,
       reuseExistingServer: false,
       timeout: 60_000,
     },
