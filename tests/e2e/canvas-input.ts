@@ -11,7 +11,6 @@ export async function tapCanvasAtClientPoint(
   clientX: number,
   clientY: number,
 ): Promise<void> {
-  const canvas = page.locator("canvas").first();
   expect(
     await page.evaluate(
       ({ x, y }) => document.elementFromPoint(x, y)?.tagName,
@@ -20,17 +19,24 @@ export async function tapCanvasAtClientPoint(
     "the design point must resolve to the unobstructed Phaser canvas",
   ).toBe("CANVAS");
 
-  const pressed = { clientX, clientY, button: 0, buttons: 1 };
-  await canvas.dispatchEvent("mousemove", pressed);
-  await canvas.dispatchEvent("mousedown", pressed);
-  await page.evaluate(() => new Promise<void>((resolve) => {
-    let remaining = 3;
-    const afterFrame = (): void => {
-      remaining -= 1;
-      if (remaining === 0) resolve();
-      else requestAnimationFrame(afterFrame);
-    };
-    requestAnimationFrame(afterFrame);
-  }));
-  await canvas.dispatchEvent("mouseup", { ...pressed, buttons: 0 });
+  // Playwright's mouse produces the browser's trusted input path. Synthetic
+  // dispatchEvent mouse events can be ignored after a long headed run even
+  // when their coordinates and dwell are correct (CI runs 33312618230 and
+  // 33313433355 both left LOOP on infinity). Hold the trusted down edge until
+  // Phaser has received multiple real animation ticks.
+  await page.mouse.move(clientX, clientY);
+  await page.mouse.down();
+  try {
+    await page.evaluate(() => new Promise<void>((resolve) => {
+      let remaining = 3;
+      const afterFrame = (): void => {
+        remaining -= 1;
+        if (remaining === 0) resolve();
+        else requestAnimationFrame(afterFrame);
+      };
+      requestAnimationFrame(afterFrame);
+    }));
+  } finally {
+    await page.mouse.up();
+  }
 }
