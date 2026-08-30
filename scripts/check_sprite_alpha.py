@@ -27,8 +27,11 @@ Three tests, each mapping to a way the rule has actually been broken:
 
 Backgrounds under scenes-v2/ are exempt: a full-bleed plate is meant to be opaque.
 
-Usage:  python3 scripts/check_sprite_alpha.py
+Usage:  python3 scripts/check_sprite_alpha.py [sprite.png ...]
 Requires Pillow. Exits non-zero on violation.
+
+With explicit paths, only those delivery-contract assets are checked. With no
+paths, the historical whole-tree diagnostic is preserved.
 """
 from __future__ import annotations
 
@@ -38,10 +41,10 @@ import sys
 try:
     from PIL import Image
 except ImportError:
-    print("check_sprite_alpha: Pillow not available — skipping the pixel checks.")
-    print("  install with `pip install pillow`, or run inside")
-    print("  nix-shell -p 'python3.withPackages(ps: [ps.pillow])'")
-    sys.exit(0)
+    print("FAIL: check_sprite_alpha requires Pillow; pixel checks did not run.", file=sys.stderr)
+    print("  install with `python3 -m pip install pillow`, or run inside", file=sys.stderr)
+    print("  nix-shell -p 'python3.withPackages(ps: [ps.pillow])'", file=sys.stderr)
+    sys.exit(2)
 
 # A sprite's anti-aliased rim is a thin band, so only a small share of its
 # pixels are partially transparent. Every washed drop so far has been >40%.
@@ -51,18 +54,20 @@ MID_LO, MID_HI = 8, 248
 TRACKED = ["src/assets/sprites/**/*.png", "public/assets/spritesheets/*.png"]
 
 
-def tracked_files() -> list[str]:
+def tracked_files(paths: list[str]) -> list[str]:
+    if paths:
+        return paths
     out = subprocess.run(
         ["git", "ls-files", "--", *TRACKED], capture_output=True, text=True, check=True
     )
     return [line for line in out.stdout.splitlines() if line]
 
 
-def main() -> int:
+def main(paths: list[str]) -> int:
     failures: list[str] = []
     checked = 0
 
-    for path in tracked_files():
+    for path in tracked_files(paths):
         im = Image.open(path)
         if im.mode not in ("RGBA", "LA", "PA") and "transparency" not in im.info:
             failures.append(f"{path} — no alpha channel (mode {im.mode})")
@@ -124,4 +129,4 @@ def main() -> int:
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))

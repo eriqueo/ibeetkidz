@@ -30,6 +30,10 @@ jobs:
           node-version: 24
           cache: npm
       - run: npm ci
+      - name: Install sprite alpha checker dependency
+        run: python3 -m pip install --quiet pillow
+      - name: AR-069 source alpha release gate
+        run: bash scripts/check-ar069-alpha.sh
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
