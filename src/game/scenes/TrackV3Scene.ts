@@ -2102,6 +2102,10 @@ export class TrackV3Scene extends Phaser.Scene {
       .rectangle(0, 0, W, H, 0x000000, 0.48)
       .setOrigin(0)
       .setInteractive();
+    // The dimmed world is the forgiving way out, matching the Workshop's
+    // sequencer popup. Dismissal is selection-only: it neither mutates the car
+    // nor consumes a TARP arm meant for a different car.
+    backdrop.on("pointerup", () => this.dismissCarAction());
     const shadow = this.add
       .rectangle(
         panelX + drop,
@@ -2162,14 +2166,14 @@ export class TrackV3Scene extends Phaser.Scene {
 
   private chooseCarAction(kind: TrackCarActionKind, instanceId: string): void {
     this.dismissCarAction();
-    if (kind === "edit") EventBus.emit("track-car-edit", instanceId);
-    if (kind === "toggle-mute") EventBus.emit("track-car-mute-toggled", instanceId);
-    // React owns the latch truth. Confirmation consumes an existing arm through
-    // the same typed toggle event the header uses; choosing TARP directly while
-    // unarmed must not accidentally arm it for the next car.
+    // React owns the latch truth. Consume it before an action can navigate
+    // away and unmount this scene; otherwise EDIT appears to preserve state
+    // only on the discarded scene object while a returning Track starts fresh.
     if (this.tarpArmed && trackCarActionDisarmsTarp(kind)) {
       EventBus.emit("track-tarp-armed");
     }
+    if (kind === "edit") EventBus.emit("track-car-edit", instanceId);
+    if (kind === "toggle-mute") EventBus.emit("track-car-mute-toggled", instanceId);
   }
 
   private dismissCarAction(): void {

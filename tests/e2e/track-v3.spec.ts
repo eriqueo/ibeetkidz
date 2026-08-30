@@ -269,6 +269,18 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
     }, { x: car.soundingCarX, y: car.soundingCarY - 80 });
     await page.mouse.click(point.x, point.y);
   };
+  const tapScenePoint = async (x: number, y: number): Promise<void> => {
+    const point = await page.evaluate(({ x, y }) => {
+      const scene = (window as any).__ibeetkidz_test__.getScene();
+      const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+      const game = scene.scale.gameSize;
+      return {
+        x: canvas.left + x * (canvas.width / game.width),
+        y: canvas.top + y * (canvas.height / game.height),
+      };
+    }, { x, y });
+    await page.mouse.click(point.x, point.y);
+  };
   const menuVisible = () => page.evaluate(() => {
     const scene = (window as any).__ibeetkidz_test__.getScene();
     const find = (objects: any[]): any => {
@@ -290,16 +302,25 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted))
     .toBe(projectBefore.muted);
 
-  await tapNamedPhaserObject(page, "track-car-action:close");
+  // The dimmed world is the forgiving way out, matching Workshop's popup.
+  // This is a real canvas tap safely outside the centred chooser panel.
+  await tapScenePoint(100, 100);
   await expect.poll(menuVisible).toBe(false);
   expect((await state(page)).tarpArmed).toBe(false);
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activePartId))
     .toBe(projectBefore.activePartId);
 
+  // Keep the explicit escape covered too; the forgiving backdrop is a sibling
+  // route, not a replacement for the visible CLOSE choice.
+  await tapCar();
+  await tapNamedPhaserObject(page, "track-car-action:close");
+  await expect.poll(menuVisible).toBe(false);
+  expect((await state(page)).tarpArmed).toBe(false);
+
   await tapNamedPhaserObject(page, "track-control:tarp");
   await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
   await tapCar();
-  await tapNamedPhaserObject(page, "track-car-action:close");
+  await tapScenePoint(100, 100);
   await expect.poll(menuVisible).toBe(false);
   expect((await state(page)).tarpArmed).toBe(true);
 
@@ -312,6 +333,15 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   await expect.poll(async () => (await state(page)).tarpArmed).toBe(false);
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView))
     .toBe("track");
+
+  // Repeating the same visible journey exposes UNCOVER and restores both the
+  // project signal and the car's physical cover without requiring hidden undo.
+  await tapCar();
+  await tapNamedPhaserObject(page, "track-car-action:tarp");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted),
+  ).toBe(projectBefore.muted);
+  await expect.poll(async () => (await state(page)).tarpedCars).toBe(0);
 
   await tapNamedPhaserObject(page, "track-control:tarp");
   await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
@@ -326,7 +356,19 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   ).toBe("workshop");
   expect(await page.evaluate(() =>
     (window as any).__track_car_scene_before_edit.debugState().tarpArmed,
-  )).toBe(true);
+  )).toBe(false);
+
+  // Returning through the real Map destination starts Track with no invisible
+  // pending action left over from the abandoned tarp choice.
+  await emit(page, "nav-map");
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "MapScene",
+  );
+  await tapMapDestination(page, "hit-track");
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
+  );
+  expect((await state(page)).tarpArmed).toBe(false);
 });
 
 test("?oval opts back into the ring", async ({ page }) => {

@@ -24,10 +24,10 @@ describe("Track car action choices", () => {
     ).toBeLessThanOrEqual(TRACK_CAR_ACTION_LAYOUT.panelWidth);
   });
 
-  it("consumes an armed tarp only when tarp or uncover is confirmed", () => {
+  it("keeps an armed tarp only while the kid stays in the chooser", () => {
     expect(trackCarActionDisarmsTarp("toggle-mute")).toBe(true);
     expect(trackCarActionDisarmsTarp("close")).toBe(false);
-    expect(trackCarActionDisarmsTarp("edit")).toBe(false);
+    expect(trackCarActionDisarmsTarp("edit")).toBe(true);
   });
 
   it("lays out three equal, centered, non-overlapping action targets", () => {

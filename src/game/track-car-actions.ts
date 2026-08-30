@@ -66,9 +66,8 @@ export function trackCarActionSlots(
   ) as Record<TrackCarActionKind, TrackCarActionSlot>;
 }
 
-/** The header TARP key is an arming latch: confirmation consumes that arm.
- *  Closing the chooser or editing the car does not consume the kid's pending
- *  tarp intent. */
+/** The header TARP key is an arming latch. Staying in the chooser preserves
+ *  that pending intent; committing either real action consumes it. */
 export function trackCarActionDisarmsTarp(kind: TrackCarActionKind): boolean {
-  return kind === "toggle-mute";
+  return kind !== "close";
 }
