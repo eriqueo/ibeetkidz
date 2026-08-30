@@ -7,6 +7,7 @@ import {
   trackJobSlots,
 } from "../../src/game/scene-layout.ts";
 import { trackCarActionSlots } from "../../src/game/track-car-actions.ts";
+import { tapCanvasAtClientPoint } from "./canvas-input.ts";
 import { tapMapLandmark } from "./map-landmark.ts";
 // Playwright explicitly exports this bundle path, but does not publish its
 // declarations. Reuse its pinned PNG decoder instead of adding a second image
@@ -139,23 +140,7 @@ async function tapDesignPoint(page: Page, x: number, y: number): Promise<void> {
   });
   const screenX = box!.x + x * (box!.width / intrinsic.width);
   const screenY = box!.y + y * (box!.height / intrinsic.height);
-  expect(
-    await page.evaluate(
-      ({ clientX, clientY }) => document.elementFromPoint(clientX, clientY)?.tagName,
-      { clientX: screenX, clientY: screenY },
-    ),
-    "the design point must resolve to the unobstructed Phaser canvas",
-  ).toBe("CANVAS");
-  // Phaser samples pointer state on its game loop. A zero-dwell Playwright
-  // click can deliver down + up between two frames on a loaded CI runner and
-  // is less representative than even a very quick human tap. Dispatch through
-  // the real canvas listener after the hit-test above rather than depending on
-  // Chromium's worker-global mouse state late in a long serial CI run.
-  const event = { clientX: screenX, clientY: screenY, button: 0, buttons: 1 };
-  await canvas.dispatchEvent("mousemove", event);
-  await canvas.dispatchEvent("mousedown", event);
-  await page.waitForTimeout(80);
-  await canvas.dispatchEvent("mouseup", { ...event, buttons: 0 });
+  await tapCanvasAtClientPoint(page, screenX, screenY);
 }
 
 function decodePng(bytes: Uint8Array): DecodedPng {
