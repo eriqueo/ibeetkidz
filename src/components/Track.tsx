@@ -10,6 +10,7 @@ import { carCargo, carIdentities, carLiveries } from "../core/car-identity.ts";
 import { isTerrainKind } from "../core/terrain.ts";
 import { laneGroup } from "../core/lane-color.ts";
 import { riderSprite } from "../game/instrument-station.ts";
+import { TrackModeIntentCoordinator } from "../game/track-mode-intent.ts";
 import {
   LATCH_UNIT_BARS,
   TERRAIN_KINDS,
@@ -176,12 +177,38 @@ export const Track: FC = () => {
       v3.setTrainScale((modes.has("tiny") ? 0.6 : 1) * (modes.has("giant") ? 1.4 : 1));
     };
 
+    // Commit one mode only after a Ride is authoritative. AudioEngine remains
+    // strict: it owns the transport timestamp and may still refuse with null.
+    const commitMode = (kind: Parameters<typeof engine.toggleMode>[0]) => {
+      const { on, atBar } = engine.toggleMode(kind, projectRef.current);
+      if (atBar === null) return;
+      if ((TERRAIN_KINDS as readonly string[]).includes(kind)) {
+        const geo = kind as TerrainKind;
+        const rides = latchedRidesRef.current;
+        if (on) {
+          rides.set(geo, { kind: geo, startBar: atBar, endBar: atBar + LATCH_UNIT_BARS });
+        } else {
+          const open = rides.get(geo);
+          if (open) rides.set(geo, { ...open, endBar: Math.min(open.endBar, atBar) });
+        }
+      }
+      pushModesToScene();
+    };
+
+    const modeIntents = new TrackModeIntentCoordinator({
+      isRideActive: () => engine.isPlaying && engine.playMode === "ride",
+      hasTrain: () => liveTrain(projectRef.current).length > 0,
+      startRide: () => engine.playRide(projectRef.current),
+      commitMode,
+      setPendingModes: (kinds) => v3Ref.current?.setModePending(kinds),
+      onStartFailed: (err) => console.warn("audio playback failed", err),
+    });
+
     const onPlay = () => {
-      void engine.playRide(projectRef.current).catch((err: unknown) => {
-        console.warn("audio playback failed", err);
-      });
+      modeIntents.startRide();
     };
     const onStop = () => {
+      modeIntents.clear();
       engine.stop(); // also drops every mode latch — flat ground on stop
       latchedRidesRef.current.clear();
       pushModesToScene();
@@ -211,6 +238,7 @@ export const Track: FC = () => {
         (c) => ({ type: "removeFromTrain", instanceId: c.instanceId }) as const,
       );
       if (cmds.length === 0) return;
+      modeIntents.clear();
       engine.stop();
       dispatchAll(cmds, "The whole train");
     };
@@ -220,23 +248,7 @@ export const Track: FC = () => {
     // the train happens to be drawn (charter A4).
     const onMode = (kind: string) => {
       if (!isModeKind(kind) || !v3Ref.current) return;
-      const { on, atBar } = engine.toggleMode(kind, projectRef.current);
-      if (atBar === null) return; // not riding — a mode needs a train
-      if ((TERRAIN_KINDS as readonly string[]).includes(kind)) {
-        const geo = kind as TerrainKind;
-        const rides = latchedRidesRef.current;
-        if (on) {
-          // A fresh unit span from the landing bar; the tick below keeps
-          // re-arming units while the latch holds.
-          rides.set(geo, { kind: geo, startBar: atBar, endBar: atBar + LATCH_UNIT_BARS });
-        } else {
-          // Off: close the visible span at the bar the change lands, so the
-          // mound's tail scrolls away instead of vanishing; the tick prunes.
-          const open = rides.get(geo);
-          if (open) rides.set(geo, { ...open, endBar: Math.min(open.endBar, atBar) });
-        }
-      }
-      pushModesToScene();
+      modeIntents.request(kind);
     };
     // Terrain events from chrome that predates modes: the oval's momentary
     // flash. The v3 job bar emits `track-mode-toggled` instead.
@@ -288,6 +300,7 @@ export const Track: FC = () => {
     EventBus.on("track-loop-cycled", onLoopCycled);
     EventBus.on("track-tarp-armed", onTarpArmed);
     return () => {
+      modeIntents.dispose();
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);

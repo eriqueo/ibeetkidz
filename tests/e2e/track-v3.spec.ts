@@ -200,6 +200,39 @@ test("a kid can drive the default Track through its real canvas controls", async
   ).toBe("map");
 });
 
+test("an idle job switch starts its Ride before applying terrain and atmosphere", async ({
+  page,
+}) => {
+  await bootV3(page);
+  const before = await state(page);
+  expect(before.pos).toBe(0);
+
+  // No RIDE tap: the picture switch is the compound intent a kid sees.
+  await tapNamedPhaserObject(page, "track-mode:hill");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.audioDiag().transportState),
+  ).toBe("started");
+  await expect.poll(async () => (await state(page)).pos).toBeGreaterThan(before.pos);
+  await expect.poll(async () => (await state(page)).terrain?.kind ?? null).toBe("hill");
+  await expect.poll(async () => (await state(page)).latchedModes).toContain("hill");
+
+  await tapNamedPhaserObject(page, "track-control:btn-transport-stop");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.audioDiag().transportState),
+  ).toBe("stopped");
+  await expect.poll(async () => (await state(page)).latchedModes).toEqual([]);
+
+  // NIGHT has no terrain span to make this pass accidentally through the hill
+  // path. Its real canvas switch must independently restart Ride and alter the
+  // world treatment.
+  await tapNamedPhaserObject(page, "track-mode:night");
+  await expect.poll(() =>
+    page.evaluate(() => (window as any).__ibeetkidz_test__.audioDiag().transportState),
+  ).toBe("started");
+  await expect.poll(async () => (await state(page)).latchedModes).toContain("night");
+  await expect.poll(async () => (await state(page)).nightVisible).toBe(true);
+});
+
 test("a car tap waits for an explicit edit, tarp, or close choice", async ({ page }) => {
   await bootV3(page);
 

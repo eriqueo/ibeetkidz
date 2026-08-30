@@ -1047,7 +1047,12 @@ export class TrackV3Scene extends Phaser.Scene {
   private sendState: SendUiState = { kind: "idle" };
   /** "See the sound" — the same jumbotron the oval carries. */
   private viz?: SceneVisualizer;
-  private modeBtns: Record<string, { setLatched: (on: boolean) => void }> = {};
+  private modeBtns: Record<string, {
+    setLatched: (on: boolean) => void;
+    setPending: (on: boolean) => void;
+  }> = {};
+  private latchedModeKinds = new Set<string>();
+  private pendingModeKinds = new Set<string>();
   /** The BACKWARDS switch's latched look — picture or keycap alike. */
   private backwardsLatch: (on: boolean) => void = () => {};
   /** Temporary in-scene chooser for one car. It deliberately uses the existing
@@ -1083,7 +1088,7 @@ export class TrackV3Scene extends Phaser.Scene {
       id: TrackJobId,
       label: string,
       fire: () => void,
-    ): ((on: boolean) => void) => {
+    ): { setLatched: (on: boolean) => void; setPending: (on: boolean) => void } => {
       const { x, y, width, height } = slots[id];
       const idle = `trk-btn-${id}`;
       const down = `trk-btn-${id}-pressed`;
@@ -1107,7 +1112,17 @@ export class TrackV3Scene extends Phaser.Scene {
           { x, y, width, height },
         );
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
-        return (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
+        let latched = false;
+        let pending = false;
+        const paint = (): void => {
+          if (latched) btn.setTint(0xffd166);
+          else if (pending) btn.setTint(0xffe9b0);
+          else btn.clearTint();
+        };
+        return {
+          setLatched: (on) => { latched = on; paint(); },
+          setPending: (on) => { pending = on; paint(); },
+        };
       }
       const swatch = this.add
         .rectangle(x, y, width, height, 0x3a3350, 1)
@@ -1124,9 +1139,15 @@ export class TrackV3Scene extends Phaser.Scene {
       // Law 8: the response happens THIS frame, even though the sound lands on
       // the next bar.
       this.pressable(swatch, fire);
-      return (on) => {
-        swatch.setFillStyle(on ? 0xffd166 : 0x3a3350, 1);
-        cap.setColor(on ? "#2b2440" : "#ffe9b0");
+      let latched = false;
+      let pending = false;
+      const paint = (): void => {
+        swatch.setFillStyle(latched ? 0xffd166 : pending ? 0xffe9b0 : 0x3a3350, 1);
+        cap.setColor(latched || pending ? "#2b2440" : "#ffe9b0");
+      };
+      return {
+        setLatched: (on) => { latched = on; paint(); },
+        setPending: (on) => { pending = on; paint(); },
       };
     };
 
@@ -1136,14 +1157,13 @@ export class TrackV3Scene extends Phaser.Scene {
     for (const { id, label } of TRACK_JOB_BAR.switches) {
       if (id === "backwards") {
         // Reverses every sampled voice; its own latch, stacks with the modes.
-        this.backwardsLatch = switchAt(id, label, () =>
+        const backwards = switchAt(id, label, () =>
           void EventBus.emit("track-backwards-toggled"));
+        this.backwardsLatch = backwards.setLatched;
       } else {
         const kind: ModeKind = id;
-        this.modeBtns[kind] = {
-          setLatched: switchAt(kind, label, () =>
-            void EventBus.emit("track-mode-toggled", kind)),
-        };
+        this.modeBtns[kind] = switchAt(kind, label, () =>
+          void EventBus.emit("track-mode-toggled", kind));
       }
     }
   }
@@ -1152,8 +1172,19 @@ export class TrackV3Scene extends Phaser.Scene {
    *  gold wash so what is on is visible from across the room — a latch nobody
    *  can see is the ×2-lever trap all over again. */
   setModeLatched(kinds: ReadonlySet<string>): void {
+    this.latchedModeKinds = new Set(kinds);
     for (const [k, btn] of Object.entries(this.modeBtns)) {
       btn.setLatched(kinds.has(k));
+    }
+  }
+
+  /** React → scene: modes waiting for a cold Ride start. Cream uses the
+   *  existing key tint as acknowledgement; gold remains reserved for a mode
+   *  the transport has actually committed. */
+  setModePending(kinds: ReadonlySet<string>): void {
+    this.pendingModeKinds = new Set(kinds);
+    for (const [k, btn] of Object.entries(this.modeBtns)) {
+      btn.setPending(kinds.has(k));
     }
   }
 
@@ -1791,6 +1822,9 @@ export class TrackV3Scene extends Phaser.Scene {
     };
     tunnel: { phase: string; wallOffset: number; visibleLamps: number };
     wheel: { diameter: number; axleOffset: number };
+    pendingModes: string[];
+    latchedModes: string[];
+    nightVisible: boolean;
   } {
     const dist = travelPx(this.pos, this.view);
     const n = Math.max(1, this.cars.length);
@@ -1835,6 +1869,9 @@ export class TrackV3Scene extends Phaser.Scene {
         diameter: this.slots[0]?.wheelA.displayWidth ?? 0,
         axleOffset: CAR_W * WHEEL_AT,
       },
+      pendingModes: [...this.pendingModeKinds],
+      latchedModes: [...this.latchedModeKinds],
+      nightVisible: this.nightSky?.visible ?? false,
     };
   }
 
