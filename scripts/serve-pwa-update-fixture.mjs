@@ -17,9 +17,24 @@ if (!Number.isInteger(port) || !distDir) {
 }
 
 const base = "/ibeetkidz/";
-const currentIndex = readFileSync(join(distDir, "index.html"), "utf8");
+const builtIndex = readFileSync(join(distDir, "index.html"), "utf8");
 const currentWorker = readFileSync(join(distDir, "sw.js"), "utf8");
 const legacyEntryName = "fixture-old-entry.js";
+const nextEntryName = "assets/fixture-next-entry.js";
+const currentEntryUrl = builtIndex.match(/<script[^>]+src="([^"]+\.js)"/)?.[1];
+if (!currentEntryUrl?.startsWith(base)) {
+  throw new Error("fixture could not find the Pages entry module");
+}
+const currentEntryName = currentEntryUrl.slice(base.length);
+const nextEntryUrl = `${base}${nextEntryName}`;
+const nextEntry = `${readFileSync(join(distDir, currentEntryName), "utf8")}\n/* fixture-next-entry */\n`;
+const currentIndex = builtIndex;
+const migrationScriptName = "pwa-handshake-migration.js";
+const currentMigration = readFileSync(join(distDir, migrationScriptName), "utf8");
+const nextMigration = currentMigration.replaceAll(currentEntryName, nextEntryName);
+if (nextMigration === currentMigration) {
+  throw new Error("fixture could not assign the next entry identity to its worker helper");
+}
 const legacyEntry = `document.getElementById("root").innerHTML = '<button type="button">Tap to Start</button>';
 if ("serviceWorker" in navigator) {
   const worker = new URL("sw.js", import.meta.url);
@@ -30,7 +45,7 @@ const addOldMarker = (index) => index.replace(
   "</head>",
   `<meta name="${serverProtocol.oldReleaseMeta}" content="old"></head>`,
 );
-const syntheticOldIndex = addOldMarker(currentIndex).replace(
+const syntheticOldIndex = addOldMarker(builtIndex).replace(
   /(<script[^>]+src=")[^"]+("[^>]*><\/script>)/,
   `$1${base}${legacyEntryName}$2`,
 );
@@ -53,11 +68,32 @@ const oldWorker = oldDistDir
 const nextIndex = currentIndex.replace(
   "</head>",
   `<meta name="${serverProtocol.nextReleaseMeta}" content="next"></head>`,
-);
-const nextWorker = `${currentWorker.replace(
+).replace(currentEntryUrl, nextEntryUrl);
+const nextWorkerWithRevision = currentWorker.replace(
   /(url:"index\.html",revision:")[^"]+/,
   "$1fixture-next-release",
-)}\n/* fixture-next-release */\n`;
+).replaceAll(currentEntryName, nextEntryName);
+if (!nextWorkerWithRevision.includes(nextEntryName)) {
+  throw new Error("fixture could not assign a distinct next-release entry identity");
+}
+const staleNavigationHarness = `
+const fixtureNavigationCache = "ibk-pwa-fixture-navigation-v1";
+const fixtureNavigationRequest = new Request(new URL("__consumed_stale_navigation__", self.registration.scope));
+self.addEventListener("fetch", (event) => {
+  const url = new URL(event.request.url);
+  if (event.request.mode !== "navigate" || !url.searchParams.has(${JSON.stringify(serverProtocol.staleNavigationQuery)})) return;
+  event.stopImmediatePropagation();
+  event.respondWith((async () => {
+    const cache = await caches.open(fixtureNavigationCache);
+    if (!await cache.match(fixtureNavigationRequest)) {
+      await cache.put(fixtureNavigationRequest, new Response("consumed"));
+      return fetch(${JSON.stringify(serverProtocol.staleNavigationPath)});
+    }
+    return fetch(event.request);
+  })());
+});
+`;
+const nextWorker = `${staleNavigationHarness}${nextWorkerWithRevision}\n/* fixture-next-release */\n`;
 let release = "old";
 
 const contentTypes = {
@@ -94,6 +130,10 @@ createServer((request, response) => {
     send(response, 200, "next");
     return;
   }
+  if (url.pathname === serverProtocol.staleNavigationPath) {
+    send(response, 200, currentIndex, "text/html");
+    return;
+  }
   if (!url.pathname.startsWith(base)) {
     send(response, 404, "outside fixture scope");
     return;
@@ -110,8 +150,16 @@ createServer((request, response) => {
     send(response, 200, worker, "text/javascript");
     return;
   }
+  if (release === "next" && relative === migrationScriptName) {
+    send(response, 200, nextMigration, "text/javascript");
+    return;
+  }
   if (!oldDistDir && release === "old" && relative === legacyEntryName) {
     send(response, 200, legacyEntry, "text/javascript");
+    return;
+  }
+  if (release === "next" && relative === nextEntryName) {
+    send(response, 200, nextEntry, "text/javascript");
     return;
   }
 

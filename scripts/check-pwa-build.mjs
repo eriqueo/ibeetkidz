@@ -41,9 +41,13 @@ for (const { dir, base } of builds) {
   const migrationSource = readFileSync(join(dir, migrationScript), "utf8");
   for (const token of [
     "HANDSHAKE_MARKER_CACHE",
+    "WORKER_RELEASE_ID",
     "migrationPending",
     "self.registration.active",
     "skipWaiting",
+    "stopImmediatePropagation",
+    updateProtocol.releaseRequestType,
+    updateProtocol.releaseResponseType,
     "MAX_LEGACY_CLIENTS_TO_NAVIGATE",
     "client.navigate",
     "event.request.mode",
@@ -58,7 +62,12 @@ for (const { dir, base } of builds) {
     if (!relativeUrl) throw new Error(`${dir}/index.html has an invalid module entry URL: ${url}`);
     return readFileSync(join(dir, relativeUrl), "utf8");
   }).join("\n");
-  for (const token of [updateProtocol.messageType, updateProtocol.controllerChangeEvent]) {
+  for (const token of [
+    updateProtocol.messageType,
+    updateProtocol.controllerChangeEvent,
+    updateProtocol.releaseRequestType,
+    updateProtocol.releaseResponseType,
+  ]) {
     if (!entrySource.includes(token)) {
       throw new Error(`${dir} entry chunk is missing the safe PWA update token: ${token}`);
     }

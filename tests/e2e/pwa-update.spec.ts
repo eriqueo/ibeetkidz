@@ -34,7 +34,12 @@ test("legacy migration and later staged updates avoid mixed releases", async ({ 
     expect(response.ok(), `legacy entry failed to load: ${url}`).toBe(true);
     return response.text();
   }))).join("\n");
-  for (const token of [updateProtocol.messageType, updateProtocol.controllerChangeEvent]) {
+  for (const token of [
+    updateProtocol.messageType,
+    updateProtocol.controllerChangeEvent,
+    updateProtocol.releaseRequestType,
+    updateProtocol.releaseResponseType,
+  ]) {
     expect(oldEntrySource, `legacy entry unexpectedly contains ${token}`).not.toContain(token);
   }
 
@@ -97,6 +102,9 @@ test("legacy migration and later staged updates avoid mixed releases", async ({ 
   // Once the migration marker exists, later releases return to the safe
   // contract: discovery while Track is open only stages a waiting worker.
   const stagedAtNavigation = mainFrameNavigations;
+  const sibling = await context.newPage();
+  await sibling.goto(appUrl);
+  await expect(sibling.getByRole("button", { name: /tap to start/i })).toBeVisible();
   await context.request.get(`${origin}${serverProtocol.nextPath}`);
   await page.evaluate(async () => {
     const registration = await navigator.serviceWorker.getRegistration();
@@ -111,10 +119,44 @@ test("legacy migration and later staged updates avoid mixed releases", async ({ 
   expect(mainFrameNavigations).toBe(stagedAtNavigation);
   await expect(page.locator(`meta[name="${serverProtocol.nextReleaseMeta}"]`)).toHaveCount(0);
 
-  // The explicit load runs the new composition root, which messages the
-  // already-waiting worker and reloads once when control changes.
-  await page.reload();
-  await expect(page.locator(`meta[name="${serverProtocol.nextReleaseMeta}"]`)).toHaveCount(1);
+  // The shared activation request must not promote the worker underneath a
+  // sibling that may still be playing a song. It remains staged until only one
+  // scoped client remains.
+  await page.evaluate(async (messageType) => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.waiting) throw new Error("next fixture worker is not waiting");
+    registration.waiting.postMessage({ type: messageType });
+  }, updateProtocol.messageType);
+  await page.waitForTimeout(250);
+  await expect.poll(() => page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return registration?.waiting?.state;
+  })).toBe("installed");
+  await expect(sibling.locator(`meta[name="${serverProtocol.nextReleaseMeta}"]`)).toHaveCount(0);
+  await sibling.close();
+
+  // Seed the exact browser state observed in CI: next controls the client and
+  // waiting is null, but its first SW-served navigation deliberately returns
+  // the current release's HTML. The old composition root missed the transition
+  // and must independently detect the active worker's distinct entry identity.
+  await page.evaluate(async (messageType) => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    if (!registration?.waiting) throw new Error("next fixture worker is not waiting");
+    registration.waiting.postMessage({ type: messageType });
+  }, updateProtocol.messageType);
+  await expect.poll(() => page.evaluate(async () => {
+    const registration = await navigator.serviceWorker.getRegistration();
+    return {
+      active: registration?.active?.state ?? null,
+      waiting: registration?.waiting?.state ?? null,
+    };
+  })).toEqual({ active: "activated", waiting: null });
+  const staleUrl = new URL(appUrl);
+  staleUrl.searchParams.set(serverProtocol.staleNavigationQuery, "1");
+  await page.goto(staleUrl.href, { waitUntil: "commit" });
+  await expect(page.locator(`meta[name="${serverProtocol.nextReleaseMeta}"]`)).toHaveCount(1, {
+    timeout: 15_000,
+  });
   await expect(page.getByRole("button", { name: /tap to start/i })).toBeVisible();
   expect(mainFrameNavigations - stagedAtNavigation).toBe(2);
 });

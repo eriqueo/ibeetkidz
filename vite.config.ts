@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath, URL } from "node:url";
 import { ibkMapWriter } from "./vite-plugins/ibk-map-writer.ts";
+import { pwaRuntimeAssets } from "./vite-plugins/pwa-runtime-assets.ts";
 
 // Dual-base build, mirroring the kidpix pattern:
 //   `vite build`            -> dist/      base "/"        (local / release tarball)
@@ -16,6 +17,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       ibkMapWriter(),
+      pwaRuntimeAssets(),
       VitePWA({
         // A generated manifest keeps the service worker's revision list tied to
         // the bytes Vite actually emitted. There is deliberately no runtime

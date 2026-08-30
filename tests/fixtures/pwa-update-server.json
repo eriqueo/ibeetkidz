@@ -1,6 +1,8 @@
 {
   "switchPath": "/__pwa_update__/current",
   "nextPath": "/__pwa_update__/next",
+  "staleNavigationPath": "/__pwa_update__/stale-navigation",
+  "staleNavigationQuery": "ibk-stale-navigation",
   "oldReleaseMeta": "ibk-pwa-fixture-release",
   "nextReleaseMeta": "ibk-pwa-fixture-next-release"
 }
