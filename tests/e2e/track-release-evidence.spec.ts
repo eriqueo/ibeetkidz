@@ -146,13 +146,18 @@ async function tapDesignPoint(page: Page, x: number, y: number): Promise<void> {
   });
   const screenX = box!.x + x * (box!.width / intrinsic.width);
   const screenY = box!.y + y * (box!.height / intrinsic.height);
-  await page.mouse.move(screenX, screenY);
-  await page.mouse.down();
   // Phaser samples pointer state on its game loop. A zero-dwell Playwright
   // click can deliver down + up between two frames on a loaded CI runner and
-  // is less representative than even a very quick human tap.
-  await page.waitForTimeout(80);
-  await page.mouse.up();
+  // is less representative than even a very quick human tap. Going through
+  // the canvas locator also makes Playwright prove that this point is visible
+  // and unobstructed before it dispatches the pointer sequence.
+  await canvas.click({
+    position: {
+      x: screenX - box!.x,
+      y: screenY - box!.y,
+    },
+    delay: 80,
+  });
 }
 
 function decodePng(bytes: Uint8Array): DecodedPng {
@@ -240,7 +245,10 @@ async function capture(
 }
 
 test("the Pages Track produces reviewable release evidence", async ({ page }, testInfo) => {
-  test.setTimeout(75_000);
+  // Seven screenshots plus bridge/tunnel transit deliberately exercise more
+  // than a minute of production canvas time; leave headroom for Playwright's
+  // locator actionability checks on loaded CI runners.
+  test.setTimeout(120_000);
   const appUrl = testInfo.project.metadata.pwaOrigin;
   if (typeof appUrl !== "string") throw new Error("playwright config must provide pwaOrigin");
   const failures = observeBrowser(page);
