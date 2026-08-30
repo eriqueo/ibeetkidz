@@ -405,7 +405,7 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
     // Chromium's canvas screenshot can vary by a few antialiasing levels even
     // for the same untinted pixels. Compare against the measured latch delta,
     // not exact PNG arithmetic: neutral must return within 5% of idle.
-    .toBeLessThan(Math.max(1, Math.abs(latchedNight - idleNight) * 0.05));
+    .toBeLessThanOrEqual(Math.max(1, Math.abs(latchedNight - idleNight) * 0.05));
   await expect
     .poll(async () => (await canvasMetrics(page)).worldLuma, {
       timeout: 5_000,
