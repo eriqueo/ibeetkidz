@@ -25,17 +25,20 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
-    # Permanent by design: the production Track release journey is long and
-    # graphics/audio heavy. A fresh runner keeps its physical-input verdict
-    # independent of the preceding ~10 minutes of WebAudio/WebGL churn while
-    # both matrix legs remain blocking dependencies of the reusable workflow.
+    # Permanent by design: each production Track journey is long and
+    # graphics/audio heavy. Its own runner gives it a new browser process,
+    # servers and audio graph instead of inheriting those from another journey.
+    # The fan-out is bounded at three; GitHub queues jobs when that cap is full.
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         include:
           - suite: main
             browsers: chromium webkit firefox
-          - suite: track-release
+          - suite: track-visual
+            browsers: chromium
+          - suite: track-finite
             browsers: chromium
     steps:
       - uses: actions/checkout@v4
@@ -57,16 +60,27 @@ jobs:
         env:
           PW_CROSS_ENGINE: "1"
           PW_HEADED: "1"
-      - name: Run Track release evidence on a fresh runner
-        if: matrix.suite == 'track-release'
-        run: xvfb-run --auto-servernum npm run test:e2e -- tests/e2e/track-release-evidence.spec.ts --project=chromium
+      - name: Run the visual Track journey on a fresh runner
+        if: matrix.suite == 'track-visual'
+        run: >-
+          xvfb-run --auto-servernum npm run test:e2e --
+          tests/e2e/track-release-evidence.spec.ts --project=chromium
+          --grep "produces reviewable release evidence"
+        env:
+          PW_HEADED: "1"
+      - name: Run the finite Track journey on a fresh runner
+        if: matrix.suite == 'track-finite'
+        run: >-
+          xvfb-run --auto-servernum npm run test:e2e --
+          tests/e2e/track-release-evidence.spec.ts --project=chromium
+          --grep "finite Track ride"
         env:
           PW_HEADED: "1"
       - name: Upload Track visual release evidence
-        if: always() && matrix.suite == 'track-release'
+        if: always() && matrix.suite != 'main'
         uses: actions/upload-artifact@v4
         with:
-          name: track-visual-release-evidence
+          name: track-visual-release-evidence-${{ matrix.suite }}
           path: |
             test-results/**/track-*.png
             test-results/**/video.webm
