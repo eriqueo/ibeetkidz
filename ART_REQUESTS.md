@@ -144,7 +144,7 @@ or a coloured full-canvas backdrop.
 
 ### Added 2026-08-30 (rev 8) — integration QA correction
 
-#### AR-069 · Make the unified Track controls readable at their real size — P0
+#### ✅ DELIVERED 2026-08-30 — AR-069 · Make the unified Track controls readable at their real size — P0
 
 **Why this is reopened:** AR-064/065 passed canvas, alpha, palette and paired-
 state registration checks, but failed the production-size review after the
@@ -345,6 +345,7 @@ railhead. The body canvases are not being redrawn in this request.
 
 | Request | Delivered files | Engineering handoff measurement |
 |---|---|---|
+| **AR-069** | Redrawn MAP, RIDE, CLEAR, LOOP, and TARP source pairs, plus `design/review/ar069-controls-70px.png`. | All ten faces retain their filenames/canvases and matching paired alpha boxes. The proof sheet contains literal 70×70px idle/state previews on cream and sky-blue backgrounds; the packed UI atlas was rebuilt. |
 | **AR-064** | TARP idle/seated keycap pair plus four car-specific tarp overlays. | Keycap states have identical content boxes; covers retain transparent wheel clearance and livery/nameplate aperture. |
 | **AR-065** | Unified MAP, RIDE, STOP, CLEAR, SEND, SLOW, FAST, LOOP, and TARP control family plus `track-speed-readout.png`. | SPEED display window: `x=122, y=168, w=268, h=128` in the native 512² canvas. |
 | **AR-066** | Left/right portals, tileable roof and wall, and matched unlit/lit lamp frames. | Roof and wall have matching left/right pixel seams; mount them as independent scrolling layers. |
