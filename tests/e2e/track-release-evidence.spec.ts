@@ -251,10 +251,10 @@ async function capture(
 }
 
 test("the Pages Track produces reviewable release evidence", async ({ page }, testInfo) => {
-  // Seven screenshots plus bridge/tunnel transit deliberately exercise more
-  // than a minute of production canvas time; leave headroom for Playwright's
-  // locator actionability checks on loaded CI runners.
-  test.setTimeout(120_000);
+  // Seven screenshots plus bar-scheduled bridge, tunnel, and tarp transitions
+  // deliberately exercise more than two minutes of production canvas time on
+  // a loaded headed CI runner. Individual assertions retain tighter deadlines.
+  test.setTimeout(180_000);
   const appUrl = testInfo.project.metadata.pwaOrigin;
   if (typeof appUrl !== "string") throw new Error("playwright config must provide pwaOrigin");
   const failures = observeBrowser(page);
