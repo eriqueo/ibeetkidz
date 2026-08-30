@@ -56,7 +56,15 @@ import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
-import { TRACK_HEADER, trackHeaderSlots, type PlacedRect } from "../scene-layout.ts";
+import {
+  TRACK_HEADER,
+  TRACK_JOB_BAR,
+  TRACK_VISUALIZER,
+  trackHeaderSlots,
+  trackJobSlots,
+  type TrackJobId,
+  type PlacedRect,
+} from "../scene-layout.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
 import type { CarType, Project } from "../../core/types.ts";
 // The oval already owns both of these; the side-scroller mounts the SAME
@@ -183,12 +191,6 @@ const BEAT_FLICK = 0.38;
  *  crew rather than resting on one. */
 const LANTERN_CANVAS = 160;
 const LANTERN_CLEARANCE = 26;
-
-/** The slot EVERY job-bar switch is drawn into, painted or keycap. One size,
- *  because eight controls that do the same kind of thing should look like eight
- *  of the same control (see `buildLegend`). */
-const SWITCH_W = 325;
-const SWITCH_H = 150;
 
 // Horizon bands, back to front.
 const SKY_Y = 0;
@@ -975,28 +977,18 @@ export class TrackV3Scene extends Phaser.Scene {
    */
   private buildLegend(): void {
     // Runs off the bottom edge, for the reason `buildTopBar` gives.
-    const fieldY = 1275;
-    this.plate("panel-transport-v2", { x: W / 2, y: fieldY, width: 1980, height: 370 });
+    this.plate("panel-transport-v2", TRACK_JOB_BAR.plate);
+    const slots = trackJobSlots();
 
-    // Four columns across the plate's field (~400..2064), two rows inside it.
-    // Every switch gets the SAME slot — painted or keycap, hill or night.
-    const COLS = 4;
-    const ROW_Y = [fieldY - 86, fieldY + 86];
-    const slot = (i: number): { x: number; y: number } => ({
-      x: Math.round(400 + ((i % COLS) + 0.5) * (1664 / COLS)),
-      y: ROW_Y[Math.floor(i / COLS)] ?? ROW_Y[0]!,
-    });
-
-    /** One switch in slot `i`: the painted pair when it exists, a labelled
+    /** One switch in its shared slot: the painted pair when it exists, a labelled
      *  keycap when it does not. Returns its latched-look setter. Written once —
      *  BACKWARDS used to hand-copy this whole body for its single slot. */
     const switchAt = (
-      i: number,
-      id: string,
+      id: TrackJobId,
       label: string,
       fire: () => void,
     ): ((on: boolean) => void) => {
-      const { x, y } = slot(i);
+      const { x, y, width, height } = slots[id];
       const idle = `trk-btn-${id}`;
       const down = `trk-btn-${id}-pressed`;
       if (this.textures.exists(idle)) {
@@ -1016,13 +1008,13 @@ export class TrackV3Scene extends Phaser.Scene {
         placeUiSprite(
           btn,
           { states: {}, base: idle, content: measureContentBox(this, idle), stretch: false },
-          { x, y, width: SWITCH_W, height: SWITCH_H },
+          { x, y, width, height },
         );
         this.pressableImage(btn, idle, this.textures.exists(down) ? down : idle, fire);
         return (on) => (on ? btn.setTint(0xffd166) : btn.clearTint());
       }
       const swatch = this.add
-        .rectangle(x, y, SWITCH_W, SWITCH_H, 0x3a3350, 1)
+        .rectangle(x, y, width, height, 0x3a3350, 1)
         .setName(`track-mode:${id}`)
         .setDepth(DEPTH.hud + 1);
       const cap = this.add
@@ -1045,26 +1037,19 @@ export class TrackV3Scene extends Phaser.Scene {
     // Row 1 is what the WORLD does; row 2 is what the TRAIN does. BACKWARDS
     // closes the second row because it is the other thing that rewrites how the
     // whole consist sounds without touching the landscape.
-    const modes: { kind: ModeKind; label: string }[] = [
-      { kind: "hill", label: "HILL" },
-      { kind: "bridge", label: "BRIDGE" },
-      { kind: "rain", label: "RAIN" },
-      { kind: "night", label: "🌙 NIGHT" },
-      { kind: "tunnel", label: "⛰ TUNNEL" },
-      { kind: "tiny", label: "🐭 TINY" },
-      { kind: "giant", label: "🦖 GIANT" },
-    ];
-    modes.forEach(({ kind, label }, i) => {
-      this.modeBtns[kind] = {
-        setLatched: switchAt(i, kind, label, () =>
-          void EventBus.emit("track-mode-toggled", kind)),
-      };
-    });
-
-    // The BACKWARDS switch — reverses every sampled voice; its own latch,
-    // stacks with everything above.
-    this.backwardsLatch = switchAt(7, "backwards", "⏪ BACK", () =>
-      void EventBus.emit("track-backwards-toggled"));
+    for (const { id, label } of TRACK_JOB_BAR.switches) {
+      if (id === "backwards") {
+        // Reverses every sampled voice; its own latch, stacks with the modes.
+        this.backwardsLatch = switchAt(id, label, () =>
+          void EventBus.emit("track-backwards-toggled"));
+      } else {
+        const kind: ModeKind = id;
+        this.modeBtns[kind] = {
+          setLatched: switchAt(kind, label, () =>
+            void EventBus.emit("track-mode-toggled", kind)),
+        };
+      }
+    }
   }
 
   /** React → scene: the set of LATCHED modes. Every latched switch holds a
@@ -1128,7 +1113,7 @@ export class TrackV3Scene extends Phaser.Scene {
       armed = false;
       viz.cycleStyle();
     });
-    viz.layout({ x: W / 2 - 330, y: 560, width: 660, height: 190 });
+    viz.layout(TRACK_VISUALIZER);
   }
 
   /** Exposed for the e2e bridge: what the jumbotron is showing, and how visible

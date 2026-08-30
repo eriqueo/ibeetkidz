@@ -177,6 +177,54 @@ export function trackHeaderSlots(): Record<string, PlacedRect> {
   return out;
 }
 
+/**
+ * The side-scroller's bottom job bar. Kept beside the header grid so the scene,
+ * canvas-input tests and visual-release evidence share one coordinate producer.
+ */
+export const TRACK_JOB_BAR = {
+  plate: { x: 1280, y: 1275, width: 1980, height: 370 },
+  field: { x0: 400, x1: 2064 },
+  columns: 4,
+  rows: [1189, 1361],
+  switch: { width: 325, height: 150 },
+  switches: [
+    { id: "hill", label: "HILL" },
+    { id: "bridge", label: "BRIDGE" },
+    { id: "rain", label: "RAIN" },
+    { id: "night", label: "🌙 NIGHT" },
+    { id: "tunnel", label: "⛰ TUNNEL" },
+    { id: "tiny", label: "🐭 TINY" },
+    { id: "giant", label: "🦖 GIANT" },
+    { id: "backwards", label: "⏪ BACK" },
+  ],
+} as const;
+
+export type TrackJobId = (typeof TRACK_JOB_BAR.switches)[number]["id"];
+
+/** Every job-bar switch rect, keyed by its mode id. */
+export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
+  const pitch = (TRACK_JOB_BAR.field.x1 - TRACK_JOB_BAR.field.x0) / TRACK_JOB_BAR.columns;
+  return Object.fromEntries(
+    TRACK_JOB_BAR.switches.map(({ id }, i) => [
+      id,
+      {
+        x: Math.round(TRACK_JOB_BAR.field.x0 + ((i % TRACK_JOB_BAR.columns) + 0.5) * pitch),
+        y: TRACK_JOB_BAR.rows[Math.floor(i / TRACK_JOB_BAR.columns)] ?? TRACK_JOB_BAR.rows[0],
+        width: TRACK_JOB_BAR.switch.width,
+        height: TRACK_JOB_BAR.switch.height,
+      },
+    ]),
+  ) as Record<TrackJobId, PlacedRect>;
+}
+
+/** Fixed jumbotron placement; release evidence asserts it clears the header. */
+export const TRACK_VISUALIZER: PlacedRect = {
+  x: 950,
+  y: 560,
+  width: 660,
+  height: 190,
+};
+
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
 // inside the oval is the assembly line the crane drops cars onto. Measured
 // from the 2026-07-02 repainted base plate (rail rows: oval top 0.289,

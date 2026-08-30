@@ -43,3 +43,13 @@ jobs:
         env:
           PW_CROSS_ENGINE: "1"
           PW_HEADED: "1"
+      - name: Upload Track visual release evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: track-visual-release-evidence
+          path: |
+            test-results/**/track-*.png
+            test-results/**/video.webm
+          if-no-files-found: error
+          retention-days: 14
