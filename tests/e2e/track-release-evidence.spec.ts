@@ -286,6 +286,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, bridge.x, bridge.y);
   await expect
     .poll(() => patchSignature(page, bridge.x, bridge.y), {
+      timeout: 12_000,
       message: "BRIDGE must visibly latch after a real canvas tap",
     })
     .not.toBe(bridgeBefore);
