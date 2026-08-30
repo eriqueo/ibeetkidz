@@ -162,10 +162,11 @@ function metricsOf(image: DecodedPng): CanvasMetrics {
       const b = image.data[i + 2] ?? 0;
       if (g >= 240 && r <= 20 && b <= 20) neonGreenPixels++;
       sampledPixels++;
-      // The band below the header and above the rails is the world treatment
-      // the tunnel must visibly affect. Fractions follow the rendered canvas,
-      // so the probe remains valid if the design resolution changes.
-      if (y >= image.height * 0.33 && y <= image.height * 0.70) {
+      // This full-width horizon band is below the visualizer and above the
+      // trees, train and rails. It remains inside both NIGHT's land shade and
+      // the tunnel treatment without letting moving scene composition skew the
+      // result. Fractions keep the probe valid across rendered canvas sizes.
+      if (y >= image.height * 0.42 && y <= image.height * 0.47) {
         worldLuma += 0.2126 * r + 0.7152 * g + 0.0722 * b;
         worldSamples++;
       }
@@ -279,15 +280,25 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
       message: "TUNNEL must visibly latch after a real canvas tap",
     })
     .not.toBe(tunnelBefore);
+  let tunnelWorld = bridgeRide;
   await expect
-    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+    .poll(async () => {
+      tunnelWorld = await canvasMetrics(page);
+      return tunnelWorld.worldLuma;
+    }, {
       timeout: 15_000,
       message: "TUNNEL must produce a visible world treatment when its bar arrives",
     })
     .toBeLessThan(bridgeRide.worldLuma * 0.82);
   await capture(page, testInfo, "track-05-tunnel");
   await tapDesignPoint(page, slots.stop!.x, slots.stop!.y);
-  await page.waitForTimeout(400);
+  await expect
+    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+      timeout: 5_000,
+      message: "STOP must settle the distance-driven tunnel exit in daylight",
+    })
+    .toBeGreaterThan(tunnelWorld.worldLuma * 1.1);
+  await capture(page, testInfo, "track-05b-tunnel-cleared");
 
   // One seeded car has a stable, generous body target around the middle-left
   // of the consist. Arm the authored TARP key, select the car, then confirm the
@@ -383,14 +394,24 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
   // acknowledgement. AudioEngine publishes `started` before its async start
   // flight drains the queued NIGHT intent, so wait on the actual world
   // projection before treating the switch as authoritatively latched.
+  let nightWorld = idleWorld;
   await expect
-    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+    .poll(async () => {
+      // Keep the exact compositor sample that satisfies the NIGHT gate. A
+      // second screenshot here can take long enough on a loaded runner for a
+      // short finite ride to finish, turning the alleged NIGHT baseline back
+      // into daylight before the restoration assertion sees it.
+      nightWorld = await canvasMetrics(page);
+      return nightWorld.worldLuma;
+    }, {
       timeout: 12_000,
       message: "NIGHT must darken the world after the cold Ride start settles",
     })
-    .toBeLessThan(idleWorld.worldLuma * 0.9);
+    // The painted NIGHT treatment is about 0.63x the day band's luma. Requiring
+    // a full treatment keeps an unusually bright idle frame from admitting an
+    // ordinary day frame as NIGHT.
+    .toBeLessThan(idleWorld.worldLuma * 0.75);
   const latchedNight = await patchSignature(page, night.x, night.y);
-  const nightWorld = await canvasMetrics(page);
 
   await expect.poll(transportState, {
     timeout: 20_000,
@@ -406,12 +427,22 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
     // for the same untinted pixels. Compare against the measured latch delta,
     // not exact PNG arithmetic: neutral must return within 5% of idle.
     .toBeLessThanOrEqual(Math.max(1, Math.abs(latchedNight - idleNight) * 0.05));
+  const nightDelta = idleWorld.worldLuma - nightWorld.worldLuma;
+  const neutralTolerance = Math.max(2, nightDelta * 0.05);
+  await testInfo.attach("finite-night-baseline", {
+    body: JSON.stringify({ idleWorld, nightWorld, nightDelta, neutralTolerance }, null, 2),
+    contentType: "application/json",
+  });
   await expect
-    .poll(async () => (await canvasMetrics(page)).worldLuma, {
+    .poll(async () => Math.abs(
+      (await canvasMetrics(page)).worldLuma - idleWorld.worldLuma,
+    ), {
       timeout: 5_000,
       message: "the world must return to its neutral treatment at finite completion",
     })
-    .toBeGreaterThan(nightWorld.worldLuma * 1.1);
+    // At least 95% of the measured NIGHT effect must disappear. Comparing to
+    // the original neutral frame is stronger than merely becoming brighter.
+    .toBeLessThanOrEqual(neutralTolerance);
 
   // LOOP is the next Ride's configuration, not a ride-mode latch. Auto-stop
   // keeps its visible 1x setting while clearing NIGHT and the world treatment.

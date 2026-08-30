@@ -231,6 +231,18 @@ test("an idle job switch starts its Ride before applying terrain and atmosphere"
   ).toBe("started");
   await expect.poll(async () => (await state(page)).latchedModes).toContain("night");
   await expect.poll(async () => (await state(page)).nightVisible).toBe(true);
+
+  await tapNamedPhaserObject(page, "track-control:btn-transport-stop");
+  await expect.poll(async () => (await state(page)).nightVisible).toBe(false);
+
+  // TUNNEL normally enters and exits over travelled distance. A stopped train
+  // cannot finish that distance-driven exit, so the stop edge must settle the
+  // tunnel immediately instead of leaving a dark enclosure frozen on screen.
+  await tapNamedPhaserObject(page, "track-mode:tunnel");
+  await expect.poll(async () => (await state(page)).latchedModes).toContain("tunnel");
+  await expect.poll(async () => (await state(page)).tunnel.phase).not.toBe("off");
+  await tapNamedPhaserObject(page, "track-control:btn-transport-stop");
+  await expect.poll(async () => (await state(page)).tunnel.phase).toBe("off");
 });
 
 test("a car tap waits for an explicit edit, tarp, or close choice", async ({ page }) => {

@@ -1283,6 +1283,20 @@ export class TrackV3Scene extends Phaser.Scene {
     for (const lamp of this.tunnelLamps) lamp.setVisible(true);
   }
 
+  /** React → scene: a stopped transport has no distance left with which to
+   *  finish TUNNEL's normal travelling exit. Settle it synchronously at that
+   *  terminal edge; an ordinary toggle-off still uses `setNightTunnel`'s
+   *  animated exit while the train is moving. */
+  settleTunnelAtStop(): void {
+    this.tunnelOn = false;
+    this.tunnelPhase = "off";
+    this.tunnelMouth?.setVisible(false);
+    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelRoof]) {
+      layer?.setVisible(false);
+    }
+    for (const lamp of this.tunnelLamps) lamp.setVisible(false);
+  }
+
   /** React → scene: the tiny/giant switches' train size. The whole consist —
    *  spacing included — scales, which IS the joke. */
   setTrainScale(scale: number): void {

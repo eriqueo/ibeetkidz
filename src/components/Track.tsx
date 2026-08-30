@@ -143,6 +143,9 @@ export const Track: FC = () => {
     modeIntentsRef.current?.clear();
     latchedRidesRef.current.clear();
     pushModesToScene();
+    // TUNNEL's ordinary exit is distance-driven. At a terminal stop there is
+    // no remaining travel to complete it, so settle that transition now.
+    v3Ref.current?.settleTunnelAtStop();
   }, [pushModesToScene]);
 
   const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
