@@ -22,7 +22,7 @@
     "test:e2e": "npm run build:gh && playwright test",
     "test:e2e:headed": "npm run build:gh && playwright test --headed",
     "deploy": "npm run build && npm run deploy:cf",
-    "deploy:cf": "npx -y wrangler@4 pages deploy ./dist --project-name=ibeetkidz --branch=main --commit-dirty=true",
+    "deploy:cf": "wrangler pages deploy ./dist --project-name=ibeetkidz --branch=main --commit-dirty=true",
     "generate:notices": "node scripts/generate-third-party-notices.mjs"
   },
   "dependencies": {
@@ -44,10 +44,13 @@
     "fake-indexeddb": "^6.2.5",
     "globals": "^17.8.0",
     "jsdom": "^25.0.1",
+    "pngjs": "7.0.0",
+    "rollup": "4.62.0",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.65.0",
     "vite": "^6.4.1",
     "vite-plugin-pwa": "^1.3.0",
-    "vitest": "^3.2.3"
+    "vitest": "^3.2.3",
+    "wrangler": "4.127.1"
   }
 }

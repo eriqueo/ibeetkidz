@@ -2,8 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { emptyProject, serialize } from "../../src/core/project-state.ts";
 import { tapCanvasAtClientPoint } from "./canvas-input.ts";
 import { tapMapLandmark } from "./map-landmark.ts";
-// @ts-expect-error -- Playwright exposes this pinned decoder without .d.ts
-import { PNG } from "playwright-core/lib/utilsBundle";
+import { PNG } from "pngjs";
 
 // Acceptance requires the real 2560×1440 game canvas, not a 1280×720 review-scale screenshot.
 const VIEWPORT = { width: 2560, height: 1440 };

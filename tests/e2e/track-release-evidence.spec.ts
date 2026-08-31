@@ -10,11 +10,7 @@ import {
 import { trackCarActionSlots } from "../../src/game/track-car-actions.ts";
 import { tapCanvasAtClientPoint } from "./canvas-input.ts";
 import { tapMapLandmark } from "./map-landmark.ts";
-// Playwright explicitly exports this bundle path, but does not publish its
-// declarations. Reuse its pinned PNG decoder instead of adding a second image
-// stack solely for release tests.
-// @ts-expect-error -- exported JavaScript module intentionally has no .d.ts
-import { PNG } from "playwright-core/lib/utilsBundle";
+import { PNG } from "pngjs";
 
 // Production-shaped visual release evidence for the default Track.
 //
