@@ -18,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
       - run: bash scripts/check-asset-size.sh
       # Sprite alpha, unlike the size warning above, DOES fail: art with an
       # opaque background renders a rectangle over the scene. It lives in this

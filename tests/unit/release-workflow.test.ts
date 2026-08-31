@@ -24,6 +24,11 @@ describe("release workflow", () => {
 
   it("keeps the advisory asset workflow on the same atlas check", () => {
     expect(occurrences(assetWorkflow, atlasCheck)).toBe(1);
+    expect(occurrences(assetWorkflow, "actions/setup-node@v4")).toBe(1);
+    expect(occurrences(assetWorkflow, "npm ci")).toBe(1);
+    expect(assetWorkflow.indexOf("npm ci")).toBeLessThan(
+      assetWorkflow.indexOf(atlasCheck),
+    );
     expect(buildWorkflow).not.toContain("scripts/build_ui_atlas.py");
     expect(assetWorkflow).not.toContain("scripts/build_ui_atlas.py");
   });
