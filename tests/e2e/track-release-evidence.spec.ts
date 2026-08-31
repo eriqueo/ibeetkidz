@@ -260,6 +260,39 @@ async function capture(
   return metrics;
 }
 
+/** Capture a design-space crop from the real production canvas.  This preserves
+ * the same compositor pixels a player sees while making small acceptance details
+ * such as the live SPEED readout and tyre/rail contact reviewable. */
+async function captureDesignCrop(
+  page: Page,
+  testInfo: TestInfo,
+  name: string,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+): Promise<void> {
+  const canvas = page.locator("canvas").first();
+  const box = await canvas.boundingBox();
+  expect(box, `${name}: production canvas must remain visible`).not.toBeNull();
+  const intrinsic = await canvas.evaluate((element) => {
+    const source = element as HTMLCanvasElement;
+    return { width: source.width, height: source.height };
+  });
+  const path = testInfo.outputPath(`${name}.png`);
+  await page.screenshot({
+    path,
+    animations: "allow",
+    clip: {
+      x: box!.x + x * (box!.width / intrinsic.width),
+      y: box!.y + y * (box!.height / intrinsic.height),
+      width: width * (box!.width / intrinsic.width),
+      height: height * (box!.height / intrinsic.height),
+    },
+  });
+  await testInfo.attach(name, { path, contentType: "image/png" });
+}
+
 test("the Pages Track produces reviewable release evidence", async ({ page }, testInfo) => {
   // Seven screenshots plus bar-scheduled bridge, tunnel, and tarp transitions
   // deliberately exercise more than two minutes of production canvas time on
@@ -288,6 +321,11 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, slots.ride!.x, slots.ride!.y);
   await page.waitForTimeout(1_200);
   await capture(page, testInfo, "track-02-riding-visualizer");
+  const tempo = slots.tempo!;
+  await captureDesignCrop(
+    page, testInfo, "track-02b-speed-readout",
+    tempo.x - 170, tempo.y - 170, 340, 340,
+  );
 
   const jobSlots = trackJobSlots();
   const bridge = jobSlots.bridge;
@@ -303,6 +341,12 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await capture(page, testInfo, "track-03-bridge-approach");
   await page.waitForTimeout(3_000);
   const bridgeRide = await capture(page, testInfo, "track-04-bridge-traversal");
+  // The selected car's confirmed hit point is an authored wheel-bearing body
+  // target. Crop below it to prove the rebuilt tyre actually reaches rail level.
+  await captureDesignCrop(
+    page, testInfo, "track-04b-wheel-contact",
+    SEEDED_CAR_TAP.x - 260, 860, 520, 240,
+  );
 
   const tunnelBefore = await patchSignature(page, tunnel.x, tunnel.y);
   await tapDesignPoint(page, tunnel.x, tunnel.y);
@@ -322,7 +366,12 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
       message: "TUNNEL must produce a visible world treatment when its bar arrives",
     })
     .toBeLessThan(bridgeRide.worldLuma * 0.82);
-  await capture(page, testInfo, "track-05-tunnel");
+  // Poll returns at the beginning of the distance-driven entrance, when the
+  // portal overlaps the moving consist. This is deliberately captured before
+  // the full enclosure so aperture alpha and train occlusion are reviewable.
+  await capture(page, testInfo, "track-05-tunnel-entry-partial");
+  await page.waitForTimeout(1_400);
+  await capture(page, testInfo, "track-05b-tunnel-inside");
   await tapDesignPoint(page, slots.stop!.x, slots.stop!.y);
   await expect
     .poll(async () => (await canvasMetrics(page)).worldLuma, {
@@ -330,7 +379,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
       message: "STOP must settle the distance-driven tunnel exit in daylight",
     })
     .toBeGreaterThan(tunnelWorld.worldLuma * 1.1);
-  await capture(page, testInfo, "track-05b-tunnel-cleared");
+  await capture(page, testInfo, "track-05c-tunnel-cleared");
 
   // One seeded car has a stable, generous body target around the middle-left
   // of the consist. Arm the authored TARP key, select the car, then confirm the
