@@ -167,9 +167,8 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "inst-violin": instrumentDef("inst-violin", [0.092, 0.26, 0.858, 0.898]),
   "inst-piano": instrumentDef("inst-piano", [0.031, 0.23, 0.939, 0.794]),
   // Zone plates (stretched to their Tiled rect, like the legacy Yard/Track panels).
-  // panel-header/transport PNGs are pre-trimmed (whole canvas = content); the
+  // Header/transport PNGs are pre-trimmed (whole canvas = content); the
   // yard actions plate carries transparent margins, so it passes a measured box.
-  "panel-header": panelDef("panel-header", [0, 0, 1, 1]),
   "panel-header-v2": panelDef("panel-header-v2", [0, 0, 1, 1]),
   "panel-transport-v2": panelDef("panel-transport-v2", [0.0164, 0.2066, 0.981, 0.7283]),
   "panel-yard-actions": panelDef("panel-yard-actions", [0.021, 0.325, 0.979, 0.672]),

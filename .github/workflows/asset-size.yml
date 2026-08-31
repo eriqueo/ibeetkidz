@@ -30,7 +30,9 @@ jobs:
       # src/assets/sprites/ and simply never reach the game. It also carries the
       # de-wash step (see AR-009), which only runs at pack time: a hand-synced
       # atlas would quietly reintroduce the grey boxes behind every keycap.
-      # Repack and diff. Byte-identical or it failed.
+      # Repack in a temporary directory. JSON is byte-deterministic; PNG pages
+      # compare dimensions, color model, and decoded pixels so encoder-only
+      # differences do not reject equivalent art.
       - name: ui atlas is regenerable from its sprites
         run: |
           python3 -m pip install --quiet -r scripts/requirements-ui-atlas.txt

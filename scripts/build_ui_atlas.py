@@ -9,6 +9,7 @@ the old standalone texture keys, so UI_SPRITES state maps don't change.
 Re-run after adding/updating any sprite in src/assets/sprites/.
 """
 from PIL import Image
+import argparse
 import glob
 import json
 import os
@@ -107,7 +108,7 @@ def dewash(im: Image.Image) -> tuple[Image.Image, int]:
     return out, cleared
 
 
-def main() -> None:
+def main(out_dir: str = OUT_DIR) -> None:
     sprites = []
     washed = []
     for d in SRC_DIRS:
@@ -157,8 +158,8 @@ def main() -> None:
             "sourceSize": {"w": im.width, "h": im.height},
         })
 
-    os.makedirs(OUT_DIR, exist_ok=True)
-    for old in glob.glob(f"{OUT_DIR}/ui-atlas-*.png"):
+    os.makedirs(out_dir, exist_ok=True)
+    for old in glob.glob(f"{out_dir}/ui-atlas-*.png"):
         os.remove(old)
     textures = []
     total = 0
@@ -167,8 +168,8 @@ def main() -> None:
         used_h = max(s[1] + s[2] for s in shelves[pi])
         img = page.crop((0, 0, PAGE, used_h)).quantize(colors=256, method=Image.FASTOCTREE)
         fname = f"ui-atlas-{pi}.png"
-        img.save(f"{OUT_DIR}/{fname}", optimize=True)
-        total += os.path.getsize(f"{OUT_DIR}/{fname}")
+        img.save(f"{out_dir}/{fname}", optimize=True)
+        total += os.path.getsize(f"{out_dir}/{fname}")
         textures.append({
             "image": fname,
             "format": "RGBA8888",
@@ -177,9 +178,12 @@ def main() -> None:
             "frames": frames_per_page[pi],
         })
     json.dump({"textures": textures, "meta": {"app": "build_ui_atlas.py", "version": "1.0"}},
-              open(f"{OUT_DIR}/ui-atlas.json", "w"))
+              open(f"{out_dir}/ui-atlas.json", "w"))
     print(f"packed {len(sprites)} sprites into {len(pages)} page(s), {total / 1e6:.1f}MB total")
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--output-dir", default=OUT_DIR)
+    args = parser.parse_args()
+    main(args.output_dir)
