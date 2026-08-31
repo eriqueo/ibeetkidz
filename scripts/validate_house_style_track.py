@@ -134,10 +134,21 @@ def exact_blocker_checks() -> None:
     print("PASS mechanical SPEED runtime window is opaque and dark")
 
     wheel = im(T / "wheel.png")
+    hub_x = hub_y = 38
     contact = [x for x in range(wheel.width) if wheel.getpixel((x, 75))[3] == 255]
-    assert contact and min(contact) <= 38 <= max(contact), "wheel tyre does not reach contact row y=75 at hub tangent"
-    assert wheel.getpixel((38, 38))[3] == 255, "wheel hub registration pixel missing at (38, 38)"
-    print("PASS mechanical wheel tyre reaches y=75 with hub retained at (38,38)")
+    assert contact and min(contact) <= hub_x <= max(contact), "wheel tyre does not reach contact row y=75 at hub tangent"
+    assert wheel.getpixel((hub_x, hub_y))[3] == 255, "wheel hub registration pixel missing at (38, 38)"
+    # The Track renderer rotates around (38,38).  Cardinal opaque extents are
+    # the simplest deterministic definition of the tyre's four visible radii.
+    # Unequal extents create a wobble even when the nominal hub is centred.
+    radii = (
+        hub_x - min(x for x in range(hub_x + 1) if wheel.getpixel((x, hub_y))[3] == 255),
+        hub_y - min(y for y in range(hub_y + 1) if wheel.getpixel((hub_x, y))[3] == 255),
+        max(x for x in range(hub_x, wheel.width) if wheel.getpixel((x, hub_y))[3] == 255) - hub_x,
+        max(y for y in range(hub_y, wheel.height) if wheel.getpixel((hub_x, y))[3] == 255) - hub_y,
+    )
+    assert len(set(radii)) == 1, f"wheel radii must be equal about hub (38,38), got {radii}"
+    print(f"PASS mechanical wheel tyre reaches y=75; hub (38,38); equal radii {radii}")
 
     atlas = json.loads((ATLAS / "ui-atlas.json").read_text())
     frames = {frame["filename"]: (texture, frame) for texture in atlas["textures"] for frame in texture["frames"]}
