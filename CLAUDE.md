@@ -12,8 +12,8 @@ code). Tone.js does the audio; the core stays vendor-free behind ports.
 ## Stack
 
 TypeScript + Vite 6 + React 19 (presentation layer only — the core stays
-framework-free). Tone.js ^15. Vitest + Playwright. Yarn or npm (lockfile
-decides — scaffold assumes npm). Node 24. GitHub Pages auto-deploy.
+framework-free). Tone.js ^15. Vitest + Playwright. npm (the committed
+`package-lock.json` is authoritative). Node 24. GitHub Pages auto-deploy.
 
 ## Architecture rules (hold these)
 
@@ -38,11 +38,10 @@ decides — scaffold assumes npm). Node 24. GitHub Pages auto-deploy.
 - **Kid-safe + private.** No network, no accounts, no sharing by default.
 - **Forgiving UX.** Undo everywhere; mic-denied must leave the app fully usable.
 
-These are not just prose: `tests/unit/architecture.test.ts` (ticket S2) asserts
-five of the rules above as source-text guards over `src/**`, plus two that guard
-seams not in that list — the dev-only scene editor stays behind one dynamic
-import, and every Phaser loader call is wrapped in a cache check. Breaking any of
-the seven fails the gate. Prose does not fail a build; that file does.
+These are not just prose: `tests/unit/architecture.test.ts` asserts the rules
+above as source-text guards over `src/**`, plus load-bearing seams such as the
+dev-only editor boundary, guarded Phaser loader calls, and generated legal
+notices. Prose does not fail a build; that file does.
 
 ## Commands
 
@@ -54,20 +53,20 @@ npm run test       # unit (Vitest)  — gate
 npm run lint       # eslint . (ticket S2) — gate
 npm run test:e2e   # Playwright, chromium, faked media
 npm run build      # dist/ (/) + dist-gh/ (/ibeetkidz/)
-npm run deploy     # build, then push dist/ to Cloudflare Pages
+npm run deploy     # separately authorized manual Cloudflare deployment
 ```
 
 **The gate is `npm run typecheck && npm run test && npm run lint`.**
 
-### Deploying — the work is not done until it is live
+### Deploying
 
-Eric tests on the **live site**, never a dev server. Two independent targets ship
-the same commit, so a bad day at either vendor doesn't block a deploy:
+GitHub Pages is the canonical release target. Cloudflare Pages is a separately
+authorized manual fallback; do not run it merely because a build passed.
 
 | Target | How | URL |
 |---|---|---|
-| **Cloudflare Pages** | `npm run deploy` (direct upload, no CI in the path) | <https://ibeetkidz.pages.dev> |
 | **GitHub Pages** | `git push origin main` → Actions | <https://eriqueo.github.io/ibeetkidz/> |
+| **Cloudflare Pages** | `npm run deploy` after explicit approval | <https://ibeetkidz.pages.dev> |
 
 **Deploy `dist/`, never `dist-gh/`, to Cloudflare.** `dist-gh/` hardcodes
 `/ibeetkidz/` into every asset URL for GitHub's sub-path; on a domain root that

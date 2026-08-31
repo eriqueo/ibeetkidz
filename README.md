@@ -118,7 +118,7 @@ and the operating system can reclaim browser storage when space is low.
 
 **Every finished piece has a way in now.** This paragraph used to list three
 tool panels and the "Surprise me" generator as built-but-unreachable. All eight
-instrument characters open their tool in `assets/maps/workshop.json`, and
+instrument characters open their tool in `src/assets/maps/workshop.json`, and
 **Surprise me** lives in the empty-car prompt — tap `SURPRISE ME!` inside the
 empty car and it fills with a seeded groove (`src/core/generative.ts`,
 same seed → same beat). It offers itself only while the car is empty, which is
@@ -138,6 +138,6 @@ kept and re-hosted; `VizPanel` and the DOM render loop are gone.)
 
 **Gates:** `npm run typecheck` clean, the Vitest unit suite, and the Playwright
 E2E suite. For the current counts see **`BASELINE.md`** — it is the single
-producer of that fact, and the E2E number differs local vs CI (two hardware-audio
-specs `test.skip` themselves when `CI` is set). `design/HISTORY.md` carries the
-architectural history.
+producer of that fact. Hardware-audio blocks intentionally skip when CI lacks
+the required device path; run the suite for the current result rather than
+copying an old count. `design/HISTORY.md` carries the architectural history.

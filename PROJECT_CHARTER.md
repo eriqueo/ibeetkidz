@@ -17,10 +17,10 @@
 *   **The Cast:** The "Beet crew" — instruments and tools are friendly objects with faces and personalities (e.g., frog on drums, chipmunk on mic).
 
 ### Visual Style Rules
-*   **Palette:** Strict 16-color warm Nintendo palette. No off-palette colors. Flat fills on UI chrome — no gradients, no glow.
-*   **Pixels:** Fixed pixel grid, integer scaling only, `image-rendering: pixelated`. Chunky pixels (3-4px per game pixel).
-*   **Outlines & Depth:** 1px dark plum outline on every sprite. Hard 2-3px drop-shadows for depth, no blurs.
-*   **Typography:** Clean rounded sans-serif (e.g., Baloo 2) for maximum legibility. Pixel display fonts are for titles/logos only. Dark text on light "paper" panels.
+*   **Palette:** Warm Nintendo toy-world hue families with rich material ramps for oak, brass, steel, parchment, cloth, water and scenery. UI state pairs stay coherent. No neon glow or generic modern gradient treatment.
+*   **Pixels:** Crisp pixel clusters and nearest-neighbour treatment where assets are scaled. Preserve authored detail and registration; do not reduce accepted art to a sparse fixed-grid sketch.
+*   **Outlines & Depth:** Decisive dark outlines and hard-edged contact/drop shadows. No blurred glow.
+*   **Typography:** Press Start 2P for game labels and display text; Cascadia Code for readable body and operational text. Keep text high-contrast on its authored plate.
 
 ---
 
