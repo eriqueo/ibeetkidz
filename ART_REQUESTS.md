@@ -416,6 +416,21 @@ railhead. The body canvases are not being redrawn in this request.
 > does not check atlas freshness, runtime content boxes, positive-reference
 > fidelity, or full-scene coherence, and no blocking workflow invokes it yet.
 
+### Corrected 2026-08-30 — approved detailed 16-bit house style; engineering integration pending
+
+> **Style correction (2026-08-30).** The first remake pass was technically crisp but visually wrong: it reduced iBeetKidz into sparse low-resolution prototype art. The approved replacement uses the current in-game captures as visual authority—dense, polished 16-bit toy-world materials; richly framed mini-scenes; warm oak, brass, steel, parchment and railway scenery; decisive dark outlines; and true transparent surrounds. `design/review/TRACK_HOUSE_STYLE_RESET.md` records the required direction and the explicit RIDE-control approval.
+
+| Request | Corrected house-style delivery | Engineering handoff measurement |
+|---|---|---|
+| **AR-064** | `1cd5d92` replaces the TARP idle/seated controls with detailed framed railway-card scenes and rebuilds all four car overlays with blue canvas folds, rope ties, brass eyelets, transparent wheel clearance and open livery plates. | The two TARP controls retain equal alpha content bounds; each cover retains its exact car canvas. |
+| **AR-065** | `5d02252` replaces STOP, SEND, SLOW, FAST and SPEED with rich illustrated controls built in the same oak/brass/steel language as Track’s existing console. | SPEED remains an empty runtime display; integration may remeasure its interior text rectangle from the new detailed housing. |
+| **AR-066** | `791cffe` replaces the abstract tunnel kit with mossy rock portal hills, weathered stone, timber/iron hardware, rich scrolling roof/wall layers and matched brass lamps. | Portal opening is true transparent; roof/wall retain X-seam equality; lamps retain equal alpha bounds. |
+| **AR-067** | `2ae3348` replaces the schematic bridge with rich railhead deck, riveted oak trestle, rocky grass banks and blue-green river water. | Deck railhead is `y=0`; deck/water have matching left/right edge pixels. |
+| **AR-068** | `77fcbc3` replaces the sparse wheel with dense six-spoke steel/brass/red wheel art, a hard-edged contact shadow and refreshed registration sheets. | Wheel hub remains **(38, 38)**. Axle and radius values are unchanged in the registration sheets. |
+| **AR-069** | `273faa0` replaces MAP, RIDE, CLEAR and LOOP pairs with approved framed toy-railway vignettes. | Paired states retain matching alpha bounds; `design/review/style-reset/house-style-controls-70px.png` is the corrected real-size proof. |
+
+> **Validation.** `scripts/validate_house_style_track.py` verifies RGBA mode, exact canvas dimensions, alpha-zero corners and opaque art pixels for discrete sprites; X-seam equality for scrolling plates; and matching alpha bounds for every state-swapped control or lamp pair. It passes after this corrected delivery.
+
 ### INTEGRATED 2026-08-13 (engineering)
 
 | Request | Where it now shows |
