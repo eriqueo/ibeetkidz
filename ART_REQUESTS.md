@@ -2788,6 +2788,30 @@ machine in the same steel/wood/brass family as Melody and Percussion, not as a
 parchment modal with controls pasted on top. Engineering measures the recesses
 and mounts the existing controls on delivery.
 
+### ✅ DELIVERED — AR-051A · Redraw the My Voice machine body — P0
+
+`panel-voice.png` was redrawn on the same **1536 × 1152** canvas as a dedicated
+recorder machine body. The shared panel header, close socket and DONE plaque are
+not baked into the PNG and were not redrawn. The production recesses were held
+exactly for the live renderer: record `(x .285–.832, y .135–.275)`, status rail
+centre `y .318`, eight FX bays `(x .126–.876, y .359–.766)`, and outcome bays
+`(x .105–.491)` and `(x .520–.903)`, both `y .786–.900`.
+
+The body now uses the accepted timber/steel/brass machine language, with a
+pictorial microphone pedestal outside the record hit target and recorder-service
+rails around the live FX rack. It contains no baked title, close mark, DONE mark,
+effect icon, live button, or status text. Mechanical acceptance holds the
+protected live regions byte-for-byte against the prior mounted plate, confirms
+hard alpha with zero corners, and confirms a nonzero permitted body redraw.
+
+**Production proof:** the Pages artifact captures two 2560 × 1440 assembled
+states through real canvas input: an empty take, then a deterministic
+recorded take showing the live `RECORD AGAIN`, FX keycaps and both outcome
+buttons. The screenshot fixture supplies a synthetic stream only when the
+sandbox browser cannot surface its native fake microphone to the PWA; the
+application code and live control path remain unchanged.
+
+
 ## ✅ DELIVERED — AR-052 · The Workshop car's painted cabin — P0 (character integration)
 
 **Art delivered 2026-08-13 in `0a5cb26`.** The standardized 1612 × 430 void now
