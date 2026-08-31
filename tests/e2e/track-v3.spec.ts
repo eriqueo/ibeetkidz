@@ -557,6 +557,10 @@ test("a bridge and rain leave the rails level — only a hill is a climb", async
     if (kind === "bridge") {
       await expect.poll(async () => (await state(page)).bridge.deckWidth).toBeGreaterThan(640);
       await expect.poll(async () => (await state(page)).bridge.visiblePiers).toBeGreaterThan(1);
+      expect(
+        (await state(page)).bridge.visibleStructureAboveJobBar,
+        "the bridge must show substantially more than its rail cap above the job deck",
+      ).toBeGreaterThanOrEqual(170);
     }
     for (let i = 0; i < 25; i++) {
       const s = await state(page);
@@ -611,12 +615,56 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   await emit(page, "transport-play", "ride");
   await emit(page, "track-mode-toggled", "tunnel");
   await expect.poll(async () => (await state(page)).tunnel.phase).toMatch(/entering|inside/);
+  await expect
+    .poll(async () => {
+      const tunnel = (await state(page)).tunnel;
+      return tunnel.phase === "entering" ? tunnel : null;
+    })
+    .toMatchObject({
+      enclosureX: expect.any(Number),
+      enclosureWidth: expect.any(Number),
+      daylightX: 0,
+      daylightWidth: expect.any(Number),
+    });
+  const entering = (await state(page)).tunnel;
+  expect(entering.enclosureX).toBeGreaterThan(0);
+  expect(entering.enclosureWidth).toBeLessThan(2560);
+  expect(entering.daylightWidth).toBe(entering.enclosureX);
+  if (entering.portalX > entering.consistNoseX) {
+    expect(
+      entering.enclosureX,
+      "stone must remain ahead of the locomotive until the portal reaches it",
+    ).toBeGreaterThan(entering.consistNoseX);
+  }
   await expect.poll(async () => (await state(page)).tunnel.visibleLamps).toBeGreaterThan(1);
   const before = (await state(page)).tunnel.wallOffset;
   await expect
     .poll(async () => (await state(page)).tunnel.wallOffset, { timeout: 8_000 })
     .not.toBe(before);
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("inside");
+  const inside = (await state(page)).tunnel;
+  expect(inside.enclosureX).toBe(0);
+  expect(inside.enclosureWidth).toBe(2560);
+  expect(inside.daylightWidth).toBe(0);
 
   await emit(page, "track-mode-toggled", "tunnel");
   await expect.poll(async () => (await state(page)).tunnel.phase).toMatch(/exiting|off/);
+  await expect
+    .poll(async () => {
+      const tunnel = (await state(page)).tunnel;
+      return tunnel.phase === "exiting" ? tunnel : null;
+    })
+    .toMatchObject({
+      enclosureX: 0,
+      enclosureWidth: expect.any(Number),
+      daylightX: expect.any(Number),
+      daylightWidth: expect.any(Number),
+    });
+  const exiting = (await state(page)).tunnel;
+  expect(exiting.daylightX).toBe(exiting.enclosureWidth);
+  expect(exiting.daylightWidth).toBe(2560 - exiting.enclosureWidth);
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("off");
+  const outside = (await state(page)).tunnel;
+  expect(outside.enclosureWidth).toBe(0);
+  expect(outside.daylightWidth).toBe(2560);
 });
