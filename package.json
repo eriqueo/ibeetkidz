@@ -1,14 +1,16 @@
 {
   "name": "ibeetkidz",
   "private": true,
+  "license": "UNLICENSED",
   "version": "0.0.0",
   "type": "module",
   "description": "Kidpix for audio — a kid-friendly browser sound playground. Record your voice, make it crazy, layer loops, see the sound.",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && npm run build:gh && npm run check:no-editor && npm run check:pwa",
+    "build": "npm run check:notices && tsc && vite build && npm run build:gh && npm run check:no-editor && npm run check:pwa",
     "build:gh": "vite build --mode gh",
     "check:no-editor": "bash scripts/check-no-editor-in-dist.sh",
+    "check:notices": "node scripts/generate-third-party-notices.mjs --check",
     "check:pwa": "node scripts/check-pwa-build.mjs",
     "check:workshop-car-art": "python3 scripts/validate_workshop_open_car_art.py",
     "preview": "vite preview",
@@ -20,7 +22,8 @@
     "test:e2e": "npm run build:gh && playwright test",
     "test:e2e:headed": "npm run build:gh && playwright test --headed",
     "deploy": "npm run build && npm run deploy:cf",
-    "deploy:cf": "npx -y wrangler@4 pages deploy ./dist --project-name=ibeetkidz --branch=main --commit-dirty=true"
+    "deploy:cf": "npx -y wrangler@4 pages deploy ./dist --project-name=ibeetkidz --branch=main --commit-dirty=true",
+    "generate:notices": "node scripts/generate-third-party-notices.mjs"
   },
   "dependencies": {
     "phaser": "^4.2.0",

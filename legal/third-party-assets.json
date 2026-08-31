@@ -1,0 +1,18 @@
+[
+  {
+    "file": "src/assets/theme/fonts/cascadia-code-latin.woff2",
+    "name": "Cascadia Code",
+    "copyright": "Copyright (c) 2019 - Present, Microsoft Corporation, with Reserved Font Name Cascadia Code.",
+    "license": "OFL-1.1",
+    "licenseFile": "legal/OFL-1.1.txt",
+    "source": "https://github.com/microsoft/cascadia-code"
+  },
+  {
+    "file": "src/assets/theme/fonts/press-start-2p-latin.woff2",
+    "name": "Press Start 2P",
+    "copyright": "Copyright 2012 The Press Start 2P Project Authors (cody@zone38.net), with Reserved Font Name \"Press Start 2P\".",
+    "license": "OFL-1.1",
+    "licenseFile": "legal/OFL-1.1.txt",
+    "source": "https://github.com/google/fonts/tree/main/ofl/pressstart2p"
+  }
+]

@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
           maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
           // The plugin adds manifest.webmanifest itself; including it here
           // would create two revisions for one URL and invalidate the worker.
-          globPatterns: ["**/*.{html,js,css,png,jpg,jpeg,webp,svg,ico,json,woff,woff2,ttf,wav,mp3}"],
+          globPatterns: ["**/*.{html,js,css,png,jpg,jpeg,webp,svg,ico,json,txt,woff,woff2,ttf,wav,mp3}"],
         },
       }),
     ],

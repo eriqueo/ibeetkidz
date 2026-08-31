@@ -7,6 +7,8 @@ const builds = [
   { dir: "dist-gh", base: "/ibeetkidz/" },
 ];
 const migrationScript = "pwa-handshake-migration.js";
+const noticesFile = "THIRD_PARTY_NOTICES.txt";
+const expectedNotices = readFileSync(noticesFile, "utf8");
 
 function filesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -19,6 +21,11 @@ for (const { dir, base } of builds) {
   const html = readFileSync(join(dir, "index.html"), "utf8");
   const manifest = JSON.parse(readFileSync(join(dir, "manifest.webmanifest"), "utf8"));
   const sw = readFileSync(join(dir, "sw.js"), "utf8");
+  const deployedNotices = readFileSync(join(dir, noticesFile), "utf8");
+
+  if (deployedNotices !== expectedNotices) {
+    throw new Error(`${dir}/${noticesFile} is missing or stale`);
+  }
 
   for (const required of ["name", "short_name", "start_url", "scope", "id", "display"]) {
     if (!manifest[required]) throw new Error(`${dir} manifest is missing ${required}`);

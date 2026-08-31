@@ -152,8 +152,12 @@ describe("architecture guards (source text over src/**)", () => {
       scripts?: Record<string, string>;
     }).scripts;
     expect(scripts?.build).toContain("npm run check:no-editor");
+    expect(scripts?.build).toContain("npm run check:notices");
     expect(scripts?.["check:no-editor"]).toBe(
       "bash scripts/check-no-editor-in-dist.sh",
+    );
+    expect(scripts?.["check:notices"]).toBe(
+      "node scripts/generate-third-party-notices.mjs --check",
     );
   });
 
