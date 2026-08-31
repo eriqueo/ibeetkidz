@@ -88,17 +88,6 @@ export const SCENE_BG_V2 = {
 // WorkshopScene loads only `workshopInterior`; superseded full-scene plates are
 // deliberately absent from both this manifest and the source asset tree.
 
-// AR-016 side-on car sprites (Workshop Layer 2). All four share one 2560×1440
-// canvas, wheels on the same baseline, and an IDENTICAL punched interior void
-// (CAR_SIDE_VOID) where the sequencer chalkboard mounts — so a car-type swap is
-// a texture change with no reposition, exactly like the chrome state variants.
-export const CAR_SIDE_SPRITES = {
-  boxcar: { key: "car-side-boxcar", url: new URL("../assets/sprites/cars/car-side-boxcar.png", import.meta.url).href },
-  tanker: { key: "car-side-tanker", url: new URL("../assets/sprites/cars/car-side-tanker.png", import.meta.url).href },
-  hopper: { key: "car-side-hopper", url: new URL("../assets/sprites/cars/car-side-hopper.png", import.meta.url).href },
-  flatcar: { key: "car-side-flatcar", url: new URL("../assets/sprites/cars/car-side-flatcar.png", import.meta.url).href },
-} as const satisfies Record<string, ImageAsset>;
-
 /** The standardized interior void in every legacy car-side sprite, in the car
  *  canvas's own pixels (2560×1440). The chalkboard mounts relative to it. */
 export const CAR_SIDE_CANVAS = { w: 2560, h: 1440 } as const;

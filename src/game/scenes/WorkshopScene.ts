@@ -29,7 +29,7 @@ import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
-import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
+import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
 import { workshopBoardActionSlots, type WorkshopBoardActionSlot } from "../workshop-board-layout.ts";
@@ -353,9 +353,10 @@ export class WorkshopScene extends BackgroundScene {
     // when that overlapped a mic take the recorder handed back a blob its own
     // decoder rejected and the recording was lost. Preload is the phase for
     // paying that cost; the e2e mic proof is what says so.
-    const boot: ImageAsset[] = CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].url
-      ? [CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE], CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].front]
-      : [CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE]];
+    const boot: ImageAsset[] = [
+      CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE],
+      CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].front,
+    ];
     for (const a of boot) {
       if (!this.textures.exists(a.key)) this.load.image(a.key, a.url);
     }
@@ -413,19 +414,15 @@ export class WorkshopScene extends BackgroundScene {
    *
    *  The `carType` re-check in the callback matters: two quick swaps would
    *  otherwise race, and the slower load would win and stomp the newer choice. */
-  /** AR-060's open car for `type`, once its texture is resident. Null until
-   *  then (and forever, if the art is absent) — the punched-void assembly is
-   *  the fallback and every reader below branches on this. */
+  /** AR-060's open car for `type`, once its texture is resident. */
   private openCar(type: CarType): OpenCarAsset | null {
     const asset = CAR_OPEN_SPRITES[type];
     return asset.url && this.textures.exists(asset.key) ? asset : null;
   }
 
   private showCar(type: CarType): void {
-    // AR-060 first: a car drawn open, with its own interior, is ONE picture and
-    // needs no void, no cabin and no rail. The old body is the fallback.
     const open = CAR_OPEN_SPRITES[type];
-    const asset = open.url ? open : CAR_SIDE_SPRITES[type];
+    const asset = open;
 
     const apply = (): void => {
       // The scene can be torn down mid-flight when navigation swaps scenes.
@@ -452,7 +449,7 @@ export class WorkshopScene extends BackgroundScene {
     // the part that should occlude them.
     const pending: ImageAsset[] = [];
     if (!this.textures.exists(asset.key)) pending.push(asset);
-    if (open.url && !this.textures.exists(open.front.key)) pending.push(open.front);
+    if (!this.textures.exists(open.front.key)) pending.push(open.front);
     if (pending.length === 0) {
       apply();
       return;
@@ -510,13 +507,13 @@ export class WorkshopScene extends BackgroundScene {
     // Always constructed on the preloaded default, then corrected by `showCar`:
     // the real car type arrives from React and may not be resident yet.
     this.car = this.add
-      .image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key)
+      .image(0, 0, CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].key)
       .setDepth(DEPTH_CAR);
     // The body IS the coat's shade pass — see `car-tint.ts`. One extra
     // full-scene draw, not two.
     this.carCoat = asLiveryCoat(
       this.car,
-      this.add.image(0, 0, CAR_SIDE_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH),
+      this.add.image(0, 0, CAR_OPEN_SPRITES[DEFAULT_CAR_TYPE].key).setDepth(DEPTH_WASH),
     );
     this.showCar(this.model.carType);
     this.buildBoardModal();

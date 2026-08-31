@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CAR_OPEN_SPRITES } from "../../src/game/assets.ts";
 
 // Runtime sprites normally belong to a purpose-specific directory or a packed
 // atlas. The root accumulated standalone precursors that looked available but
@@ -16,5 +17,18 @@ describe("asset hygiene", () => {
       .sort();
 
     expect(names).toEqual([]);
+  });
+
+  it("ships a complete open body and front for every Workshop car type", () => {
+    expect(Object.keys(CAR_OPEN_SPRITES).sort()).toEqual([
+      "boxcar",
+      "flatcar",
+      "hopper",
+      "tanker",
+    ]);
+    for (const [type, asset] of Object.entries(CAR_OPEN_SPRITES)) {
+      expect(asset.url, `${type} body`).not.toBe("");
+      expect(asset.front.url, `${type} front`).not.toBe("");
+    }
   });
 });
