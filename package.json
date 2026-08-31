@@ -10,6 +10,7 @@
     "build:gh": "vite build --mode gh",
     "check:no-editor": "bash scripts/check-no-editor-in-dist.sh",
     "check:pwa": "node scripts/check-pwa-build.mjs",
+    "check:workshop-car-art": "python3 scripts/validate_workshop_open_car_art.py",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

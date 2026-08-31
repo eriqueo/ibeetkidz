@@ -19,6 +19,77 @@
 
 ---
 
+## ACTIVE NEXT ROUND — 2026-08-31 (rev 10)
+
+Eric's assembled Workshop review rejects two of AR-060's delivered car layers.
+Their earlier **DELIVERED** label records provenance, not current acceptance;
+the two entries below supersede that label for these files. Engineering must
+not hide either defect with masks, tints, or a replacement drawing in code.
+
+### ❌ REOPENED — AR-060F · Flatcar must be an open deck, not a transparent wall — P0
+
+The running flatcar reads as a tall green car body with five see-through sky
+windows. That contradicts AR-060's own flatcar contract: **no opening at all;
+a low flat deck with stake sides, with the crew standing in open air.**
+
+Replace both files on their existing **2560 × 1440** canvases:
+
+- `src/assets/sprites/cars/car-open-flatcar.png`
+- `src/assets/sprites/cars/car-open-flatcar-front.png`
+
+Keep the production registration already consumed by `CAR_OPEN_SPRITES.flatcar`:
+opaque content within `[48,68]…[2507,1438]`, crew area
+`x 720…1840, y 410…865`, and feet on `y 865`. Draw a genuinely low timber/
+steel deck, wheel gear and optional stake hardware. Do not draw a tall side
+wall, window apertures, sky, scenery, crew, labels, controls, or a full-canvas
+wash. The front layer may contain only near-edge deck/stake pixels that must
+occlude crew feet; it must be true alpha 0 everywhere else.
+
+The rejected body fingerprint is
+`1864dbf81ede7dcb059e87212017c89db072fd91cae4cd677884d9bea88a2603`.
+A byte-identical or merely colour-shifted delivery is not a correction.
+
+**Required proof:** assembled 2560 × 1440 Workshop captures for an empty
+flatcar and a flatcar carrying at least three differently sized characters.
+The sky/background must remain visible because there is no wall, while the
+deck itself is fully opaque and the crew's feet are correctly occluded by its
+near edge. An isolated PNG is not acceptance.
+
+### ❌ REOPENED — AR-060T · Tanker foreground must be a real shell lip — P0
+
+`src/assets/sprites/cars/car-open-tanker-front.png` currently contributes two
+detached purple elliptical curves and a long horizontal stroke. In the
+assembled Workshop they read as stray vector marks across the tank, not as a
+near shell passing in front of the riders.
+
+Replace that file on its existing **2560 × 1440** canvas and keep registration
+with `car-open-tanker.png`: crew area `x 620…1820, y 560…890`, feet on `y 895`,
+and body content within `[25,132]…[2528,1197]`. Paint only the portion of the
+tank's near steel/brass shell that must occlude the crew. Its curvature,
+outline thickness, pixels, palette, rivets and highlights must visibly join the
+base tank. Do not submit ellipse-only guide marks, a full-width line, crew,
+controls, scenery, or any full-canvas wash; all unused pixels are true alpha 0.
+
+The rejected foreground fingerprint is
+`b218536ecce2f71f574123b3043468bed386b8eefc762a319fec84642a3b8cf7`.
+A byte-identical or colour-shifted delivery is not a correction.
+
+**Required proof:** assembled 2560 × 1440 Workshop captures of the tanker empty
+and carrying at least three characters, including one at each lateral edge of
+the crew bay. The foreground must read as one continuous tank shell and must
+occlude feet/bodies only where real near metal would. An isolated layer or
+art-only composite is not acceptance.
+
+### Product cleanup recorded with this batch
+
+- AR-062 is superseded: Track Ride loops forever by default, and the redundant
+  finite-count LOOP control is removed rather than redrawn.
+- The Map's old yellow handcar is an engineering deletion; no replacement map
+  marker art is requested.
+- Track focus mode and stacked terrain support are engineering composition;
+  no new bitmap is requested unless assembled evidence rejects the existing
+  authored tunnel-floor/mound composition.
+
 ## Current visual direction
 
 ### Projection is per scene. There is no global "isometric".
