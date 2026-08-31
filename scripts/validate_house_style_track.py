@@ -134,23 +134,27 @@ def exact_blocker_checks() -> None:
     print("PASS mechanical SPEED runtime window is opaque and dark")
 
     wheel = im(T / "wheel.png")
+    hub_x = hub_y = 38
     contact = [x for x in range(wheel.width) if wheel.getpixel((x, 75))[3] == 255]
-    assert contact and min(contact) <= 38 <= max(contact), "wheel tyre does not reach contact row y=75 at hub tangent"
-    assert wheel.getpixel((38, 38))[3] == 255, "wheel hub registration pixel missing at (38, 38)"
-    horizontal = [x for x in range(wheel.width) if wheel.getpixel((x, 38))[3] == 255]
-    vertical = [y for y in range(wheel.height) if wheel.getpixel((38, y))[3] == 255]
+    assert contact and min(contact) <= hub_x <= max(contact), "wheel tyre does not reach contact row y=75 at hub tangent"
+    assert wheel.getpixel((hub_x, hub_y))[3] == 255, "wheel hub registration pixel missing at (38, 38)"
+    # The Track renderer rotates around (38,38). Cardinal opaque extents are a
+    # deterministic definition of the tyre's four visible radii; unequal
+    # extents create a wobble even when the nominal hub is centred.
+    horizontal = [x for x in range(wheel.width) if wheel.getpixel((x, hub_y))[3] == 255]
+    vertical = [y for y in range(wheel.height) if wheel.getpixel((hub_x, y))[3] == 255]
     assert horizontal and vertical, "wheel has no opaque tyre through hub centre lines"
     cardinal_radii = (
-        38 - min(horizontal),
-        max(horizontal) - 38,
-        38 - min(vertical),
-        max(vertical) - 38,
+        hub_x - min(horizontal),
+        max(horizontal) - hub_x,
+        hub_y - min(vertical),
+        max(vertical) - hub_y,
     )
     assert len(set(cardinal_radii)) == 1, (
         "wheel cardinal radii differ (left,right,top,bottom)="
         f"{cardinal_radii}; rotation will bob around hub (38,38)"
     )
-    print("PASS mechanical wheel tyre reaches y=75 and has one cardinal radius around hub (38,38)")
+    print(f"PASS mechanical wheel tyre reaches y=75; hub (38,38); equal radii {cardinal_radii}")
 
     atlas = json.loads((ATLAS / "ui-atlas.json").read_text())
     frames = {frame["filename"]: (texture, frame) for texture in atlas["textures"] for frame in texture["frames"]}
