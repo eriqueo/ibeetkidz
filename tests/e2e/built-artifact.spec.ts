@@ -191,7 +191,7 @@ async function driveToTrack(page: Page, url: string, obs: Observation): Promise<
   await bootBuilt(page, url);
 
   // MapScene's hit-areas are spawned in `create()`, which runs only after its
-  // own `preload` has fetched the background + handcar. Wait for the traffic to
+  // own `preload` has fetched the background. Wait for the traffic to
   // go quiet so the tap can't land on a scene that has not wired itself up yet.
   await page.waitForLoadState("networkidle");
   const beforeNav = obs.requests.length;

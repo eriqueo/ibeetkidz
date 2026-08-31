@@ -52,8 +52,8 @@ test("the Pages artifact installs and boots Track after the network disappears",
   await expect(canvas, "the cached game must reach its first scene").toBeVisible();
 
   // Service-worker cache hits do not surface as ordinary Playwright request
-  // events. Compare real canvas captures instead: the Map's small moving
-  // handcar cannot account for a whole-scene pixel change.
+  // events. Compare real canvas captures instead so a cached shell with a
+  // stalled scene cannot masquerade as an offline-ready game.
   await page.waitForTimeout(1_000);
   const mapCapture = await canvas.screenshot({ type: "png" });
   await tapMapLandmark(page, "track");

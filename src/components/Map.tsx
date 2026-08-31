@@ -1,29 +1,18 @@
-import { FC, useCallback, useEffect, useRef, useState } from "react";
+import { FC, useEffect, useRef, useState } from "react";
 import { useApp, useProject } from "../app/context.tsx";
 import { liveTrain } from "../core/project-state.ts";
-import { AppView } from "../core/types.ts";
+import type { AppView } from "../core/types.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { MapScene } from "../game/scenes/MapScene.ts";
 import { EventBus } from "../game/EventBus.ts";
 
-// The handcar marks where the kid currently "is". The Map itself has no landmark,
-// so remember the last destination they travelled to (default: the Workshop, the
-// natural starting point) and show the marker there.
-let lastDestination: AppView = "workshop";
-
 export const Map: FC = () => {
   const { dispatch } = useApp();
   const project = useProject();
-  const sceneRef = useRef<MapScene | null>(null);
   const [toast, setToast] = useState<string | null>(null);
 
   const projectRef = useRef(project);
   projectRef.current = project;
-
-  const handleSceneReady = useCallback((scene: import("phaser").Scene) => {
-    sceneRef.current = scene as MapScene;
-    sceneRef.current.setLocation(lastDestination);
-  }, []);
 
   // Data-driven Tiled hits → navigation, across the EventBus. Track needs an
   // assembled train; nudge the kid to the Yard (toast) if it's empty.
@@ -34,8 +23,6 @@ export const Map: FC = () => {
         window.setTimeout(() => setToast(null), 2200);
         return;
       }
-      lastDestination = view;
-      sceneRef.current?.setLocation(view);
       dispatch({ type: "setActiveView", view });
     };
     EventBus.on("map-nav", onNav);
@@ -46,9 +33,9 @@ export const Map: FC = () => {
 
   return (
     <div style={VIEW_OVERLAY}>
-      {/* Painted world map + the destination hit-areas + the handcar marker all
-          live in MapScene, which claims the shared canvas while this view is up. */}
-      <PhaserScene scene={MapScene} onSceneReady={handleSceneReady} />
+      {/* Painted world map and destination hit-areas live in MapScene, which
+          claims the shared canvas while this view is up. */}
+      <PhaserScene scene={MapScene} />
 
       {/* "Build a train first" toast */}
       {toast && (

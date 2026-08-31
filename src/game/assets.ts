@@ -184,12 +184,3 @@ export const CAR_OPEN_SPRITES = {
   hopper: openCar("hopper", { x: 700, y: 490, w: 1140, h: 440 }, 930, [46, 163, 2514, 1184]),
   flatcar: openCar("flatcar", { x: 720, y: 410, w: 1120, h: 455 }, 865, [48, 68, 2507, 1438]),
 } as const satisfies Record<string, OpenCarAsset>;
-
-// The handcar location marker on the Map — the one standalone sprite left
-// outside the ui-sprites manifest (it is a scene fixture, not chrome).
-export const SPRITES = {
-  handcar: {
-    key: "spr-handcar",
-    url: new URL("../assets/sprites/handcar.png", import.meta.url).href,
-  },
-} as const satisfies Record<string, ImageAsset>;

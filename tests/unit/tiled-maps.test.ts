@@ -142,23 +142,9 @@ describe("map.json landmark navigation", () => {
     }
   });
 
-  it("parks a handcar fixture on every destination", () => {
-    // These replaced the hardcoded MAP_HANDCAR, which put the marker on the
-    // cabin roof. MapScene looks them up BY NAME, so a rename is a silent
-    // missing marker rather than a crash.
-    const fixtures = parseTiledLayer(MAP, "fixtures-layer");
-    expect(fixtures.map((s) => s.id).sort()).toEqual([
-      "handcar-track",
-      "handcar-workshop",
-      "handcar-yard",
-    ]);
-    for (const f of fixtures) {
-      expect(f.action, `${f.id} is a marker, not a button`).toBeUndefined();
-      expect(f.cx).toBeGreaterThan(0);
-      expect(f.cx).toBeLessThan(1);
-      expect(f.cy).toBeGreaterThan(0);
-      expect(f.cy).toBeLessThan(1);
-    }
+  it("does not carry the retired yellow handcar fixture", () => {
+    const layers = (MAP as { layers: readonly { name?: string }[] }).layers;
+    expect(layers.map((layer) => layer.name)).not.toContain("fixtures-layer");
   });
 });
 
