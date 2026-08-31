@@ -149,7 +149,7 @@ The following project files are maintained to make this workflow reproducible.
 | Resource | Purpose |
 |---|---|
 | `design/review/TRACK_HOUSE_STYLE_RESET.md` | Concise art-direction reset and the specific failure modes that must not recur. |
-| `design/review/style-reset/ride-house-style-512.png` | Explicitly approved RIDE-card visual anchor. |
+| `src/assets/sprites/buttons/btn-track-ride-idle.png` | Explicitly approved RIDE-card visual anchor and runtime asset. |
 | `design/review/style-reset/house-style-controls-70px.png` | Actual-size control review. |
 | `design/review/style-reset/house-style-tarps.png` | Tarp overlays on active Track cars. |
 | `design/review/style-reset/house-style-world-kit.png` | Asset-only diagnostic board; never use it as final scene approval. |
