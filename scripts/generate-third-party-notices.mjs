@@ -11,6 +11,12 @@ const check = process.argv.includes("--check");
 const outputs = ["THIRD_PARTY_NOTICES.txt", "public/THIRD_PARTY_NOTICES.txt"];
 const lock = JSON.parse(readFileSync("package-lock.json", "utf8"));
 const assets = JSON.parse(readFileSync("legal/third-party-assets.json", "utf8"));
+const generatedRuntimePackages = JSON.parse(
+  readFileSync("legal/generated-runtime-packages.json", "utf8"),
+);
+const generatedRuntimePaths = new Set(
+  generatedRuntimePackages.map((name) => `node_modules/${name}`),
+);
 
 function licensePath(packagePath) {
   const candidates = readdirSync(packagePath)
@@ -23,11 +29,20 @@ function licensePath(packagePath) {
 }
 
 function normalizedText(path) {
-  return readFileSync(path, "utf8").replace(/\r\n?/g, "\n").trim();
+  return readFileSync(path, "utf8")
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => line.trimEnd())
+    .join("\n")
+    .trim();
 }
 
 const packages = Object.entries(lock.packages)
-  .filter(([path, metadata]) => path.startsWith("node_modules/") && metadata.dev !== true)
+  .filter(
+    ([path, metadata]) =>
+      path.startsWith("node_modules/") &&
+      (metadata.dev !== true || generatedRuntimePaths.has(path)),
+  )
   .map(([path, metadata]) => {
     if (!existsSync(path)) {
       throw new Error(`Production package is not installed: ${path}; run npm ci`);
@@ -41,6 +56,12 @@ const packages = Object.entries(lock.packages)
     };
   })
   .sort((left, right) => `${left.name}@${left.version}`.localeCompare(`${right.name}@${right.version}`));
+
+for (const packagePath of generatedRuntimePaths) {
+  if (!lock.packages[packagePath]) {
+    throw new Error(`Generated runtime package is absent from package-lock.json: ${packagePath}`);
+  }
+}
 
 for (const asset of assets) {
   if (!existsSync(asset.file) || statSync(asset.file).size === 0) {
