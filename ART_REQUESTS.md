@@ -152,6 +152,58 @@ or a coloured full-canvas backdrop.
   The art below supplies those layers; it must not be baked into one opaque
   full-screen image.
 
+### Added 2026-08-31 (rev 9) — release-blocking body and rotation corrections
+
+#### ❌ REOPENED 2026-08-31 — AR-051A · Redraw the My Voice machine body — P0
+
+The running `panel-voice.png` body is not accepted. Engineering has now removed
+the legacy arrival modal and put all six tools under one authored
+`panel-header-v2` / close / DONE shell; do not redraw that shared chrome and do
+not replace the bitmap in code. This request is only the machine body behind My
+Voice's live controls.
+
+Preserve the **1536 × 1152** canvas and these production recesses exactly—the
+scene already mounts live hit targets into them:
+
+- record bay: `x .285… .832`, `y .135… .275`;
+- status rail centre: `y .318`;
+- eight FX bays (4 × 2): `x .126… .876`, `y .359… .766`;
+- two outcome bays: left `x .105… .491`, right `x .520… .903`, both
+  `y .786… .900`.
+
+Match the accepted Voice Keys, Magic Pad, Melody and redrawn Percussion bodies:
+substantial timber/steel/brass construction, quiet dark recesses, hard alpha,
+and no flat debug-board field. Leave every recess free of baked words, effect
+icons, buttons, title, close mark, or DONE mark; React/Phaser supplies all of
+those. The mic mount may be pictorial, but it must not consume the record hit
+bay.
+
+**Required proof:** assembled production screenshots at 2560 × 1440 for both an
+empty take and a recorded take, with the current live controls, shared title
+plaque and DONE button visible. An isolated PNG or an art-only mockup is not
+acceptance.
+
+#### ❌ REOPENED 2026-08-31 — AR-068 · Wheel must rotate around one radius — P0
+
+The delivered 76 × 76 wheel keeps the requested hub at **(38, 38)** but is not
+radially registered. On the hub centre lines its opaque tyre reaches 35 px
+left, 34 px right, 37 px up and 37 px down. A quarter turn therefore changes
+the visible outer radius by as much as **3 source pixels**, about **2.37 px** at
+the 60 px production diameter; that is the observed bob/hover. Code must not
+counter-animate or repaint this defect.
+
+Redraw only `src/assets/sprites/track3/wheel.png` on the existing 76 × 76
+canvas. Keep the hub at (38, 38), make the four opaque centre-line tyre radii
+exactly equal, keep every spoke/counterweight inside that common tyre circle,
+and retain hard alpha with transparent corners. The bottom tyre tangent must
+still reach the rail-contact row. `shadow.png`, car bodies, and runtime wheel
+geometry are not part of this correction.
+
+**Required proof:** a turntable sheet at 0°, 45°, 90°, 135°, 180°, 225°, 270°
+and 315°, all composited on the same crosshair and railhead, plus a production
+car capture during motion. `scripts/validate_house_style_track.py` now rejects
+unequal cardinal radii in addition to checking the hub and contact row.
+
 ### Added 2026-08-30 (rev 8) — integration QA correction
 
 #### ❌ REOPENED 2026-08-30 — AR-069 · Make the unified Track controls readable at their real size — P0
