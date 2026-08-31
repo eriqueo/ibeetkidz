@@ -8,7 +8,7 @@
 // the only bridge.
 import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
-import { WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
+import { headerPlateField, WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, type UiSpriteDef } from "./ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
@@ -274,9 +274,11 @@ export class PanelButton {
 
 // ── base modal panel ──────────────────────────────────────────────────────────
 export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
+  protected readonly toolId: string;
   protected backdrop: Phaser.GameObjects.Rectangle;
   protected shadow: Phaser.GameObjects.Rectangle;
   protected frame: Phaser.GameObjects.Rectangle;
+  protected headerImg: Phaser.GameObjects.Image;
   protected titleText: Phaser.GameObjects.Text;
   protected closeBtn: PanelButton;
   /**
@@ -298,8 +300,9 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
   private plateDef?: UiSpriteDef | undefined;
   private plateHeightScale = 1;
 
-  constructor(scene: Phaser.Scene, title: string) {
+  constructor(scene: Phaser.Scene, toolId: string, title: string) {
     super(scene, 0, 0);
+    this.toolId = toolId;
     scene.add.existing(this);
     this.setDepth(50).setVisible(false);
     this.backdrop = scene.add.rectangle(0, 0, 10, 10, 0x000000, 0.62).setOrigin(0).setInteractive();
@@ -307,7 +310,13 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     // the charter's paper-panel language (no gradients, no glow).
     this.shadow = scene.add.rectangle(0, 0, 10, 10, PANEL_EDGE, 0.55).setOrigin(0);
     this.frame = scene.add.rectangle(0, 0, 10, 10, PANEL_BG, 1).setStrokeStyle(4, PANEL_EDGE).setOrigin(0);
-    this.titleText = scene.add.text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: INK }).setOrigin(0, 0.5);
+    this.headerImg = scene.add
+      .image(0, 0, UI_ATLAS_KEY, UI_SPRITES["panel-header-v2"]!.base)
+      .setName(`workshop-tool:${toolId}:header`);
+    this.titleText = scene.add
+      .text(0, 0, title, { fontFamily: FONT, fontSize: "14px", color: INK })
+      .setOrigin(0, 0.5)
+      .setName(`workshop-tool:${toolId}:title`);
     // AR-057's authored pair: a recessed brass-ringed ✕ socket and a wide green
     // DONE plaque, both carrying their own baked label and their own colour, so
     // neither is tinted. They briefly wore the drum keycap as a stand-in; the
@@ -316,7 +325,17 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     // ends of it. The real plaque is drawn wide, which is why it can be.
     this.closeBtn = new PanelButton(scene, "✕", () => EventBus.emit("tool-closed"), 0x7a2540, { face: "btn-panel-close", bakedLabel: true });
     this.doneBtn = new PanelButton(scene, "DONE", () => this.onDone(), 0x2a5c2a, { face: "btn-panel-done", bakedLabel: true });
-    this.add([this.backdrop, this.shadow, this.frame, this.titleText, this.closeBtn.container, this.doneBtn.container]);
+    this.closeBtn.container.setName(`workshop-tool:${toolId}:close`);
+    this.doneBtn.container.setName(`workshop-tool:${toolId}:done`);
+    this.add([
+      this.backdrop,
+      this.shadow,
+      this.frame,
+      this.headerImg,
+      this.titleText,
+      this.closeBtn.container,
+      this.doneBtn.container,
+    ]);
   }
 
   /** What DONE means for this tool. The default is the honest one: a panel that
@@ -336,14 +355,64 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.shadow.setSize(fw, fh).setPosition(fx + drop, fy + drop);
     this.frame.setSize(fw, fh).setPosition(fx, fy);
     const pad = Math.round(Math.min(fw, fh) * 0.05);
-    const headerH = Math.round(fh * 0.12);
-    this.titleText.setPosition(fx + pad, fy + headerH / 2);
-    this.titleText.setFontSize(Math.max(12, Math.round(headerH * 0.42)));
-    const closeSz = Math.min(headerH * 0.9, fw * 0.1);
-    this.closeBtn.place({ x: fx + fw - pad - closeSz, y: fy + (headerH - closeSz) / 2, w: closeSz, h: closeSz }, Math.round(closeSz * 0.45));
-    this.placeDone(fx + fw / 2, fy + fh, fw);
-    this.inner = { x: fx + pad, y: fy + headerH, w: fw - pad * 2, h: fh - headerH - pad };
+    this.inner = { x: fx + pad, y: fy + pad, w: fw - pad * 2, h: fh - pad * 2 };
     this.layoutContent();
+    this.layoutSharedChrome();
+  }
+
+  /** The machine body the shared title plaque and DONE control belong to.
+   *  Painted landscape plates use their actual placed bounds; the Sound
+   *  Library falls back to the parchment frame. Portrait tools may override. */
+  protected shellBodyBounds(): Box {
+    const img = this.plateImg;
+    if (img) {
+      return {
+        x: img.x - img.displayWidth / 2,
+        y: img.y - img.displayHeight / 2,
+        w: img.displayWidth,
+        h: img.displayHeight,
+      };
+    }
+    return { x: this.frame.x, y: this.frame.y, w: this.frame.width, h: this.frame.height };
+  }
+
+  /** One authored shell for every tool: blank parchment title plaque, recessed
+   *  close socket, then the same DONE plaque below the machine. This runs after
+   *  each body lays itself out, so late-added body art can never cover chrome. */
+  private layoutSharedChrome(): void {
+    const body = this.shellBodyBounds();
+    const headerH = Phaser.Math.Clamp(body.h * 0.13, 88, 132);
+    const headerW = Math.min(body.w * 0.9, headerH * (2687 / 687));
+    const headerTop = Math.max(10, body.y - headerH * 0.62);
+    const plate = {
+      x: body.x + body.w / 2,
+      y: headerTop + headerH / 2,
+      width: headerW,
+      height: headerH,
+    };
+    placeUiSprite(this.headerImg, UI_SPRITES["panel-header-v2"]!, plate);
+    const field = headerPlateField(plate);
+    const fieldH = field.y1 - field.y0;
+    const inset = Math.max(8, headerW * 0.018);
+    const closeSz = Math.min(fieldH * 0.82, headerW * 0.13);
+    this.closeBtn.place({
+      x: field.x1 - inset - closeSz,
+      y: field.y0 + (fieldH - closeSz) / 2,
+      w: closeSz,
+      h: closeSz,
+    }, Math.round(closeSz * 0.45));
+    const titleWidth = Math.max(1, field.x1 - closeSz - inset * 3 - field.x0);
+    const titlePx = Math.max(12, Math.min(25, titleWidth / (this.titleText.text.length * FONT_ADVANCE_EM)));
+    this.titleText
+      .setColor(INK)
+      .setFontSize(Math.floor(titlePx))
+      .setPosition(field.x0 + inset, (field.y0 + field.y1) / 2);
+    this.placeDone(body.x + body.w / 2, body.y + body.h, body.w);
+
+    this.bringToTop(this.headerImg);
+    this.bringToTop(this.titleText);
+    this.bringToTop(this.closeBtn.container);
+    this.bringToTop(this.doneBtn.container);
   }
 
   /** DONE hangs just BELOW the machine, centred — the same place and the same
@@ -352,7 +421,12 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
   private placeDone(cx: number, bottomY: number, width: number): void {
     const w = Math.max(190, width * 0.26);
     const h = Math.max(66, width * 0.085);
-    this.doneBtn.place({ x: cx - w / 2, y: bottomY + h * 0.22, w, h }, Math.round(h * 0.34));
+    // Landscape machines have room below their body; the portrait Melody body
+    // reaches almost to the canvas floor. Clamp the shared exit into view there
+    // instead of faithfully placing an unreachable control off-screen.
+    const screenH = this.scene.scale.gameSize.height;
+    const y = Math.min(bottomY + h * 0.22, screenH - h - 20);
+    this.doneBtn.place({ x: cx - w / 2, y, w, h }, Math.round(h * 0.34));
   }
 
   /**
@@ -372,16 +446,12 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     if (!def || !hasUiFrame(this.scene, def.base)) return;
     this.frame.setVisible(false);
     this.shadow.setVisible(false);
-    this.titleText.setColor("#ffd166");
     this.plateDef = def;
     this.plateHeightScale = heightScale;
     this.plateImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, def.base);
     this.add(this.plateImg);
-    // The plate joins the container last, so it covers everything the base
-    // constructor added — and `placePlate` moves the header ONTO the plate.
-    this.bringToTop(this.titleText);
-    this.bringToTop(this.closeBtn.container);
-    this.bringToTop(this.doneBtn.container);
+    // The plate joins the container late; `layoutSharedChrome` deliberately
+    // raises the authored shell again after the body has finished laying out.
   }
 
   /**
@@ -408,15 +478,6 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     const top = img.y - (img.height / 2) * img.scaleY;
     const iw = img.width * img.scaleX;
     const ih = img.height * img.scaleY;
-    // Re-anchor the header to the PLATE. `layout` put the title and ✕ on the
-    // parchment frame's corners, and a contain-fitted plate is narrower than
-    // that frame — so both were left stranded out on the dark backdrop, the
-    // title half-hidden behind the plate's own edge.
-    const inset = iw * 0.03;
-    this.titleText.setX(left + inset);
-    const sz = Math.min(ih * 0.1, iw * 0.09);
-    this.closeBtn.place({ x: left + iw - inset - sz, y: this.titleText.y - sz / 2, w: sz, h: sz }, Math.round(sz * 0.45));
-    this.placeDone(left + iw / 2, top + ih, iw);
     return (r) => ({
       x: left + r.x0 * iw,
       y: top + r.y0 * ih,
@@ -470,7 +531,7 @@ export class VoiceToolPanel extends BaseToolPanel {
   private sendBeat!: PanelButton;
   private sendNotes!: PanelButton;
 
-  constructor(scene: Phaser.Scene) { super(scene, "🎤 My Voice"); }
+  constructor(scene: Phaser.Scene) { super(scene, "record-voicefx", "🎤 My Voice"); }
 
   protected buildContent(): void {
     this.mountPlate("panel-voice");
@@ -549,7 +610,7 @@ export class VoiceKeysToolPanel extends BaseToolPanel {
   /** Whether DONE has a take to commit, from the last `apply`. */
   private pending = false;
 
-  constructor(scene: Phaser.Scene) { super(scene, "🎙️ Voice Keys"); }
+  constructor(scene: Phaser.Scene) { super(scene, "voice-keys", "🎙️ Voice Keys"); }
 
   protected buildContent(): void {
     this.mountPlate("panel-keys");
@@ -771,8 +832,7 @@ export class PadsToolPanel extends BaseToolPanel {
   private signature = "";
 
   constructor(scene: Phaser.Scene) {
-    super(scene, "🥁 Sound Pads");
-    this.doneBtn.container.setName("workshop-sound:done");
+    super(scene, "sound-pads", "🥁 Sound Pads");
   }
 
   protected buildContent(): void {
@@ -934,7 +994,7 @@ export class PercussionToolPanel extends BaseToolPanel {
   /** While a paint drag is live: the state every crossed cell is set to. */
   private paintTo: boolean | null = null;
 
-  constructor(scene: Phaser.Scene) { super(scene, "🥁 Drums"); }
+  constructor(scene: Phaser.Scene) { super(scene, "beat-grid", "🥁 Drums"); }
 
   protected buildContent(): void {
     // 1.06: the plate carries its own header band above the grid field.
@@ -1129,7 +1189,7 @@ export class MagicToolPanel extends BaseToolPanel {
   private dragging = false;
   private zoneBox: Box = { x: 0, y: 0, w: 0, h: 0 };
 
-  constructor(scene: Phaser.Scene) { super(scene, "✨ Magic Pad"); }
+  constructor(scene: Phaser.Scene) { super(scene, "theremin-xy", "✨ Magic Pad"); }
 
   protected buildContent(): void {
     this.mountPlate("panel-magic");
@@ -1264,7 +1324,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private doubleMode = false;
   private faderTrack = { y0: 0, y1: 0, x: 0 };
 
-  constructor(scene: Phaser.Scene) { super(scene, "🎹 Melody"); }
+  constructor(scene: Phaser.Scene) { super(scene, "melody-editor", "🎹 Melody"); }
 
   /** The panel-editor art's geometry, as fractions of its canvas (measured
    *  from the PNG: slate bounds + the baked knob/fader/toggle recesses). */
@@ -1288,11 +1348,10 @@ export class MelodyEditorPanel extends BaseToolPanel {
   } as const;
 
   protected buildContent(): void {
-    // The framed art replaces the generic parchment plate + shadow; the title
-    // floats over the DARK dimmed scene, so it stays cream, not ink.
+    // The framed art replaces the generic parchment body. The shared authored
+    // header remains independent, like it does for every other machine.
     this.frame.setVisible(false);
     this.shadow.setVisible(false);
-    this.titleText.setColor("#ffd166");
     this.panelImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["panel-editor"]!.base);
     this.add(this.panelImg);
 
@@ -1367,7 +1426,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
       this.kickToggle();
     });
     this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle]);
-    this.bringToTop(this.closeBtn.container);
   }
 
   /** The one place ×2 is armed or disarmed, so the lever frame, the note
@@ -1469,13 +1527,17 @@ export class MelodyEditorPanel extends BaseToolPanel {
   }
 
   /** The art's placed content rect in screen px (contain-fit, centre origin). */
-  private artRect(): Box {
+  protected artRect(): Box {
     const img = this.panelImg;
     const def = UI_SPRITES["panel-editor"]!;
     const [x0, y0, x1, y1] = def.content;
     const w = (x1 - x0) * img.width * img.scaleX;
     const h = (y1 - y0) * img.height * img.scaleY;
     return { x: img.x - w / 2, y: img.y - h / 2, w, h };
+  }
+
+  protected override shellBodyBounds(): Box {
+    return this.artRect();
   }
 
   private placeFader(): void {
@@ -1501,12 +1563,6 @@ export class MelodyEditorPanel extends BaseToolPanel {
     });
     const art = this.artRect();
     const A = MelodyEditorPanel.ART;
-
-    // Title + close anchor to the ART (the base layout spread them across the
-    // whole modal region, which is wider than the portrait panel).
-    const closeSz = Math.max(28, art.w * 0.09);
-    this.titleText.setPosition(art.x, art.y - closeSz * 0.55).setFontSize(Math.max(12, Math.round(closeSz * 0.5)));
-    this.closeBtn.place({ x: art.x + art.w - closeSz, y: art.y - closeSz - 4, w: closeSz, h: closeSz }, Math.round(closeSz * 0.45));
 
     // Note canvas on the slate.
     const i = {

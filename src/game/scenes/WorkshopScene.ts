@@ -45,6 +45,7 @@ import { CAR_COLORS } from "../../core/car-identity.ts";
 import { STEP_COUNT, CAR_TYPES, MAX_CARS, type CarType, type LaneKind } from "../../core/types.ts";
 import {
   BaseToolPanel,
+  PanelButton,
   VoiceToolPanel,
   VoiceKeysToolPanel,
   PadsToolPanel,
@@ -316,7 +317,7 @@ export class WorkshopScene extends BackgroundScene {
   private boardModal: Phaser.GameObjects.Container | undefined;
   private boardBackdrop: Phaser.GameObjects.Rectangle | undefined;
   private boardSounds: Phaser.GameObjects.Container | undefined;
-  private boardDone: Phaser.GameObjects.Container | undefined;
+  private boardDone: PanelButton | undefined;
   private boardOpen = false;
   // The paint rack: one plate, one Graphics for all the chips (redrawn only on
   // layout or model change), and an invisible hit zone per chip.
@@ -539,9 +540,16 @@ export class WorkshopScene extends BackgroundScene {
       () => EventBus.emit("workshop-open-tool", "sound-pads"),
       "♫",
     );
-    this.boardDone = this.makeBoardChip("DONE", "workshop-board:done", () => this.closeBoard(), null);
+    this.boardDone = new PanelButton(
+      this,
+      "DONE",
+      () => this.closeBoard(),
+      0x2a5c2a,
+      { face: "btn-panel-done", bakedLabel: true },
+    );
+    this.boardDone.container.setName("workshop-board:done");
     this.boardModal = this.add
-      .container(0, 0, [this.boardBackdrop, this.board, this.boardSounds, this.boardDone])
+      .container(0, 0, [this.boardBackdrop, this.board, this.boardSounds, this.boardDone.container])
       .setDepth(DEPTH_BOARD)
       .setVisible(false);
   }
@@ -660,9 +668,14 @@ export class WorkshopScene extends BackgroundScene {
 
     const slots = workshopBoardActionSlots({ centerX: width / 2, centerY: cy, width: w, height: h });
     this.layoutBoardChip(this.boardSounds, slots.sounds);
-    this.layoutBoardChip(this.boardDone, slots.done);
+    this.boardDone.place({
+      x: slots.done.x - slots.done.hitWidth / 2,
+      y: slots.done.y - slots.done.hitHeight / 2,
+      w: slots.done.hitWidth,
+      h: slots.done.hitHeight,
+    }, Math.round(slots.done.faceHeight * 0.34));
     this.boardModal?.bringToTop(this.boardSounds);
-    this.boardModal?.bringToTop(this.boardDone);
+    this.boardModal?.bringToTop(this.boardDone.container);
   }
 
   private layoutBoardChip(
