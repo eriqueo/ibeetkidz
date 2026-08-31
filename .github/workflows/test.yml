@@ -38,7 +38,7 @@ jobs:
             browsers: chromium webkit firefox
           - suite: track-visual
             browsers: chromium
-          - suite: track-finite
+          - suite: track-focus
             browsers: chromium
     steps:
       - uses: actions/checkout@v4
@@ -68,12 +68,12 @@ jobs:
           --grep "produces reviewable release evidence"
         env:
           PW_HEADED: "1"
-      - name: Run the finite Track journey on a fresh runner
-        if: matrix.suite == 'track-finite'
+      - name: Run the focus and endless-Ride journey on a fresh runner
+        if: matrix.suite == 'track-focus'
         run: >-
           xvfb-run --auto-servernum npm run test:e2e --
           tests/e2e/track-release-evidence.spec.ts --project=chromium
-          --grep "finite Track ride"
+          --grep "@track-focus-release"
         env:
           PW_HEADED: "1"
       - name: Upload Track visual release evidence

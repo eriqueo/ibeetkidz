@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import assetWorkflow from "../../.github/workflows/asset-size.yml?raw";
 import buildWorkflow from "../../.github/workflows/build-and-deploy.yml?raw";
+import testWorkflow from "../../.github/workflows/test.yml?raw";
 import imageRequirements from "../../scripts/requirements-ui-atlas.txt?raw";
+import trackReleaseEvidence from "../e2e/track-release-evidence.spec.ts?raw";
 
 const atlasCheck = "bash scripts/check-ui-atlas-fresh.sh";
 const installImageTools =
@@ -32,5 +34,13 @@ describe("release workflow", () => {
     expect(occurrences(assetWorkflow, installImageTools)).toBe(1);
     expect(buildWorkflow).not.toMatch(/pip install --quiet pillow\b/i);
     expect(assetWorkflow).not.toMatch(/pip install --quiet pillow\b/i);
+  });
+
+  it("isolates the current focus/endless-Ride release journey by a stable tag", () => {
+    const tag = "@track-focus-release";
+    expect(occurrences(trackReleaseEvidence, tag)).toBe(1);
+    expect(occurrences(testWorkflow, `--grep "${tag}"`)).toBe(1);
+    expect(testWorkflow).toContain("suite: track-focus");
+    expect(testWorkflow).not.toMatch(/track-finite|finite Track journey|finite Track ride/i);
   });
 });
