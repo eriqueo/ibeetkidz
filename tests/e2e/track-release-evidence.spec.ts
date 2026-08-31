@@ -57,6 +57,11 @@ interface PixelPatch {
   readonly data: Uint8Array;
 }
 
+interface CanvasSnapshot {
+  readonly intrinsic: { readonly width: number; readonly height: number };
+  readonly image: DecodedPng;
+}
+
 function savedAuditProject(trainCars = 1): string {
   const clipId = "visual-release-tone";
   const layerId = "visual-release-lane";
@@ -193,18 +198,23 @@ async function canvasMetrics(page: Page): Promise<CanvasMetrics> {
   return metricsOf(decodePng(bytes));
 }
 
-async function patchPixels(
-  page: Page,
-  x: number,
-  y: number,
-  designHalf = 28,
-): Promise<PixelPatch> {
+async function canvasSnapshot(page: Page): Promise<CanvasSnapshot> {
   const canvas = page.locator("canvas").first();
   const intrinsic = await canvas.evaluate((element) => {
     const source = element as HTMLCanvasElement;
     return { width: source.width, height: source.height };
   });
   const image = decodePng(await canvas.screenshot({ animations: "allow" }));
+  return { intrinsic, image };
+}
+
+function patchFromSnapshot(
+  snapshot: CanvasSnapshot,
+  x: number,
+  y: number,
+  designHalf = 28,
+): PixelPatch {
+  const { image, intrinsic } = snapshot;
   const px = Math.round(x * (image.width / intrinsic.width));
   const py = Math.round(y * (image.height / intrinsic.height));
   const half = Math.max(8, Math.round(designHalf * (image.width / intrinsic.width)));
@@ -225,13 +235,16 @@ async function patchPixels(
   return { width: x1 - x0, height: y1 - y0, data };
 }
 
-async function patchSignature(
+async function patchPixels(
   page: Page,
   x: number,
   y: number,
   designHalf = 28,
-): Promise<number> {
-  const patch = await patchPixels(page, x, y, designHalf);
+): Promise<PixelPatch> {
+  return patchFromSnapshot(await canvasSnapshot(page), x, y, designHalf);
+}
+
+function patchSignatureOf(patch: PixelPatch): number {
   let signature = 0;
   for (let i = 0; i < patch.data.length; i += 3) {
     signature +=
@@ -240,6 +253,27 @@ async function patchSignature(
       7 * (patch.data[i + 2] ?? 0);
   }
   return signature;
+}
+
+async function patchSignature(
+  page: Page,
+  x: number,
+  y: number,
+  designHalf = 28,
+): Promise<number> {
+  return patchSignatureOf(await patchPixels(page, x, y, designHalf));
+}
+
+function patchMeanDelta(left: PixelPatch, right: PixelPatch): number {
+  expect({ width: left.width, height: left.height }).toEqual({
+    width: right.width,
+    height: right.height,
+  });
+  let total = 0;
+  for (let i = 0; i < left.data.length; i++) {
+    total += Math.abs((left.data[i] ?? 0) - (right.data[i] ?? 0));
+  }
+  return total / Math.max(1, left.data.length);
 }
 
 async function capture(
@@ -452,23 +486,46 @@ test("Pages focus mode restores its chrome and Ride stays endless until STOP", {
     () => (window as any).__ibeetkidz_audio__?.diag().transportState ?? "missing",
   );
 
-  const idleMap = await patchSignature(page, header.map!.x, header.map!.y);
-  const idleNight = await patchSignature(page, night.x, night.y);
+  const idleSnapshot = await canvasSnapshot(page);
+  const idleMap = patchFromSnapshot(idleSnapshot, header.map!.x, header.map!.y);
+  const idleNight = patchFromSnapshot(idleSnapshot, night.x, night.y);
+  const idleMapSignature = patchSignatureOf(idleMap);
+  const idleNightSignature = patchSignatureOf(idleNight);
   const idleFocus = await patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
   const idleWorld = await canvasMetrics(page);
 
   await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
   await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
-    .not.toBe(idleMap);
+    .not.toBe(idleMapSignature);
   await expect.poll(() => patchSignature(page, night.x, night.y))
-    .not.toBe(idleNight);
+    .not.toBe(idleNightSignature);
   await expect.poll(() => patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y))
     .not.toBe(idleFocus);
+  const hiddenSnapshot = await canvasSnapshot(page);
+  const hiddenMap = patchFromSnapshot(hiddenSnapshot, header.map!.x, header.map!.y);
+  const hiddenNight = patchFromSnapshot(hiddenSnapshot, night.x, night.y);
+  const hiddenMapDelta = patchMeanDelta(idleMap, hiddenMap);
+  const hiddenNightDelta = patchMeanDelta(idleNight, hiddenNight);
+  expect(hiddenMapDelta).toBeGreaterThan(1);
+  expect(hiddenNightDelta).toBeGreaterThan(1);
   await capture(page, testInfo, "track-focus-01-hidden");
 
   await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
-  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y)).toBe(idleMap);
-  await expect.poll(() => patchSignature(page, night.x, night.y)).toBe(idleNight);
+  let restoredRatios = { map: 1, night: 1 };
+  await expect.poll(async () => {
+    const restoredSnapshot = await canvasSnapshot(page);
+    const restoredMap = patchFromSnapshot(restoredSnapshot, header.map!.x, header.map!.y);
+    const restoredNight = patchFromSnapshot(restoredSnapshot, night.x, night.y);
+    restoredRatios = {
+      map: patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta,
+      night: patchMeanDelta(idleNight, restoredNight) / hiddenNightDelta,
+    };
+    return Math.max(restoredRatios.map, restoredRatios.night);
+  }, { timeout: 15_000 }).toBeLessThan(0.1);
+  await testInfo.attach("focus-restoration-deltas", {
+    body: JSON.stringify({ hiddenMapDelta, hiddenNightDelta, restoredRatios }, null, 2),
+    contentType: "application/json",
+  });
   await capture(page, testInfo, "track-focus-02-restored");
 
   // No separate RIDE tap: NIGHT's existing compound intent starts the train,
@@ -477,7 +534,7 @@ test("Pages focus mode restores its chrome and Ride stays endless until STOP", {
   await expect.poll(transportState, { timeout: 12_000 }).toBe("started");
   await expect
     .poll(() => patchSignature(page, night.x, night.y), { timeout: 12_000 })
-    .not.toBe(idleNight);
+    .not.toBe(idleNightSignature);
   // The first patch delta is allowed to be the coordinator's cream PENDING
   // acknowledgement. AudioEngine publishes `started` before its async start
   // flight drains the queued NIGHT intent, so wait on the actual world
