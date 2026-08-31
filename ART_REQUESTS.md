@@ -341,20 +341,20 @@ wheel line. No baked rails, no vehicle body, no gradients.”
 centred and the supplied registration sheet puts every tyre tangent on the same
 railhead. The body canvases are not being redrawn in this request.
 
-### Remade 2026-08-30 — true low-resolution pixel art; engineering integration pending
+### Corrected 2026-08-30 — approved detailed 16-bit house style; engineering integration pending
 
-> **Reason for remake.** The prior AR-064–069 delivery passed canvas, alpha and registration checks, but it was **pixel-styled illustration rather than true pixel art**. The replacement set is authored on 2×, 4× or 5× smaller integer-grid masters with a fixed warm Nintendo palette and is enlarged with nearest-neighbour only. No generated artwork, anti-aliased edges, smooth resampling, colour quantisation, gradients or blurred shadows are shipped in this pass.
+> **Style correction (2026-08-30).** The first remake pass was technically crisp but visually wrong: it reduced iBeetKidz into sparse low-resolution prototype art. The approved replacement uses the current in-game captures as visual authority—dense, polished 16-bit toy-world materials; richly framed mini-scenes; warm oak, brass, steel, parchment and railway scenery; decisive dark outlines; and true transparent surrounds. `design/review/TRACK_HOUSE_STYLE_RESET.md` records the required direction and the explicit RIDE-control approval.
 
-| Request | Replacement delivery | Engineering handoff measurement |
+| Request | Corrected house-style delivery | Engineering handoff measurement |
 |---|---|---|
-| **AR-064** | `fca52fc` remakes the TARP idle/seated keycap pair and four car-specific tarp overlays. Boxcar, tanker, hopper and flatcar covers now have distinct cargo silhouettes, chunky folds, rope ties, transparent wheel clearance and livery apertures. | The paired TARP controls have an identical alpha content box: `(44, 16, 428, 452)`. |
-| **AR-065** | `7dfd651` remakes STOP, SEND, SLOW, FAST and the matching SPEED housing; the AR-064/069 controls complete the shared family. Each action uses a large single semantic pictogram on the same charcoal/brass pixel keycap. | SPEED display window is a grid-exact native rectangle: `x=120, y=168, w=268, h=128`. It is empty for engine-rendered text/value. |
-| **AR-066** | `115f64d` remakes the left/right stepped rock portal, tileable roof and wall, and unlit/lit brass-lamp pair. | Roof/wall have exact matching left/right pixel seams. The lamp pair shares an identical alpha content box. |
-| **AR-067** | `2921867` remakes the timber deck, braced pier, approach banks and water tile. | Deck railhead is `y=0`; deck/water have exact horizontal pixel seams. The 170px deck retains a 168px 4× grid plate plus a transparent 2px bottom pad. |
-| **AR-068** | `77165ba` remakes the 76² wheel, 300×44 two-step contact shadow, and all five native-scale registration sheets. | Wheel hub centre is **(38, 38)**. Axles: boxcar/hopper `(77,160)/(223,160)`; tanker `(77,140)/(223,140)`; flatcar `(77,80)/(223,80)`; locomotive driver `(78,190), r30` and pilot `(277,201), r19`. |
-| **AR-069** | `35fea64` remakes MAP, RIDE, CLEAR and LOOP source pairs and the real-size review sheet; AR-064 supplies the replacement TARP pair. | Each pair has matching alpha content bounds. `design/review/ar069-controls-70px.png` shows both states at exactly 70 × 70px over cream and sky-blue surfaces. |
+| **AR-064** | `1cd5d92` replaces the TARP idle/seated controls with detailed framed railway-card scenes and rebuilds all four car overlays with blue canvas folds, rope ties, brass eyelets, transparent wheel clearance and open livery plates. | The two TARP controls retain equal alpha content bounds; each cover retains its exact car canvas. |
+| **AR-065** | `5d02252` replaces STOP, SEND, SLOW, FAST and SPEED with rich illustrated controls built in the same oak/brass/steel language as Track’s existing console. | SPEED remains an empty runtime display; integration may remeasure its interior text rectangle from the new detailed housing. |
+| **AR-066** | `791cffe` replaces the abstract tunnel kit with mossy rock portal hills, weathered stone, timber/iron hardware, rich scrolling roof/wall layers and matched brass lamps. | Portal opening is true transparent; roof/wall retain X-seam equality; lamps retain equal alpha bounds. |
+| **AR-067** | `2ae3348` replaces the schematic bridge with rich railhead deck, riveted oak trestle, rocky grass banks and blue-green river water. | Deck railhead is `y=0`; deck/water have matching left/right edge pixels. |
+| **AR-068** | `77fcbc3` replaces the sparse wheel with dense six-spoke steel/brass/red wheel art, a hard-edged contact shadow and refreshed registration sheets. | Wheel hub remains **(38, 38)**. Axle and radius values are unchanged in the registration sheets. |
+| **AR-069** | `273faa0` replaces MAP, RIDE, CLEAR and LOOP pairs with approved framed toy-railway vignettes. | Paired states retain matching alpha bounds; `design/review/style-reset/house-style-controls-70px.png` is the corrected real-size proof. |
 
-> **Validation.** `scripts/validate_track_pixel_art.py` verifies every replacement has RGBA mode, exact requested canvas size, allowed palette/alpha values and alpha-zero corners when discrete. It verifies X seams for the four scrolling plates and exact content bounds for every control/lamp state pair. The full gate passes after the remake.
+> **Validation.** `scripts/validate_house_style_track.py` verifies RGBA mode, exact canvas dimensions, alpha-zero corners and opaque art pixels for discrete sprites; X-seam equality for scrolling plates; and matching alpha bounds for every state-swapped control or lamp pair. It passes after this corrected delivery.
 
 ### INTEGRATED 2026-08-13 (engineering)
 
