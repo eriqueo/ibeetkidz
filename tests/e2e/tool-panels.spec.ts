@@ -176,6 +176,99 @@ test("every instrument character's panel opens and closes cleanly", async ({ pag
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 
+for (const viewport of [
+  { label: "desktop", width: 1280, height: 720 },
+  { label: "narrow", width: 390, height: 844 },
+] as const) {
+  test(`all six tools share the authored header and real DONE control on ${viewport.label}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const crashes = await openWorkshop(page);
+    const tools = [
+      "record-voicefx",
+      "voice-keys",
+      "sound-pads",
+      "beat-grid",
+      "theremin-xy",
+      "melody-editor",
+    ] as const;
+
+    for (const tool of tools) {
+      await emit(page, "workshop-open-tool", tool);
+      await expect.poll(() => activeTool(page)).toBe(tool);
+      const shell = await page.evaluate((toolId) => {
+        const scene = (window as any).__ibeetkidz_test__.getScene();
+        const find = (objects: any[], name: string): any => {
+          for (const object of objects) {
+            if (object.name === name) return object;
+            const nested = Array.isArray(object.list) ? find(object.list, name) : undefined;
+            if (nested) return nested;
+          }
+          return undefined;
+        };
+        const root = scene.children.getChildren();
+        const header = find(root, `workshop-tool:${toolId}:header`);
+        const title = find(root, `workshop-tool:${toolId}:title`);
+        const close = find(root, `workshop-tool:${toolId}:close`);
+        const done = find(root, `workshop-tool:${toolId}:done`);
+        const headerBounds = header?.getBounds();
+        const titleBounds = title?.getBounds();
+        const frameNames = (done?.list ?? [])
+          .map((child: any) => child.frame?.name)
+          .filter(Boolean);
+        return {
+          headerFrame: header?.frame?.name ?? null,
+          title: title?.text ?? null,
+          titleInsideHeader: Boolean(
+            headerBounds
+            && titleBounds
+            && titleBounds.left >= headerBounds.left
+            && titleBounds.right <= headerBounds.right
+            && titleBounds.top >= headerBounds.top
+            && titleBounds.bottom <= headerBounds.bottom
+          ),
+          closeInteractive: Boolean(close?.input?.enabled),
+          doneInteractive: Boolean(done?.input?.enabled),
+          doneFrame: frameNames.find((name: string) => name.startsWith("btn-panel-done")) ?? null,
+        };
+      }, tool);
+      expect(shell, `${tool} must use the shared shell`).toMatchObject({
+        headerFrame: "panel-header-v2",
+        titleInsideHeader: true,
+        closeInteractive: true,
+        doneInteractive: true,
+        doneFrame: "btn-panel-done-idle",
+      });
+      expect(shell.title).not.toBe("");
+
+      await tapNamedPhaserObject(page, `workshop-tool:${tool}:done`);
+      await expect.poll(() => activeTool(page)).toBeNull();
+    }
+
+    await emit(page, "workshop-open-board");
+    const boardDoneFrame = await page.evaluate(() => {
+      const scene = (window as any).__ibeetkidz_test__.getScene();
+      const find = (objects: any[]): any => {
+        for (const object of objects) {
+          if (object.name === "workshop-board:done") return object;
+          const nested = Array.isArray(object.list) ? find(object.list) : undefined;
+          if (nested) return nested;
+        }
+        return undefined;
+      };
+      const done = find(scene.children.getChildren());
+      return (done?.list ?? [])
+        .map((child: any) => child.frame?.name)
+        .find((name: string | undefined) => name?.startsWith("btn-panel-done")) ?? null;
+    });
+    expect(boardDoneFrame).toBe("btn-panel-done-idle");
+    await tapNamedPhaserObject(page, "workshop-board:done");
+    await expect.poll(() =>
+      page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible),
+    ).toBe(false);
+    expect(crashes, crashes.join(" | ")).toEqual([]);
+  });
+}
+
 test("the conductor's board reaches a recording already in the project through the real Sound Library", async ({ page }) => {
   const crashes = await openWorkshop(page);
   const clipId = "prior-recording";
@@ -221,7 +314,7 @@ test("the conductor's board reaches a recording already in the project through t
   await expect.poll(async () => (await layers(page)).filter((l: any) => l.clipId === clipId).length).toBe(0);
   expect(Object.keys((await getProject(page)).clips)).toContain(clipId);
 
-  await tapNamedPhaserObject(page, "workshop-sound:done");
+  await tapNamedPhaserObject(page, "workshop-tool:sound-pads:done");
   await expect.poll(() => activeTool(page)).toBeNull();
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().boardVisible)).toBe(false);
   expect(crashes, crashes.join(" | ")).toEqual([]);
