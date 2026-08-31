@@ -215,9 +215,6 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   // ON plaque. The melody editor swaps frames; no mirrored-lever overlay left.
   "toggle-double": { states: { idle: "toggle-double-idle", on: "toggle-double-on" }, base: "toggle-double-idle", content: [0.199, 0.102, 0.799, 0.865], stretch: false },
   "fader-handle": { states: { base: "fader-handle" }, base: "fader-handle", content: [0.189, 0.316, 0.811, 0.662], stretch: false },
-  // AR-016 edit-vs-new modal (baked KEEP EDITING / NEW CAR buttons — the scene
-  // lays transparent hits over the two plaques).
-  "modal-edit-or-new": { states: { base: "modal-edit-or-new" }, base: "modal-edit-or-new", content: [0.046, 0.103, 0.954, 0.865], stretch: false },
 } as const;
 
 /** The chalkboard's inner slate surface (where the note grid draws), normalized
