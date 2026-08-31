@@ -35,13 +35,15 @@ The codebase follows strict principles to ensure maintainability, testability, a
 *   **The Boundary:** Phaser scenes emit events via `EventBus`. React listens and calls `dispatch()` or `sound.*`. Phaser never touches state or audio directly.
 
 ### 2.2 Data-Driven Layout (The Tiled Pipeline)
-We do not hardcode layout coordinates in TypeScript. We treat layout as data.
+We treat authored scene layout as data where a Tiled map exists.
 *   **Separation of Assets:** Scenes consist of a clean Base Plate (scenery only) and separate interactive Sprites (buttons, instruments).
 *   **Tiled Maps:** Layout is authored visually in Tiled and exported as JSON (`src/assets/maps/*.json`).
 *   **Generic Interpreters:** Phaser scenes are generic interpreters that load the JSON map, spawn sprites based on the `InteractiveObjects` layer, and wire them to the `EventBus` based on their `action` property.
+*   **TrackV3 exception:** The default side-scrolling Track has no Tiled map. `TrackV3Scene` builds its moving world and screen chrome programmatically; its coordinates are presentation detail and must not leak into the core.
 
 ### 2.3 The Three-Zone UI Rule
-Every scene (except Map) follows a strict three-zone layout, defined in Tiled:
+Every scene (except Map) follows a strict three-zone layout. Tiled-backed scenes
+define the zones in Tiled; TrackV3 implements the same contract in its scene:
 1.  **Top Bar:** Navigation (left/right arrows) and view-level mode switching (e.g., car type).
 2.  **Field:** The interactive elements you manipulate (e.g., instruments in Workshop, cars in Yard).
 3.  **Bottom Bar:** Controls for the current view's manipulations (e.g., transport/mixer in Workshop, add/remove in Yard).

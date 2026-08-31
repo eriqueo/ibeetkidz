@@ -52,18 +52,18 @@ passed that test without a retry.
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 502 |
-| Tracked snapshot bytes | 86,313,928 |
+| Tracked snapshot bytes | 86,266,843 |
 | Tracked files under `src/` + `tests/` | 385 |
 | `src/assets/` tracked bytes | 42,854,090 |
-| `dist/` | 113 files; 23,778,007 bytes |
-| `dist-gh/` | 113 files; 23,778,927 bytes |
+| `dist/` | 113 files; 23,777,657 bytes |
+| `dist-gh/` | 113 files; 23,778,577 bytes |
 | UI atlas | 124 frames; 5,941,895 encoded bytes; 267,386,880 decoded RGBA bytes |
 | E2E spec files | 19 |
 
 Each service worker contains 115 manifest entries and 111 unique URLs. Four PWA
 icons are emitted twice by the plugin's manifest/glob paths; this is known
 optional configuration churn, not duplicated payload on disk. Unique precached
-payload is 23,755,381 bytes for `dist/` and 23,756,301 bytes for `dist-gh/`.
+payload is 23,755,031 bytes for `dist/` and 23,755,951 bytes for `dist-gh/`.
 `THIRD_PARTY_NOTICES.txt` is present and precached. No precache URL contains
 `editor`.
 

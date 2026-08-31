@@ -108,7 +108,9 @@ Generated images can contain an opaque simulated checkerboard even when they vis
 | Rotating wheel | `export_house_style_wheel.py` | Exact 76², transparent corners, hub at (38,38). |
 | Pressed control | `make_house_style_pressed.py` | Same alpha content bounds as idle; visibly seated/darker face. |
 
-Run the current full gate from the repository root:
+Run the current manual Track-art validator from the repository root. It is not
+wired into the npm or CI gates because its host Python dependency is not yet
+pinned there:
 
 ```bash
 python3 scripts/validate_house_style_track.py
@@ -117,7 +119,7 @@ python3 scripts/validate_house_style_track.py
 The command checks exact dimensions, RGBA, alpha-zero corners, opaque art pixels, horizontal seams, and swapped-state registration. It must end with:
 
 ```text
-ALL HIGH-DETAIL AR-064–069 EXPORT CHECKS PASSED
+ALL HIGH-DETAIL AR-064–069 EXPORT AND BLOCKER CHECKS PASSED
 ```
 
 ## 6. Quality review sequence
@@ -157,7 +159,7 @@ The following project files are maintained to make this workflow reproducible.
 | `design/review/track-bridge-in-context.png` | Final composed Bridge proof with open countryside, train, trestle/water and HUD depth. |
 | `scripts/capture-track-composition.mjs` | Deterministic local capture of the actual playable Track view. |
 | `scripts/export_house_style_*.py` | Exact cleanup/export operations used for the corrected house-style assets. |
-| `scripts/validate_house_style_track.py` | Deterministic final gate for AR-064–069. |
+| `scripts/validate_house_style_track.py` | Manual deterministic validator for AR-064–069; CI enforcement remains future work. |
 
 ## 9. Prohibitions
 
