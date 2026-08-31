@@ -128,7 +128,21 @@ Never accept a production asset after an alpha script alone. Make a review compo
 
 If not, return to the art brief. The usual fix is not another arbitrary colour or a smaller grid. It is more authentic scene context: a real rail scene inside the card, the correct oak/brass/steel stack, visible material construction, landscape detail, or a richer silhouette.
 
-## 7. Committed reference material
+## 7. In-engine integration is mandatory
+
+A sprite sheet or a neutral-background contact sheet is **not** a scene review. AR-064–069 initially passed individual export checks but looked wrong in a flat showroom because no real scene hierarchy was present. Every Track art change must be viewed in the running game with a representative multi-car train and its fixed header/job tray.
+
+| Scene layer | Required placement | Integration rule |
+|---|---|---|
+| **Open countryside** | Day sky → distant hills → forest → near trees → rail/ground → foreground grass | Keep the horizon quiet enough for a short terrain label; do not let controls float in the landscape. |
+| **Train** | Shadow behind; body, independently rotating wheels and crew at the train layer | The train must sit on the railhead and remain legible against every terrain. |
+| **Tunnel** | Back wall and lamps behind train; roof/portal in front; **dark floor/ballast over countryside ground below the railhead** | Fade the open-country foreground fringe as the enclosure arrives. A tunnel cannot retain a bright grass slab through its interior. |
+| **Bridge** | Gap/water/piers/deck at world depth; fixed job tray above lower piers | Verify Bridge by itself after Tunnel has fully settled. A temporary overlap is a transition state, not a review target. |
+| **HUD** | Shared header docked off the top edge; shared job tray docked off the bottom edge | Console plates are screen furniture. They must frame the world without pretending to be scenery. |
+
+Use `scripts/capture-track-composition.mjs` with the local development server running to capture the actual Tunnel and Bridge scenes. It seeds four train cars through the test bridge, enters Track, records a travelling Tunnel composition, then settles Tunnel before recording Bridge. The durable review outputs are `design/review/track-tunnel-in-context.png` and `design/review/track-bridge-in-context.png`.
+
+## 8. Committed reference material
 
 The following project files are maintained to make this workflow reproducible.
 
@@ -138,11 +152,14 @@ The following project files are maintained to make this workflow reproducible.
 | `design/review/style-reset/ride-house-style-512.png` | Explicitly approved RIDE-card visual anchor. |
 | `design/review/style-reset/house-style-controls-70px.png` | Actual-size control review. |
 | `design/review/style-reset/house-style-tarps.png` | Tarp overlays on active Track cars. |
-| `design/review/style-reset/house-style-world-kit.png` | Tunnel, wheel, lamp and bridge-kit review composition. |
+| `design/review/style-reset/house-style-world-kit.png` | Asset-only diagnostic board; never use it as final scene approval. |
+| `design/review/track-tunnel-in-context.png` | Final composed Tunnel proof with wall, roof, lamps, floor, train and HUD depth. |
+| `design/review/track-bridge-in-context.png` | Final composed Bridge proof with open countryside, train, trestle/water and HUD depth. |
+| `scripts/capture-track-composition.mjs` | Deterministic local capture of the actual playable Track view. |
 | `scripts/export_house_style_*.py` | Exact cleanup/export operations used for the corrected house-style assets. |
 | `scripts/validate_house_style_track.py` | Deterministic final gate for AR-064–069. |
 
-## 8. Prohibitions
+## 9. Prohibitions
 
 Do not use the earlier `design/art-masters/ar064` through `ar069` source masters as visual references. They encode the rejected sparse-prototype approach. Do not replace dense approved 16-bit art with a literal small-grid sketch, even if it is technically nearest-neighbour pixel art. Do not make opaque checkerboard or white preview backing part of a game sprite. Do not let a state swap move the frame. Do not substitute a generic UI symbol for a child-readable illustrated railway scene.
 

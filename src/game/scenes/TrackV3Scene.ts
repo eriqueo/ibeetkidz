@@ -290,6 +290,9 @@ export class TrackV3Scene extends Phaser.Scene {
   private nightShade?: Phaser.GameObjects.Rectangle | undefined;
   private tunnelShade?: Phaser.GameObjects.Rectangle | undefined;
   private tunnelWall?: Phaser.GameObjects.TileSprite;
+  /** Close ballast/masonry below the railhead. It replaces open-country grass
+   *  while the train is inside, completing the tunnel as a single location. */
+  private tunnelFloor?: Phaser.GameObjects.TileSprite;
   private tunnelRoof?: Phaser.GameObjects.TileSprite;
   private tunnelMouth?: Phaser.GameObjects.Image;
   private tunnelLamps: Phaser.GameObjects.Image[] = [];
@@ -585,6 +588,14 @@ export class TrackV3Scene extends Phaser.Scene {
       .tileSprite(0, RAIL_Y - 720, W, 720, "trk-tunnel-wall")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack)
+      .setVisible(false);
+    this.tunnelFloor = this.add
+      // Starts under the existing rail/ballast crown. It is behind the train
+      // but in front of the day ground, so a tunnel is one dark railway room
+      // instead of a stone wall hovering above a bright grass strip.
+      .tileSprite(0, RAIL_Y + 24, W, H - (RAIL_Y + 24), "trk-tunnel-floor")
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.tunnelBack + 0.05)
       .setVisible(false);
     this.tunnelRoof = this.add
       .tileSprite(0, RAIL_Y - 720, W, 520, "trk-tunnel-roof")
@@ -1277,7 +1288,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setTexture(tunnel ? "trk-tunnel-mouth-left" : "trk-tunnel-mouth-right")
         .setVisible(true);
     }
-    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelRoof]) {
+    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
       layer?.setVisible(true);
     }
     for (const lamp of this.tunnelLamps) lamp.setVisible(true);
@@ -1291,9 +1302,10 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = false;
     this.tunnelPhase = "off";
     this.tunnelMouth?.setVisible(false);
-    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelRoof]) {
+    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
       layer?.setVisible(false);
     }
+    this.fore?.setAlpha(1);
     for (const lamp of this.tunnelLamps) lamp.setVisible(false);
   }
 
@@ -1378,10 +1390,19 @@ export class TrackV3Scene extends Phaser.Scene {
     const enclosure = entering ? progress : exiting ? 1 - progress : 1;
 
     this.tunnelWall?.setAlpha(enclosure);
+    this.tunnelFloor?.setAlpha(enclosure);
     this.tunnelRoof?.setAlpha(enclosure);
     this.tunnelShade?.setAlpha(0.3 * enclosure);
+    // The bright grass fringe belongs to the open countryside. Let it recede
+    // with the portal rather than remain a green strip pasted across a stone
+    // interior; the fade preserves the entry/exit motion and gives the rails
+    // a believable tunnel floor beneath the consist.
+    this.fore?.setAlpha(1 - enclosure);
     if (this.tunnelWall) {
       this.tunnelWall.tilePositionX = parallaxOffset(this.pos, this.view, 0.82);
+    }
+    if (this.tunnelFloor) {
+      this.tunnelFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     }
     if (this.tunnelRoof) {
       this.tunnelRoof.tilePositionX = parallaxOffset(this.pos, this.view, 1.08);
@@ -1409,9 +1430,10 @@ export class TrackV3Scene extends Phaser.Scene {
           this.tunnelPhase = "inside";
         } else {
           this.tunnelPhase = "off";
-          for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelRoof]) {
+          for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
             layer?.setVisible(false);
           }
+          this.fore?.setAlpha(1);
           for (const lamp of this.tunnelLamps) lamp.setVisible(false);
         }
       }
