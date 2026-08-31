@@ -518,12 +518,12 @@ railhead. The body canvases are not being redrawn in this request.
 
 ### Remade 2026-08-30 — candidate batch release-rejected; art revision pending
 
-> **Candidate intent, not acceptance.** This set is authored on 2×, 4× or 5×
-> smaller integer-grid masters and enlarged with nearest-neighbour. That method
-> is reproducible and its registration/seam helpers are useful, but the isolated
-> validation sheets did not preserve full-scene material richness. Keep the
-> tooling as a candidate production aid; do not make its fixed low-grid palette
-> the visual target.
+> **Candidate intent, not acceptance.** This set was authored on 2×, 4× or 5×
+> smaller integer-grid masters and enlarged with nearest-neighbour. The
+> registration and seam measurements remain useful history, but the producers
+> were removed after they were shown to overwrite accepted art with the rejected
+> sparse-prototype direction. Recover them from the listed commits only for
+> historical investigation; do not run them against production assets.
 
 | Request | Replacement delivery | Engineering handoff measurement |
 |---|---|---|
@@ -534,10 +534,10 @@ railhead. The body canvases are not being redrawn in this request.
 | **AR-068 — REJECT / SHADOW HOLD** | `77165ba` remakes the wheel, shadow, and registration sheets. | Hub/axle measurements are reusable. The wheel reads as a purple token rather than rolling steel; the shadow needs visible motion/contact proof. |
 | **AR-069 — REWORK** | `35fea64` remakes MAP, RIDE, CLEAR, and LOOP; AR-064 supplies TARP. | All 19 source faces now exist, but the atlas is stale, MAP/SEND became square inside landscape slots, content boxes are stale, and no complete assembled runtime header was accepted. |
 
-> **Validation boundary.** `scripts/validate_track_pixel_art.py` passes for this
-> candidate and proves dimensions, palette/alpha, seams, and paired bounds. It
-> does not check atlas freshness, runtime content boxes, positive-reference
-> fidelity, or full-scene coherence, and no blocking workflow invokes it yet.
+> **Historical validation boundary.** The retired candidate validator proved
+> dimensions, palette/alpha, seams, and paired bounds. It did not check atlas
+> freshness, runtime content boxes, positive-reference fidelity, or full-scene
+> coherence. The accepted-art validator below is the current contract.
 
 ### Corrected 2026-08-30 — approved detailed 16-bit house style; engineering integration pending
 
