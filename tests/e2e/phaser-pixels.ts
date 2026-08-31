@@ -29,6 +29,49 @@ export async function tapNamedPhaserObject(page: Page, name: string): Promise<vo
   await page.mouse.click(point.x, point.y);
 }
 
+/** Click a live Melody editor cell through the canvas. The bridge locates the
+ *  production Game Object; Chromium still supplies the input that must survive
+ *  every visible modal and hit target above it. */
+export async function tapMelodyCell(
+  page: Page,
+  rowFromTop: number,
+  step: number,
+): Promise<void> {
+  await page.waitForFunction(({ rowFromTop, step }) => {
+    const scene = (window as any).__ibeetkidz_test__?.getScene();
+    const panel = scene?.toolPanels?.["melody-editor"];
+    const cell = panel?.cells?.[rowFromTop]?.[step];
+    return Boolean(
+      cell?.visible
+      && cell?.input
+      && cell.x > 0
+      && cell.y > 0
+      && panel.titleText?.text !== "🎹 Melody",
+    );
+  }, { rowFromTop, step });
+  const point = await page.evaluate(({ rowFromTop, step }) => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const cell = scene.toolPanels?.["melody-editor"]?.cells?.[rowFromTop]?.[step];
+    if (!cell?.input) return { error: `missing Melody cell ${rowFromTop}:${step}` };
+    (window as any).__ibeetkidz_melody_cell_tapped = false;
+    cell.once("pointerdown", () => { (window as any).__ibeetkidz_melody_cell_tapped = true; });
+    const hit = cell.input.hitArea;
+    const localX = hit.x + hit.width / 2 - cell.displayOriginX;
+    const localY = hit.y + hit.height / 2 - cell.displayOriginY;
+    const world = cell.getWorldTransformMatrix().transformPoint(localX, localY);
+    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+    const game = scene.scale.gameSize;
+    return {
+      x: canvas.left + world.x * (canvas.width / game.width),
+      y: canvas.top + world.y * (canvas.height / game.height),
+    };
+  }, { rowFromTop, step });
+  if ("error" in point) throw new Error(point.error);
+  await page.mouse.click(point.x, point.y);
+  const tapped = await page.evaluate(() => (window as any).__ibeetkidz_melody_cell_tapped);
+  if (!tapped) throw new Error(`Melody cell ${rowFromTop}:${step} did not receive the canvas tap`);
+}
+
 /** Capture only a named live Phaser input object's visible hit box. */
 export async function screenshotNamedPhaserObject(page: Page, name: string) {
   const clip = await page.evaluate((objectName) => {

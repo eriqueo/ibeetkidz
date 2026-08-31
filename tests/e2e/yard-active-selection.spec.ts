@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import { tapCanvasAtClientPoint } from "./canvas-input.ts";
+import { tapMelodyCell, tapNamedPhaserObject } from "./phaser-pixels.ts";
 
 async function boot(page: Page): Promise<string[]> {
   const crashes: string[] = [];
@@ -20,6 +21,7 @@ async function waitForScene(page: Page, key: string): Promise<void> {
 type YardTarget =
   | "hitch"
   | "delete"
+  | "edit"
   | "unhitch"
   | { readonly paletteId: string }
   | { readonly trainId: string };
@@ -36,7 +38,9 @@ async function liveObjectPoint(
             ? "btn-add-to-train"
             : target === "delete"
               ? "btn-delete-car"
-              : "btn-remove-from-train";
+              : target === "edit"
+                ? "btn-edit-car"
+                : "btn-remove-from-train";
           const element = scene.chrome.find((candidate: any) => candidate.spawn.id === spawnId);
           return element?.image ?? element?.hit;
         })()
@@ -76,6 +80,64 @@ const project = (page: Page) =>
 
 const yardModel = (page: Page) =>
   page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().debugModel);
+
+test("Yard EDIT CAR reaches an instrument and note on the selected non-empty car", async ({ page }) => {
+  const crashes = await boot(page);
+  const selectedId = await page.evaluate(() => {
+    const testApi = (window as any).__ibeetkidz_test__;
+    const partId = testApi.getProject().activePartId as string;
+    const clipId = "yard-edit-kick";
+    testApi.dispatch({
+      type: "addClip",
+      clip: {
+        id: clipId,
+        source: { kind: "builtin", assetId: "kick" },
+        effects: [],
+        color: "#ff6b6b",
+        label: "Yard Edit Kick",
+      },
+    });
+    testApi.dispatch({
+      type: "addLayer",
+      layer: {
+        id: "yard-edit-layer",
+        clipId,
+        volume: 1,
+        muted: false,
+        kind: "drum",
+        steps: [{ row: 0, length: 1 }, ...Array.from({ length: 15 }, () => null)],
+        notes: [],
+        wave: "triangle",
+        echo: 0,
+        tone: 1,
+      },
+    });
+    testApi.dispatch({ type: "setActiveView", view: "yard" });
+    return partId;
+  });
+  await waitForScene(page, "YardScene");
+  await expect.poll(async () => (await yardModel(page)).selectedId).toBe(selectedId);
+
+  await tapLiveObject(page, "edit");
+  await waitForScene(page, "WorkshopScene");
+  expect((await project(page)).activePartId).toBe(selectedId);
+  const beforeLayers = (await project(page)).parts.find((part: any) => part.id === selectedId).layers.length;
+
+  await tapNamedPhaserObject(page, "workshop-control:inst-guitar");
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).__ibeetkidz_test__.getScene().activeToolId,
+  )).toBe("melody-editor");
+  await expect.poll(async () =>
+    (await project(page)).parts.find((part: any) => part.id === selectedId).layers.length,
+  ).toBe(beforeLayers + 1);
+
+  await tapMelodyCell(page, 2, 2);
+  await expect.poll(async () => {
+    const part = (await project(page)).parts.find((candidate: any) => candidate.id === selectedId);
+    return part.layers.at(-1).notes[2]?.some((note: any) => note.row === 4) ?? false;
+  }).toBe(true);
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
 
 test("Yard carries the active car into a visible, immediately hitchable selection", async ({ page }) => {
   const crashes = await boot(page);

@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { tapNamedPhaserObject } from "./phaser-pixels.ts";
+import { tapMelodyCell, tapNamedPhaserObject } from "./phaser-pixels.ts";
 
 // The Track: the side-scroller, which is what you get with no flag at all as of
 // 2026-08-16. `?oval` opts back into the old ring.
@@ -34,6 +34,13 @@ function emit(page: Page, event: string, ...args: unknown[]): Promise<void> {
   return page.evaluate(
     ([ev, a]) => void (window as any).__ibeetkidz_test__.emit(ev, ...(a as unknown[])),
     [event, args] as const,
+  );
+}
+
+async function waitForScene(page: Page, key: string): Promise<void> {
+  await page.waitForFunction(
+    (sceneKey) => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === sceneKey,
+    key,
   );
 }
 
@@ -247,6 +254,34 @@ test("an idle job switch starts its Ride before applying terrain and atmosphere"
 
 test("a car tap waits for an explicit edit, tarp, or close choice", async ({ page }) => {
   await bootV3(page);
+  await page.evaluate(() => {
+    const testApi = (window as any).__ibeetkidz_test__;
+    testApi.dispatch({
+      type: "addClip",
+      clip: {
+        id: "track-edit-kick",
+        source: { kind: "builtin", assetId: "kick" },
+        effects: [],
+        color: "#ff6b6b",
+        label: "Track Edit Kick",
+      },
+    });
+    testApi.dispatch({
+      type: "addLayer",
+      layer: {
+        id: "track-edit-layer",
+        clipId: "track-edit-kick",
+        volume: 1,
+        muted: false,
+        kind: "drum",
+        steps: [{ row: 0, length: 1 }, ...Array.from({ length: 15 }, () => null)],
+        notes: [],
+        wave: "triangle",
+        echo: 0,
+        tone: 1,
+      },
+    });
+  });
 
   const projectBefore = await page.evaluate(() => {
     const project = (window as any).__ibeetkidz_test__.getProject();
@@ -354,9 +389,30 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
   ).toBe("workshop");
+  await waitForScene(page, "WorkshopScene");
   expect(await page.evaluate(() =>
     (window as any).__track_car_scene_before_edit.debugState().tarpArmed,
   )).toBe(false);
+
+  const beforeLayers = await page.evaluate(() => {
+    const project = (window as any).__ibeetkidz_test__.getProject();
+    return project.parts.find((part: any) => part.id === project.activePartId).layers.length;
+  });
+  await tapNamedPhaserObject(page, "workshop-control:inst-guitar");
+  await expect.poll(() => page.evaluate(() =>
+    (window as any).__ibeetkidz_test__.getScene().activeToolId,
+  )).toBe("melody-editor");
+  await expect.poll(() => page.evaluate(() => {
+    const project = (window as any).__ibeetkidz_test__.getProject();
+    return project.parts.find((part: any) => part.id === project.activePartId).layers.length;
+  })).toBe(beforeLayers + 1);
+  await tapMelodyCell(page, 2, 2);
+  await expect.poll(() => page.evaluate(() => {
+    const project = (window as any).__ibeetkidz_test__.getProject();
+    const part = project.parts.find((candidate: any) => candidate.id === project.activePartId);
+    const lane = part.layers.at(-1);
+    return lane.notes[2]?.some((note: any) => note.row === 4) ?? false;
+  })).toBe(true);
 
   // Returning through the real Map destination starts Track with no invisible
   // pending action left over from the abandoned tarp choice.
