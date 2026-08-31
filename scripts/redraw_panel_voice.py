@@ -12,7 +12,7 @@ and redraws only the recorder-machine body material and identity outside/around 
 from pathlib import Path
 from PIL import Image, ImageDraw
 
-ROOT = Path('/home/ubuntu/ibeetkidz_work')
+ROOT = Path(__file__).resolve().parents[1]
 PATH = ROOT / 'src/assets/sprites/panels/panel-voice.png'
 
 # Paint only in these body-only regions: the left record-pictorial bay and
