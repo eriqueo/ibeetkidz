@@ -30,6 +30,20 @@ export interface TerrainSpan {
   readonly endBar: number;
 }
 
+/**
+ * Pick the one physical rail support at a bar while musical terrain modes
+ * remain independently stacked. A bridge is a rigid, level deck, so it wins
+ * only inside its own span; the hill resumes on either approach.
+ */
+export function supportSpanAtBar(
+  atBar: number,
+  hill: TerrainSpan | null,
+  bridge: TerrainSpan | null,
+): TerrainSpan | null {
+  if (bridge && atBar >= bridge.startBar && atBar <= bridge.endBar) return null;
+  return hill;
+}
+
 /** How high a hill lifts the rails at its summit, in px.
  *
  *  Was 190, which put the steepest part of the slope at ~25° — a gradient no

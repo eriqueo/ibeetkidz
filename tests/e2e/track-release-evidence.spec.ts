@@ -2,6 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { emptyProject, makeLayer, reduce, serialize } from "../../src/core/project-state.ts";
 import {
   TRACK_HEADER,
+  TRACK_FOCUS_KEY,
   TRACK_VISUALIZER,
   trackHeaderSlots,
   trackJobSlots,
@@ -429,14 +430,10 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   });
 });
 
-test("a finite Track ride auto-stops with neutral mode visuals in the Pages canvas", async ({
+test("Pages focus mode restores its chrome and Ride stays endless until STOP", async ({
   page,
 }, testInfo) => {
-  // The sequential contract windows below total more than 90 seconds before
-  // boot and compositor screenshot overhead. Keep each product assertion's
-  // tight 5–20 second deadline, but give the complete journey enough room to
-  // reach its final post-stop persistence proof on a loaded headed runner.
-  test.setTimeout(120_000);
+  test.setTimeout(90_000);
   const configuredUrl = testInfo.project.metadata.pwaOrigin;
   if (typeof configuredUrl !== "string") {
     throw new Error("playwright config must provide pwaOrigin");
@@ -447,9 +444,6 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
   const appUrl = new URL(configuredUrl);
   appUrl.searchParams.set("audiodiag", "");
   const failures = observeBrowser(page);
-  // Four bars leave enough real ride time to observe NIGHT before the 1x
-  // finish edge; the contract is still one complete song, not a wall-clock
-  // delay tuned around screenshot cost.
   await bootPagesTrack(page, appUrl.href, 4);
 
   const header = trackHeaderSlots();
@@ -458,19 +452,24 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
     () => (window as any).__ibeetkidz_audio__?.diag().transportState ?? "missing",
   );
 
+  const idleMap = await patchSignature(page, header.map!.x, header.map!.y);
   const idleNight = await patchSignature(page, night.x, night.y);
+  const idleFocus = await patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
   const idleWorld = await canvasMetrics(page);
 
-  await tapDesignPoint(page, header.loop!.x, header.loop!.y); // ∞ → 1x
-  // The finite completion edge below is LOOP's authoritative behavioral
-  // signal. Keep the visible 1x state as release evidence, but do not reduce a
-  // WebGL screenshot to a release gate: CI video from runs 33319799978 and
-  // 33320376327 visibly held 1x while two different pixel reductions reported
-  // an unchanged patch.
-  await page.evaluate(() => new Promise<void>((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
-  }));
-  await capture(page, testInfo, "track-finite-01-loop");
+  await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
+  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
+    .not.toBe(idleMap);
+  await expect.poll(() => patchSignature(page, night.x, night.y))
+    .not.toBe(idleNight);
+  await expect.poll(() => patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y))
+    .not.toBe(idleFocus);
+  await capture(page, testInfo, "track-focus-01-hidden");
+
+  await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
+  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y)).toBe(idleMap);
+  await expect.poll(() => patchSignature(page, night.x, night.y)).toBe(idleNight);
+  await capture(page, testInfo, "track-focus-02-restored");
 
   // No separate RIDE tap: NIGHT's existing compound intent starts the train,
   // then latches the mode against the authoritative transport.
@@ -486,10 +485,6 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
   let nightWorld = idleWorld;
   await expect
     .poll(async () => {
-      // Keep the exact compositor sample that satisfies the NIGHT gate. A
-      // second screenshot here can take long enough on a loaded runner for a
-      // short finite ride to finish, turning the alleged NIGHT baseline back
-      // into daylight before the restoration assertion sees it.
       nightWorld = await canvasMetrics(page);
       return nightWorld.worldLuma;
     }, {
@@ -500,14 +495,18 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
     // a full treatment keeps an unusually bright idle frame from admitting an
     // ordinary day frame as NIGHT.
     .toBeLessThan(idleWorld.worldLuma * 0.75);
-  await expect.poll(transportState, {
-    timeout: 20_000,
-    message: "the 1x ride must reach AudioEngine's finite completion edge",
-  }).toBe("stopped");
+  // Four bars have completed more than once by now. Endless is the contract:
+  // the transport may stop only when the real STOP control is tapped.
+  await page.waitForTimeout(8_000);
+  expect(await transportState()).toBe("started");
+  await capture(page, testInfo, "track-focus-03-endless-night");
+
+  await tapDesignPoint(page, header.stop!.x, header.stop!.y);
+  await expect.poll(transportState, { timeout: 5_000 }).toBe("stopped");
 
   const nightDelta = idleWorld.worldLuma - nightWorld.worldLuma;
   const neutralTolerance = Math.max(2, nightDelta * 0.05);
-  await testInfo.attach("finite-night-baseline", {
+  await testInfo.attach("endless-night-baseline", {
     body: JSON.stringify({ idleWorld, nightWorld, nightDelta, neutralTolerance }, null, 2),
     contentType: "application/json",
   });
@@ -516,18 +515,13 @@ test("a finite Track ride auto-stops with neutral mode visuals in the Pages canv
       (await canvasMetrics(page)).worldLuma - idleWorld.worldLuma,
     ), {
       timeout: 5_000,
-      message: "the world must return to its neutral treatment at finite completion",
+      message: "STOP must return the world to its neutral treatment",
     })
     // At least 95% of the measured NIGHT effect must disappear. Comparing to
     // the original neutral frame is stronger than merely becoming brighter.
     .toBeLessThanOrEqual(neutralTolerance);
 
-  // LOOP configures the next Ride rather than latching a ride mode. Preserve a
-  // final review frame proving 1x remains visible while NIGHT and the world
-  // treatment return to neutral. The world comparison above is the release
-  // gate; unlike the discarded scalar keycap signature, it measures the
-  // visible consequence and agreed with both CI videos.
-  await capture(page, testInfo, "track-finite-02-stopped");
+  await capture(page, testInfo, "track-focus-04-stopped");
   expect(failures.page, "uncaught browser errors").toEqual([]);
   expect(failures.console, "browser console errors").toEqual([]);
   expect(failures.network, "failed release requests").toEqual([]);

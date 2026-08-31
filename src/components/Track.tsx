@@ -20,6 +20,25 @@ import {
 } from "../core/terrain.ts";
 
 const SONG_FILE_NAME = "my-train-song.wav";
+const TRACK_CHROME_STORAGE_KEY = "ibeetkidz.track.chrome";
+
+function readTrackChromePreference(): boolean {
+  if (typeof window === "undefined") return true;
+  try {
+    return window.localStorage.getItem(TRACK_CHROME_STORAGE_KEY) !== "hidden";
+  } catch {
+    return true;
+  }
+}
+
+function writeTrackChromePreference(visible: boolean): void {
+  try {
+    window.localStorage.setItem(TRACK_CHROME_STORAGE_KEY, visible ? "visible" : "hidden");
+  } catch {
+    // Storage can be unavailable in private/restricted contexts. Focus mode is
+    // still valid for this visit; persistence is a convenience, not a gate.
+  }
+}
 
 /**
  * The side-scroller is the Track. `?oval` opts back into the old ring.
@@ -118,17 +137,14 @@ export const Track: FC = () => {
   // span here briefly so its tail scrolls away; the tick prunes it.
   const latchedRidesRef = useRef(new Map<TerrainKind, TerrainRide>());
 
-  // How many times the song runs before stopping, and whether the tarp gesture
-  // is armed. Refs rather than state: both are read inside EventBus listeners
-  // registered once, and neither drives any React render — the scene is told.
-  const loopsRef = useRef<number | null>(null);
+  // View preferences and performance gestures are refs because EventBus
+  // listeners are registered once and neither drives a React render.
+  const chromeVisibleRef = useRef(readTrackChromePreference());
   const tarpArmedRef = useRef(false);
   const modeIntentsRef = useRef<TrackModeIntentCoordinator | null>(null);
 
-  // One visual projection of AudioEngine's latched ride modes. Both a manual
-  // STOP and the engine's finite-loop finish edge use the same neutralization
-  // path below, so the switches, world treatment and terrain spans cannot
-  // disagree about whether a ride still exists.
+  // One visual projection of AudioEngine's latched ride modes. Manual STOP is
+  // the terminal edge; Ride itself is intentionally endless.
   const pushModesToScene = useCallback(() => {
     const v3 = v3Ref.current;
     if (!v3) return;
@@ -153,12 +169,12 @@ export const Track: FC = () => {
       v3Ref.current = scene;
       scene.setCars(v3CarsRef.current);
       scene.setTempo(projectRef.current.tempoBpm);
-      scene.setLoopCount(loopsRef.current);
       scene.setTarpArmed(tarpArmedRef.current);
       // Same jumbotron, same contract as the oval: the analyser is PUSHED in,
       // because React owns the ports and a scene that reached for audio would
       // put a vendor dependency behind the EventBus boundary.
       scene.attachVisualizer(engine.getAnalyser(), getProject);
+      scene.setChromeVisible(chromeVisibleRef.current);
       return;
     }
     sceneRef.current = scene as TrackScene;
@@ -280,17 +296,11 @@ export const Track: FC = () => {
         console.warn("audio reconcile failed", err);
       });
     };
-    // LOOP: how many times round before the train stops. ∞ → 1 → 2 → 4 → ∞.
-    // Forever stays the DEFAULT and the cycle returns to it, because a song
-    // that keeps going is the kind thing for a four-year-old who is still
-    // deciding what to do next.
-    const LOOP_CYCLE: readonly (number | null)[] = [null, 1, 2, 4];
-    const onLoopCycled = () => {
-      const i = LOOP_CYCLE.indexOf(loopsRef.current);
-      const next = LOOP_CYCLE[(i + 1) % LOOP_CYCLE.length] ?? null;
-      loopsRef.current = next;
-      engine.setRideLoops(next);
-      v3Ref.current?.setLoopCount(next);
+    const onFocusToggled = () => {
+      const visible = !chromeVisibleRef.current;
+      chromeVisibleRef.current = visible;
+      writeTrackChromePreference(visible);
+      v3Ref.current?.setChromeVisible(visible);
     };
     // TARP: arm/disarm cover-a-car. Tap-to-edit stays the default gesture.
     const onTarpArmed = () => {
@@ -307,7 +317,7 @@ export const Track: FC = () => {
     EventBus.on("terrain-picked", onTerrain);
     EventBus.on("track-mode-toggled", onMode);
     EventBus.on("track-backwards-toggled", onBackwards);
-    EventBus.on("track-loop-cycled", onLoopCycled);
+    EventBus.on("track-focus-toggled", onFocusToggled);
     EventBus.on("track-tarp-armed", onTarpArmed);
     return () => {
       modeIntents.dispose();
@@ -322,7 +332,7 @@ export const Track: FC = () => {
       EventBus.off("terrain-picked", onTerrain);
       EventBus.off("track-mode-toggled", onMode);
       EventBus.off("track-backwards-toggled", onBackwards);
-      EventBus.off("track-loop-cycled", onLoopCycled);
+      EventBus.off("track-focus-toggled", onFocusToggled);
       EventBus.off("track-tarp-armed", onTarpArmed);
     };
   }, [dispatch, dispatchAll, engine, pushModesToScene, reconcileStoppedRideVisuals]);
@@ -404,10 +414,6 @@ export const Track: FC = () => {
   useEffect(() => {
     let raf = 0;
     const tick = () => {
-      // Ask the engine whether the song has run its requested number of times.
-      // The DECISION is the engine's (it reads the transport itself); this is
-      // only the heartbeat, because the Track is the view that has one.
-      if (engine.tickRide()) reconcileStoppedRideVisuals();
       const v3scene = v3Ref.current;
       if (v3scene) {
         const riding = engine.isPlaying && engine.playMode === "ride";

@@ -30,6 +30,14 @@ function state(page: Page): Promise<any> {
   return page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().debugState());
 }
 
+test("TAP TO START uses the pixel display font", async ({ page }) => {
+  await page.goto("/");
+  const start = page.getByRole("button", { name: /tap to start/i });
+  await expect(start).toBeVisible();
+  await expect.poll(() => start.evaluate((button) => getComputedStyle(button).fontFamily))
+    .toContain("Press Start 2P");
+});
+
 function emit(page: Page, event: string, ...args: unknown[]): Promise<void> {
   return page.evaluate(
     ([ev, a]) => void (window as any).__ibeetkidz_test__.emit(ev, ...(a as unknown[])),
@@ -138,7 +146,7 @@ test("a failed required Track asset stops loudly before a missing texture can re
   expect(boundary).toEqual({ activeScene: "MapScene", renderedMissingTextures: 0 });
 });
 
-test("a kid can drive the default Track through its real canvas controls", async ({ page }) => {
+test("a kid can drive the default Track through its real canvas controls", async ({ page }, testInfo) => {
   page.on("pageerror", (e) => console.log("[page-crash]", e.message));
   await page.goto("/");
   await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
@@ -155,13 +163,31 @@ test("a kid can drive the default Track through its real canvas controls", async
   await tapNamedPhaserObject(page, "track-control:btn-track-ride");
   await expect.poll(async () => (await state(page)).pos).toBeGreaterThan(before.pos);
 
-  const loopText = () =>
-    page.evaluate(() =>
-      (window as any).__ibeetkidz_test__.getScene().children.getByName("track-display:loop").text,
-    );
-  expect(await loopText()).toBe("∞");
-  await tapNamedPhaserObject(page, "track-control:btn-transport-loop");
-  await expect.poll(loopText).toBe("1x");
+  expect(await page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    return {
+      button: scene.children.getByName("track-control:btn-transport-loop"),
+      display: scene.children.getByName("track-display:loop"),
+    };
+  })).toEqual({ button: null, display: null });
+
+  // One edge key hides both decks and the visualizer, but never hides itself.
+  // A second real canvas tap restores the complete control surface.
+  await tapNamedPhaserObject(page, "track-control:focus");
+  await expect.poll(async () => (await state(page)).chromeVisible).toBe(false);
+  await page.screenshot({ path: testInfo.outputPath("track-focus-hidden.png") });
+
+  // A view preference survives a reload, but storage failure is not required
+  // for basic operation (the React boundary catches that separately).
+  await page.reload();
+  await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
+  );
+  await expect.poll(async () => (await state(page)).chromeVisible).toBe(false);
+  await tapNamedPhaserObject(page, "track-control:focus");
+  await expect.poll(async () => (await state(page)).chromeVisible).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("track-focus-restored.png") });
 
   await tapNamedPhaserObject(page, "track-mode:hill");
   await expect.poll(async () => (await state(page)).terrain?.kind ?? null).toBe("hill");
@@ -606,7 +632,7 @@ test("a bridge deck remains registered to its piers while the world advances", a
 
 test("a tunnel enters, scrolls with the train, and exits instead of dimming in place", async ({
   page,
-}) => {
+}, testInfo) => {
   await bootV3(page);
   const registered = await state(page);
   expect(registered.tunnel.phase).toBe("off");
@@ -630,12 +656,15 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   expect(entering.enclosureX).toBeGreaterThan(0);
   expect(entering.enclosureWidth).toBeLessThan(2560);
   expect(entering.daylightWidth).toBe(entering.enclosureX);
+  expect(entering.portalFloorVisible).toBe(true);
+  expect(entering.portalFloorX).toBe(entering.portalX);
   if (entering.portalX > entering.consistNoseX) {
     expect(
       entering.enclosureX,
       "stone must remain ahead of the locomotive until the portal reaches it",
     ).toBeGreaterThan(entering.consistNoseX);
   }
+  await page.screenshot({ path: testInfo.outputPath("track-tunnel-entering.png") });
   await expect.poll(async () => (await state(page)).tunnel.visibleLamps).toBeGreaterThan(1);
   const before = (await state(page)).tunnel.wallOffset;
   await expect
@@ -663,8 +692,64 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   const exiting = (await state(page)).tunnel;
   expect(exiting.daylightX).toBe(exiting.enclosureWidth);
   expect(exiting.daylightWidth).toBe(2560 - exiting.enclosureWidth);
+  await page.screenshot({ path: testInfo.outputPath("track-tunnel-exiting.png") });
   await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("off");
   const outside = (await state(page)).tunnel;
   expect(outside.enclosureWidth).toBe(0);
   expect(outside.daylightWidth).toBe(2560);
+});
+
+test("stacked hill support stays visible inside the tunnel", async ({ page }, testInfo) => {
+  await bootV3(page);
+  await emit(page, "transport-play", "ride");
+  await emit(page, "track-mode-toggled", "hill");
+  await emit(page, "track-mode-toggled", "tunnel");
+
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("inside");
+  const enclosed = await state(page);
+  expect(enclosed.latchedModes).toEqual(expect.arrayContaining(["hill", "tunnel"]));
+  expect(enclosed.hillVisible).toBe(true);
+  expect(
+    enclosed.hillDepth,
+    "the hill must draw above the tunnel back wall while it drives train pose",
+  ).toBeGreaterThan(5.5);
+  await page.screenshot({ path: testInfo.outputPath("track-hill-inside-tunnel.png") });
+});
+
+test("a stacked bridge is the level support where it overlaps a hill", async ({ page }, testInfo) => {
+  await bootV3(page);
+  await emit(page, "transport-play", "ride");
+  await emit(page, "track-mode-toggled", "hill");
+  await emit(page, "track-mode-toggled", "bridge");
+
+  await expect.poll(async () => (await state(page)).bridge.deckWidth).toBeGreaterThan(640);
+  let observedOnDeck: any = null;
+  for (let i = 0; i < 80; i++) {
+    const current = await state(page);
+    const deckLeft = current.bridge.deckX;
+    const deckRight = deckLeft === null ? null : deckLeft + current.bridge.deckWidth;
+    if (
+      deckLeft !== null &&
+      deckRight !== null &&
+      current.soundingCarX >= deckLeft &&
+      current.soundingCarX <= deckRight
+    ) {
+      observedOnDeck = current;
+      break;
+    }
+    await page.waitForTimeout(100);
+  }
+  expect(observedOnDeck, "the sounding car never reached the stacked bridge").not.toBeNull();
+  expect(observedOnDeck.latchedModes).toEqual(expect.arrayContaining(["hill", "bridge"]));
+  expect(observedOnDeck.soundingCarAngle).toBe(0);
+  const deckLeft = observedOnDeck.bridge.deckX;
+  const deckRight = deckLeft + observedOnDeck.bridge.deckWidth;
+  for (const segment of observedOnDeck.hillSegments) {
+    const segmentRight = segment.x + segment.width;
+    expect(
+      segmentRight <= deckLeft || segment.x >= deckRight,
+      `hill segment ${segment.x}…${segmentRight} overlaps bridge ${deckLeft}…${deckRight}`,
+    ).toBe(true);
+  }
+  await page.screenshot({ path: testInfo.outputPath("track-hill-bridge-support.png") });
 });

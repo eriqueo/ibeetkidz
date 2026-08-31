@@ -90,7 +90,7 @@ describe("every header control lands on the parchment", () => {
 
   it("covers every cell the scene binds", () => {
     expect([...ids].sort()).toEqual(
-      ["clear", "fast", "loop", "map", "ride", "send", "slow", "stop", "tarp", "tempo"],
+      ["clear", "fast", "map", "ride", "send", "slow", "stop", "tarp", "tempo"],
     );
   });
 
@@ -117,12 +117,13 @@ describe("every header control lands on the parchment", () => {
 
   // THE grid assertion: a cell in column i of row 1 shares its centre with the
   // cell in column i of row 2. This is what the deck was missing — the two rows
-  // were each spread flush end-to-end with equal gaps, which lines nothing up
-  // when one row holds four controls and the other holds six.
-  it("hangs both rows off the same column centres", () => {
-    const xs = headerColumnCentres(field, TRACK_HEADER.columns);
+  // Each row is a complete grid in the same measured field. The transport row
+  // now has four controls after the redundant finite-loop key was retired; it
+  // must spread as four intentional columns rather than leaving a LOOP-shaped
+  // hole in the old five-column grid.
+  it("centres every row in its own equal-column grid", () => {
     for (const row of TRACK_HEADER.rows) {
-      expect(row.cells.length).toBeLessThanOrEqual(TRACK_HEADER.columns);
+      const xs = headerColumnCentres(field, row.cells.length);
       row.cells.forEach((c, i) => expect(slots[c.id]!.x).toBeCloseTo(xs[i]!, 6));
     }
   });

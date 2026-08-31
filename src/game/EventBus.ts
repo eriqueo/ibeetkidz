@@ -68,13 +68,13 @@ export interface EventMap {
   // geometry trio plus night/tunnel/tiny/giant. Latching and STACKING; the
   // payload is a `ModeKind`. A performance, never saved.
   "track-mode-toggled": [kind: string];
+  // Phaser -> React (Track v3): hide/show both control decks and the
+  // visualizer. The always-visible scene key emits the intent; React persists
+  // the preference and pushes the resulting boolean back into the scene.
+  "track-focus-toggled": [];
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.
-  // Phaser -> React (Track): the LOOP keycap was tapped — advance the song's
-  // repeat count through its cycle. The SCENE holds no count of its own; it is
-  // told what to display, so there is one producer of "how many times".
-  "track-loop-cycled": [];
   // Phaser -> React (Track): the TARP keycap was tapped — arm/disarm the
   // cover-a-car gesture. Armed, the next car tapped is tarped instead of opened
   // in the Workshop; tap-to-edit stays the default it was designed to be.

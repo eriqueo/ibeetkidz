@@ -545,78 +545,20 @@ describe("AudioEngine terrain", () => {
   });
 });
 
-describe("ride loop count", () => {
-  it("rides for ever by default — the behaviour the Track has always had", async () => {
+describe("endless playback", () => {
+  it("keeps both Ride and Workshop Loop running without a hidden finite-count API", async () => {
     const sound = new FakeSoundPort();
     const engine = await booted(sound);
-    await engine.playRide(twoCarTrain());
-    expect(engine.rideLoopCount).toBe(null);
-    // Far past any plausible song length; still going.
-    sound.bar = 9999;
-    expect(engine.tickRide()).toBe(false);
-    expect(engine.isPlaying).toBe(true);
-  });
+    expect("setRideLoops" in engine).toBe(false);
+    expect("tickRide" in engine).toBe(false);
 
-  it("stops after N times round, counting the SONG and not the bar", async () => {
-    const sound = new FakeSoundPort();
-    const engine = await booted(sound);
-    engine.setRideLoops(2);
-    await engine.playRide(twoCarTrain()); // a two-bar song
-    // Bar 3 is the last bar of the second time round — not done yet.
-    for (const bar of [0, 1, 2, 3]) {
-      sound.bar = bar;
-      expect(engine.tickRide(), `bar ${bar}`).toBe(false);
-      expect(engine.isPlaying).toBe(true);
-    }
-    sound.bar = 4; // 2 loops x 2 bars — the song has run twice
-    expect(engine.tickRide()).toBe(true);
-    expect(engine.isPlaying).toBe(false);
-  });
-
-  it("reports one finite finish edge after dropping the ride's mode latches", async () => {
-    const sound = new FakeSoundPort();
-    const engine = await booted(sound);
     const project = twoCarTrain();
-    engine.setRideLoops(1);
     await engine.playRide(project);
-    engine.toggleMode("night", project);
-    expect([...engine.latchedModes]).toEqual(["night"]);
+    sound.bar = 9999;
+    expect(engine.isPlaying).toBe(true);
 
-    sound.bar = 2;
-    expect(engine.tickRide()).toBe(true);
-    expect(engine.isPlaying).toBe(false);
-    expect(engine.latchedModes.size).toBe(0);
-    // The true value is an edge for the Track to consume, not a level that
-    // would re-run visual teardown (or a second stop) every animation frame.
-    expect(engine.tickRide()).toBe(false);
-  });
-
-  it("holds the finish line it started with when the train is edited mid-ride", async () => {
-    // `rideBars` is captured at playRide on purpose: a kid deleting a car while
-    // the song runs must not make the song end early (or never), because the
-    // finish line would move under a ride already in progress.
-    const sound = new FakeSoundPort();
-    const engine = await booted(sound);
-    engine.setRideLoops(1);
-    await engine.playRide(twoCarTrain());
-    sound.bar = 1;
-    expect(engine.tickRide()).toBe(false);
-    sound.bar = 2;
-    expect(engine.tickRide()).toBe(true);
-  });
-
-  it("counts nothing while stopped, and nothing in single-car LOOP mode", async () => {
-    const sound = new FakeSoundPort();
-    const engine = await booted(sound);
-    engine.setRideLoops(1);
-    // Never started: a bar reading of -1 must not be read as "past the end".
-    sound.bar = -1;
-    expect(engine.tickRide()).toBe(false);
-    // LOOP mode is the Workshop's play-one-car; a ride count must not stop it.
-    const project = twoCarTrain();
     await engine.playLoop(project);
-    sound.bar = 500;
-    expect(engine.tickRide()).toBe(false);
+    sound.bar = 20_000;
     expect(engine.isPlaying).toBe(true);
   });
 });

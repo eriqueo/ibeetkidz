@@ -50,6 +50,7 @@ import {
   carPose,
   groundDrop,
   liftSamples,
+  supportSpanAtBar,
   type TerrainSpan,
 } from "../terrain-profile.ts";
 import { colorFor } from "../livery-style.ts";
@@ -58,6 +59,7 @@ import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import {
   TRACK_HEADER,
+  TRACK_FOCUS_KEY,
   TRACK_JOB_BAR,
   TRACK_VISUALIZER,
   trackHeaderSlots,
@@ -111,6 +113,13 @@ export interface V3Car {
    *  (same collapse rule the Workshop crew uses: all percussion = the frog).
    *  Drawn standing on the roof until AR-042's riding poses land. */
   readonly crew: readonly string[];
+}
+
+interface TrackChromeObject extends Phaser.GameObjects.GameObject {
+  readonly alpha: number;
+  input: Phaser.Types.Input.InteractiveObject | null;
+  setAlpha(alpha: number): this;
+  disableInteractive(): this;
 }
 
 /** Body art per car type. The art is drawn WITHOUT wheels so they can turn, and
@@ -293,6 +302,9 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Close ballast/masonry below the railhead. It replaces open-country grass
    *  while the train is inside, completing the tunnel as a single location. */
   private tunnelFloor?: Phaser.GameObjects.TileSprite;
+  /** Authored tunnel ballast carried under the moving mouth so the transition
+   *  continues below the rail instead of ending in a raw vertical seam. */
+  private tunnelPortalFloor?: Phaser.GameObjects.TileSprite;
   private tunnelRoof?: Phaser.GameObjects.TileSprite;
   private tunnelMouth?: Phaser.GameObjects.Image;
   private tunnelLamps: Phaser.GameObjects.Image[] = [];
@@ -331,6 +343,7 @@ export class TrackV3Scene extends Phaser.Scene {
   private smokeDebt = 0;
   private smokeNext = 0;
   private mound?: Phaser.GameObjects.Image;
+  private moundTail?: Phaser.GameObjects.Image;
   private bridgeDeck?: Phaser.GameObjects.TileSprite;
   private bridgeWater?: Phaser.GameObjects.TileSprite;
   private bridgePiers: Phaser.GameObjects.Image[] = [];
@@ -432,6 +445,11 @@ export class TrackV3Scene extends Phaser.Scene {
       // Anchored to the RAILHEAD, not the ground line. The profile measures lift
       // from where the wheels touch, so a mound based 30 px lower puts its crest
       // 30 px above the car that is supposed to be standing on it.
+      .image(0, RAIL_Y, "trk-mound")
+      .setOrigin(0, 1)
+      .setDepth(DEPTH.mound)
+      .setVisible(false);
+    this.moundTail = this.add
       .image(0, RAIL_Y, "trk-mound")
       .setOrigin(0, 1)
       .setDepth(DEPTH.mound)
@@ -607,6 +625,11 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack + 0.05)
       .setVisible(false);
+    this.tunnelPortalFloor = this.add
+      .tileSprite(W, RAIL_Y + 24, 640, H - (RAIL_Y + 24), "trk-tunnel-floor")
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.tunnelFront - 0.01)
+      .setVisible(false);
     this.tunnelRoof = this.add
       .tileSprite(0, RAIL_Y - 720, W, 520, "trk-tunnel-roof")
       .setOrigin(0, 0)
@@ -627,8 +650,12 @@ export class TrackV3Scene extends Phaser.Scene {
       );
     }
 
+    const chromeStart = this.children.list.length;
     this.buildTopBar();
     this.buildLegend();
+    this.chromeObjects = this.children.list.slice(chromeStart) as TrackChromeObject[];
+    this.chromeAlpha = new Map(this.chromeObjects.map((object) => [object, object.alpha]));
+    this.buildFocusKey();
     this.rebuildSlots();
     // CLEAR empties the whole train, so this view must be able to show the
     // "put it back" chip the Workshop and Yard already carry.
@@ -655,8 +682,8 @@ export class TrackV3Scene extends Phaser.Scene {
    * So the Track stops inventing chrome. `panel-header-v2` and
    * `panel-transport-v2` are the plates the Workshop's Tiled map mounts, both
    * views lay out in the same fixed 2560x1440 space, and the rects below are
-   * that map's rects (`assets/maps/workshop.json`) narrowed to this view's
-   * three-across content. Same art, same proportions, same docking — the top
+   * that map's rects (`assets/maps/workshop.json`) fitted to this view's
+   * intentional row grids. Same art, same proportions, same docking — the top
    * plate hangs off the top edge and the bottom one off the bottom edge, which
    * is what makes a bar read as the frame of the game instead of as an object
    * lying on the field.
@@ -669,8 +696,8 @@ export class TrackV3Scene extends Phaser.Scene {
     //
     // TWO ROWS, for the reason `buildLegend` gives about its own plate: the
     // side-scroller had to grow a real transport deck to stop being a
-    // feature-loss against the oval (tempo, SEND and the song's loop count all
-    // lived only on the oval), and squeezing nine controls into one row would
+    // feature-loss against the oval (tempo and SEND lived only on the oval),
+    // and squeezing the controls into one row would
     // give each the ~200 px slot that made the job-bar pictures unreadable.
     // Row 1 is WHERE you are and WHETHER it is playing; row 2 is HOW it plays.
     this.plate("panel-header-v2", TRACK_HEADER.plate);
@@ -711,7 +738,6 @@ export class TrackV3Scene extends Phaser.Scene {
    *   the readout   drawn text, because `lcd-transport` is a Tiled display
    *                 anchor the oval mounts from its map and this scene has no
    *                 map — same numbers, same job, no second sprite invented
-   *   LOOP          `btn-transport-loop`, cycling how many times the song runs
    *   TARP          arms tap-a-car-to-tarp without stealing tap-to-edit
    *   SEND          AR-020's `btn-send-song` plaque
    */
@@ -722,44 +748,6 @@ export class TrackV3Scene extends Phaser.Scene {
     this.placeSpeedReadout(tempo);
     this.placeButton("btn-transport-fast", s["fast"]!,
       () => void EventBus.emit("tempo-changed", 10), "FAST");
-
-    // How many times round before the train stops. The charter puts "Mute/Loop
-    // controls" on the Track's bottom bar; mute became tap-a-car and loop-count
-    // was never built at all, so the song only ever looped forever.
-    const loop = s["loop"]!;
-    this.loopBtn = this.placeLatchButton(
-      "btn-transport-loop",
-      loop,
-      () => void EventBus.emit("track-loop-cycled"),
-      "LOOP",
-    );
-    // The count BADGES the key it belongs to. It used to hang 92 px below the
-    // row, which put it past the plate's bottom rail and off the plate — a
-    // stray "∞" lying in the sky with nothing to say it meant LOOP.
-    //
-    // On the CORNER rather than centred on the face: the keycap art has arrows
-    // across its middle and the word LOOP along its foot, so there is no clear
-    // space on it.
-    //
-    // STROKED TEXT, not a filled chip. The first attempt drew a dark disc behind
-    // the number so it would read over the mottled stone; against the painted
-    // deck that disc was simply a black blob stuck to the key. An outline does
-    // the same legibility job without adding a shape to the picture.
-    // Sized and placed so the WIDEST value it can hold ("2x") still clears the
-    // key's right edge: `btn-transport-loop` contain-fits to ~0.9 of its cell
-    // width, and Press Start 2P advances 1 em per glyph, so two glyphs plus half
-    // the outline must fit inside that from the offset below.
-    this.loopText = this.add
-      .text(loop.x + loop.width * 0.2, loop.y - loop.height * 0.28, "∞", {
-        fontFamily: "'Press Start 2P', monospace",
-        color: "#ffe9b0",
-        stroke: "#1a1526",
-        strokeThickness: 8,
-      })
-      .setName("track-display:loop")
-      .setOrigin(0.5)
-      .setFontSize(24)
-      .setDepth(DEPTH.hud + 2);
 
     // TARP arms the tarp gesture instead of replacing tap-to-edit. Tapping a
     // car on this view opens THAT car in the Workshop — a deliberate choice
@@ -823,8 +811,7 @@ export class TrackV3Scene extends Phaser.Scene {
   }
 
   /** A blank `pad-key` slab wearing a run-time caption, for a control the atlas
-   *  has no authored keycap for. Returns the same latch setter
-   *  `placeLatchButton` does. */
+   *  has no authored keycap for. */
   private placeTarpKey(
     rect: { x: number; y: number; width: number; height: number },
     fire: () => void,
@@ -914,20 +901,38 @@ export class TrackV3Scene extends Phaser.Scene {
     };
   }
 
-  /** A chrome button that also carries a latched (gold) look, for the two
-   *  controls in this row that are states rather than one-shots. */
-  private placeLatchButton(
-    sprite: string,
-    rect: { x: number; y: number; width: number; height: number },
-    fire: () => void,
-    caption: string,
-  ): (on: boolean) => void {
-    this.placeButton(sprite, rect, fire, caption);
-    const glow = this.add
-      .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
-      .setDepth(DEPTH.hud)
-      .setVisible(false);
-    return (on: boolean) => glow.setVisible(on);
+  /** The one control focus mode never hides. It uses the existing blank stone
+   *  key rather than inventing another bitmap, and its 120×100 design-space
+   *  hit area stays comfortably above the 68px child-control minimum. */
+  private buildFocusKey(): void {
+    const rect = TRACK_FOCUS_KEY;
+    const def = UI_SPRITES["pad-key"];
+    if (def && this.textures.exists(UI_ATLAS_KEY)) {
+      const key = this.add
+        .image(0, 0, UI_ATLAS_KEY, def.base)
+        .setName("track-control:focus")
+        .setOrigin(0.5)
+        .setDepth(DEPTH.hud + 3);
+      placeUiSprite(key, def, rect);
+      this.pressableAtlas(key, def, () => void EventBus.emit("track-focus-toggled"));
+    } else {
+      this.pressable(
+        this.add
+          .rectangle(rect.x, rect.y, rect.width, rect.height, 0x8d8878, 1)
+          .setName("track-control:focus")
+          .setDepth(DEPTH.hud + 3),
+        () => void EventBus.emit("track-focus-toggled"),
+      );
+    }
+    this.focusText = this.add
+      .text(rect.x, rect.y, "HIDE", {
+        fontFamily: "'Press Start 2P', monospace",
+        color: "#33302b",
+      })
+      .setName("track-display:focus")
+      .setOrigin(0.5)
+      .setFontSize(16)
+      .setDepth(DEPTH.hud + 4);
   }
 
   /** One of the shared stretched zone plates, or nothing at all if the atlas is
@@ -1055,12 +1060,13 @@ export class TrackV3Scene extends Phaser.Scene {
 
   /** Every mode switch on the job bar, keyed by kind, so a LATCHED mode can
    *  visibly hold its gold wash whatever art it currently wears. */
-  /** Row-2 transport deck: the tempo readout, the loop counter and its keycap
-   *  glow, the TARP arm latch. All written by React, never read by the scene. */
+  /** Row-2 transport deck state, written by React and never read by the scene. */
   private tempoText?: Phaser.GameObjects.Text;
-  private loopText?: Phaser.GameObjects.Text;
-  private loopBtn: (on: boolean) => void = () => {};
   private tarpLatch: (on: boolean) => void = () => {};
+  private chromeObjects: TrackChromeObject[] = [];
+  private chromeAlpha = new Map<TrackChromeObject, number>();
+  private chromeVisible = true;
+  private focusText?: Phaser.GameObjects.Text;
   /** Mirrors the TARP latch, read on a car tap. React owns the truth. */
   private tarpArmed = false;
   /** The SEND flow's panel + the state React drives it with. */
@@ -1219,12 +1225,22 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tempoText?.setText(String(Math.round(bpm)));
   }
 
-  /** React → scene: how many times the song runs before stopping (null = for
-   *  ever). The keycap wears the latch glow whenever a FINITE count is set, so
-   *  "this will stop" is visible without reading the number. */
-  setLoopCount(loops: number | null): void {
-    this.loopText?.setText(loops === null ? "∞" : `${loops}x`);
-    this.loopBtn(loops !== null);
+  /** React → scene: focus mode removes both decks and the jumbotron as one
+   *  reversible layer. Child visibility still updates while hidden; alpha and
+   *  input are the projection, so restoring chrome cannot resurrect a stale
+   *  latch or make an invisible control clickable. */
+  setChromeVisible(visible: boolean): void {
+    this.chromeVisible = visible;
+    for (const object of this.chromeObjects) {
+      object.setAlpha(visible ? (this.chromeAlpha.get(object) ?? 1) : 0);
+      if (visible) {
+        if (object.input) object.input.enabled = true;
+      } else if (object.input) {
+        object.disableInteractive();
+      }
+    }
+    this.focusText?.setText(visible ? "HIDE" : "SHOW");
+    this.viz?.setSuppressed(!visible);
   }
 
   /** React → scene: is the tarp gesture armed? */
@@ -1253,6 +1269,7 @@ export class TrackV3Scene extends Phaser.Scene {
       depth: DEPTH.hud - 1,
     });
     this.viz = viz;
+    viz.setSuppressed(!this.chromeVisible);
     let armed = false;
     viz.hitTarget.on("pointerdown", () => { armed = true; });
     viz.hitTarget.on("pointerout", () => { armed = false; });
@@ -1315,6 +1332,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = false;
     this.tunnelPhase = "off";
     this.tunnelMouth?.setVisible(false);
+    this.tunnelPortalFloor?.setVisible(false);
     for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
       layer?.setVisible(false);
     }
@@ -1417,6 +1435,9 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.tunnelFloor) {
       this.tunnelFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     }
+    if (this.tunnelPortalFloor) {
+      this.tunnelPortalFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
+    }
     if (this.tunnelRoof) {
       this.tunnelRoof.tilePositionX = parallaxOffset(this.pos, this.view, 1.08);
     }
@@ -1444,6 +1465,9 @@ export class TrackV3Scene extends Phaser.Scene {
         ?.setVisible(true)
         .setAlpha(1)
         .setPosition(portalX, RAIL_Y);
+      this.tunnelPortalFloor
+        ?.setVisible(true)
+        .setPosition(portalX, RAIL_Y + 24);
       const { tailX } = this.consistBounds();
       // A portal is finished when it has crossed the train's tail. For a giant
       // or very long consist whose tail is already off-screen, the mouth's own
@@ -1451,6 +1475,7 @@ export class TrackV3Scene extends Phaser.Scene {
       const crossedTail = portalX <= Math.max(-640, tailX);
       if (crossedTail || progress >= 1) {
         this.tunnelMouth?.setVisible(false);
+        this.tunnelPortalFloor?.setVisible(false);
         if (entering) {
           this.tunnelPhase = "inside";
           this.applyTunnelRegions(-640, 0, W, W, 0);
@@ -1513,11 +1538,19 @@ export class TrackV3Scene extends Phaser.Scene {
     this.fore?.setPosition(0, FORE_Y).setSize(W, FORE_H).setVisible(true).setAlpha(1);
   }
 
-  /** The span that LIFTS the train — only a hill does (the bridge deck keeps
-   *  the rails level and rain is weather), so the pose follows the hill's
-   *  ride alone however many modes are stacked. */
-  private get span(): TerrainSpan | null {
-    return this.rides.get("hill") ?? null;
+  /** One physical support at one bar. Modes still stack musically, but a rigid
+   *  bridge deck wins over the hill only under that deck. */
+  private supportAtBar(atBar: number): TerrainSpan | null {
+    return supportSpanAtBar(
+      atBar,
+      this.rides.get("hill") ?? null,
+      this.rides.get("bridge") ?? null,
+    );
+  }
+
+  private poseAtX(x: number, wheelbase: number): { lift: number; angle: number } {
+    const bar = this.barAtX(x);
+    return carPose(bar, wheelbase, this.supportAtBar(bar), this.view.barWidth);
   }
 
   /** Screen x of the consist's nose, and each car's centre, left to right.
@@ -1578,8 +1611,6 @@ export class TrackV3Scene extends Phaser.Scene {
     const { noseX, carX } = this.consistLayout(surge);
     const bob = bobOffset(dist, this.speedBars);
     const angle = wheelAngle(dist, WHEEL_R);
-    const span = this.span;
-
     const S = this.trainScale;
     const place = (
       x: number,
@@ -1587,7 +1618,7 @@ export class TrackV3Scene extends Phaser.Scene {
       shadow: Phaser.GameObjects.Image,
       wheelbase: number,
     ): { lift: number; tilt: number } => {
-      const pose = carPose(this.barAtX(x), wheelbase, span, this.view.barWidth);
+      const pose = this.poseAtX(x, wheelbase);
       const y = Math.round(RAIL_Y - pose.lift + bob);
       body.setPosition(Math.round(x), y).setRotation(pose.angle).setScale(S);
       shadow
@@ -1607,7 +1638,7 @@ export class TrackV3Scene extends Phaser.Scene {
       const x = carX[i] as number;
       const isNow = i === sounding;
       s.show();
-      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      const pose = this.poseAtX(x, WHEELBASE_BARS);
       s.root
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
         .setRotation(pose.angle)
@@ -1662,7 +1693,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // The marker rides with whichever car is sounding.
     if (this.beatLantern) {
       const x = carX[sounding] as number;
-      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      const pose = this.poseAtX(x, WHEELBASE_BARS);
       const slot = this.slots[sounding];
       // Above the car AND above whoever is riding it. The roofline alone put
       // the lamp through the drummer's head — the crew's integrated poses stand
@@ -1697,7 +1728,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setPosition(Math.round(x), Math.round(roofY));
     } else if (this.nowPost) {
       const x = carX[sounding] as number;
-      const pose = carPose(this.barAtX(x), WHEELBASE_BARS, span, this.view.barWidth);
+      const pose = this.poseAtX(x, WHEELBASE_BARS);
       this.nowPost
         .setVisible(true)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 16));
@@ -1792,6 +1823,31 @@ export class TrackV3Scene extends Phaser.Scene {
     }
   }
 
+  /** Draw one visible interval of the normalized hill texture. Cropping source
+   *  pixels and sizing only that crop keeps the authored profile registered to
+   *  the same screen span while a rigid bridge removes the middle interval. */
+  private layoutMoundSegment(
+    image: Phaser.GameObjects.Image,
+    segmentLeft: number,
+    segmentRight: number,
+    hill: { span: { x: number; width: number } },
+  ): void {
+    const width = segmentRight - segmentLeft;
+    if (!(width > 1) || !(hill.span.width > 0)) {
+      image.setVisible(false);
+      return;
+    }
+    const u0 = Phaser.Math.Clamp((segmentLeft - hill.span.x) / hill.span.width, 0, 1);
+    const u1 = Phaser.Math.Clamp((segmentRight - hill.span.x) / hill.span.width, 0, 1);
+    const sourceX = Math.round(u0 * TERRAIN_REF_W);
+    const sourceRight = Math.round(u1 * TERRAIN_REF_W);
+    image
+      .setCrop(sourceX, 0, Math.max(1, sourceRight - sourceX), HILL_PEAK)
+      .setPosition(Math.round(segmentLeft), RAIL_Y)
+      .setDisplaySize(Math.round(width), HILL_PEAK)
+      .setVisible(true);
+  }
+
   private layoutTerrain(): void {
     // Modes STACK: every geometry kind lays out from its own span, so a
     // mound, a deck and a squall can all be in the world at once.
@@ -1838,9 +1894,40 @@ export class TrackV3Scene extends Phaser.Scene {
     // profile is normalized across the span, so the silhouette still matches
     // `railLift` at every point.
     this.mound?.setVisible(!!hill);
+    this.moundTail?.setVisible(false);
     if (hill && this.mound) {
-      this.mound.setPosition(Math.round(hill.span.x), RAIL_Y);
-      this.mound.setDisplaySize(Math.round(hill.span.width), HILL_PEAK);
+      // Tunnel masonry is a back wall, not a curtain over the rail support.
+      // Raise the existing authored mound above that wall while enclosed so
+      // the train never climbs an invisible hill.
+      const depth = this.tunnelPhase === "off" ? DEPTH.mound : DEPTH.tunnelBack + 0.15;
+      const tint = this.tunnelPhase === "off" ? null : 0x858078;
+      for (const segment of [this.mound, this.moundTail]) {
+        segment?.setDepth(depth);
+        if (tint === null) segment?.clearTint();
+        else segment?.setTint(tint);
+      }
+
+      const hillLeft = hill.span.x;
+      const hillRight = hill.span.x + hill.span.width;
+      if (bridge) {
+        const bridgeLeft = bridge.span.x;
+        const bridgeRight = bridge.span.x + bridge.span.width;
+        // Two real cropped images, not a GeometryMask: Phaser 4's WebGL mask
+        // path ignored the invisible mask graphics in production even though
+        // scene state said a mask existed. Explicit segments have the same
+        // renderer behavior in Canvas and WebGL and remain inspectable.
+        this.layoutMoundSegment(this.mound, hillLeft, Math.min(hillRight, bridgeLeft), hill);
+        if (this.moundTail) {
+          this.layoutMoundSegment(
+            this.moundTail,
+            Math.max(hillLeft, bridgeRight),
+            hillRight,
+            hill,
+          );
+        }
+      } else {
+        this.layoutMoundSegment(this.mound, hillLeft, hillRight, hill);
+      }
     }
 
     // A bridge: the ground falls away and a deck carries the rails across it.
@@ -1951,21 +2038,25 @@ export class TrackV3Scene extends Phaser.Scene {
       daylightWidth: number;
       consistNoseX: number;
       consistTailX: number;
+      portalFloorVisible: boolean;
+      portalFloorX: number | null;
     };
     wheel: { diameter: number; axleOffset: number };
     pendingModes: string[];
     latchedModes: string[];
     nightVisible: boolean;
+    chromeVisible: boolean;
+    hillVisible: boolean;
+    hillDepth: number | null;
+    hillSegments: { x: number; width: number }[];
   } {
     const dist = travelPx(this.pos, this.view);
     const n = Math.max(1, this.cars.length);
     const sounding = ((barAtPlayhead(this.pos) % n) + n) % n;
     const { carX } = this.consistLayout(0);
     const now = this.cars.length > 0 ? { centreX: carX[sounding] as number } : null;
-    const pose = carPose(
-      this.barAtX(now ? now.centreX : playheadX(this.view)),
-      WHEELBASE_BARS, this.span, this.view.barWidth,
-    );
+    const poseX = now ? now.centreX : playheadX(this.view);
+    const pose = this.poseAtX(poseX, WHEELBASE_BARS);
     // The probe reports the NEWEST ride — with stacking there can be several,
     // and "the one the kid just picked" is what the tests reason about.
     const newest = this.newestRide;
@@ -2003,6 +2094,8 @@ export class TrackV3Scene extends Phaser.Scene {
         ...this.tunnelRegion,
         consistNoseX: consist.noseX,
         consistTailX: consist.tailX,
+        portalFloorVisible: this.tunnelPortalFloor?.visible ?? false,
+        portalFloorX: this.tunnelPortalFloor?.visible ? this.tunnelPortalFloor.x : null,
       },
       wheel: {
         diameter: this.slots[0]?.wheelA.displayWidth ?? 0,
@@ -2011,6 +2104,12 @@ export class TrackV3Scene extends Phaser.Scene {
       pendingModes: [...this.pendingModeKinds],
       latchedModes: [...this.latchedModeKinds],
       nightVisible: this.nightSky?.visible ?? false,
+      chromeVisible: this.chromeVisible,
+      hillVisible: this.mound?.visible ?? false,
+      hillDepth: this.mound?.visible ? this.mound.depth : null,
+      hillSegments: [this.mound, this.moundTail]
+        .filter((segment): segment is Phaser.GameObjects.Image => segment?.visible === true)
+        .map((segment) => ({ x: segment.x, width: segment.displayWidth })),
     };
   }
 

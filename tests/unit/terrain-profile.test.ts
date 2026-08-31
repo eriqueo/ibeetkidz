@@ -9,6 +9,7 @@ import {
   railAngle,
   railLift,
   railSlope,
+  supportSpanAtBar,
   type TerrainSpan,
 } from "../../src/game/terrain-profile.ts";
 
@@ -102,6 +103,17 @@ describe("a bridge is a gap, not a bump", () => {
   it("a hill does not drop the ground, and a bridge does not lift the rails", () => {
     expect(groundDrop(5, hill)).toBe(0);
     expect(railLift(5, bridge)).toBe(0);
+  });
+});
+
+describe("stacked physical support", () => {
+  it("uses the hill outside an overlapping bridge", () => {
+    expect(supportSpanAtBar(4.1, hill, { ...bridge, startBar: 4.5, endBar: 5.5 })).toBe(hill);
+    expect(supportSpanAtBar(5.9, hill, { ...bridge, startBar: 4.5, endBar: 5.5 })).toBe(hill);
+  });
+
+  it("uses the level bridge inside the overlap", () => {
+    expect(supportSpanAtBar(5, hill, bridge)).toBe(null);
   });
 });
 

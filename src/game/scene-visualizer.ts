@@ -105,6 +105,7 @@ export class SceneVisualizer {
   private alpha = 0;
   private env = 0;
   private skip = 0;
+  private suppressed = false;
   private rect: Rect = { x: 0, y: 0, width: 0, height: 0 };
 
   constructor(scene: Phaser.Scene, opts: SceneVisualizerOptions) {
@@ -155,7 +156,22 @@ export class SceneVisualizer {
   /** Cabinet alpha, 0..1. Read by the e2e bridge to prove the screen reacts to
    *  real audio rather than to a transport flag. */
   get visibility(): number {
-    return this.alpha;
+    return this.suppressed ? 0 : this.alpha;
+  }
+
+  /** Focus mode owns whether the jumbotron participates at all. The analyser
+   *  remains the source of truth when restored; suppression only stops the
+   *  visual projection and its hit target. */
+  setSuppressed(suppressed: boolean): void {
+    if (this.suppressed === suppressed) return;
+    this.suppressed = suppressed;
+    if (suppressed) {
+      this.screen.disableInteractive();
+      this.container.setVisible(false).setAlpha(0);
+      return;
+    }
+    this.screen.setInteractive({ useHandCursor: true });
+    this.container.setAlpha(this.alpha).setVisible(this.alpha > 0);
   }
 
   /** Advance to the next style; returns its label. Wired to a tap on the screen
@@ -202,6 +218,7 @@ export class SceneVisualizer {
    * equivalent here and cannot get out of balance.
    */
   update(deltaMs: number): void {
+    if (this.suppressed) return;
     const dt = Math.min(MAX_DT_S, Math.max(0, deltaMs) / 1000);
     const analyser = this.opts.analyser;
     analyser.getFloatTimeDomainData(this.waveform);

@@ -148,7 +148,8 @@ export const TRACK_HEADER = {
         { id: "send", width: 235, height: 134 },
       ],
     },
-    // HOW it plays: the tempo trio, then the two latches.
+    // HOW it plays: the tempo trio, then TARP. Ride already loops forever;
+    // the former finite-count LOOP key duplicated that default and added noise.
     {
       cy: 294,
       cells: [
@@ -157,7 +158,6 @@ export const TRACK_HEADER = {
         // the oval mounts from its map, and this scene has no map.
         { id: "tempo", width: 134, height: 134 },
         { id: "fast", width: 134, height: 134 },
-        { id: "loop", width: 134, height: 134 },
         { id: "tarp", width: 134, height: 134 },
       ],
     },
@@ -167,9 +167,9 @@ export const TRACK_HEADER = {
 /** Every header control's placed rect, keyed by cell id. */
 export function trackHeaderSlots(): Record<string, PlacedRect> {
   const field = headerPlateField(TRACK_HEADER.plate);
-  const xs = headerColumnCentres(field, TRACK_HEADER.columns);
   const out: Record<string, PlacedRect> = {};
   for (const row of TRACK_HEADER.rows) {
+    const xs = headerColumnCentres(field, row.cells.length);
     row.cells.forEach((c, i) => {
       out[c.id] = { x: xs[i] ?? 0, y: row.cy, width: c.width, height: c.height };
     });
@@ -224,6 +224,15 @@ export const TRACK_VISUALIZER: PlacedRect = {
   y: 565,
   width: 340,
   height: 102,
+};
+
+/** The focus key is deliberately outside both hideable decks. It is the one
+ *  guaranteed path back to controls and meets the child-control 68px minimum. */
+export const TRACK_FOCUS_KEY: PlacedRect = {
+  x: 2490,
+  y: 600,
+  width: 120,
+  height: 100,
 };
 
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
@@ -345,14 +354,3 @@ export const TRACK_LAYOUT_V2 = {
   // plate's painted signal) + display width as a fraction of the scene.
   signal: { x: 0.5, y: 0.683, w: 0.05 } as const,
 } as const;
-
-// MAP_HANDCAR lived here and was wrong: every marker sat ~0.12 of image height
-// ABOVE its landmark, which put the Workshop handcar on the cabin roof. It was
-// hand-guessed in TypeScript and carried its own "needs a live visual tuning
-// pass" note for as long as it existed, because there was no way to do that
-// pass — nothing could read a position back out of the running game.
-//
-// It now lives in `map.json`'s `fixtures-layer` and was positioned by DRAGGING
-// it in the scene editor (`?edit`, see src/editor/). That is the migration this
-// file should keep losing entries to: a value that describes WHERE something
-// sits on the art belongs in the map, next to the art, where it can be seen.
