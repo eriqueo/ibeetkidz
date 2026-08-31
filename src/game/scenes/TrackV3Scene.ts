@@ -203,10 +203,10 @@ const LANTERN_CLEARANCE = 26;
 // Horizon bands, back to front.
 const SKY_Y = 0;
 const HILLS_Y = 470;
-const TREES_Y = 690;
-const GROUND_Y = 980; // top of the ground slab
-const RAIL_Y = 1010; // where wheels touch on FLAT ground
-const FORE_Y = 975;
+const TREES_Y = 650;
+const GROUND_Y = 870; // top of the ground slab
+const RAIL_Y = 900; // where wheels touch on FLAT ground
+const FORE_Y = 865;
 const FORE_H = 130;
 /** Clear of the top plate (which hangs to y=370), so the caption for an
  *  approaching terrain is never half-behind the nav bar. */
@@ -299,6 +299,16 @@ export class TrackV3Scene extends Phaser.Scene {
   private tunnelOn = false;
   private tunnelPhase: "off" | "entering" | "inside" | "exiting" = "off";
   private tunnelPhaseDistance = 0;
+  /** The two ordinary-object regions split by the moving portal. Keeping this
+   *  as explicit scene state makes the spatial contract observable without a
+   *  renderer-specific mask: enclosure and daylight always partition W. */
+  private tunnelRegion = {
+    portalX: W,
+    enclosureX: 0,
+    enclosureWidth: 0,
+    daylightX: 0,
+    daylightWidth: W,
+  };
   /** AR-053's painted night band, drawn OVER the day sky in the same rect. */
   private nightSky?: Phaser.GameObjects.TileSprite | undefined;
 
@@ -1283,15 +1293,18 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = tunnel;
     this.tunnelPhase = tunnel ? "entering" : "exiting";
     this.tunnelPhaseDistance = travelPx(this.pos, this.view);
+    this.applyTunnelRegions(
+      W,
+      tunnel ? W : 0,
+      tunnel ? 0 : W,
+      tunnel ? 0 : W,
+      tunnel ? W : 0,
+    );
     if (this.tunnelMouth) {
       this.tunnelMouth
         .setTexture(tunnel ? "trk-tunnel-mouth-left" : "trk-tunnel-mouth-right")
         .setVisible(true);
     }
-    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
-      layer?.setVisible(true);
-    }
-    for (const lamp of this.tunnelLamps) lamp.setVisible(true);
   }
 
   /** React → scene: a stopped transport has no distance left with which to
@@ -1305,7 +1318,7 @@ export class TrackV3Scene extends Phaser.Scene {
     for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
       layer?.setVisible(false);
     }
-    this.fore?.setAlpha(1);
+    this.restoreDaylight();
     for (const lamp of this.tunnelLamps) lamp.setVisible(false);
   }
 
@@ -1384,20 +1397,20 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.tunnelPhase === "off") return;
     const transitionPx = 1100;
     const moved = Math.abs(dist - this.tunnelPhaseDistance);
-    const progress = Math.min(1, Math.max(0.08, moved / transitionPx));
+    const progress = Math.min(1, moved / transitionPx);
     const entering = this.tunnelPhase === "entering";
     const exiting = this.tunnelPhase === "exiting";
-    const enclosure = entering ? progress : exiting ? 1 - progress : 1;
-
-    this.tunnelWall?.setAlpha(enclosure);
-    this.tunnelFloor?.setAlpha(enclosure);
-    this.tunnelRoof?.setAlpha(enclosure);
-    this.tunnelShade?.setAlpha(0.3 * enclosure);
-    // The bright grass fringe belongs to the open countryside. Let it recede
-    // with the portal rather than remain a green strip pasted across a stone
-    // interior; the fade preserves the entry/exit motion and gives the rails
-    // a believable tunnel floor beneath the consist.
-    this.fore?.setAlpha(1 - enclosure);
+    const portalX = entering || exiting
+      ? Math.round(W - progress * (W + 640))
+      : -640;
+    const edge = Phaser.Math.Clamp(portalX, 0, W);
+    if (entering) {
+      this.applyTunnelRegions(portalX, edge, W - edge, 0, edge);
+    } else if (exiting) {
+      this.applyTunnelRegions(portalX, 0, edge, edge, W - edge);
+    } else {
+      this.applyTunnelRegions(-640, 0, W, W, 0);
+    }
     if (this.tunnelWall) {
       this.tunnelWall.tilePositionX = parallaxOffset(this.pos, this.view, 0.82);
     }
@@ -1411,10 +1424,17 @@ export class TrackV3Scene extends Phaser.Scene {
     const lampPitch = 420;
     const lampOffset = ((parallaxOffset(this.pos, this.view, 0.94) % lampPitch) + lampPitch) % lampPitch;
     const beat = Math.floor(this.pos * BEATS_PER_BAR);
+    const enclosureRight = this.tunnelRegion.enclosureX + this.tunnelRegion.enclosureWidth;
     this.tunnelLamps.forEach((lamp, index) => {
+      const x = Math.round(index * lampPitch + lampOffset - lampPitch);
       lamp
-        .setAlpha(enclosure)
-        .setPosition(Math.round(index * lampPitch + lampOffset - lampPitch), RAIL_Y - 390);
+        .setAlpha(1)
+        .setVisible(
+          this.tunnelRegion.enclosureWidth > 0
+          && x >= this.tunnelRegion.enclosureX
+          && x <= enclosureRight,
+        )
+        .setPosition(x, RAIL_Y - 390);
       const key = (beat + index) % 2 === 0 ? "trk-tunnel-lamp-0" : "trk-tunnel-lamp-1";
       if (lamp.texture.key !== key) lamp.setTexture(key);
     });
@@ -1423,21 +1443,74 @@ export class TrackV3Scene extends Phaser.Scene {
       this.tunnelMouth
         ?.setVisible(true)
         .setAlpha(1)
-        .setPosition(Math.round(W - progress * (W + 640)), RAIL_Y);
-      if (progress >= 1) {
+        .setPosition(portalX, RAIL_Y);
+      const { tailX } = this.consistBounds();
+      // A portal is finished when it has crossed the train's tail. For a giant
+      // or very long consist whose tail is already off-screen, the mouth's own
+      // off-screen edge is the observable terminal bound.
+      const crossedTail = portalX <= Math.max(-640, tailX);
+      if (crossedTail || progress >= 1) {
         this.tunnelMouth?.setVisible(false);
         if (entering) {
           this.tunnelPhase = "inside";
+          this.applyTunnelRegions(-640, 0, W, W, 0);
         } else {
           this.tunnelPhase = "off";
           for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
             layer?.setVisible(false);
           }
-          this.fore?.setAlpha(1);
+          this.restoreDaylight();
           for (const lamp of this.tunnelLamps) lamp.setVisible(false);
         }
       }
     }
+  }
+
+  /** Resize ordinary scene objects to the enclosure/daylight halves. Geometry
+   *  masks are Canvas-only in Phaser 4; bounds work identically in WebGL and
+   *  Canvas and make the portal edge the only place the scene changes. */
+  private applyTunnelRegions(
+    portalX: number,
+    enclosureX: number,
+    enclosureWidth: number,
+    daylightX: number,
+    daylightWidth: number,
+  ): void {
+    this.tunnelRegion = {
+      portalX,
+      enclosureX,
+      enclosureWidth,
+      daylightX,
+      daylightWidth,
+    };
+    for (const layer of [this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
+      if (!layer) continue;
+      layer.setPosition(enclosureX, layer.y).setSize(enclosureWidth, layer.height);
+      layer.setVisible(enclosureWidth > 0).setAlpha(1);
+    }
+    if (this.tunnelShade) {
+      this.tunnelShade
+        .setPosition(enclosureX, this.tunnelShade.y)
+        .setSize(enclosureWidth, this.tunnelShade.height)
+        .setVisible(enclosureWidth > 0)
+        .setAlpha(0.3);
+    }
+    this.fore
+      ?.setPosition(daylightX, FORE_Y)
+      .setSize(daylightWidth, FORE_H)
+      .setVisible(daylightWidth > 0)
+      .setAlpha(1);
+  }
+
+  private restoreDaylight(): void {
+    this.tunnelRegion = {
+      portalX: W,
+      enclosureX: 0,
+      enclosureWidth: 0,
+      daylightX: 0,
+      daylightWidth: W,
+    };
+    this.fore?.setPosition(0, FORE_Y).setSize(W, FORE_H).setVisible(true).setAlpha(1);
   }
 
   /** The span that LIFTS the train — only a hill does (the bridge deck keeps
@@ -1468,6 +1541,16 @@ export class TrackV3Scene extends Phaser.Scene {
       right -= (CAR_W + COUPLING) * S;
     }
     return { noseX: noseX + surge, carX: carX.map((x) => x + surge) };
+  }
+
+  private consistBounds(): { noseX: number; tailX: number } {
+    const frac = this.pos - Math.floor(this.pos);
+    const surge = TRAIN_SURGE * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
+    const { noseX, carX } = this.consistLayout(surge);
+    const tailX = carX.length > 0
+      ? Math.min(...carX) - (CAR_W * this.trainScale) / 2
+      : noseX - LOCO_W * this.trainScale;
+    return { noseX, tailX };
   }
 
   /** The bar position of a point on screen — the inverse of `barEdgeX`. Each
@@ -1855,8 +1938,20 @@ export class TrackV3Scene extends Phaser.Scene {
       deckX: number | null;
       deckTilePositionX: number | null;
       firstVisiblePierX: number | null;
+      visibleStructureAboveJobBar: number;
     };
-    tunnel: { phase: string; wallOffset: number; visibleLamps: number };
+    tunnel: {
+      phase: string;
+      wallOffset: number;
+      visibleLamps: number;
+      portalX: number;
+      enclosureX: number;
+      enclosureWidth: number;
+      daylightX: number;
+      daylightWidth: number;
+      consistNoseX: number;
+      consistTailX: number;
+    };
     wheel: { diameter: number; axleOffset: number };
     pendingModes: string[];
     latchedModes: string[];
@@ -1877,6 +1972,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const span = newest
       ? terrainSpanX(newest.startBar, newest.endBar, this.pos, this.view)
       : null;
+    const consist = this.consistBounds();
     return {
       pos: this.pos,
       playheadX: playheadX(this.view),
@@ -1895,11 +1991,18 @@ export class TrackV3Scene extends Phaser.Scene {
           ? this.bridgeDeck.tilePositionX
           : null,
         firstVisiblePierX: this.bridgePiers.find((pier) => pier.visible)?.x ?? null,
+        visibleStructureAboveJobBar: Math.max(
+          0,
+          TRACK_JOB_BAR.plate.y - TRACK_JOB_BAR.plate.height / 2 - RAIL_Y,
+        ),
       },
       tunnel: {
         phase: this.tunnelPhase,
         wallOffset: this.tunnelWall?.tilePositionX ?? 0,
         visibleLamps: this.tunnelLamps.filter((lamp) => lamp.visible).length,
+        ...this.tunnelRegion,
+        consistNoseX: consist.noseX,
+        consistTailX: consist.tailX,
       },
       wheel: {
         diameter: this.slots[0]?.wheelA.displayWidth ?? 0,
