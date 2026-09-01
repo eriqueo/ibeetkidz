@@ -481,6 +481,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   const idleNight = patchFromSnapshot(idleSnapshot, night.x, night.y);
   const idleMapSignature = patchSignatureOf(idleMap);
   const idleNightSignature = patchSignatureOf(idleNight);
+  const maxRestorationRatio = 0.1;
   const idleHeaderToggle = await patchSignature(
     page,
     TRACK_TOOLBAR_TOGGLES.header.x,
@@ -505,26 +506,40 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   await capture(page, testInfo, "track-toolbar-01-header-hidden");
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
-  let restoredRatio = 1;
+  let restoredMapRatio = 1;
   await expect.poll(async () => {
     const restoredSnapshot = await canvasSnapshot(page);
     const restoredMap = patchFromSnapshot(restoredSnapshot, header.map!.x, header.map!.y);
-    restoredRatio = patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta;
-    return restoredRatio;
-  }, { timeout: 15_000 }).toBeLessThan(0.1);
+    restoredMapRatio = patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta;
+    return restoredMapRatio;
+  }, { timeout: 15_000 }).toBeLessThan(maxRestorationRatio);
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
   await expect.poll(() => patchSignature(page, night.x, night.y))
     .not.toBe(idleNightSignature);
   await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
     .toBe(idleMapSignature);
+  const hiddenJobsSnapshot = await canvasSnapshot(page);
+  const hiddenNight = patchFromSnapshot(hiddenJobsSnapshot, night.x, night.y);
+  const hiddenNightDelta = patchMeanDelta(idleNight, hiddenNight);
+  expect(hiddenNightDelta).toBeGreaterThan(1);
   await capture(page, testInfo, "track-toolbar-02-jobs-hidden");
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
-  await expect.poll(() => patchSignature(page, night.x, night.y))
-    .toBe(idleNightSignature);
+  let restoredNightRatio = 1;
+  await expect.poll(async () => {
+    const restoredSnapshot = await canvasSnapshot(page);
+    const restoredNight = patchFromSnapshot(restoredSnapshot, night.x, night.y);
+    restoredNightRatio = patchMeanDelta(idleNight, restoredNight) / hiddenNightDelta;
+    return restoredNightRatio;
+  }, { timeout: 15_000 }).toBeLessThan(maxRestorationRatio);
 
   await testInfo.attach("toolbar-restoration-deltas", {
-    body: JSON.stringify({ hiddenMapDelta, restoredRatio }, null, 2),
+    body: JSON.stringify({
+      hiddenMapDelta,
+      restoredMapRatio,
+      hiddenNightDelta,
+      restoredNightRatio,
+    }, null, 2),
     contentType: "application/json",
   });
   await capture(page, testInfo, "track-toolbar-03-restored");
