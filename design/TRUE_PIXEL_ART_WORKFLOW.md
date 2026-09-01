@@ -108,11 +108,12 @@ Generated images can contain an opaque simulated checkerboard even when they vis
 | Rotating wheel | `export_house_style_wheel.py` | Exact 76², transparent corners, hub at (38,38). |
 | Pressed control | `make_house_style_pressed.py` | Same alpha content bounds as idle; visibly seated/darker face. |
 
-Run the current manual Track-art validator from the repository root. It is not
-wired into the npm or CI gates because its host Python dependency is not yet
-pinned there:
+Run the current manual Track-art validator from the repository root after
+installing the repository-pinned image dependency. CI installs this dependency
+for the UI-atlas check, but does not currently invoke this validator:
 
 ```bash
+python3 -m pip install -r scripts/requirements-ui-atlas.txt
 python3 scripts/validate_house_style_track.py
 ```
 

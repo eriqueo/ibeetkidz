@@ -1053,11 +1053,11 @@ band empty scenery and shipping the panel as a sprite like the Yard's.
 
 ---
 
-## ✅ DONE (gaps superseded by AR-015) — AR-012 · Train ref frames: flatcar directions + loco rear view
+## INCOMPLETE — AR-012 · Train ref frames: flatcar directions + loco rear view
 
 > The two placeholder gaps below (flatcar's six missing directions, loco rear
-> view) are covered by AR-015's full 16-direction set for loco/tanker/flatcar —
-> deliver AR-015 and skip these.
+> view) still ship. Their planned AR-015 replacement was retired and incomplete;
+> revisit these gaps only with a new tracked-source and atlas-rebuild contract.
 
 **Assembled:** the new refs are live in `public/assets/spritesheets/train.png`
 (rebuild any time with `python3 scripts/build_train_atlas.py`). Two gaps ship

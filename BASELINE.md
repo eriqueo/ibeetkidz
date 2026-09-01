@@ -52,7 +52,7 @@ passed that test without a retry.
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 502 |
-| Tracked snapshot bytes | 86,266,843 |
+| Tracked snapshot bytes | 86,266,976 |
 | Tracked files under `src/` + `tests/` | 385 |
 | `src/assets/` tracked bytes | 42,854,090 |
 | `dist/` | 113 files; 23,777,657 bytes |
