@@ -26,7 +26,7 @@ Their earlier **DELIVERED** label records provenance, not current acceptance;
 the two entries below supersede that label for these files. Engineering must
 not hide either defect with masks, tints, or a replacement drawing in code.
 
-### ❌ REOPENED — AR-060F · Flatcar must be an open deck, not a transparent wall — P0
+### ✅ DELIVERED 2026-09-01 — AR-060F · Flatcar is an open deck, not a transparent wall — P0
 
 The running flatcar reads as a tall green car body with five see-through sky
 windows. That contradicts AR-060's own flatcar contract: **no opening at all;
@@ -54,6 +54,12 @@ flatcar and a flatcar carrying at least three differently sized characters.
 The sky/background must remain visible because there is no wall, while the
 deck itself is fully opaque and the crew's feet are correctly occluded by its
 near edge. An isolated PNG is not acceptance.
+
+> **Delivered:** 2026-09-01. Both 2560×1440 flatcar layers were replaced with
+> a low timber/steel deck and restricted near-edge/stake foreground. The
+> deterministic AR-060 reopen validator proves the central crew bay is clear
+> through y=851 and that the front begins at the 858px deck lip; the production
+> Workshop Pages capture proves both empty and three-character assembly.
 
 ### ❌ REOPENED — AR-060T · Tanker foreground must be a real shell lip — P0
 
