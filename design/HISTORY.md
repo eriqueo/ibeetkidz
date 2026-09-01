@@ -113,14 +113,17 @@ inversion). **This is a decided architecture, not an accident — see
   TypeScript.** `src/game/scene-layout.ts` keeps only the dynamic/gameplay
   fixtures (`WORKSHOP_GRID_V2`, `YARD_LAYOUT_V2`, `TRACK_LAYOUT_V2`);
   `WORKSHOP_LAYOUT_V2` was retired with the AR-016 layered scene.
-- **Art inputs are out of git.** Ticket M3 moved `references/`, the `sprites-v2/`
+- **Raw art references are out of git.** Ticket M3 moved `references/`, the `sprites-v2/`
   sources and `art_gen/` into a **gitignored `art/` at the repo root**. The old
   loose-sprite packer and `slice_sprites.py` were later retired after the
   runtime moved to the public atlases. **There are no `*_original.png`
   files anywhere in the tree. Shipped sprites are `src/assets/sprites/` and
   `public/assets/spritesheets/`. The retired 16-direction train reference batch
-  moved to the gitignored `art/` tree on 2026-08-16; the committed runtime atlas
-  remains reproducible through `scripts/build_train_atlas.py`.
+  moved to the gitignored `art/` tree on 2026-08-16. On 2026-08-31 the accepted
+  40 train cells became the canonical tracked inputs under
+  `src/assets/sprites/train-atlas/`; `scripts/build_train_atlas.py` rebuilds the
+  public atlas from only those inputs, and `npm run check:train-atlas` verifies
+  deterministic JSON plus decoded pixels.
 - **The v1 DOM shell is gone** (ticket M1): `src/machines/**` (including
   `tools.tsx` and `TOOLS`), `PixelButton.tsx`, `src/app/use-viewport.ts` /
   `usePhoneLayout`, and `Shell.tsx`'s kidpix 4-region body. The only survivor is

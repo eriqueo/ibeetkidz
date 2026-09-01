@@ -11,7 +11,8 @@ in `design/HISTORY.md`. Do not copy these counts into another living document.
 - Node: 24.18.0
 - Package manager: npm with the committed `package-lock.json`
 - Browser: Playwright Chromium 1228
-- Working tree: no tracked changes during the final gate
+- Gate environment: clean archive of the measured commit; unrelated concurrent
+  work in the primary checkout was excluded
 
 All counts below come from commands run during this re-baseline. They are not
 estimates derived from old documentation.
@@ -21,14 +22,14 @@ estimates derived from old documentation.
 | Command | Result |
 |---|---|
 | `npm run typecheck` | exit 0; no TypeScript diagnostics |
-| `npm test` | 44 files passed; 681 tests passed; 0 skipped |
+| `npm test` | 45 files passed; 682 tests passed; 0 skipped |
 | `npm run lint` | exit 0; no ESLint diagnostics |
 | `npm run build` | exit 0; both deploy artifacts generated and checked |
 | `npm run check:no-editor` | exit 0; no editor code in either build |
 | `npm run check:pwa` | exit 0; both artifacts installable and fully precached |
-| `PW_PORT=5174 npm run test:e2e` | 70 passed; 1 opt-in stress test skipped; 0 failed |
+| `PW_PORT=5174 npm run test:e2e` | 71 passed; 1 opt-in stress test skipped; 0 failed |
 
-The full local E2E run has 71 tests. `audio-stress.spec.ts` remains opt-in. Some
+The full local E2E run has 72 tests. `audio-stress.spec.ts` remains opt-in. Some
 hardware-audio blocks also skip under CI, so do not infer a CI count from the
 local result; inspect the actual workflow run.
 
@@ -51,25 +52,26 @@ passed that test without a retry.
 
 | Fact | Measured value |
 |---|---:|
-| Tracked files | 502 |
-| Tracked snapshot bytes | 86,268,562 |
-| Tracked files under `src/` + `tests/` | 385 |
-| `src/assets/` tracked bytes | 42,854,090 |
-| `dist/` | 113 files; 23,777,657 bytes |
-| `dist-gh/` | 113 files; 23,778,577 bytes |
-| UI atlas | 124 frames; 5,941,895 encoded bytes; 267,386,880 decoded RGBA bytes |
+| Tracked files | 535 |
+| Tracked snapshot bytes | 81,833,337 |
+| Tracked files under `src/` + `tests/` | 417 |
+| `src/assets/` tracked bytes | 39,045,497 |
+| `dist/` | 112 files; 23,151,557 bytes |
+| `dist-gh/` | 112 files; 23,152,477 bytes |
+| UI atlas | 114 frames; 5,317,982 encoded bytes; 237,633,536 decoded RGBA bytes |
 | E2E spec files | 19 |
 
-Each service worker contains 115 manifest entries and 111 unique URLs. Four PWA
+Each service worker contains 114 manifest entries and 110 unique URLs. Four PWA
 icons are emitted twice by the plugin's manifest/glob paths; this is known
 optional configuration churn, not duplicated payload on disk. Unique precached
-payload is 23,755,031 bytes for `dist/` and 23,755,951 bytes for `dist-gh/`.
+payload is 23,128,988 bytes for `dist/` and 23,129,908 bytes for `dist-gh/`.
 `THIRD_PARTY_NOTICES.txt` is present and precached. No precache URL contains
 `editor`.
 
 The 96 retired AR-015 references remain available locally under ignored
-`art/ar015/`, but none is tracked. Git history was not rewritten, so `.git`
-remains approximately 1.40 GiB.
+`art/ar015/`, and 39 raw train references remain under ignored
+`art/train-refs/`; neither directory is a build input. Git history was not
+rewritten, so `.git` remains approximately 1.40 GiB.
 
 ## Generated and legal artifacts
 
@@ -99,16 +101,26 @@ remains approximately 1.40 GiB.
     --run 'bash scripts/check-ui-atlas-fresh.sh'
   ```
 
+- `public/assets/spritesheets/train.{png,json}` is generated from the 40
+  accepted RGBA cells and manifest under `src/assets/sprites/train-atlas/`.
+  Ignored `art/train-refs/` files are historical references, not build inputs.
+  The release workflow checks deterministic JSON plus PNG dimensions, color
+  model, and decoded pixels:
+
+  ```sh
+  python3 scripts/build_train_atlas.py
+  npm run check:train-atlas
+  ```
+
 ## Known open findings
 
 - `npm run check:workshop-car-art` is intentionally red: three shipped Workshop
   layers exactly match active rejected fingerprints in `ART_REQUESTS.md`.
   Replacement art and assembled-scene acceptance are required before wiring
   this checker into the release gate.
-- The train atlas depends on ignored `art/train-refs/`, imports unpinned NumPy,
-  and has no check mode. Signal, smoke, and tarp atlases also lack complete
-  tracked regeneration provenance. Preserve these load-bearing outputs until a
-  source-of-truth decision is made.
+- Signal, smoke, and tarp atlases still lack complete tracked regeneration
+  provenance. Preserve these load-bearing outputs until their source-of-truth
+  decisions are made.
 - Full `npm audit` reports three high-severity findings in development-only
   transitive tooling; `npm audit --omit=dev` reports zero production findings.
 - No physical iPad/Android install, microphone, offline-update, or audio-device

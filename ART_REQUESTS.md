@@ -149,6 +149,11 @@ copying its registration error described in AR-069.
 
 ## CURRENT PRODUCTION PRIORITY (2026-08-13, rev 5)
 
+**Cleanup update 2026-08-31:** AR-060 is the only Workshop car assembly in
+production. The superseded AR-052/AR-055 cabin and rail sources, atlas frames,
+registrations, and fallback scene objects were removed after an exhaustive
+four-car browser check. The rev-5 queue below is retained as decision history.
+
 **Rev 3's entire queue is delivered AND integrated** (see "INTEGRATED" below).
 Rev 5 is the review that followed, on the live screens.
 
@@ -562,10 +567,10 @@ railhead. The body canvases are not being redrawn in this request.
 | AR-022 | The Map's baked destination signs (no wiring — the scene art carries them). |
 | AR-043 | The v3 Track header's CLEAR plaque, in a square slot beside RIDE and STOP. |
 | AR-051 | `VoiceToolPanel`, `VoiceKeysToolPanel` and `MagicToolPanel`, mounted through the shared `BaseToolPanel.mountPlate` / `placePlate` seam that AR-050 now also uses. Controls sit in the measured recesses; the Magic playfield is left clear as asked. |
-| AR-052 | The Workshop car's void: rear cabin behind the crew, bench rail in front of their legs, both travelling with the car on departure. |
+| AR-052 | **Retired and removed 2026-08-31.** AR-060's native open cars superseded the shared cabin/rail assembly. |
 | AR-053 | `trk-smoke` / `trk-splash` (picked up automatically by the drop-folder glob) and the NIGHT sky band, which now tiles and parallaxes over the day sky while the wash darkens only the land. |
 | AR-054 | The percussion shelf's ten tinted keycaps and their drum icons, the percussion editor's row heads, and the conductor chalkboard's sound badges — which is where the six `tone-*` icons are reachable, every melody lane's clip being the built-in `note-do`. |
-| AR-055 | The four per-car-type cabins, chosen by `cabinFor`. Engineering additionally put the car's LIVERY COAT on the interior — the body was tinted and the room inside it was not, so a gold tanker held a blue-grey steel room. Superseded in approach by AR-060; the art itself is what the current build ships. |
+| AR-055 | **Retired and removed 2026-08-31.** AR-060's native bodies/fronts now cover every `CarType`; `cabinFor` and all ten layered-art sources are gone. |
 | AR-059 | The Beat Lantern, riding the sounding car's ROOF and flicking to its high frame on each of the bar's four beats (read off the transport position, not off distance travelled — a lantern pulsing with the wheels would be a wheel lantern). `trk-now-post` is retired wherever the lantern art is present, and remains the fallback when it is not. Anchored by the LOW frame's measured painted base rather than the canvas edge: hung by the canvas the lamp floated half a car above the roof, which is the exact detachment the lantern was drawn to fix. |
 
 **Sizing note for every entry below.** Deliver at roughly **2× the drawn size**,
@@ -1059,9 +1064,12 @@ band empty scenery and shipping the panel as a sprite like the Yard's.
 > view) still ship. Their planned AR-015 replacement was retired and incomplete;
 > revisit these gaps only with a new tracked-source and atlas-rebuild contract.
 
-**Assembled:** the new refs are live in `public/assets/spritesheets/train.png`
-(rebuild any time with `python3 scripts/build_train_atlas.py`). Two gaps ship
-as placeholders:
+**Assembled:** the accepted cells are live in
+`public/assets/spritesheets/train.png`. Their single tracked source is the 40
+RGBA frames plus `manifest.json` under `src/assets/sprites/train-atlas/`;
+`python3 scripts/build_train_atlas.py` rebuilds both atlas outputs and
+`npm run check:train-atlas` compares JSON plus decoded pixels. Two visual gaps
+ship as placeholders:
 
 1. **Flatcar has only E + NE refs.** The other six directions are currently
    mirror/rotate derivations — the N/S cells are a side view rotated 90° (wrong
@@ -2884,7 +2892,12 @@ sandbox browser cannot surface its native fake microphone to the PWA; the
 application code and live control path remain unchanged.
 
 
-## ✅ DELIVERED — AR-052 · The Workshop car's painted cabin — P0 (character integration)
+## RETIRED / REMOVED — AR-052 · The Workshop car's painted cabin — P0 (character integration)
+
+**Removed 2026-08-31.** AR-060 superseded this layered assembly. Its two source
+PNGs, atlas frames, scene objects, and runtime registration no longer ship; Git
+history preserves the delivery and the specification below preserves why it
+existed.
 
 **Art delivered 2026-08-13 in `0a5cb26`.** The standardized 1612 × 430 void now
 has two aligned transparent production layers under `sprites/panels/`:
@@ -3005,7 +3018,11 @@ engine-drawn on purpose — it is a wash and should look like one.
 
 ---
 
-## ✅ DELIVERED — AR-055 · The car cabin, revised — remove the nested car, and vary it per type — P0
+## RETIRED / REMOVED — AR-055 · The car cabin, revised — remove the nested car, and vary it per type — P0
+
+**Removed 2026-08-31.** All eight per-type layers and the two AR-052 shared
+fallbacks were deleted after AR-060 coverage was proven for boxcar, tanker,
+hopper, and flatcar. The historical delivery/specification remains below.
 
 **Art delivered 2026-08-13 in `00dec4e`.** Eight aligned 1612 × 430 layers
 now provide a cabin rear and sparse foreground contact rail for **boxcar,
@@ -3207,10 +3224,9 @@ placement contract: **boxcar** rect `(990, 560, 850, 430)`, floor `1000`;
 **tanker** `(620, 560, 1200, 330)`, floor `895`; **hopper** `(700, 490, 1140,
 440)`, floor `930`; **flatcar** `(720, 410, 1120, 455)`, floor `865`.
 
-**Engineering handoff:** replace punched-void assembly with the full car body,
-then draw crew/chalkboard in the stated type-specific rect and the matching
-`-front` layer above crew. The previous interior/rail layers are fallbacks only;
-new native cutaways should be preferred per type.
+**Engineering status (updated 2026-08-31):** the full body and matching
+`-front` layer are the only production assembly for every car type. The previous
+interior/rail fallback and all of its source art were removed.
 
 **This supersedes the layered approach of AR-052/AR-055 and is the fix for a
 complaint that has now been made three times about three different versions of
