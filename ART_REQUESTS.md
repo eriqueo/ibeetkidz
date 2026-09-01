@@ -61,7 +61,7 @@ near edge. An isolated PNG is not acceptance.
 > through y=851 and that the front begins at the 858px deck lip; the production
 > Workshop Pages capture proves both empty and three-character assembly.
 
-### ❌ REOPENED — AR-060T · Tanker foreground must be a real shell lip — P0
+### ✅ DELIVERED 2026-09-01 — AR-060T · Tanker foreground is a real shell lip — P0
 
 `src/assets/sprites/cars/car-open-tanker-front.png` currently contributes two
 detached purple elliptical curves and a long horizontal stroke. In the
@@ -82,9 +82,15 @@ A byte-identical or colour-shifted delivery is not a correction.
 
 **Required proof:** assembled 2560 × 1440 Workshop captures of the tanker empty
 and carrying at least three characters, including one at each lateral edge of
-the crew bay. The foreground must read as one continuous tank shell and must
-occlude feet/bodies only where real near metal would. An isolated layer or
+the crew bay. The foreground must read as one continuous tank shell and must occlude feet/bodies only where real near metal would. An isolated layer or
 art-only composite is not acceptance.
+
+> **Delivered:** 2026-09-01. The foreground is now a single continuous,
+> riveted steel/brass near shell band which joins the tank's inner rims. The
+> deterministic AR-060 reopen validator proves it is an opaque, gap-free lower
+> shell from x=540 through x=2020; the production Workshop Pages capture proves
+> both empty and three-character assembly, including riders at both lateral
+> sides of the crew bay.
 
 ### Product cleanup recorded with this batch
 
