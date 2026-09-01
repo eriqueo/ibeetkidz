@@ -69,10 +69,8 @@ import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { loadUiSprites, placeUiSprite, UI_ATLAS_KEY, UI_SPRITES } from "../ui-sprites.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
-import { SceneVisualizer } from "../scene-visualizer.ts";
-import { VISUAL_STYLES } from "../../visualizer/styles.ts";
 import trackMap from "../../assets/maps/track.json";
-import type { CarType, Project } from "../../core/types.ts";
+import type { CarType } from "../../core/types.ts";
 import type { LaneGroup } from "../../core/lane-color.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 
@@ -97,7 +95,7 @@ const TRAIN_DEPTH = 4;
 // Contact shadows ride under every vehicle and over the sounding-car lamp — the
 // car blocks the lamp's light, which is the whole point of a shadow.
 const SHADOW_DEPTH = TRAIN_DEPTH - 0.25;
-// Smoke draws in FRONT of the train (and of the jumbotron), under the signal.
+// Smoke draws in FRONT of the train, under the signal.
 const SMOKE_DEPTH = TRAIN_DEPTH + 1.5;
 // The plate lights everything from the upper left, so shade falls to the right.
 // In unscaled cell px; the perspective scales it with everything else.
@@ -115,10 +113,6 @@ const GLOW_DEPTH = TRAIN_DEPTH - 0.5;
 // tint is a multiply blend and this atlas's art is dark brown, so every tint
 // came out indistinguishable (measured).
 const GLOW_COLOR = 0xffc93c;
-// The jumbotron stands in the middle of the oval, so the train rides IN FRONT
-// of it — above the painted plate, below every vehicle.
-const VIZ_DEPTH = 2;
-
 export class TrackScene extends BackgroundScene {
   static readonly KEY = "TrackScene";
 
@@ -189,12 +183,6 @@ export class TrackScene extends BackgroundScene {
   private sendPlaque?: Phaser.GameObjects.Image;
   private sendPanel?: SendSongPanel;
   private sendState: SendUiState = { kind: "idle" };
-  // "See the sound": the jumbotron in the middle of the oval. Constructed only
-  // once React hands over the master-output tap (`attachVisualizer`), because
-  // the analyser belongs to the audio port and the scene must not reach for it.
-  private geometrySpawns: readonly TiledSpawn[] = [];
-  private viz?: SceneVisualizer;
-
   constructor() {
     super(TrackScene.KEY);
   }
@@ -204,7 +192,6 @@ export class TrackScene extends BackgroundScene {
     // train / smoke / signal / tarp atlases (the single source of truth).
     loadSpriteAssets(this);
     this.chromeSpawns = parseTiledLayer(trackMap, "ui-layer");
-    this.geometrySpawns = parseTiledLayer(trackMap, "geometry-layer");
     loadUiSprites(this); // the one packed chrome multiatlas
   }
 
@@ -317,53 +304,6 @@ export class TrackScene extends BackgroundScene {
     });
 
     this.sendPanel = new SendSongPanel(this);
-  }
-
-  /**
-   * React → scene: hand over the master-output analyser and a Project reader,
-   * which is what lets the jumbotron exist. Idempotent — React calls it from
-   * `onSceneReady`, which fires once per visit.
-   *
-   * The analyser arrives as an argument rather than being fetched here on
-   * purpose: `SoundPort` is React's to own, and a scene that reached for it
-   * would put a vendor audio dependency behind the EventBus boundary.
-   */
-  attachVisualizer(analyser: AnalyserNode, getProject: () => Project): void {
-    if (this.viz) return;
-    const viz = new SceneVisualizer(this, {
-      analyser,
-      getProject,
-      styles: VISUAL_STYLES,
-      depth: VIZ_DEPTH,
-    });
-    this.viz = viz;
-    // Tap the screen to change the look. Same armed press/release rule as the
-    // rest of the scene, so a pointerup that started elsewhere cannot cycle it.
-    let armed = false;
-    viz.hitTarget.on("pointerdown", () => { armed = true; });
-    viz.hitTarget.on("pointerout", () => { armed = false; });
-    viz.hitTarget.on("pointerup", () => {
-      if (!armed) return;
-      armed = false;
-      viz.cycleStyle();
-    });
-    this.layoutViz();
-  }
-
-  /** Exposed for the e2e bridge: what the jumbotron is showing, and how visible
-   *  it is. Visibility is driven by REAL master-output level, so asserting it
-   *  rose while a song played proves the screen is fed by audio, not by a flag. */
-  get vizState(): { style: string; visibility: number } | null {
-    return this.viz ? { style: this.viz.styleLabel, visibility: this.viz.visibility } : null;
-  }
-
-  private layoutViz(): void {
-    const r = this.backgroundRect;
-    if (!this.viz || r.width === 0) return;
-    const spawn = this.geometrySpawns.find((s) => s.id === "viz-screen");
-    if (!spawn) return;
-    const { width, height } = this.scale.gameSize;
-    this.viz.layout(placeSpawn(spawn, r, { width, height }));
   }
 
   /** React → scene: the SEND flow's current state (drives plaque + panel). */
@@ -528,11 +468,6 @@ export class TrackScene extends BackgroundScene {
   }
 
   update(time: number, delta: number): void {
-    // The jumbotron follows the master output, not the train, so it runs before
-    // (and independently of) the ride-path work below. It eases on the real
-    // frame delta, so its timings are the same at 27 fps (a headless CI frame
-    // rate) as at 120 Hz.
-    this.viz?.update(delta);
     // …but the ride measures the gap ITSELF rather than trusting `delta`.
     // Phaser's TimeStep smooths and clamps the delta it hands out, and on a slow
     // frame that makes it several times SMALLER than the real gap — which turned
@@ -576,7 +511,7 @@ export class TrackScene extends BackgroundScene {
 
   /** Position the loco + cars along the path for the current progress. Split
    *  out of `update` so `rebuildCars` can re-place immediately without having a
-   *  frame delta to hand — it has no business advancing the visualizer. */
+   *  frame delta to hand. */
   private placeTrain(): void {
     if (!this.path || !this.loco) return;
     const dir = this.direction;
@@ -789,7 +724,6 @@ export class TrackScene extends BackgroundScene {
 
   private layoutFixtures(): void {
     this.layoutChrome();
-    this.layoutViz();
     const r = this.backgroundRect;
     if (this.signal) {
       const targetW = r.width * TRACK_LAYOUT_V2.signal.w;

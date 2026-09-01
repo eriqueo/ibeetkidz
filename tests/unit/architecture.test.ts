@@ -117,6 +117,20 @@ describe("architecture guards (source text over src/**)", () => {
     ).toEqual([]);
   });
 
+  // Eric removed the Track visualizer from the product. Keep the deletion
+  // complete: a dormant host, style bundle, or analyser handoff would preserve
+  // the same maintenance surface while merely hiding its pixels.
+  it("ships no Track visualizer implementation or wiring", () => {
+    expect(
+      SOURCES.filter(([path]) =>
+        path === "src/game/scene-visualizer.ts"
+        || path === "src/ports/renderer-port.ts"
+        || path.startsWith("src/visualizer/"),
+      ).map(([path]) => path),
+    ).toEqual([]);
+    expect(offenders(/\b(SceneVisualizer|attachVisualizer|vizState)\b/)).toEqual([]);
+  });
+
   // The React UI was retired in M1, but its two large stylesheets stayed in the
   // composition root and kept shipping the old machine shell plus 44 icon
   // assets. The DOM now owns only boot, storage notice and the Phaser host.

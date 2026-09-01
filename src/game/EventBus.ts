@@ -6,6 +6,7 @@
 // sides.
 import Phaser from "phaser";
 import type { LaneKind, CarType, EffectId, ThereminWave, AppView } from "../core/types.ts";
+import type { TrackToolbarId } from "./scene-layout.ts";
 
 export interface EventMap {
   // Phaser -> React: a scene finished `create()` and is ready to receive state.
@@ -68,10 +69,9 @@ export interface EventMap {
   // geometry trio plus night/tunnel/tiny/giant. Latching and STACKING; the
   // payload is a `ModeKind`. A performance, never saved.
   "track-mode-toggled": [kind: string];
-  // Phaser -> React (Track v3): hide/show both control decks and the
-  // visualizer. The always-visible scene key emits the intent; React persists
-  // the preference and pushes the resulting boolean back into the scene.
-  "track-focus-toggled": [];
+  // Phaser -> React (Track v3): hide/show one control deck. Each deck keeps an
+  // always-visible edge key; React persists both independent preferences.
+  "track-toolbar-toggled": [toolbar: TrackToolbarId];
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.

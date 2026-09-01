@@ -100,7 +100,7 @@ Git history retains that rejected design. It is deleted, not deferred.
 | **Map** | World navigation | N/A | Clickable buildings (Workshop, Yard, Track) | N/A |
 | **Workshop** | Music studio | Nav + Car Type Switcher | Instruments (tap to add lane) | Transport (Stop/Play/Loop/Tempo) |
 | **Yard** | Train assembly | Nav | Train cars on sidings | Add/Reorder/Delete controls |
-| **Track** | Song playback | Nav + transport | Side-scrolling train, terrain, modes, visualizer | Tarp/loop/send controls |
+| **Track** | Song playback | Nav + transport | Side-scrolling train, terrain, modes | Tarp/send controls |
 
 ### The Satellite Tools
 These are Phaser-native panels that open over the Workshop when an instrument is tapped:

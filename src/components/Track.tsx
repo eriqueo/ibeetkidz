@@ -12,6 +12,10 @@ import { laneGroup } from "../core/lane-color.ts";
 import { riderSprite } from "../game/instrument-station.ts";
 import { TrackModeIntentCoordinator } from "../game/track-mode-intent.ts";
 import {
+  TRACK_TOOLBAR_IDS,
+  type TrackToolbarId,
+} from "../game/scene-layout.ts";
+import {
   LATCH_UNIT_BARS,
   TERRAIN_KINDS,
   isModeKind,
@@ -22,21 +26,51 @@ import {
 const SONG_FILE_NAME = "my-train-song.wav";
 const TRACK_CHROME_STORAGE_KEY = "ibeetkidz.track.chrome";
 
-function readTrackChromePreference(): boolean {
-  if (typeof window === "undefined") return true;
+interface TrackToolbarPreferences {
+  readonly version: 2;
+  readonly headerVisible: boolean;
+  readonly jobsVisible: boolean;
+}
+
+const DEFAULT_TRACK_TOOLBARS: TrackToolbarPreferences = {
+  version: 2,
+  headerVisible: true,
+  jobsVisible: true,
+};
+
+function readTrackToolbarPreferences(): TrackToolbarPreferences {
+  if (typeof window === "undefined") return DEFAULT_TRACK_TOOLBARS;
   try {
-    return window.localStorage.getItem(TRACK_CHROME_STORAGE_KEY) !== "hidden";
+    const stored = window.localStorage.getItem(TRACK_CHROME_STORAGE_KEY);
+    // Expand side of the preference migration: old focus mode controlled both
+    // decks, so preserve that choice until the kid changes either new key.
+    if (stored === "hidden" || stored === "visible") {
+      const visible = stored === "visible";
+      return { version: 2, headerVisible: visible, jobsVisible: visible };
+    }
+    if (stored === null) return DEFAULT_TRACK_TOOLBARS;
+    const parsed: unknown = JSON.parse(stored);
+    if (
+      typeof parsed === "object"
+      && parsed !== null
+      && (parsed as { version?: unknown }).version === 2
+      && typeof (parsed as { headerVisible?: unknown }).headerVisible === "boolean"
+      && typeof (parsed as { jobsVisible?: unknown }).jobsVisible === "boolean"
+    ) {
+      return parsed as TrackToolbarPreferences;
+    }
+    return DEFAULT_TRACK_TOOLBARS;
   } catch {
-    return true;
+    return DEFAULT_TRACK_TOOLBARS;
   }
 }
 
-function writeTrackChromePreference(visible: boolean): void {
+function writeTrackToolbarPreferences(preferences: TrackToolbarPreferences): void {
   try {
-    window.localStorage.setItem(TRACK_CHROME_STORAGE_KEY, visible ? "visible" : "hidden");
+    window.localStorage.setItem(TRACK_CHROME_STORAGE_KEY, JSON.stringify(preferences));
   } catch {
-    // Storage can be unavailable in private/restricted contexts. Focus mode is
-    // still valid for this visit; persistence is a convenience, not a gate.
+    // Storage can be unavailable in private/restricted contexts. The controls
+    // still work for this visit; persistence is a convenience, not a gate.
   }
 }
 
@@ -70,7 +104,7 @@ function wantsOval(): boolean {
 }
 
 export const Track: FC = () => {
-  const { dispatch, dispatchAll, engine, sound, getProject } = useApp();
+  const { dispatch, dispatchAll, engine, sound } = useApp();
   const project = useProject();
   const oval = useMemo(wantsOval, []);
   const sceneRef = useRef<TrackScene | null>(null);
@@ -139,7 +173,7 @@ export const Track: FC = () => {
 
   // View preferences and performance gestures are refs because EventBus
   // listeners are registered once and neither drives a React render.
-  const chromeVisibleRef = useRef(readTrackChromePreference());
+  const toolbarPreferencesRef = useRef(readTrackToolbarPreferences());
   const tarpArmedRef = useRef(false);
   const modeIntentsRef = useRef<TrackModeIntentCoordinator | null>(null);
 
@@ -170,23 +204,16 @@ export const Track: FC = () => {
       scene.setCars(v3CarsRef.current);
       scene.setTempo(projectRef.current.tempoBpm);
       scene.setTarpArmed(tarpArmedRef.current);
-      // Same jumbotron, same contract as the oval: the analyser is PUSHED in,
-      // because React owns the ports and a scene that reached for audio would
-      // put a vendor dependency behind the EventBus boundary.
-      scene.attachVisualizer(engine.getAnalyser(), getProject);
-      scene.setChromeVisible(chromeVisibleRef.current);
+      for (const toolbar of TRACK_TOOLBAR_IDS) {
+        const key = `${toolbar}Visible` as const;
+        scene.setToolbarVisible(toolbar, toolbarPreferencesRef.current[key]);
+      }
       return;
     }
     sceneRef.current = scene as TrackScene;
     sceneRef.current.setCars(carsRef.current);
     sceneRef.current.setTempo(projectRef.current.tempoBpm);
-    // "See the sound": hand the scene the master-output tap so the jumbotron in
-    // the middle of the oval can draw what actually reached the speakers. React
-    // owns the ports, so the analyser is PUSHED in — the scene never reaches
-    // for audio itself. `engine.getAnalyser()` is the same node `getAudioDiag`
-    // reads, which is what keeps "the visualizer never lies" literally true.
-    sceneRef.current.attachVisualizer(engine.getAnalyser(), getProject);
-  }, [engine, getProject]);
+  }, []);
 
   useEffect(() => {
     sceneRef.current?.setCars(cars);
@@ -296,11 +323,14 @@ export const Track: FC = () => {
         console.warn("audio reconcile failed", err);
       });
     };
-    const onFocusToggled = () => {
-      const visible = !chromeVisibleRef.current;
-      chromeVisibleRef.current = visible;
-      writeTrackChromePreference(visible);
-      v3Ref.current?.setChromeVisible(visible);
+    const onToolbarToggled = (toolbar: TrackToolbarId) => {
+      const visibilityKey = `${toolbar}Visible` as const;
+      const preferences = toolbarPreferencesRef.current;
+      const visible = !preferences[visibilityKey];
+      const next = { ...preferences, [visibilityKey]: visible };
+      toolbarPreferencesRef.current = next;
+      writeTrackToolbarPreferences(next);
+      v3Ref.current?.setToolbarVisible(toolbar, visible);
     };
     // TARP: arm/disarm cover-a-car. Tap-to-edit stays the default gesture.
     const onTarpArmed = () => {
@@ -317,7 +347,7 @@ export const Track: FC = () => {
     EventBus.on("terrain-picked", onTerrain);
     EventBus.on("track-mode-toggled", onMode);
     EventBus.on("track-backwards-toggled", onBackwards);
-    EventBus.on("track-focus-toggled", onFocusToggled);
+    EventBus.on("track-toolbar-toggled", onToolbarToggled);
     EventBus.on("track-tarp-armed", onTarpArmed);
     return () => {
       modeIntents.dispose();
@@ -332,7 +362,7 @@ export const Track: FC = () => {
       EventBus.off("terrain-picked", onTerrain);
       EventBus.off("track-mode-toggled", onMode);
       EventBus.off("track-backwards-toggled", onBackwards);
-      EventBus.off("track-focus-toggled", onFocusToggled);
+      EventBus.off("track-toolbar-toggled", onToolbarToggled);
       EventBus.off("track-tarp-armed", onTarpArmed);
     };
   }, [dispatch, dispatchAll, engine, pushModesToScene, reconcileStoppedRideVisuals]);

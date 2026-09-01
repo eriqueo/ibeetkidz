@@ -3,8 +3,8 @@ import { expect, test, type Page } from "@playwright/test";
 // Audio must actually REACH the master output — not just "the transport clock
 // ran". The train animating while the app is silent is exactly the failure
 // mode that motivated this: the transport drives the visuals even when no
-// samples flow. `audioDiag().masterPeak` reads the destination-tapped analyser
-// (the same one that feeds the visualizer), so a peak > 0 is real signal.
+// samples flow. `audioDiag().masterPeak` reads the destination-tapped diagnostic
+// analyser, so a peak > 0 is real signal.
 
 async function boot(page: Page): Promise<void> {
   await page.goto("/");

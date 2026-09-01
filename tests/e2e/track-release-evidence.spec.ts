@@ -2,8 +2,7 @@ import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { emptyProject, makeLayer, reduce, serialize } from "../../src/core/project-state.ts";
 import {
   TRACK_HEADER,
-  TRACK_FOCUS_KEY,
-  TRACK_VISUALIZER,
+  TRACK_TOOLBAR_TOGGLES,
   trackHeaderSlots,
   trackJobSlots,
 } from "../../src/game/scene-layout.ts";
@@ -170,8 +169,8 @@ function metricsOf(image: DecodedPng): CanvasMetrics {
       const b = image.data[i + 2] ?? 0;
       if (g >= 240 && r <= 20 && b <= 20) neonGreenPixels++;
       sampledPixels++;
-      // This full-width horizon band is below the visualizer and above the
-      // trees, train and rails. It remains inside both NIGHT's land shade and
+      // This full-width horizon band is below the header and above the trees,
+      // train and rails. It remains inside both NIGHT's land shade and
       // the tunnel treatment without letting moving scene composition skew the
       // result. Fractions keep the probe valid across rendered canvas sizes.
       if (y >= image.height * 0.42 && y <= image.height * 0.47) {
@@ -343,15 +342,10 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
     headerBottom / designHeight,
     "the header plate must leave at least two-thirds of the Track for the world and train",
   ).toBeLessThanOrEqual(1 / 3);
-  expect(
-    TRACK_VISUALIZER.y - TRACK_VISUALIZER.height / 2,
-    "the visualizer must not overlap the header plate",
-  ).toBeGreaterThanOrEqual(headerBottom);
-
   const slots = trackHeaderSlots();
   await tapDesignPoint(page, slots.ride!.x, slots.ride!.y);
   await page.waitForTimeout(1_200);
-  await capture(page, testInfo, "track-02-riding-visualizer");
+  await capture(page, testInfo, "track-02-riding");
   const tempo = slots.tempo!;
   await captureDesignCrop(
     page, testInfo, "track-02b-speed-readout",
@@ -460,7 +454,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   });
 });
 
-test("Pages focus mode restores its chrome and Ride stays endless until STOP", {
+test("Pages toolbars hide independently and Ride stays endless until STOP", {
   tag: "@track-focus-release",
 }, async ({ page }, testInfo) => {
   test.setTimeout(90_000);
@@ -487,42 +481,53 @@ test("Pages focus mode restores its chrome and Ride stays endless until STOP", {
   const idleNight = patchFromSnapshot(idleSnapshot, night.x, night.y);
   const idleMapSignature = patchSignatureOf(idleMap);
   const idleNightSignature = patchSignatureOf(idleNight);
-  const idleFocus = await patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
+  const idleHeaderToggle = await patchSignature(
+    page,
+    TRACK_TOOLBAR_TOGGLES.header.x,
+    TRACK_TOOLBAR_TOGGLES.header.y,
+  );
   const idleWorld = await canvasMetrics(page);
 
-  await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
+  await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
   await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
     .not.toBe(idleMapSignature);
   await expect.poll(() => patchSignature(page, night.x, night.y))
-    .not.toBe(idleNightSignature);
-  await expect.poll(() => patchSignature(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y))
-    .not.toBe(idleFocus);
+    .toBe(idleNightSignature);
+  await expect.poll(() => patchSignature(
+    page,
+    TRACK_TOOLBAR_TOGGLES.header.x,
+    TRACK_TOOLBAR_TOGGLES.header.y,
+  )).not.toBe(idleHeaderToggle);
   const hiddenSnapshot = await canvasSnapshot(page);
   const hiddenMap = patchFromSnapshot(hiddenSnapshot, header.map!.x, header.map!.y);
-  const hiddenNight = patchFromSnapshot(hiddenSnapshot, night.x, night.y);
   const hiddenMapDelta = patchMeanDelta(idleMap, hiddenMap);
-  const hiddenNightDelta = patchMeanDelta(idleNight, hiddenNight);
   expect(hiddenMapDelta).toBeGreaterThan(1);
-  expect(hiddenNightDelta).toBeGreaterThan(1);
-  await capture(page, testInfo, "track-focus-01-hidden");
+  await capture(page, testInfo, "track-toolbar-01-header-hidden");
 
-  await tapDesignPoint(page, TRACK_FOCUS_KEY.x, TRACK_FOCUS_KEY.y);
-  let restoredRatios = { map: 1, night: 1 };
+  await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
+  let restoredRatio = 1;
   await expect.poll(async () => {
     const restoredSnapshot = await canvasSnapshot(page);
     const restoredMap = patchFromSnapshot(restoredSnapshot, header.map!.x, header.map!.y);
-    const restoredNight = patchFromSnapshot(restoredSnapshot, night.x, night.y);
-    restoredRatios = {
-      map: patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta,
-      night: patchMeanDelta(idleNight, restoredNight) / hiddenNightDelta,
-    };
-    return Math.max(restoredRatios.map, restoredRatios.night);
+    restoredRatio = patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta;
+    return restoredRatio;
   }, { timeout: 15_000 }).toBeLessThan(0.1);
-  await testInfo.attach("focus-restoration-deltas", {
-    body: JSON.stringify({ hiddenMapDelta, hiddenNightDelta, restoredRatios }, null, 2),
+
+  await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
+  await expect.poll(() => patchSignature(page, night.x, night.y))
+    .not.toBe(idleNightSignature);
+  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
+    .toBe(idleMapSignature);
+  await capture(page, testInfo, "track-toolbar-02-jobs-hidden");
+  await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
+  await expect.poll(() => patchSignature(page, night.x, night.y))
+    .toBe(idleNightSignature);
+
+  await testInfo.attach("toolbar-restoration-deltas", {
+    body: JSON.stringify({ hiddenMapDelta, restoredRatio }, null, 2),
     contentType: "application/json",
   });
-  await capture(page, testInfo, "track-focus-02-restored");
+  await capture(page, testInfo, "track-toolbar-03-restored");
 
   // No separate RIDE tap: NIGHT's existing compound intent starts the train,
   // then latches the mode against the authoritative transport.

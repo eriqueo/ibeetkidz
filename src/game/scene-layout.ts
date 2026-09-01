@@ -217,23 +217,16 @@ export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
   ) as Record<TrackJobId, PlacedRect>;
 }
 
-/** Compact signal-box placement: below the header and outside the central
- *  train/playhead corridor. Release evidence captures it while audio is live. */
-export const TRACK_VISUALIZER: PlacedRect = {
-  x: 420,
-  y: 565,
-  width: 340,
-  height: 102,
-};
+/** Each Track deck owns its own always-visible edge key. Keeping these beside
+ *  the deck rectangles makes the hide/show targets share one coordinate
+ *  producer with the controls they govern. */
+export const TRACK_TOOLBAR_TOGGLES = {
+  header: { x: 2390, y: 220, width: 120, height: 100 },
+  jobs: { x: 2390, y: 1275, width: 120, height: 100 },
+} as const satisfies Record<string, PlacedRect>;
 
-/** The focus key is deliberately outside both hideable decks. It is the one
- *  guaranteed path back to controls and meets the child-control 68px minimum. */
-export const TRACK_FOCUS_KEY: PlacedRect = {
-  x: 2490,
-  y: 600,
-  width: 120,
-  height: 100,
-};
+export const TRACK_TOOLBAR_IDS = ["header", "jobs"] as const;
+export type TrackToolbarId = (typeof TRACK_TOOLBAR_IDS)[number];
 
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
 // inside the oval is the assembly line the crane drops cars onto. Measured

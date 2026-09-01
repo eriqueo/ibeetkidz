@@ -93,7 +93,7 @@ interface TestBridge {
   // guard can fire). Goes through the same `dispatch` React uses; no new behavior.
   dispatch: (cmd: Command) => void;
   // Audio health probe: Tone context/transport state + master-output peak
-  // (read off the visualizer analyser). Lets e2e assert "samples actually
+  // (read off the diagnostic analyser). Lets e2e assert "samples actually
   // reached the destination", not just "the transport clock ran".
   audioDiag: () => ReturnType<ToneSoundPort["getAudioDiag"]>;
   // Absolute transport bar (-1 stopped) — lets a test bucket what it hears by

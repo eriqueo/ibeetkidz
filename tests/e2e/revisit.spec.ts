@@ -64,10 +64,12 @@ test("every view is still wired to React on its SECOND visit", async ({ page }) 
   await go(page, "track");
   await waitForScene(page, "TrackV3Scene");
   await expect
-    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().vizState !== null), {
-      message: "the Track never received its analyser on the second visit",
+    .poll(() => page.evaluate(() => (
+      window as any
+    ).__ibeetkidz_test__.getScene().debugState().carCount), {
+      message: "the Track never received its cars on the second visit",
     })
-    .toBe(true);
+    .toBeGreaterThan(0);
 
   await go(page, "yard");
   await waitForScene(page, "YardScene");

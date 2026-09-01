@@ -406,17 +406,6 @@
    "y": 0,
    "objects": [
     {
-     "id": 20,
-     "name": "viz-screen",
-     "type": "screen",
-     "x": 770,
-     "y": 460,
-     "width": 1020,
-     "height": 306,
-     "rotation": 0,
-     "visible": true
-    },
-    {
      "id": 9,
      "name": "track-path",
      "type": "path",

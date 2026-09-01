@@ -52,11 +52,13 @@ test("rapid navigation leaves one live, React-wired scene", async ({ page }) => 
 
   await expect.poll(() => activeView(page)).toBe("track");
   await expect.poll(() => sceneKey(page)).toBe("TrackV3Scene");
-  // attachVisualizer is called only by Track's onSceneReady callback. This is
+  // setCars is called only by Track's onSceneReady callback. This is
   // intentionally not satisfied by the bridge's independent scene observer.
   await expect
-    .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().vizState !== null))
-    .toBe(true);
+    .poll(() => page.evaluate(() => (
+      window as any
+    ).__ibeetkidz_test__.getScene().debugState().carCount))
+    .toBeGreaterThan(0);
 
   // A leaked Track listener would apply this delta more than once. This pins
   // component cleanup as well as SceneSwitch's one-running-scene invariant.

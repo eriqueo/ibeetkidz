@@ -394,7 +394,4 @@ export class AudioEngine {
     return this.playing;
   }
 
-  getAnalyser(): AnalyserNode {
-    return this.sound.getAnalyser();
-  }
 }

@@ -59,22 +59,20 @@ import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import {
   TRACK_HEADER,
-  TRACK_FOCUS_KEY,
   TRACK_JOB_BAR,
-  TRACK_VISUALIZER,
+  TRACK_TOOLBAR_IDS,
+  TRACK_TOOLBAR_TOGGLES,
   trackHeaderSlots,
   trackJobSlots,
   type TrackJobId,
+  type TrackToolbarId,
   type PlacedRect,
 } from "../scene-layout.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
-import type { CarType, Project } from "../../core/types.ts";
-// The oval already owns both of these; the side-scroller mounts the SAME
-// classes rather than growing its own SEND panel and its own visualizer, so
-// "see the sound" and "send your song" behave identically in both views.
+import type { CarType } from "../../core/types.ts";
+// The oval already owns this panel; the side-scroller mounts the SAME class
+// rather than growing a second SEND flow.
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
-import { SceneVisualizer } from "../scene-visualizer.ts";
-import { VISUAL_STYLES } from "../../visualizer/styles.ts";
 import { PanelButton, FONT, INK, PANEL_BG, PANEL_EDGE } from "../tool-panels.ts";
 import {
   TRACK_CAR_ACTION_LAYOUT,
@@ -209,6 +207,12 @@ const BEAT_FLICK = 0.38;
 const LANTERN_CANVAS = 160;
 const LANTERN_CLEARANCE = 26;
 
+/** Opaque parts of the 640px tunnel-mouth canvases that can conceal the cave ↔
+ *  daylight handoff. These are measured local-x insets, not timing values. */
+const TUNNEL_ENTRY_BACKDROP_INSET = 320;
+const TUNNEL_ENTRY_GROUND_INSET = 560;
+const TUNNEL_EXIT_SEAM_INSET = 80;
+
 // Horizon bands, back to front.
 const SKY_Y = 0;
 const HILLS_Y = 470;
@@ -302,9 +306,6 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Close ballast/masonry below the railhead. It replaces open-country grass
    *  while the train is inside, completing the tunnel as a single location. */
   private tunnelFloor?: Phaser.GameObjects.TileSprite;
-  /** Authored tunnel ballast carried under the moving mouth so the transition
-   *  continues below the rail instead of ending in a raw vertical seam. */
-  private tunnelPortalFloor?: Phaser.GameObjects.TileSprite;
   private tunnelRoof?: Phaser.GameObjects.TileSprite;
   private tunnelMouth?: Phaser.GameObjects.Image;
   private tunnelLamps: Phaser.GameObjects.Image[] = [];
@@ -316,6 +317,8 @@ export class TrackV3Scene extends Phaser.Scene {
    *  renderer-specific mask: enclosure and daylight always partition W. */
   private tunnelRegion = {
     portalX: W,
+    backdropSeamX: W,
+    groundSeamX: W,
     enclosureX: 0,
     enclosureWidth: 0,
     daylightX: 0,
@@ -625,11 +628,6 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack + 0.05)
       .setVisible(false);
-    this.tunnelPortalFloor = this.add
-      .tileSprite(W, RAIL_Y + 24, 640, H - (RAIL_Y + 24), "trk-tunnel-floor")
-      .setOrigin(0, 0)
-      .setDepth(DEPTH.tunnelFront - 0.01)
-      .setVisible(false);
     this.tunnelRoof = this.add
       .tileSprite(0, RAIL_Y - 720, W, 520, "trk-tunnel-roof")
       .setOrigin(0, 0)
@@ -650,12 +648,13 @@ export class TrackV3Scene extends Phaser.Scene {
       );
     }
 
-    const chromeStart = this.children.list.length;
+    const headerStart = this.children.list.length;
     this.buildTopBar();
+    this.registerToolbarObjects("header", headerStart);
+    const jobsStart = this.children.list.length;
     this.buildLegend();
-    this.chromeObjects = this.children.list.slice(chromeStart) as TrackChromeObject[];
-    this.chromeAlpha = new Map(this.chromeObjects.map((object) => [object, object.alpha]));
-    this.buildFocusKey();
+    this.registerToolbarObjects("jobs", jobsStart);
+    for (const toolbar of TRACK_TOOLBAR_IDS) this.buildToolbarToggle(toolbar);
     this.rebuildSlots();
     // CLEAR empties the whole train, so this view must be able to show the
     // "put it back" chip the Workshop and Yard already carry.
@@ -901,35 +900,43 @@ export class TrackV3Scene extends Phaser.Scene {
     };
   }
 
-  /** The one control focus mode never hides. It uses the existing blank stone
-   *  key rather than inventing another bitmap, and its 120×100 design-space
-   *  hit area stays comfortably above the 68px child-control minimum. */
-  private buildFocusKey(): void {
-    const rect = TRACK_FOCUS_KEY;
+  /** Capture one deck immediately after it is built. The stored alpha keeps
+   *  transient glows and hidden faces hidden when the deck is restored. */
+  private registerToolbarObjects(toolbar: TrackToolbarId, start: number): void {
+    const objects = this.children.list.slice(start) as TrackChromeObject[];
+    this.toolbarObjects[toolbar] = objects;
+    this.toolbarAlpha[toolbar] = new Map(objects.map((object) => [object, object.alpha]));
+  }
+
+  /** Each deck's edge key is deliberately built after (and therefore outside)
+   *  its hideable group. Either toolbar can always be brought back alone. */
+  private buildToolbarToggle(toolbar: TrackToolbarId): void {
+    const rect = TRACK_TOOLBAR_TOGGLES[toolbar];
     const def = UI_SPRITES["pad-key"];
+    const name = `track-control:toolbar-${toolbar}`;
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
       const key = this.add
         .image(0, 0, UI_ATLAS_KEY, def.base)
-        .setName("track-control:focus")
+        .setName(name)
         .setOrigin(0.5)
         .setDepth(DEPTH.hud + 3);
       placeUiSprite(key, def, rect);
-      this.pressableAtlas(key, def, () => void EventBus.emit("track-focus-toggled"));
+      this.pressableAtlas(key, def, () => void EventBus.emit("track-toolbar-toggled", toolbar));
     } else {
       this.pressable(
         this.add
           .rectangle(rect.x, rect.y, rect.width, rect.height, 0x8d8878, 1)
-          .setName("track-control:focus")
+          .setName(name)
           .setDepth(DEPTH.hud + 3),
-        () => void EventBus.emit("track-focus-toggled"),
+        () => void EventBus.emit("track-toolbar-toggled", toolbar),
       );
     }
-    this.focusText = this.add
+    this.toolbarToggleText[toolbar] = this.add
       .text(rect.x, rect.y, "HIDE", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#33302b",
       })
-      .setName("track-display:focus")
+      .setName(`track-display:toolbar-${toolbar}`)
       .setOrigin(0.5)
       .setFontSize(16)
       .setDepth(DEPTH.hud + 4);
@@ -1063,17 +1070,24 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Row-2 transport deck state, written by React and never read by the scene. */
   private tempoText?: Phaser.GameObjects.Text;
   private tarpLatch: (on: boolean) => void = () => {};
-  private chromeObjects: TrackChromeObject[] = [];
-  private chromeAlpha = new Map<TrackChromeObject, number>();
-  private chromeVisible = true;
-  private focusText?: Phaser.GameObjects.Text;
+  private toolbarObjects: Record<TrackToolbarId, TrackChromeObject[]> = {
+    header: [],
+    jobs: [],
+  };
+  private toolbarAlpha: Record<TrackToolbarId, Map<TrackChromeObject, number>> = {
+    header: new Map(),
+    jobs: new Map(),
+  };
+  private toolbarVisible: Record<TrackToolbarId, boolean> = {
+    header: true,
+    jobs: true,
+  };
+  private toolbarToggleText: Partial<Record<TrackToolbarId, Phaser.GameObjects.Text>> = {};
   /** Mirrors the TARP latch, read on a car tap. React owns the truth. */
   private tarpArmed = false;
   /** The SEND flow's panel + the state React drives it with. */
   private sendPanel?: SendSongPanel;
   private sendState: SendUiState = { kind: "idle" };
-  /** "See the sound" — the same jumbotron the oval carries. */
-  private viz?: SceneVisualizer;
   private modeBtns: Record<string, {
     setLatched: (on: boolean) => void;
     setPending: (on: boolean) => void;
@@ -1225,67 +1239,26 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tempoText?.setText(String(Math.round(bpm)));
   }
 
-  /** React → scene: focus mode removes both decks and the jumbotron as one
-   *  reversible layer. Child visibility still updates while hidden; alpha and
-   *  input are the projection, so restoring chrome cannot resurrect a stale
-   *  latch or make an invisible control clickable. */
-  setChromeVisible(visible: boolean): void {
-    this.chromeVisible = visible;
-    for (const object of this.chromeObjects) {
-      object.setAlpha(visible ? (this.chromeAlpha.get(object) ?? 1) : 0);
+  /** React → scene: independently project one deck's visibility and input.
+   *  Child state keeps updating while hidden, so showing it cannot resurrect a
+   *  stale latch or make an invisible control clickable. */
+  setToolbarVisible(toolbar: TrackToolbarId, visible: boolean): void {
+    this.toolbarVisible[toolbar] = visible;
+    for (const object of this.toolbarObjects[toolbar]) {
+      object.setAlpha(visible ? (this.toolbarAlpha[toolbar].get(object) ?? 1) : 0);
       if (visible) {
         if (object.input) object.input.enabled = true;
       } else if (object.input) {
         object.disableInteractive();
       }
     }
-    this.focusText?.setText(visible ? "HIDE" : "SHOW");
-    this.viz?.setSuppressed(!visible);
+    this.toolbarToggleText[toolbar]?.setText(visible ? "HIDE" : "SHOW");
   }
 
   /** React → scene: is the tarp gesture armed? */
   setTarpArmed(on: boolean): void {
     this.tarpArmed = on;
     this.tarpLatch(on);
-  }
-
-  /**
-   * React → scene: the master-output analyser + a Project reader, which is what
-   * lets the jumbotron exist. Same contract as the oval's — the analyser is
-   * PUSHED in, because `SoundPort` is React's to own and a scene reaching for
-   * it would put a vendor audio dependency behind the EventBus boundary.
-   *
-   * The screen hangs in the sky on the far side of the header, where nothing
-   * else is drawn and the parallax bands are quietest; it is fixed rather than
-   * scrolling, because it is a readout of the SOUND and not a thing in the
-   * world the train rides through.
-   */
-  attachVisualizer(analyser: AnalyserNode, getProject: () => Project): void {
-    if (this.viz) return;
-    const viz = new SceneVisualizer(this, {
-      analyser,
-      getProject,
-      styles: VISUAL_STYLES,
-      depth: DEPTH.hud - 1,
-    });
-    this.viz = viz;
-    viz.setSuppressed(!this.chromeVisible);
-    let armed = false;
-    viz.hitTarget.on("pointerdown", () => { armed = true; });
-    viz.hitTarget.on("pointerout", () => { armed = false; });
-    viz.hitTarget.on("pointerup", () => {
-      if (!armed) return;
-      armed = false;
-      viz.cycleStyle();
-    });
-    viz.layout(TRACK_VISUALIZER);
-  }
-
-  /** Exposed for the e2e bridge: what the jumbotron is showing, and how visible
-   *  it is. Visibility is driven by REAL master-output level, so asserting it
-   *  rose while a song played proves the screen is fed by audio, not a flag. */
-  get vizState(): { style: string; visibility: number } | null {
-    return this.viz ? { style: this.viz.styleLabel, visibility: this.viz.visibility } : null;
   }
 
   /** React → scene: the SEND flow's state (drives the result panel). */
@@ -1310,13 +1283,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = tunnel;
     this.tunnelPhase = tunnel ? "entering" : "exiting";
     this.tunnelPhaseDistance = travelPx(this.pos, this.view);
-    this.applyTunnelRegions(
-      W,
-      tunnel ? W : 0,
-      tunnel ? 0 : W,
-      tunnel ? 0 : W,
-      tunnel ? W : 0,
-    );
+    this.applyTunnelRegions(W, W, W, tunnel);
     if (this.tunnelMouth) {
       this.tunnelMouth
         .setTexture(tunnel ? "trk-tunnel-mouth-left" : "trk-tunnel-mouth-right")
@@ -1332,7 +1299,6 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = false;
     this.tunnelPhase = "off";
     this.tunnelMouth?.setVisible(false);
-    this.tunnelPortalFloor?.setVisible(false);
     for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
       layer?.setVisible(false);
     }
@@ -1377,13 +1343,6 @@ export class TrackV3Scene extends Phaser.Scene {
   update(time: number): void {
     if (!this.ready) return;
     const dt = this.lastAt < 0 ? 0 : Math.max(0, (time - this.lastAt) / 1000);
-    // The jumbotron ticks off the SCENE's update, not its own rAF — same as the
-    // oval. Missing this call is not a visible crash: the screen simply stays
-    // dark for ever, because `visibility` only ever moves inside `update`. An
-    // e2e caught it (visibility stuck at 0 while a song played) and that is the
-    // only way it WOULD be caught, which is why the spec asserts a real level
-    // rather than that a visualizer object exists.
-    this.viz?.update(dt * 1000);
     this.lastAt = time;
     if (dt > 0) {
       const inst = Math.abs(this.pos - this.lastPos) / dt;
@@ -1408,35 +1367,47 @@ export class TrackV3Scene extends Phaser.Scene {
     this.layoutTrain(dist);
   }
 
-  /** Scroll the authored wall/roof/lamp kit from transport distance. Entry and
-   *  exit pause with the train; the world never animates while its clock is
-   *  stopped. */
+  /** Scroll the authored wall/roof/lamp kit from transport distance. The mouth
+   *  advances at the same pixel rate as the world, so it reads as trackside
+   *  masonry passing the consist—not a screen wipe. Entry and exit pause with
+   *  the train; the world never animates while its clock is stopped. */
   private layoutTunnel(dist: number): void {
     if (this.tunnelPhase === "off") return;
-    const transitionPx = 1100;
     const moved = Math.abs(dist - this.tunnelPhaseDistance);
+    const transitionPx = W + 640;
     const progress = Math.min(1, moved / transitionPx);
     const entering = this.tunnelPhase === "entering";
     const exiting = this.tunnelPhase === "exiting";
     const portalX = entering || exiting
-      ? Math.round(W - progress * (W + 640))
+      ? Math.round(W - moved)
       : -640;
-    const edge = Phaser.Math.Clamp(portalX, 0, W);
     if (entering) {
-      this.applyTunnelRegions(portalX, edge, W - edge, 0, edge);
+      // The backdrop changes under the solid left shoulder of the authored
+      // mouth; the ground waits for the solid far foot of the mound to cover it.
+      // Neither transition can expose a full-height rectangular edge.
+      this.applyTunnelRegions(
+        portalX,
+        portalX + TUNNEL_ENTRY_BACKDROP_INSET,
+        portalX + TUNNEL_ENTRY_GROUND_INSET,
+        true,
+      );
     } else if (exiting) {
-      this.applyTunnelRegions(portalX, 0, edge, edge, W - edge);
+      // The right-facing mouth carries daylight in. Its backdrop seam sits
+      // inside the stone arch while the lower seam stays under the near mound.
+      this.applyTunnelRegions(
+        portalX,
+        portalX + TUNNEL_EXIT_SEAM_INSET,
+        portalX + TUNNEL_EXIT_SEAM_INSET,
+        false,
+      );
     } else {
-      this.applyTunnelRegions(-640, 0, W, W, 0);
+      this.applyTunnelRegions(-640, 0, 0, true);
     }
     if (this.tunnelWall) {
       this.tunnelWall.tilePositionX = parallaxOffset(this.pos, this.view, 0.82);
     }
     if (this.tunnelFloor) {
       this.tunnelFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
-    }
-    if (this.tunnelPortalFloor) {
-      this.tunnelPortalFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
     }
     if (this.tunnelRoof) {
       this.tunnelRoof.tilePositionX = parallaxOffset(this.pos, this.view, 1.08);
@@ -1465,9 +1436,6 @@ export class TrackV3Scene extends Phaser.Scene {
         ?.setVisible(true)
         .setAlpha(1)
         .setPosition(portalX, RAIL_Y);
-      this.tunnelPortalFloor
-        ?.setVisible(true)
-        .setPosition(portalX, RAIL_Y + 24);
       const { tailX } = this.consistBounds();
       // A portal is finished when it has crossed the train's tail. For a giant
       // or very long consist whose tail is already off-screen, the mouth's own
@@ -1475,10 +1443,9 @@ export class TrackV3Scene extends Phaser.Scene {
       const crossedTail = portalX <= Math.max(-640, tailX);
       if (crossedTail || progress >= 1) {
         this.tunnelMouth?.setVisible(false);
-        this.tunnelPortalFloor?.setVisible(false);
         if (entering) {
           this.tunnelPhase = "inside";
-          this.applyTunnelRegions(-640, 0, W, W, 0);
+          this.applyTunnelRegions(-640, 0, 0, true);
         } else {
           this.tunnelPhase = "off";
           for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
@@ -1491,24 +1458,32 @@ export class TrackV3Scene extends Phaser.Scene {
     }
   }
 
-  /** Resize ordinary scene objects to the enclosure/daylight halves. Geometry
-   *  masks are Canvas-only in Phaser 4; bounds work identically in WebGL and
-   *  Canvas and make the portal edge the only place the scene changes. */
+  /** Resize ordinary scene objects into portal-relative spatial regions.
+   *  Backdrop and ground have deliberately different seams: the 640px authored
+   *  mound hides the lower handoff, while the arch shoulder hides the upper
+   *  one. This stays renderer-independent without reintroducing a global fade. */
   private applyTunnelRegions(
     portalX: number,
-    enclosureX: number,
-    enclosureWidth: number,
-    daylightX: number,
-    daylightWidth: number,
+    backdropSeam: number,
+    groundSeam: number,
+    enclosureOnRight: boolean,
   ): void {
+    const backdropSeamX = Phaser.Math.Clamp(backdropSeam, 0, W);
+    const groundSeamX = Phaser.Math.Clamp(groundSeam, 0, W);
+    const enclosureX = enclosureOnRight ? backdropSeamX : 0;
+    const enclosureWidth = enclosureOnRight ? W - backdropSeamX : backdropSeamX;
+    const daylightX = enclosureOnRight ? 0 : backdropSeamX;
+    const daylightWidth = W - enclosureWidth;
     this.tunnelRegion = {
       portalX,
+      backdropSeamX,
+      groundSeamX,
       enclosureX,
       enclosureWidth,
       daylightX,
       daylightWidth,
     };
-    for (const layer of [this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
+    for (const layer of [this.tunnelWall, this.tunnelRoof]) {
       if (!layer) continue;
       layer.setPosition(enclosureX, layer.y).setSize(enclosureWidth, layer.height);
       layer.setVisible(enclosureWidth > 0).setAlpha(1);
@@ -1520,16 +1495,29 @@ export class TrackV3Scene extends Phaser.Scene {
         .setVisible(enclosureWidth > 0)
         .setAlpha(0.3);
     }
+    if (this.tunnelFloor) {
+      const x = enclosureOnRight ? groundSeamX : 0;
+      const width = enclosureOnRight ? W - groundSeamX : groundSeamX;
+      this.tunnelFloor
+        .setPosition(x, this.tunnelFloor.y)
+        .setSize(width, this.tunnelFloor.height)
+        .setVisible(width > 0)
+        .setAlpha(1);
+    }
+    const daylightGroundX = enclosureOnRight ? 0 : groundSeamX;
+    const daylightGroundWidth = enclosureOnRight ? groundSeamX : W - groundSeamX;
     this.fore
-      ?.setPosition(daylightX, FORE_Y)
-      .setSize(daylightWidth, FORE_H)
-      .setVisible(daylightWidth > 0)
+      ?.setPosition(daylightGroundX, FORE_Y)
+      .setSize(daylightGroundWidth, FORE_H)
+      .setVisible(daylightGroundWidth > 0)
       .setAlpha(1);
   }
 
   private restoreDaylight(): void {
     this.tunnelRegion = {
       portalX: W,
+      backdropSeamX: W,
+      groundSeamX: W,
       enclosureX: 0,
       enclosureWidth: 0,
       daylightX: 0,
@@ -1871,7 +1859,7 @@ export class TrackV3Scene extends Phaser.Scene {
     if (label) {
       // The portal/masonry already announces the tunnel. Keeping a stale
       // BRIDGE/RAIN/HILL caption over that enclosed scene only adds noise and
-      // can collide with the visualizer while modes are stacked.
+      // can collide with the train while modes are stacked.
       if (this.tunnelPhase !== "off") {
         label.setVisible(false);
       } else if (newest) {
@@ -2032,6 +2020,8 @@ export class TrackV3Scene extends Phaser.Scene {
       wallOffset: number;
       visibleLamps: number;
       portalX: number;
+      backdropSeamX: number;
+      groundSeamX: number;
       enclosureX: number;
       enclosureWidth: number;
       daylightX: number;
@@ -2045,7 +2035,8 @@ export class TrackV3Scene extends Phaser.Scene {
     pendingModes: string[];
     latchedModes: string[];
     nightVisible: boolean;
-    chromeVisible: boolean;
+    toolbarVisible: Readonly<Record<TrackToolbarId, boolean>>;
+    carCount: number;
     hillVisible: boolean;
     hillDepth: number | null;
     hillSegments: { x: number; width: number }[];
@@ -2094,8 +2085,8 @@ export class TrackV3Scene extends Phaser.Scene {
         ...this.tunnelRegion,
         consistNoseX: consist.noseX,
         consistTailX: consist.tailX,
-        portalFloorVisible: this.tunnelPortalFloor?.visible ?? false,
-        portalFloorX: this.tunnelPortalFloor?.visible ? this.tunnelPortalFloor.x : null,
+        portalFloorVisible: false,
+        portalFloorX: null,
       },
       wheel: {
         diameter: this.slots[0]?.wheelA.displayWidth ?? 0,
@@ -2104,7 +2095,8 @@ export class TrackV3Scene extends Phaser.Scene {
       pendingModes: [...this.pendingModeKinds],
       latchedModes: [...this.latchedModeKinds],
       nightVisible: this.nightSky?.visible ?? false,
-      chromeVisible: this.chromeVisible,
+      toolbarVisible: { ...this.toolbarVisible },
+      carCount: this.cars.length,
       hillVisible: this.mound?.visible ?? false,
       hillDepth: this.mound?.visible ? this.mound.depth : null,
       hillSegments: [this.mound, this.moundTail]

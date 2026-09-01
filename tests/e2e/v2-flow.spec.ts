@@ -359,46 +359,6 @@ test("Yard → Track: couple a car and ride it", async ({ page }) => {
   await expect.poll(sendState).toBe("idle");
 });
 
-test("Track: the jumbotron lights up from real audio, and dark otherwise", async ({ page }) => {
-  // "See the sound" is a README pillar that spent a release as unreachable code.
-  // This is the proof it is wired to the AUDIO and not to a transport flag: the
-  // screen's alpha is driven by the master-output analyser — the same node
-  // `audioDiag().masterPeak` reads — so it can only be lit by samples that
-  // actually reached the destination.
-  //
-  // Local-only, for the same reason `audio-output.spec.ts` is: it needs a real
-  // audio pipeline, which shared CI runners do not reliably provide.
-  test.skip(!!(globalThis as any).process?.env?.CI, "hardware-audio proof — run locally");
-  await boot(page);
-  await gotoFromMap(page, "workshop");
-  await waitForScene(page, "WorkshopScene");
-  await emit(page, "workshop-add-melody", "guitar"); // something to hear
-
-  await setView(page, "track");
-  await waitForScene(page, "TrackV3Scene");
-
-  const viz = () =>
-    page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().vizState);
-
-  // Parked: the Track is exactly the painted scene, nothing glowing on it.
-  await expect.poll(async () => (await viz())?.visibility).toBe(0);
-
-  await emit(page, "transport-play", "ride");
-  await expect
-    .poll(async () => (await viz())?.visibility ?? 0, {
-      timeout: 10_000,
-      message: "the screen must light once samples reach the master output",
-    })
-    .toBeGreaterThan(0.5);
-
-  // …and it must go back down on its own when the song stops, rather than
-  // staying lit over the meadow.
-  await emit(page, "transport-stop");
-  await expect
-    .poll(async () => (await viz())?.visibility ?? 1, { timeout: 10_000 })
-    .toBe(0);
-});
-
 test("a SEND render finishing after navigation cannot touch the destroyed Track", async ({ page }) => {
   const crashes: string[] = [];
   page.on("pageerror", (error) => crashes.push(error.message));

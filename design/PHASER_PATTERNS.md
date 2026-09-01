@@ -873,9 +873,9 @@ pushed state (`TrackScene.setCars:429`, `setProgress:435`,
 That is the right shape here (the hexagonal rule keeps state out of scenes) and
 should not change. But know the consequence: **there is no in-scene manager to
 reach for.** Anything a scene needs arrives by a `set*` push or an `EventBus`
-event. `TrackScene.attachVisualizer:296` is the pattern for a resource that can't
-be serialized — React hands the analyser *in*, rather than the scene reaching for
-`SoundPort`.
+event. Track's `setCars`, `setTempo`, and `setToolbarVisible` calls are the
+current pattern: React derives or owns the state, then pushes the narrow value
+into the scene.
 
 ---
 

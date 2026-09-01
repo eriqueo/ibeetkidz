@@ -18,11 +18,11 @@ import { describe, expect, it } from "vitest";
 import {
   HEADER_PLATE_FIELD,
   TRACK_HEADER,
-  TRACK_VISUALIZER,
   headerColumnCentres,
   headerPlateField,
   trackHeaderSlots,
 } from "../../src/game/scene-layout.ts";
+import * as sceneLayout from "../../src/game/scene-layout.ts";
 
 const field = headerPlateField(TRACK_HEADER.plate);
 const slots = trackHeaderSlots();
@@ -61,27 +61,12 @@ describe("headerColumnCentres", () => {
   });
 });
 
-describe("Track visualizer placement", () => {
-  it("is the compact left-side signal box approved for the side-scroller", () => {
-    expect(TRACK_VISUALIZER).toEqual({
-      x: 420,
-      y: 565,
-      width: 340,
-      height: 102,
+describe("Track toolbar toggles", () => {
+  it("gives each deck its own reachable edge key", () => {
+    expect((sceneLayout as Record<string, unknown>).TRACK_TOOLBAR_TOGGLES).toEqual({
+      header: { x: 2390, y: 220, width: 120, height: 100 },
+      jobs: { x: 2390, y: 1275, width: 120, height: 100 },
     });
-  });
-
-  it("stays below the header and outside the central focus corridor", () => {
-    const top = TRACK_VISUALIZER.y - TRACK_VISUALIZER.height / 2;
-    const right = TRACK_VISUALIZER.x + TRACK_VISUALIZER.width / 2;
-    expect(top).toBeGreaterThanOrEqual(plateBottom);
-    expect(right).toBeLessThanOrEqual(640);
-  });
-
-  it("preserves the visualizer aspect while bounding its footprint", () => {
-    expect(TRACK_VISUALIZER.width / TRACK_VISUALIZER.height).toBeCloseTo(320 / 96, 6);
-    expect(TRACK_VISUALIZER.width).toBeLessThanOrEqual(340);
-    expect(TRACK_VISUALIZER.height).toBeLessThanOrEqual(102);
   });
 });
 

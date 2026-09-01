@@ -171,11 +171,26 @@ test("a kid can drive the default Track through its real canvas controls", async
     };
   })).toEqual({ button: null, display: null });
 
-  // One edge key hides both decks and the visualizer, but never hides itself.
-  // A second real canvas tap restores the complete control surface.
-  await tapNamedPhaserObject(page, "track-control:focus");
-  await expect.poll(async () => (await state(page)).chromeVisible).toBe(false);
-  await page.screenshot({ path: testInfo.outputPath("track-focus-hidden.png") });
+  // Each deck owns its own edge key. Hiding the header must leave the job bar
+  // visible and interactive; a global focus switch is the rejected behavior.
+  await tapNamedPhaserObject(page, "track-control:toolbar-header");
+  await expect.poll(async () => (await state(page)).toolbarVisible).toEqual({
+    header: false,
+    jobs: true,
+  });
+  expect(await page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const header = scene.children.getByName("track-control:btn-nav-map");
+    const jobs = scene.children.getByName("track-mode:hill");
+    return {
+      header: { alpha: header.alpha, input: header.input?.enabled ?? false },
+      jobs: { alpha: jobs.alpha, input: jobs.input?.enabled ?? false },
+    };
+  })).toEqual({
+    header: { alpha: 0, input: false },
+    jobs: { alpha: 1, input: true },
+  });
+  await page.screenshot({ path: testInfo.outputPath("track-header-hidden.png") });
 
   // A view preference survives a reload, but storage failure is not required
   // for basic operation (the React boundary catches that separately).
@@ -184,10 +199,28 @@ test("a kid can drive the default Track through its real canvas controls", async
   await page.waitForFunction(
     () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
   );
-  await expect.poll(async () => (await state(page)).chromeVisible).toBe(false);
-  await tapNamedPhaserObject(page, "track-control:focus");
-  await expect.poll(async () => (await state(page)).chromeVisible).toBe(true);
-  await page.screenshot({ path: testInfo.outputPath("track-focus-restored.png") });
+  await expect.poll(async () => (await state(page)).toolbarVisible).toEqual({
+    header: false,
+    jobs: true,
+  });
+  await tapNamedPhaserObject(page, "track-control:toolbar-header");
+  await expect.poll(async () => (await state(page)).toolbarVisible).toEqual({
+    header: true,
+    jobs: true,
+  });
+
+  await tapNamedPhaserObject(page, "track-control:toolbar-jobs");
+  await expect.poll(async () => (await state(page)).toolbarVisible).toEqual({
+    header: true,
+    jobs: false,
+  });
+  await page.screenshot({ path: testInfo.outputPath("track-jobs-hidden.png") });
+  await tapNamedPhaserObject(page, "track-control:toolbar-jobs");
+  await expect.poll(async () => (await state(page)).toolbarVisible).toEqual({
+    header: true,
+    jobs: true,
+  });
+  await page.screenshot({ path: testInfo.outputPath("track-toolbars-restored.png") });
 
   await tapNamedPhaserObject(page, "track-mode:hill");
   await expect.poll(async () => (await state(page)).terrain?.kind ?? null).toBe("hill");
@@ -644,7 +677,7 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   await expect
     .poll(async () => {
       const tunnel = (await state(page)).tunnel;
-      return tunnel.phase === "entering" ? tunnel : null;
+      return tunnel.phase === "entering" && tunnel.portalX <= 2240 ? tunnel : null;
     })
     .toMatchObject({
       enclosureX: expect.any(Number),
@@ -652,25 +685,40 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
       daylightX: 0,
       daylightWidth: expect.any(Number),
     });
-  const entering = (await state(page)).tunnel;
+  const enteringState = await state(page);
+  const entering = enteringState.tunnel;
   expect(entering.enclosureX).toBeGreaterThan(0);
   expect(entering.enclosureWidth).toBeLessThan(2560);
   expect(entering.daylightWidth).toBe(entering.enclosureX);
-  expect(entering.portalFloorVisible).toBe(true);
-  expect(entering.portalFloorX).toBe(entering.portalX);
+  expect(
+    entering.backdropSeamX - entering.portalX,
+    "the cave/day seam must sit beneath the entry portal masonry, not on its exposed edge",
+  ).toBeGreaterThanOrEqual(320);
+  expect(entering.groundSeamX).toBeGreaterThanOrEqual(entering.backdropSeamX);
+  expect(entering.portalFloorVisible).toBe(false);
   if (entering.portalX > entering.consistNoseX) {
     expect(
       entering.enclosureX,
       "stone must remain ahead of the locomotive until the portal reaches it",
     ).toBeGreaterThan(entering.consistNoseX);
   }
+  await expect.poll(async () => entering.portalX - (await state(page)).tunnel.portalX)
+    .toBeGreaterThan(100);
+  const scrolledEntry = await state(page);
+  expect(
+    Math.abs(
+      (entering.portalX - scrolledEntry.tunnel.portalX)
+      - (scrolledEntry.pos - enteringState.pos) * 640,
+    ),
+    "the portal must travel with track distance instead of wiping across the viewport",
+  ).toBeLessThanOrEqual(3);
   await page.screenshot({ path: testInfo.outputPath("track-tunnel-entering.png") });
   await expect.poll(async () => (await state(page)).tunnel.visibleLamps).toBeGreaterThan(1);
   const before = (await state(page)).tunnel.wallOffset;
   await expect
     .poll(async () => (await state(page)).tunnel.wallOffset, { timeout: 8_000 })
     .not.toBe(before);
-  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("inside");
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 15_000 }).toBe("inside");
   const inside = (await state(page)).tunnel;
   expect(inside.enclosureX).toBe(0);
   expect(inside.enclosureWidth).toBe(2560);
@@ -681,7 +729,7 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   await expect
     .poll(async () => {
       const tunnel = (await state(page)).tunnel;
-      return tunnel.phase === "exiting" ? tunnel : null;
+      return tunnel.phase === "exiting" && tunnel.portalX <= 2480 ? tunnel : null;
     })
     .toMatchObject({
       enclosureX: 0,
@@ -692,8 +740,13 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   const exiting = (await state(page)).tunnel;
   expect(exiting.daylightX).toBe(exiting.enclosureWidth);
   expect(exiting.daylightWidth).toBe(2560 - exiting.enclosureWidth);
+  expect(
+    exiting.backdropSeamX - exiting.portalX,
+    "the exit seam must stay beneath the painted portal instead of wiping the open world",
+  ).toBeGreaterThanOrEqual(64);
+  expect(exiting.groundSeamX).toBeLessThanOrEqual(exiting.backdropSeamX);
   await page.screenshot({ path: testInfo.outputPath("track-tunnel-exiting.png") });
-  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("off");
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 15_000 }).toBe("off");
   const outside = (await state(page)).tunnel;
   expect(outside.enclosureWidth).toBe(0);
   expect(outside.daylightWidth).toBe(2560);

@@ -49,7 +49,6 @@ is vendor-free. Everything external is a **port** with a swappable **adapter**:
 | `SoundPort` | `ToneSoundPort` | all DSP, recording, transport, offline render (Tone.js) |
 | `StoragePort` | `LocalStoragePort` | save/load projects + recorded blobs (IndexedDB) |
 | `RngPort` | `createRng` | seeded randomness ("make it crazy", generative beats) |
-| `RendererPort` | Track visual styles | analyser-driven jumbotron rendering |
 
 **"Everything is a clip"** — built-in sounds, recordings, drum hits, and synth
 notes all reduce to one `Clip` type. The UI emits `Command`s; `reduce` applies
@@ -123,18 +122,6 @@ instrument characters open their tool in `src/assets/maps/workshop.json`, and
 empty car and it fills with a seeded groove (`src/core/generative.ts`,
 same seed → same beat). It offers itself only while the car is empty, which is
 when it is worth offering; tapping it again re-rolls rather than stacking.
-
-**"See the sound" ships in the Track view.** A jumbotron hangs over the world
-and shows the song as it rides: three styles — Bars, Lava, Retro Scope —
-and you tap the screen to change which. It is driven by the master-output
-analyser, the same node the audio diagnostics read, so it can only ever show
-sound that actually reached the speakers. It fades up when the song starts and
-back out on silence, so a parked Track is exactly the painted scene and there is
-no motion when nobody is listening.
-
-(This was a README pillar that spent a release as unreachable code — the DOM
-"Watch" panel lost its last importer with the v1 shell. The three styles were
-kept and re-hosted; `VizPanel` and the DOM render loop are gone.)
 
 **Gates:** `npm run typecheck` clean, the Vitest unit suite, and the Playwright
 E2E suite. For the current counts see **`BASELINE.md`** — it is the single

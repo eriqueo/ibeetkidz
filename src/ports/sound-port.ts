@@ -210,8 +210,6 @@ export interface SoundPort {
    *  currently riding, to light it up. */
   getTransportBar(): number;
 
-  /** Analyser node feeding the visualizer. */
-  getAnalyser(): AnalyserNode;
 }
 
 export class MicDeniedError extends Error {

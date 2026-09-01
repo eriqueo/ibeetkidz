@@ -401,8 +401,8 @@ export class ToneSoundPort implements SoundPort {
   async resume(): Promise<void> {
     await Tone.start();
     // iOS routes Web Audio through the "ambient" session by default, which the
-    // hardware mute/ringer switch silences — so the app boots and the
-    // visualizer animates, but nothing is audible. Asking for the "playback"
+    // hardware mute/ringer switch silences — so the app boots and its transport
+    // advances, but nothing is audible. Asking for the "playback"
     // session (iOS 16.4+) makes our sound ignore the silent switch. No-op on
     // platforms that don't expose `navigator.audioSession`.
     setAudioSession("playback");
@@ -410,8 +410,8 @@ export class ToneSoundPort implements SoundPort {
     // an in-flight `Tone.Offline` swap can never redirect a live path.
     this.live = Tone.getContext();
     this.ctx = this.live.rawContext as AudioContext;
-    // A raw AnalyserNode tapped off the master output feeds the visualizer —
-    // it sees every real voice (builtins, recordings, theremin), never a fake.
+    // A raw AnalyserNode tapped off the master output feeds dev diagnostics; it
+    // sees every real voice (builtins, recordings, theremin), never a fake.
     this.analyser = this.ctx.createAnalyser();
     this.analyser.fftSize = 2048;
     this.liveDestination.connect(this.analyser);
@@ -424,8 +424,8 @@ export class ToneSoundPort implements SoundPort {
 
   /** Dev-only diagnostics for the test bridge: is the context actually
    *  running, is the transport rolling, and is signal reaching the master
-   *  output? `masterPeak` is the normalized peak deviation read off the same
-   *  analyser that feeds the visualizer (0 = digital silence, ~1 = full scale),
+   *  output? `masterPeak` is the normalized peak deviation read off the
+   *  destination analyser (0 = digital silence, ~1 = full scale),
    *  so it measures the REAL destination signal, never a fake. */
   getAudioDiag(): {
     contextState: string;
@@ -1297,7 +1297,7 @@ export class ToneSoundPort implements SoundPort {
   private async openMasterTap(): Promise<StreamTap> {
     // The bridge node lives in Tone's graph; its .stream is a real MediaStream
     // the generic stream tap can consume.
-    const dest = this.liveDestination; // same tap point as the visualizer
+    const dest = this.liveDestination; // same tap point as the diagnostic analyser
     const bridge = this.ctx.createMediaStreamDestination();
     dest.connect(bridge as unknown as AudioNode);
     const tap = await this.openStreamTap(bridge.stream).catch((err: unknown) => {
@@ -1453,8 +1453,8 @@ export class ToneSoundPort implements SoundPort {
    *  `Tone.Reverb` has to render an impulse response and exposes `.ready` — the
    *  await belongs here and not on the hot path. `Destination.chain` splices
    *  these between the master volume and the speakers, so no individual voice's
-   *  routing changes, and the analyser (which taps the destination's output)
-   *  sees the terrain too — the visualizer keeps showing real signal. */
+   *  routing changes, and the diagnostic analyser (which taps the destination's
+   *  output) sees the terrain too. */
   private async ensureTerrainChain(): Promise<void> {
     if (this.terrainFx) return;
     this.terrainChainReady ??= (async () => {
@@ -1636,10 +1636,6 @@ export class ToneSoundPort implements SoundPort {
     const ticks = this.audibleTicks();
     if (ticks < 0) return -1;
     return Math.floor(ticks / this.ticksPerBar);
-  }
-
-  getAnalyser(): AnalyserNode {
-    return this.analyser;
   }
 
   // ── Procedural synthesis ─────────────────────────────────────────────────

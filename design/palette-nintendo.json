@@ -39,11 +39,5 @@
     "display": "chunky pixel face (logo + titles only)",
     "body": "\"Baloo 2\", system-ui, rounded sans — legibility first",
     "$note": "self-host woff2, offline"
-  },
-  "visualizer": {
-    "$comment": "JS-controlled in retro-scope.ts; keep it calm + recessed",
-    "waveform": "#4aa3df",
-    "spectrum": ["#e8503a", "#ffcc3e", "#5bbf52"],
-    "dimBehindPanels": true
   }
 }

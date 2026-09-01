@@ -93,6 +93,13 @@ inversion). **This is a decided architecture, not an accident — see
   story — why a ring cannot show a SEQUENCE, and what terrain does to the sound
   — is in `BASELINE.md`'s 2026-08-07 entries onward; the flip itself is in the
   2026-08-16 re-baseline. What follows is the OVAL.
+  - **2026-08-31 Track cleanup:** the header and job deck now have independent,
+    persisted HIDE/SHOW keys; neither key can strand the other deck. The Track
+    visualizer and its analyser-facing public port were removed as product
+    noise, while the analyser remains private to audio diagnostics. Tunnel
+    entry/exit remains distance-driven but the mouth now travels at world speed
+    and the cave/daylight seams sit under opaque portal masonry instead of
+    cutting a full-height wipe through the scene.
 - **Track, the oval** (`TrackScene`): sprite loco + cars ride the painted oval **coupled** —
   every vehicle sits half of each neighbour's on-screen length behind the one in
   front (`src/game/train-chain.ts`, arc length over path length), so the consist
