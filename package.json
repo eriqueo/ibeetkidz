@@ -12,6 +12,7 @@
     "check:no-editor": "bash scripts/check-no-editor-in-dist.sh",
     "check:notices": "node scripts/generate-third-party-notices.mjs --check",
     "check:pwa": "node scripts/check-pwa-build.mjs",
+    "check:train-atlas": "bash scripts/check-train-atlas-fresh.sh",
     "check:workshop-car-art": "python3 scripts/validate_workshop_open_car_art.py",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",

@@ -18,6 +18,10 @@ export const FRAME_SIZE = 128;
 export const TRAIN_TYPES = ["loco", "boxcar", "tanker", "hopper", "flatcar"] as const;
 export type TrainType = typeof TRAIN_TYPES[number];
 
+/** Directions in atlas-column order, clockwise from East across the oval. */
+export const DIRECTIONS = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"] as const;
+export type Direction = typeof DIRECTIONS[number];
+
 /** Normalized opaque-content box within a `FRAME_SIZE` frame, `[x0,y0,x1,y1]`.
  *  Same shape and meaning as `UiSpriteDef.content` in ui-sprites.ts. */
 export type CarContentBox = readonly [number, number, number, number];

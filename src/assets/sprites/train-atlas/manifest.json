@@ -1,0 +1,5 @@
+{
+  "cellSize": 128,
+  "directions": ["E", "NE", "N", "NW", "W", "SW", "S", "SE"],
+  "types": ["loco", "boxcar", "tanker", "hopper", "flatcar"]
+}

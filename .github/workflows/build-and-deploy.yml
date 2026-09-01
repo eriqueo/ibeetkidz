@@ -36,6 +36,8 @@ jobs:
         run: bash scripts/check-ar069-alpha.sh
       - name: UI atlas freshness release gate
         run: bash scripts/check-ui-atlas-fresh.sh
+      - name: Train atlas freshness release gate
+        run: bash scripts/check-train-atlas-fresh.sh
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test

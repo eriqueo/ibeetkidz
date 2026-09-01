@@ -42,3 +42,5 @@ jobs:
         run: |
           python3 -m pip install --quiet -r scripts/requirements-ui-atlas.txt
           bash scripts/check-ui-atlas-fresh.sh
+      - name: train atlas is regenerable from its tracked frames
+        run: bash scripts/check-train-atlas-fresh.sh

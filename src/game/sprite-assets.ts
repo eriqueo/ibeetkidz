@@ -34,12 +34,8 @@ import { publicAssetUrl } from "./assets.ts";
 // module's `import Phaser` (needed for `Phaser.Animations.Events` below) makes
 // anything it owns unloadable under jsdom. Re-exported so the loader manifest
 // stays the one obvious place to look for "what is in the train atlas".
-export { FRAME_SIZE, TRAIN_TYPES, type TrainType } from "./car-geometry.ts";
-import type { TrainType } from "./car-geometry.ts";
-
-/** Directions in clockwise order starting East, matching the oval path tangent. */
-export const DIRECTIONS = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"] as const;
-export type Direction = typeof DIRECTIONS[number];
+export { FRAME_SIZE, TRAIN_TYPES, DIRECTIONS, type TrainType, type Direction } from "./car-geometry.ts";
+import type { Direction, TrainType } from "./car-geometry.ts";
 
 /**
  * Given a velocity vector (dx, dy), returns the nearest 8-direction compass name.
