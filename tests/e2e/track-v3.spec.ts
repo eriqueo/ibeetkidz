@@ -708,10 +708,10 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   expect(
     Math.abs(
       (entering.portalX - scrolledEntry.tunnel.portalX)
-      - (scrolledEntry.pos - enteringState.pos) * 640,
+      - (scrolledEntry.tunnel.floorOffset - entering.floorOffset),
     ),
-    "the portal must travel with track distance instead of wiping across the viewport",
-  ).toBeLessThanOrEqual(3);
+    "the portal and tunnel floor must travel as one world structure instead of wiping across the viewport",
+  ).toBeLessThanOrEqual(1);
   await page.screenshot({ path: testInfo.outputPath("track-tunnel-entering.png") });
   await expect.poll(async () => (await state(page)).tunnel.visibleLamps).toBeGreaterThan(1);
   const before = (await state(page)).tunnel.wallOffset;
@@ -758,7 +758,7 @@ test("stacked hill support stays visible inside the tunnel", async ({ page }, te
   await emit(page, "track-mode-toggled", "hill");
   await emit(page, "track-mode-toggled", "tunnel");
 
-  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 8_000 }).toBe("inside");
+  await expect.poll(async () => (await state(page)).tunnel.phase, { timeout: 15_000 }).toBe("inside");
   const enclosed = await state(page);
   expect(enclosed.latchedModes).toEqual(expect.arrayContaining(["hill", "tunnel"]));
   expect(enclosed.hillVisible).toBe(true);

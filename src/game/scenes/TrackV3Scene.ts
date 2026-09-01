@@ -2018,6 +2018,7 @@ export class TrackV3Scene extends Phaser.Scene {
     tunnel: {
       phase: string;
       wallOffset: number;
+      floorOffset: number;
       visibleLamps: number;
       portalX: number;
       backdropSeamX: number;
@@ -2081,6 +2082,7 @@ export class TrackV3Scene extends Phaser.Scene {
       tunnel: {
         phase: this.tunnelPhase,
         wallOffset: this.tunnelWall?.tilePositionX ?? 0,
+        floorOffset: this.tunnelFloor?.tilePositionX ?? 0,
         visibleLamps: this.tunnelLamps.filter((lamp) => lamp.visible).length,
         ...this.tunnelRegion,
         consistNoseX: consist.noseX,
