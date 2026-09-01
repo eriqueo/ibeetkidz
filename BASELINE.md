@@ -53,7 +53,7 @@ passed that test without a retry.
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 535 |
-| Tracked snapshot bytes | 81,833,337 |
+| Tracked snapshot bytes | 81,833,553 |
 | Tracked files under `src/` + `tests/` | 417 |
 | `src/assets/` tracked bytes | 39,045,497 |
 | `dist/` | 112 files; 23,151,557 bytes |
@@ -110,6 +110,14 @@ rewritten, so `.git` remains approximately 1.40 GiB.
   ```sh
   python3 scripts/build_train_atlas.py
   npm run check:train-atlas
+  ```
+
+  If Pillow is unavailable in the host Python, use the same pinned Nix shell as
+  the UI-atlas check:
+
+  ```sh
+  nix-shell -p 'python3.withPackages (ps: [ ps.pillow ])' \
+    --run 'npm run check:train-atlas'
   ```
 
 ## Known open findings
