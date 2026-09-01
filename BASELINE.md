@@ -131,10 +131,11 @@ rewritten, so `.git` remains approximately 1.40 GiB.
 
 ## Known open findings
 
-- `npm run check:workshop-car-art` is intentionally red: three shipped Workshop
-  layers exactly match active rejected fingerprints in `ART_REQUESTS.md`.
-  Replacement art and assembled-scene acceptance are required before wiring
-  this checker into the release gate.
+- The AR-060F and AR-060T Workshop corrections are accepted, and
+  `npm run check:workshop-car-art` is a Pages release gate. The flatcar helper's
+  original `design/review/ar060-flatcar-source.png` input was not pushed;
+  `ART_REQUESTS.md` carries the bounded provenance handoff. The accepted runtime
+  PNGs must not be redrawn while that source is recovered.
 - Signal, smoke, and tarp atlases still lack complete tracked regeneration
   provenance. Preserve these load-bearing outputs until their source-of-truth
   decisions are made.

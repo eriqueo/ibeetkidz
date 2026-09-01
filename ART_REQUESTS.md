@@ -19,20 +19,41 @@
 
 ---
 
-## ACTIVE NEXT ROUND — 2026-08-31 (rev 10)
+## ACTIVE ART HANDOFF — 2026-09-01 (rev 11)
 
-Eric's assembled Workshop review rejects two of AR-060's delivered car layers.
-Their earlier **DELIVERED** label records provenance, not current acceptance;
-the two entries below supersede that label for these files. Engineering must
-not hide either defect with masks, tints, or a replacement drawing in code.
+AR-060F and AR-060T are visually accepted and integrated. There is **no car
+redraw in this round**. One provenance input was omitted from the pushed
+flatcar delivery and is the only open Manus handoff.
+
+### ⚠ OPEN — AR-060F-S · Publish the flatcar production source — P1 provenance
+
+Do not alter or reinterpret the accepted runtime art. Add the exact source used
+by `scripts/remake_ar060_flatcar.py` at:
+
+- `design/review/ar060-flatcar-source.png`
+
+The tracked source must be the real preprocessed input used to produce the
+accepted `car-open-flatcar.png`, not a copy renamed after the fact. Preserve
+both shipped 2560 × 1440 car layers pixel-for-pixel.
+
+**Required proof from a clean checkout:** install the pinned dependencies from
+`scripts/requirements-ui-atlas.txt`, run
+`python3 scripts/remake_ar060_flatcar.py`, then show that both generated car
+layers have no Git diff and that `npm run check:workshop-car-art` passes. If the
+original source no longer exists, report that directly; do not manufacture a
+replacement or redraw the accepted car. Engineering will then retire the
+non-reproducible helper and designate the delivered PNGs as authored sources.
+
+## ACCEPTED AR-060 CORRECTIONS
 
 ### ✅ DELIVERED 2026-09-01 — AR-060F · Flatcar is an open deck, not a transparent wall — P0
 
-The running flatcar reads as a tall green car body with five see-through sky
-windows. That contradicts AR-060's own flatcar contract: **no opening at all;
-a low flat deck with stake sides, with the crew standing in open air.**
+The rejected predecessor read as a tall green car body with five see-through
+sky windows. That contradicted AR-060's own flatcar contract: **no opening at
+all; a low flat deck with stake sides, with the crew standing in open air.**
 
-Replace both files on their existing **2560 × 1440** canvases:
+The accepted correction replaced both files on their existing
+**2560 × 1440** canvases:
 
 - `src/assets/sprites/cars/car-open-flatcar.png`
 - `src/assets/sprites/cars/car-open-flatcar-front.png`
@@ -63,18 +84,17 @@ near edge. An isolated PNG is not acceptance.
 
 ### ✅ DELIVERED 2026-09-01 — AR-060T · Tanker foreground is a real shell lip — P0
 
-`src/assets/sprites/cars/car-open-tanker-front.png` currently contributes two
-detached purple elliptical curves and a long horizontal stroke. In the
+The rejected `src/assets/sprites/cars/car-open-tanker-front.png` contributed
+two detached purple elliptical curves and a long horizontal stroke. In the
 assembled Workshop they read as stray vector marks across the tank, not as a
 near shell passing in front of the riders.
 
-Replace that file on its existing **2560 × 1440** canvas and keep registration
-with `car-open-tanker.png`: crew area `x 620…1820, y 560…890`, feet on `y 895`,
-and body content within `[25,132]…[2528,1197]`. Paint only the portion of the
-tank's near steel/brass shell that must occlude the crew. Its curvature,
-outline thickness, pixels, palette, rivets and highlights must visibly join the
-base tank. Do not submit ellipse-only guide marks, a full-width line, crew,
-controls, scenery, or any full-canvas wash; all unused pixels are true alpha 0.
+The accepted correction replaced that file on its existing **2560 × 1440**
+canvas and kept registration with `car-open-tanker.png`: crew area
+`x 620…1820, y 560…890`, feet on `y 895`, and body content within
+`[25,132]…[2528,1197]`. It paints only the portion of the tank's near
+steel/brass shell that must occlude the crew; all unused pixels are true alpha
+0.
 
 The rejected foreground fingerprint is
 `b218536ecce2f71f574123b3043468bed386b8eefc762a319fec84642a3b8cf7`.

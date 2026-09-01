@@ -144,10 +144,11 @@ producer of that fact. Hardware-audio blocks intentionally skip when CI lacks
 the required device path; run the suite for the current result rather than
 copying an old count. `design/HISTORY.md` carries the architectural history.
 
-**Open art/provenance work.** `npm run check:workshop-car-art` remains red on
-three rejected native Workshop layers: the flatcar body, flatcar foreground,
-and tanker foreground. They need replacement art and assembled-scene review;
-code must not conceal them. The signal, smoke, and tarp runtime atlases are
-load-bearing but do not yet have a complete tracked rebuild provenance, so they
-must be preserved until a source-of-truth decision is made. The cleanup release
-was browser-exercised, but not accepted on a physical iPad or Android device.
+**Open art/provenance work.** The corrected flatcar and tanker layers are
+accepted, and `npm run check:workshop-car-art` protects their production
+geometry in the Pages release. The flatcar rebuild helper still needs its
+tracked original source input; `ART_REQUESTS.md` owns that bounded Manus
+handoff. The signal, smoke, and tarp runtime atlases are load-bearing but do not
+yet have complete tracked rebuild provenance, so they must be preserved until
+a source-of-truth decision is made. The cleanup release was browser-exercised,
+but not accepted on a physical iPad or Android device.
