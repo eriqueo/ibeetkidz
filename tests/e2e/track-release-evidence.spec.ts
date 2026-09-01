@@ -457,7 +457,10 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
 test("Pages toolbars hide independently and Ride stays endless until STOP", {
   tag: "@track-focus-release",
 }, async ({ page }, testInfo) => {
-  test.setTimeout(90_000);
+  // The production boot, six pixel-delta polls, three evidence screenshots,
+  // and cold audio start exceed 90 seconds on loaded headed CI runners.
+  // Individual assertions retain tighter deadlines below.
+  test.setTimeout(180_000);
   const configuredUrl = testInfo.project.metadata.pwaOrigin;
   if (typeof configuredUrl !== "string") {
     throw new Error("playwright config must provide pwaOrigin");
