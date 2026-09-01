@@ -153,6 +153,7 @@ describe("architecture guards (source text over src/**)", () => {
     }).scripts;
     expect(scripts?.build).toContain("npm run check:no-editor");
     expect(scripts?.build).toContain("npm run check:notices");
+    expect(scripts?.build).toContain("npm run check:pwa");
     expect(scripts?.["check:no-editor"]).toBe(
       "bash scripts/check-no-editor-in-dist.sh",
     );

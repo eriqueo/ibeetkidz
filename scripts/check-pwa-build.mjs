@@ -9,6 +9,12 @@ const builds = [
 const migrationScript = "pwa-handshake-migration.js";
 const noticesFile = "THIRD_PARTY_NOTICES.txt";
 const expectedNotices = readFileSync(noticesFile, "utf8");
+const generatedRuntimePackages = new Set(
+  JSON.parse(readFileSync("legal/generated-runtime-packages.json", "utf8")),
+);
+const declaredWorkboxPackages = new Set(
+  [...generatedRuntimePackages].filter((name) => name.startsWith("workbox-")),
+);
 
 function filesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -22,6 +28,35 @@ for (const { dir, base } of builds) {
   const manifest = JSON.parse(readFileSync(join(dir, "manifest.webmanifest"), "utf8"));
   const sw = readFileSync(join(dir, "sw.js"), "utf8");
   const deployedNotices = readFileSync(join(dir, noticesFile), "utf8");
+  const workerRuntimeNames = readdirSync(dir).filter((name) =>
+    /^workbox-[a-f0-9]+\.js$/.test(name),
+  );
+
+  if (workerRuntimeNames.length !== 1) {
+    throw new Error(`${dir} must contain exactly one generated Workbox runtime`);
+  }
+
+  // Workbox deliberately leaves one `workbox:<module>:<version>` marker per
+  // emitted module. Compare the built truth to the notice input so a new
+  // runtime module cannot ship without its license, and a stale declaration
+  // cannot conceal drift.
+  const workerRuntime = readFileSync(join(dir, workerRuntimeNames[0]), "utf8");
+  const emittedWorkboxPackages = new Set(
+    [...workerRuntime.matchAll(/workbox:([a-z-]+):[0-9.]+/g)].map(
+      (match) => `workbox-${match[1]}`,
+    ),
+  );
+  const undeclared = [...emittedWorkboxPackages].filter(
+    (name) => !declaredWorkboxPackages.has(name),
+  );
+  const notEmitted = [...declaredWorkboxPackages].filter(
+    (name) => !emittedWorkboxPackages.has(name),
+  );
+  if (undeclared.length > 0 || notEmitted.length > 0) {
+    throw new Error(
+      `PWA_LEGAL_RUNTIME_MISMATCH: ${dir}; undeclared=${undeclared.join(",") || "none"}; not-emitted=${notEmitted.join(",") || "none"}`,
+    );
+  }
 
   if (deployedNotices !== expectedNotices) {
     throw new Error(`${dir}/${noticesFile} is missing or stale`);

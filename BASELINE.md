@@ -52,7 +52,7 @@ passed that test without a retry.
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 502 |
-| Tracked snapshot bytes | 86,266,976 |
+| Tracked snapshot bytes | 86,268,562 |
 | Tracked files under `src/` + `tests/` | 385 |
 | `src/assets/` tracked bytes | 42,854,090 |
 | `dist/` | 113 files; 23,777,657 bytes |
@@ -75,7 +75,8 @@ remains approximately 1.40 GiB.
 
 - `THIRD_PARTY_NOTICES.txt` and `public/THIRD_PARTY_NOTICES.txt` are generated
   from the lockfile, installed package licenses, explicit generated-runtime
-  packages, and `legal/third-party-assets.json`:
+  packages, and `legal/third-party-assets.json`. `check:pwa` compares the
+  declared Workbox package set with the modules in each emitted runtime:
 
   ```sh
   npm run generate:notices
