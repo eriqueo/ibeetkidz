@@ -503,13 +503,16 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
     );
     return hiddenMapDelta;
   }, { timeout: toolbarTransitionTimeout }).toBeGreaterThan(minVisibleDelta);
-  await expect.poll(() => patchSignature(page, night.x, night.y))
+  await expect.poll(
+    () => patchSignature(page, night.x, night.y),
+    { timeout: toolbarTransitionTimeout },
+  )
     .toBe(idleNightSignature);
   await expect.poll(() => patchSignature(
     page,
     TRACK_TOOLBAR_TOGGLES.header.x,
     TRACK_TOOLBAR_TOGGLES.header.y,
-  )).not.toBe(idleHeaderToggle);
+  ), { timeout: toolbarTransitionTimeout }).not.toBe(idleHeaderToggle);
   await capture(page, testInfo, "track-toolbar-01-header-hidden");
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
@@ -530,7 +533,10 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
     );
     return hiddenNightDelta;
   }, { timeout: toolbarTransitionTimeout }).toBeGreaterThan(minVisibleDelta);
-  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
+  await expect.poll(
+    () => patchSignature(page, header.map!.x, header.map!.y),
+    { timeout: toolbarTransitionTimeout },
+  )
     .toBe(idleMapSignature);
   await capture(page, testInfo, "track-toolbar-02-jobs-hidden");
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
