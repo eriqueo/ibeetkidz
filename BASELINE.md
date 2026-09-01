@@ -54,7 +54,7 @@ assertions compare geometry captured in the same Phaser render frame and use the
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 526 |
-| Tracked snapshot bytes | 81,791,635 |
+| Tracked snapshot bytes | 81,791,656 |
 | Tracked files under `src/` + `tests/` | 408 |
 | `src/assets/` tracked bytes | 39,045,309 |
 | `dist/` | 112 files; 23,145,669 bytes |
