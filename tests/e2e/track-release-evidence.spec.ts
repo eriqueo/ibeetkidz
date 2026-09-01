@@ -484,6 +484,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   const idleNight = patchFromSnapshot(idleSnapshot, night.x, night.y);
   const idleMapSignature = patchSignatureOf(idleMap);
   const idleNightSignature = patchSignatureOf(idleNight);
+  const minVisibleDelta = 1;
   const maxRestorationRatio = 0.1;
   const idleHeaderToggle = await patchSignature(
     page,
@@ -493,8 +494,14 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   const idleWorld = await canvasMetrics(page);
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
-  await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
-    .not.toBe(idleMapSignature);
+  let hiddenMapDelta = 0;
+  await expect.poll(async () => {
+    hiddenMapDelta = patchMeanDelta(
+      idleMap,
+      await patchPixels(page, header.map!.x, header.map!.y),
+    );
+    return hiddenMapDelta;
+  }).toBeGreaterThan(minVisibleDelta);
   await expect.poll(() => patchSignature(page, night.x, night.y))
     .toBe(idleNightSignature);
   await expect.poll(() => patchSignature(
@@ -502,10 +509,6 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
     TRACK_TOOLBAR_TOGGLES.header.x,
     TRACK_TOOLBAR_TOGGLES.header.y,
   )).not.toBe(idleHeaderToggle);
-  const hiddenSnapshot = await canvasSnapshot(page);
-  const hiddenMap = patchFromSnapshot(hiddenSnapshot, header.map!.x, header.map!.y);
-  const hiddenMapDelta = patchMeanDelta(idleMap, hiddenMap);
-  expect(hiddenMapDelta).toBeGreaterThan(1);
   await capture(page, testInfo, "track-toolbar-01-header-hidden");
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.header.x, TRACK_TOOLBAR_TOGGLES.header.y);
@@ -518,14 +521,16 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   }, { timeout: 15_000 }).toBeLessThan(maxRestorationRatio);
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
-  await expect.poll(() => patchSignature(page, night.x, night.y))
-    .not.toBe(idleNightSignature);
+  let hiddenNightDelta = 0;
+  await expect.poll(async () => {
+    hiddenNightDelta = patchMeanDelta(
+      idleNight,
+      await patchPixels(page, night.x, night.y),
+    );
+    return hiddenNightDelta;
+  }).toBeGreaterThan(minVisibleDelta);
   await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
     .toBe(idleMapSignature);
-  const hiddenJobsSnapshot = await canvasSnapshot(page);
-  const hiddenNight = patchFromSnapshot(hiddenJobsSnapshot, night.x, night.y);
-  const hiddenNightDelta = patchMeanDelta(idleNight, hiddenNight);
-  expect(hiddenNightDelta).toBeGreaterThan(1);
   await capture(page, testInfo, "track-toolbar-02-jobs-hidden");
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
   let restoredNightRatio = 1;
