@@ -10,6 +10,8 @@
 // a `${file}` template glob-bundles its whole directory, so every entry here
 // must earn its keep.
 
+import type { CarType } from "../core/types.ts";
+
 export interface ImageAsset {
   readonly key: string;
   readonly url: string;
@@ -172,4 +174,4 @@ export const CAR_OPEN_SPRITES = {
   tanker: openCar("tanker", { x: 620, y: 560, w: 1200, h: 330 }, 895, [25, 132, 2528, 1197]),
   hopper: openCar("hopper", { x: 700, y: 490, w: 1140, h: 440 }, 930, [46, 163, 2514, 1184]),
   flatcar: openCar("flatcar", { x: 720, y: 410, w: 1120, h: 455 }, 865, [48, 68, 2507, 1438]),
-} as const satisfies Record<string, OpenCarAsset>;
+} as const satisfies Record<CarType, OpenCarAsset>;

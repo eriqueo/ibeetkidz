@@ -38,7 +38,7 @@ import { placeSpawn } from "../TiledSceneAdapter.ts";
 import { spawnUiLayer, relayoutUiLayer, type UiElement } from "../ui-scene.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, contentHitRect, hasUiFrame, hitRectContains, placeUiSprite, type UiSpriteDef, type ContentBox } from "../ui-sprites.ts";
 import { drawGlyph } from "../car-livery.ts";
-import { CHIP_EDGE, colorFor, darken, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
+import { CHIP_EDGE, colorFor, glyphFor, hexToInt, inkOn } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import workshopMap from "../../assets/maps/workshop.json";
 import { CAR_COLORS } from "../../core/car-identity.ts";
@@ -190,24 +190,6 @@ const CAR_CONTENT: ContentBox = [0.009, 0.158, 0.989, 0.865];
  *  before `showCar` corrects it. */
 const DEFAULT_CAR_TYPE: CarType = "boxcar";
 // Depths: background image is 0; chrome panels are 1; grid bands/cells 3–7.
-// AR-052's cabin pair, both authored on the punched void's own canvas.
-//
-// PER CAR TYPE, falling back to the shared pair. A hopper is a slatted bin and
-// a tanker is a steel cylinder; giving both of them the boxcar's timber room is
-// the second half of Eric's report ("it also doesn't change per car"), and the
-// fix has to be a lookup rather than a later edit — the art agent drops
-// `workshop-car-interior-hopper.png` in and it appears, with no code change and
-// no chance of the four getting out of step with the four car types.
-function cabinFor(scene: Phaser.Scene, type: CarType, layer: "interior" | "foreground-rail"): UiSpriteDef {
-  const perType = UI_SPRITES[`workshop-car-${layer}-${type}`];
-  // The ATLAS decides, not the manifest: the per-type keys are registered ahead
-  // of the art so the drop needs no code change, which means a registered key
-  // whose PNG has not been drawn yet must fall back rather than ask Phaser for
-  // a frame that is not there.
-  if (perType && hasUiFrame(scene, perType.base)) return perType;
-  return UI_SPRITES[`workshop-car-${layer}`]!;
-}
-
 const DEPTH_CAR = 0.4;
 const DEPTH_WASH = 0.5; // the livery, over the body and under everything else
 const DEPTH_RIDER = 0.7; // the crew, standing in the car's open interior
@@ -282,10 +264,6 @@ export class WorkshopScene extends BackgroundScene {
   /** The car's livery, as two overlays of its own silhouette — see
    *  `car-tint.ts`. This is what makes the paint rack visibly paint the car. */
   private carCoat: LiveryCoat | undefined;
-  private carInterior: Phaser.GameObjects.Graphics | undefined;
-  private carCabin: Phaser.GameObjects.Image | undefined;
-  private cabinCoat: LiveryCoat | undefined;
-  private carRail: Phaser.GameObjects.Image | undefined;
   /** AR-060's near lip, drawn over the crew when the open car is in use. */
   private carFront: Phaser.GameObjects.Image | undefined;
   // ── the crew and their board ───────────────────────────────────────────────
@@ -461,41 +439,6 @@ export class WorkshopScene extends BackgroundScene {
 
   // ── the layered field: car sprite + chalkboard in its void ─────────────────
   private buildCarLayer(): void {
-    // The car's interior, BEHIND the body. The legacy car art has a real hole
-    // where the chalkboard used to show through; with the board gone,
-    // that hole shows the workshop's brick wall, and the crew stands in what
-    // reads as a black rectangle. This is the inside of the car — no art has
-    // ever existed for it, because it was covered from the day it was cut.
-    // Drawn behind the body so the car's own edges mask it and nothing has to
-    // match the hole's outline.
-    this.carInterior = this.add.graphics().setDepth(DEPTH_CAR - 0.05);
-    // AR-052: the painted cabin, in two layers that sandwich the crew — the
-    // timber back wall behind the body, the bench rail in front of the riders'
-    // legs. The graphics bands above stay as the fallback for a cold atlas.
-    if (this.textures.exists(UI_ATLAS_KEY)) {
-      // Both start on the DEFAULT car's pair and are re-framed per car type by
-      // `drawCarInterior`, which is the one place that runs on every car change.
-      this.carCabin = this.add
-        .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "interior").base)
-        .setOrigin(0.5)
-        .setDepth(DEPTH_CAR - 0.04);
-      // THE CABIN WEARS THE CAR'S PAINT. Without this the body is livery-tinted
-      // and the room inside it is not, so a gold tanker had a blue-grey steel
-      // room in it — two different colour worlds meeting at a hard rectangle,
-      // which is most of why the interior still read as pasted on rather than
-      // as part of the car. Same coat, same technique as the body itself.
-      this.cabinCoat = asLiveryCoat(
-        this.carCabin,
-        this.add
-          .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "interior").base)
-          .setOrigin(0.5)
-          .setDepth(DEPTH_CAR - 0.035),
-      );
-      this.carRail = this.add
-        .image(0, 0, UI_ATLAS_KEY, cabinFor(this, DEFAULT_CAR_TYPE, "foreground-rail").base)
-        .setOrigin(0.5)
-        .setDepth(DEPTH_RIDER + 0.05);
-    }
     // AR-060's near lip — the part of the OPEN car that must draw in front of
     // the crew's legs. Same canvas and same transform as the body, so it needs
     // no registration of its own.
@@ -734,71 +677,7 @@ export class WorkshopScene extends BackgroundScene {
       .setScale(this.car.scaleX, this.car.scaleY);
 
     this.voidRect = this.carVoidRect();
-    this.drawCarInterior();
     this.layoutRiders();
-  }
-
-  /**
-   * The car's inside.
-   *
-   * AR-052's two painted layers when the atlas has them: both are authored on
-   * the void's own 1612x430 canvas, so they stretch onto `voidRect` and land in
-   * register with each other and with the punched hole by construction.
-   *
-   * The two flat colour bands below are what shipped before the art existed —
-   * a lit back wall and a lighter floor in the car's own livery — and they are
-   * the fallback for a cold atlas ONLY. The painted rear layer covers the void
-   * edge to edge, so drawing the bands under it would just be a second answer
-   * to the same question, and the one that shows if the registration ever slips.
-   */
-  private drawCarInterior(): void {
-    const g = this.carInterior;
-    const v = this.voidRect;
-    if (!g || v.w === 0) return;
-    // The bands are drawn in absolute screen coords, so the departure tween's
-    // leftover x offset has to be cleared before the next car is drawn.
-    g.setPosition(0, 0).clear();
-
-    // AR-060: the open car IS its own interior. Nothing to assemble, and every
-    // layer of the old assembly has to get out of the way — a cabin stretched
-    // into a crew rect that is no longer a punched hole would be a rectangle
-    // pasted over the drawing, which is the fault this art replaced.
-    if (this.openCar(this.model.carType)) {
-      this.carCabin?.setVisible(false);
-      this.cabinCoat?.fill.setVisible(false);
-      this.carRail?.setVisible(false);
-      return;
-    }
-    this.carCabin?.setVisible(true);
-    this.cabinCoat?.fill.setVisible(true);
-    this.carRail?.setVisible(true);
-
-    if (this.carCabin || this.carRail) {
-      const rect = { x: v.x + v.w / 2, y: v.y + v.h / 2, width: v.w, height: v.h };
-      const rear = cabinFor(this, this.model.carType, "interior");
-      const rail = cabinFor(this, this.model.carType, "foreground-rail");
-      // The frame is re-set here, not only at construction: the car type
-      // changes under a live panel (New Car, or opening a different car), and
-      // this is the one place that already re-runs on every such change.
-      if (this.carCabin) placeUiSprite(this.carCabin.setFrame(rear.base), rear, rect);
-      if (this.cabinCoat) {
-        // The coat is the SAME picture drawn once more, so it has to follow the
-        // cabin's frame and transform exactly — a coat left on last car type's
-        // frame paints this car's colour onto last car's room.
-        this.cabinCoat.fill.setFrame(rear.base);
-        placeUiSprite(this.cabinCoat.fill, rear, rect);
-        setLiveryColor(this.cabinCoat, colorFor(this.model.livery));
-      }
-      if (this.carRail) placeUiSprite(this.carRail.setFrame(rail.base), rail, rect);
-      return;
-    }
-
-    const color = colorFor(this.model.livery);
-    const pad = Math.max(6, v.h * 0.04); // bleed under the car's own edges
-    g.fillStyle(darken(color, 0.74), 1)
-      .fillRect(v.x - pad, v.y - pad, v.w + pad * 2, v.h + pad * 2)
-      .fillStyle(darken(color, 0.52), 1)
-      .fillRect(v.x - pad, v.y + v.h * 0.8, v.w + pad * 2, v.h * 0.2 + pad);
   }
 
   /** The car's standardized interior void, in screen px — where the crew
@@ -915,13 +794,6 @@ export class WorkshopScene extends BackgroundScene {
     this.closeBoard();
     const targets: Phaser.GameObjects.GameObject[] = [this.car];
     if (this.carCoat) targets.push(this.carCoat.fill);
-    // The cabin travels with the car it is the inside of. Left behind, the
-    // painted back wall and bench rail would stay hanging in the workshop while
-    // the car slid out from around them.
-    if (this.carCabin) targets.push(this.carCabin);
-    if (this.cabinCoat) targets.push(this.cabinCoat.fill);
-    if (this.carRail) targets.push(this.carRail);
-    if (this.carInterior) targets.push(this.carInterior);
     this.riders.forEach((rider) => targets.push(rider.img));
     if (this.emptyText) targets.push(this.emptyText);
     this.playhead?.setVisible(false);
@@ -1285,7 +1157,6 @@ export class WorkshopScene extends BackgroundScene {
     // the full coat the neutral-brown `car-side-*` art was tuned for.
     const painted = this.openCar(this.model.carType) !== null;
     if (this.carCoat) setLiveryColor(this.carCoat, colorFor(this.model.livery), painted);
-    this.drawCarInterior();
     this.drawColorRack();
   }
 

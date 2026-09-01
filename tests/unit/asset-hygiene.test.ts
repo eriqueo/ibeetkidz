@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { CAR_TYPES } from "../../src/core/types.ts";
 import { CAR_OPEN_SPRITES } from "../../src/game/assets.ts";
 
 // Runtime sprites normally belong to a purpose-specific directory or a packed
@@ -20,12 +21,7 @@ describe("asset hygiene", () => {
   });
 
   it("ships a complete open body and front for every Workshop car type", () => {
-    expect(Object.keys(CAR_OPEN_SPRITES).sort()).toEqual([
-      "boxcar",
-      "flatcar",
-      "hopper",
-      "tanker",
-    ]);
+    expect(Object.keys(CAR_OPEN_SPRITES).sort()).toEqual([...CAR_TYPES].sort());
     for (const [type, asset] of Object.entries(CAR_OPEN_SPRITES)) {
       expect(asset.url, `${type} body`).not.toBe("");
       expect(asset.front.url, `${type} front`).not.toBe("");

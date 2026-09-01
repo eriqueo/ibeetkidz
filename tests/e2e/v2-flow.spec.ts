@@ -146,6 +146,37 @@ test("Workshop chrome hit-tests its art, not its transparent padding", async ({ 
   }
 });
 
+test("Workshop: every car type resolves to its native open body and front", async ({ page }) => {
+  await boot(page);
+  await gotoFromMap(page, "workshop");
+  await waitForScene(page, "WorkshopScene");
+
+  const partId = (await getProject(page)).activePartId as string;
+  for (const type of ["boxcar", "tanker", "hopper", "flatcar"] as const) {
+    await page.evaluate(
+      ({ id, carType }) => void (window as any).__ibeetkidz_test__.dispatch({
+        type: "setCarType",
+        partId: id,
+        carType,
+      }),
+      { id: partId, carType: type },
+    );
+
+    await expect.poll(() => page.evaluate(() => {
+      const scene = (window as any).__ibeetkidz_test__.getScene();
+      return {
+        body: scene.car?.texture?.key,
+        front: scene.carFront?.texture?.key,
+        frontVisible: scene.carFront?.visible,
+      };
+    })).toEqual({
+      body: `car-open-${type}`,
+      front: `car-open-${type}-front`,
+      frontVisible: true,
+    });
+  }
+});
+
 test("Workshop: a character rides the car, and tapping it opens ITS editor", async ({ page }) => {
   // One character per instrument, and a tap goes STRAIGHT to that character's
   // editor (Eric: "when I click the husky, I should be taken to the husky's

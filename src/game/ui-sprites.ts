@@ -188,26 +188,6 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "panel-voice": { states: { base: "panel-voice" }, base: "panel-voice", content: [0.0221, 0.0304, 0.9779, 0.9679], stretch: false },
   "panel-keys": { states: { base: "panel-keys" }, base: "panel-keys", content: [0.0228, 0.0339, 0.9779, 0.9696], stretch: false },
   "panel-magic": { states: { base: "panel-magic" }, base: "panel-magic", content: [0.0208, 0.0286, 0.9792, 0.9696], stretch: false },
-  // AR-052: the Workshop car's cabin, as two aligned layers for the SAME
-  // 1612x430 punched void — rear interior behind the crew, foreground rail in
-  // front of their legs. Both carry the full canvas as their content box on
-  // purpose: they are registration-locked to each other, so measuring either
-  // one's opaque bbox (the rail's art occupies only its bottom third) would
-  // stretch that layer to the void and break the alignment the pair depends on.
-  "workshop-car-interior": panelDef("workshop-car-interior", [0, 0, 1, 1]),
-  "workshop-car-foreground-rail": panelDef("workshop-car-foreground-rail", [0, 0, 1, 1]),
-  // AR-055: the same pair PER CAR TYPE — a hopper's slatted bin and a tanker's
-  // steel cylinder are not a boxcar's timber room. Registered ahead of the art
-  // so a delivered PNG needs no code change; `cabinFor` asks the ATLAS whether
-  // each one exists yet and falls back to the shared pair until it does.
-  ...Object.fromEntries(
-    (["boxcar", "tanker", "hopper", "flatcar"] as const).flatMap((type) =>
-      (["interior", "foreground-rail"] as const).map((layer) => {
-        const id = `workshop-car-${layer}-${type}`;
-        return [id, panelDef(id, [0, 0, 1, 1])] as const;
-      }),
-    ),
-  ),
   "knob-wobble": { states: { base: "knob-wobble" }, base: "knob-wobble", content: [0.111, 0.074, 0.887, 0.891], stretch: false },
   "knob-crunch": { states: { base: "knob-crunch" }, base: "knob-crunch", content: [0.107, 0.088, 0.891, 0.9], stretch: false },
   // AR-026 delivered the pair: idle = lever down + OFF plaque, on = lever up +
