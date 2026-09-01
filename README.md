@@ -6,8 +6,8 @@ load every sound onto a train and watch the song ride past.
 
 You land on a painted island **Map** with three places to go:
 
-- 🛠 **Workshop** — the inside of a boxcar, where one train car gets its sound.
-  A mixing board holds the car's layers; tap the **mic** on the wall to record
+- 🛠 **Workshop** — an open, car-type-specific music bench where one train car
+  gets its sound. A mixing board holds the car's layers; tap the **mic** to record
   your voice and run it through the funny-effect tiles, tap the **drums** for a
   16-step beat maker, or tap the **guitar / piano / violin** to add a melody
   lane and draw notes into it. Pick the car's shape, then send it to the yard.
@@ -31,12 +31,15 @@ No accounts, no backend, nothing is uploaded. Touch-first, made for an iPad.
 - TypeScript + Vite 6
 - [Phaser 4](https://phaser.io/) — the four views are Phaser scenes
   (`src/game/scenes/`); sprites, hit-areas, and the in-scene tool panels live
-  there. Scene chrome is data-driven from Tiled maps (`src/assets/maps/*.json`)
+  there. Map, Workshop, Yard, and the optional oval Track take authored layout
+  from Tiled maps (`src/assets/maps/*.json`); the default scrolling Track builds
+  its moving world and chrome programmatically in `TrackV3Scene`.
 - React 19 — a thin shell around the canvas, presentation only (the hexagonal
   core stays framework-free)
 - [Tone.js](https://tonejs.github.io/) for all audio (the one vendor behind `SoundPort`)
 - Zod — parses saved projects and Tiled maps at the boundary
-- Vitest (unit) + Playwright (E2E, Chromium with faked media)
+- Vitest (unit) + Playwright (Chromium locally; selected Chromium, WebKit, and
+  Firefox journeys in CI)
 - GitHub Pages auto-deploy (dual-base build: `/` local, `/ibeetkidz/` Pages)
 
 ## Architecture (hexagonal, kidpix lineage)
@@ -67,12 +70,16 @@ talk over a typed `EventBus` rather than reaching into each other.
 ## Commands
 
 ```bash
-npm install
+npm ci               # reproduce the committed lockfile
 npm run dev          # http://localhost:5173
 npm run typecheck
 npm run test         # unit
-npm run test:e2e     # Playwright (Chromium) — pin a port: PW_PORT=<free>
+PW_PORT=5174 npm run test:e2e
 npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
+npm run check:no-editor
+npm run check:pwa
+npm run check:train-atlas
+bash scripts/check-ui-atlas-fresh.sh
 ```
 
 ## Documentation map
@@ -84,6 +91,8 @@ npm run build        # dist/ (base /) + dist-gh/ (base /ibeetkidz/)
 - `SCENE_AUTHORING_GUIDE.md`: Tiled scene-authoring workflow.
 - `ART_REQUESTS.md`: active art contract and delivery record.
 - `design/GAME_FEEL.md`: animation and world-integration laws.
+- `design/references/README.md`: provenance and status of the initial, now
+  superseded visual explorations.
 
 Completed plans and superseded briefs live in Git history rather than beside
 current instructions.
@@ -99,6 +108,12 @@ persist to IndexedDB and survive a reload. The audio adapter plays through the
 iOS silent switch and self-heals the AudioContext after interruptions (call /
 lock / background). Audio is gesture-gated: nothing touches the AudioContext
 before the boot button.
+
+The deployed cleanup release is `8fad32f` (GitHub Actions run `33466226635`).
+Its legal notices, both build variants, PWA manifests, offline precache, and
+generated UI/train atlases passed their release checks. `BASELINE.md` owns the
+measured local gate and payload inventory; Git and the current workflow run
+remain authoritative if this paragraph ages.
 
 **Privacy.** There is no server and no telemetry, and the no-network-verbs test
 above keeps it that way. The built-in pack is synthesized rather than downloaded,
@@ -128,3 +143,11 @@ E2E suite. For the current counts see **`BASELINE.md`** — it is the single
 producer of that fact. Hardware-audio blocks intentionally skip when CI lacks
 the required device path; run the suite for the current result rather than
 copying an old count. `design/HISTORY.md` carries the architectural history.
+
+**Open art/provenance work.** `npm run check:workshop-car-art` remains red on
+three rejected native Workshop layers: the flatcar body, flatcar foreground,
+and tanker foreground. They need replacement art and assembled-scene review;
+code must not conceal them. The signal, smoke, and tarp runtime atlases are
+load-bearing but do not yet have a complete tracked rebuild provenance, so they
+must be preserved until a source-of-truth decision is made. The cleanup release
+was browser-exercised, but not accepted on a physical iPad or Android device.

@@ -44,7 +44,8 @@ We treat authored scene layout as data where a Tiled map exists.
 ### 2.3 The Three-Zone UI Rule
 Every scene (except Map) follows a strict three-zone layout. Tiled-backed scenes
 define the zones in Tiled; TrackV3 implements the same contract in its scene:
-1.  **Top Bar:** Navigation (left/right arrows) and view-level mode switching (e.g., car type).
+1.  **Top Bar:** Navigation (left/right arrows) and view-level actions (for
+    example, Workshop's **START A NEW CAR** picker).
 2.  **Field:** The interactive elements you manipulate (e.g., instruments in Workshop, cars in Yard).
 3.  **Bottom Bar:** Controls for the current view's manipulations (e.g., transport/mixer in Workshop, add/remove in Yard).
 
@@ -98,7 +99,7 @@ Git history retains that rejected design. It is deleted, not deferred.
 | Scene | Purpose | Top Bar | Field | Bottom Bar |
 | :--- | :--- | :--- | :--- | :--- |
 | **Map** | World navigation | N/A | Clickable buildings (Workshop, Yard, Track) | N/A |
-| **Workshop** | Music studio | Nav + Car Type Switcher | Instruments (tap to add lane) | Transport (Stop/Play/Loop/Tempo) |
+| **Workshop** | Music studio | Nav + START A NEW CAR picker | Instruments (tap to add lane) | Transport (Stop/Play/Loop/Tempo) |
 | **Yard** | Train assembly | Nav | Train cars on sidings | Add/Reorder/Delete controls |
 | **Track** | Song playback | Nav + transport | Side-scrolling train, terrain, modes | Tarp/send controls |
 

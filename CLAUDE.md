@@ -26,15 +26,18 @@ framework-free). Tone.js ^15. Vitest + Playwright. npm (the committed
 - **Mutations only via `Command` + `reduce`.** Reducers are pure (no DOM, no
   audio, no Date.now inside) so undo/redo, save, and tests stay free. Randomness
   goes through `RngPort`, never `Math.random` in core.
-- **Scenes are data-driven** (`src/assets/maps/*.json`). Static scene chrome —
-  panels, nav/transport buttons, instrument sprites — is authored in Tiled and
-  interpreted generically by `TiledParser` → `TiledSceneAdapter` / `ui-scene.ts`.
-  Adding a button is a map edit plus an `EventBus` action, not a plumbing edit.
+- **Tiled-backed scenes are data-driven** (`src/assets/maps/*.json`). Static
+  chrome in Map, Workshop, Yard, and the optional oval Track is authored in
+  Tiled and interpreted generically by `TiledParser` → `TiledSceneAdapter` /
+  `ui-scene.ts`. Adding chrome there is a map edit plus an `EventBus` action,
+  not a plumbing edit. `TrackV3Scene` is the deliberate exception: the default
+  side-scroller builds its moving world and chrome programmatically.
   (This rule used to name the v1 `TOOLS` registry in `src/machines/tools.tsx`.
   Ticket M1 deleted `src/machines/` outright; the data-driven principle now lives
   in the Tiled maps. See `PROJECT_CHARTER.md` §2.2.)
 - **Audio is gesture-gated.** Nothing touches the AudioContext before the boot
-  button. The visualizer reads only real analyser data.
+  button. The former Track visualizer was removed; analyser access remains an
+  audio-adapter diagnostic detail, not a presentation contract.
 - **Kid-safe + private.** No network, no accounts, no sharing by default.
 - **Forgiving UX.** Undo everywhere; mic-denied must leave the app fully usable.
 
@@ -46,13 +49,17 @@ notices. Prose does not fail a build; that file does.
 ## Commands
 
 ```bash
-npm install
+npm ci             # reproduce the committed lockfile
 npm run dev        # localhost:5173
 npm run typecheck  # gate
 npm run test       # unit (Vitest)  — gate
 npm run lint       # eslint . (ticket S2) — gate
-npm run test:e2e   # Playwright, chromium, faked media
+PW_PORT=5174 npm run test:e2e # Playwright, chromium, faked media
 npm run build      # dist/ (/) + dist-gh/ (/ibeetkidz/)
+npm run check:no-editor
+npm run check:pwa
+npm run check:train-atlas
+bash scripts/check-ui-atlas-fresh.sh
 npm run deploy     # separately authorized manual Cloudflare deployment
 ```
 
@@ -104,11 +111,12 @@ Everything else follows the default and expects `TrackV3Scene`.
 
 ### Two e2e traps that have bitten repeatedly
 
-1. **The e2e count differs local vs CI, by design.** **Four** blocks `test.skip`
+1. **The e2e count differs local vs CI, by design.** **Three** blocks `test.skip`
    when `process.env.CI` is set, all of them hardware-audio proofs, all cited by
    FILE (line anchors go stale): `tests/e2e/audio-output.spec.ts`; the mic-record
-   and jumbotron blocks of `tests/e2e/v2-flow.spec.ts`; and the pads/Magic-Pad
-   block of `tests/e2e/tool-panels.spec.ts`. So a local run and a CI run
+   block of `tests/e2e/v2-flow.spec.ts`; and the pads/Magic-Pad block of
+   `tests/e2e/tool-panels.spec.ts`. `audio-stress.spec.ts` is separately opt-in.
+   So a local run and a CI run
    legitimately report different totals. State *which* you mean whenever you cite
    an e2e number. **`tests/e2e/mic-denied.spec.ts` is NOT one of them** — it
    needs `getUserMedia` to FAIL, which a runner with no capture device does

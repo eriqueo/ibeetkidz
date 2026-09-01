@@ -10,7 +10,7 @@ degrades compliance on the rules that ARE instructions (see the plan at
 
 ## Current state
 
-### The sprite game (verified against the tree 2026-08-28)
+### The sprite game (verified against the tree 2026-08-31)
 
 The app is a **Phaser sprite game** with four views (`Project.activeView`):
 **Map** (the boot default — `activeView: "map"` in `project-state.ts`) →
@@ -49,8 +49,8 @@ inversion). **This is a decided architecture, not an accident — see
 `TrackScene` or `AudioEngine`.** Selectors:
 `liveTrain`/`songBars`/`carAtBar`/`partForCar`.
 
-- **Workshop** (`WorkshopScene`, base plate `bg-workshop-v2`): three zones — top
-  nav bar / boxcar-interior field / transport bottom bar — with **all static
+- **Workshop** (`WorkshopScene`, base plate `bg-workshop-interior`): three zones — top
+  nav bar / native open-car field / transport bottom bar — with **all static
   chrome spawned data-driven from `src/assets/maps/workshop.json`**. The sequencer
   grid is drawn **in Phaser** (`WORKSHOP_GRID_V2` plus a `WorkshopLane[]` model
   React derives from the active car's layers). It is **not** a reused React
@@ -59,9 +59,11 @@ inversion). **This is a decided architecture, not an accident — see
   satellite tool as a **Phaser container** from `src/game/tool-panels.ts`
   (`record-voicefx` → `VoiceToolPanel`, `voice-keys`, `sound-pads`, `beat-grid`,
   `theremin-xy`, plus `MelodyEditorPanel`); each dispatches into the ACTIVE car,
-  so the lane lands in the grid on close. There is no "stations dock" and no
-  in-scene 4-way car-type picker any more — their EventBus events and reducers
-  survive for a later sprint (see `WorkshopScene.ts`'s header comment).
+  so the lane lands in the grid on close. There is no "stations dock". The
+  four-way picker is now a **START A NEW CAR** control: on an already-empty car
+  it uses `setCarType`; otherwise it creates a fresh empty car. AR-060's four
+  native open-car bodies are exhaustive over `CarType`; the older shared and
+  per-type layered cabin fallbacks were removed on 2026-08-31.
 - **Yard** (`YardScene`): palette cars on the 4 sidings + the assembled train on
   the top line; `animatePickup` crane hook; **Add to Train** dispatches in the
   crane onComplete; per-slot Tarp/Remove; **Send to Track**. Cars face **`E`**
@@ -116,15 +118,21 @@ inversion). **This is a decided architecture, not an accident — see
     cannot be both the coupling and the clock readout; the readout moved off it.
     Do not put it back. `tests/e2e/track-timing.spec.ts` pins all of this, and
     each of its three tests is seed-proven against the model it replaced.
-- **Layout coordinates for static chrome live in the Tiled maps, not in
+- **Layout coordinates for Tiled-backed static chrome live in the maps, not in
   TypeScript.** `src/game/scene-layout.ts` keeps only the dynamic/gameplay
   fixtures (`WORKSHOP_GRID_V2`, `YARD_LAYOUT_V2`, `TRACK_LAYOUT_V2`);
-  `WORKSHOP_LAYOUT_V2` was retired with the AR-016 layered scene.
-- **Raw art references are out of git.** Ticket M3 moved `references/`, the `sprites-v2/`
-  sources and `art_gen/` into a **gitignored `art/` at the repo root**. The old
+  `WORKSHOP_LAYOUT_V2` was retired with the AR-016 layered scene. The default
+  `TrackV3Scene` is the deliberate exception: its moving side-scroller and
+  screen chrome are programmatic presentation details.
+- **Retired raw production references are out of git.** Ticket M3 moved the
+  AR-015 references, `sprites-v2/` sources, and `art_gen/` into a **gitignored
+  `art/` at the repo root**. The eight initial visual explorations remain tracked
+  under `design/references/` as explicitly superseded historical provenance; they
+  are neither current style authority nor build inputs. The old
   loose-sprite packer and `slice_sprites.py` were later retired after the
-  runtime moved to the public atlases. **There are no `*_original.png`
-  files anywhere in the tree. Shipped sprites are `src/assets/sprites/` and
+  runtime moved to the public atlases. **There are no tracked or build-input
+  `*_original.png` files.** Ignored historical originals may remain under
+  `art/`; shipped sprites are `src/assets/sprites/` and
   `public/assets/spritesheets/`. The retired 16-direction train reference batch
   moved to the gitignored `art/` tree on 2026-08-16. On 2026-08-31 the accepted
   40 train cells became the canonical tracked inputs under
@@ -182,22 +190,14 @@ inversion). **This is a decided architecture, not an accident — see
   a stale chip would undo the wrong thing), and a **refused** command offers nothing (the
   funnel checks whether the STORE moved, not what the command intended —
   `removeCar` declines to delete the last car).
-- **The visualizer is LIVE, in both Track implementations.**
-  `src/game/scene-visualizer.ts` is a Phaser jumbotron: a Graphics cabinet in
-  the scene's chip language wrapping a 320×96
-  `CanvasTexture` that the **unchanged** `VisualStyle`s draw into, so the three
-  styles that shipped for the old DOM panel run verbatim. React pushes the
-  analyser in through each scene's `attachVisualizer` port (the scene never
-  reaches for audio). The oval uses `track.json`'s `viz-screen`; the current
-  side-scroller places the same component in its world.
-  Visibility follows a peak-hold envelope on the master output — **not raw RMS,
-  which chases the rests between notes and strobes** — so it fades up on sound,
-  rides through musical rests, and clears after STOP. Tap the screen to cycle
-  styles. `src/visualizer/spectrum.ts` is the one producer of the FFT→bars
-  reduction (log-spaced bands, peak per band; a linear sweep put a kid's whole
-  melody in the first two bars). The old DOM host and `.viz-*` CSS are deleted;
-  `RendererPort` remains the framework-free drawing contract used by the three
-  styles.
+- **The Track visualizer was retired on 2026-08-31.** It had been implemented
+  in both Track scenes through `scene-visualizer.ts`, `attachVisualizer`, and a
+  framework-free renderer contract, with a peak-hold envelope rather than raw
+  RMS. Eric classified the cabinet as product noise during the Track cleanup,
+  so the implementation, public port, styles, map object, tests, and production
+  references were removed together. The audio adapter's private analyser remains
+  for diagnostics. This paragraph retains the intent of the removed path so it
+  is not mistaken for accidental dead code in older commits.
 
 ---
 

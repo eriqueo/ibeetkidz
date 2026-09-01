@@ -1,13 +1,15 @@
 # iBeetKidz baseline
 
-This is the current measured repository baseline. Historical re-baselines and
+This is the measured 2026-08-31 cleanup-release baseline. Historical re-baselines and
 session narratives belong in Git history; durable architecture rationale belongs
 in `design/HISTORY.md`. Do not copy these counts into another living document.
 
 ## Measurement
 
 - Date: 2026-08-31
-- Commit: the commit containing this file
+- Locally measured commit: `ed0eb496f0d9febd922c49dea3ee129199f8ee28`
+- Deployed release: `8fad32f4ba6a0156f6af9f351bdab2ff2dccc1c9`
+  (the intervening commits change only a headed-test timeout and documentation)
 - Node: 24.18.0
 - Package manager: npm with the committed `package-lock.json`
 - Browser: Playwright Chromium 1228
@@ -15,19 +17,21 @@ in `design/HISTORY.md`. Do not copy these counts into another living document.
   work in the primary checkout was excluded
 
 All counts below come from commands run during this re-baseline. They are not
-estimates derived from old documentation.
+estimates derived from old documentation. Gate, build, and payload measurements
+come from `ed0eb49`; the tracked-snapshot byte row explicitly records the final
+`8fad32f` release tree.
 
 ## Required gate
 
-| Command | Result |
-|---|---|
-| `npm run typecheck` | exit 0; no TypeScript diagnostics |
-| `npm test` | 43 files passed; 660 tests passed; 0 skipped |
-| `npm run lint` | exit 0; no ESLint diagnostics |
-| `npm run build` | exit 0; both deploy artifacts generated and checked |
-| `npm run check:no-editor` | exit 0; no editor code in either build |
-| `npm run check:pwa` | exit 0; both artifacts installable and fully precached |
-| `PW_PORT=5174 npm run test:e2e` | 70 passed; 1 opt-in stress test skipped; 0 failed |
+| Command | Result | Duration |
+|---|---|---:|
+| `npm run typecheck` | exit 0; no TypeScript diagnostics | 5.07 s |
+| `npm test` | 43 files passed; 660 tests passed; 0 skipped | 5.20 s |
+| `npm run lint` | exit 0; no ESLint diagnostics | 5.56 s |
+| `npm run build` | exit 0; both deploy artifacts generated and checked | 22.48 s |
+| `npm run check:no-editor` | exit 0; no editor code in either build | 0.22 s |
+| `npm run check:pwa` | exit 0; both artifacts installable and fully precached | 0.23 s |
+| `PW_PORT=5174 npm run test:e2e` | 70 passed; 1 opt-in stress test skipped; 0 failed | 690.96 s |
 
 The full local E2E run has 71 tests. `audio-stress.spec.ts` remains opt-in. Some
 hardware-audio blocks also skip under CI, so do not infer a CI count from the
@@ -54,7 +58,7 @@ assertions compare geometry captured in the same Phaser render frame and use the
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 526 |
-| Tracked snapshot bytes | 81,791,813 |
+| Tracked snapshot bytes (`8fad32f`) | 81,791,813 |
 | Tracked files under `src/` + `tests/` | 408 |
 | `src/assets/` tracked bytes | 39,045,309 |
 | `dist/` | 112 files; 23,145,669 bytes |
@@ -95,6 +99,8 @@ rewritten, so `.git` remains approximately 1.40 GiB.
   bash scripts/check-ui-atlas-fresh.sh
   ```
 
+  Measured duration: 33.92 s.
+
   If Pillow is unavailable in the host Python:
 
   ```sh
@@ -112,6 +118,8 @@ rewritten, so `.git` remains approximately 1.40 GiB.
   python3 scripts/build_train_atlas.py
   npm run check:train-atlas
   ```
+
+  Measured checker duration: 2.94 s.
 
   If Pillow is unavailable in the host Python, use the same pinned Nix shell as
   the UI-atlas check:
@@ -133,4 +141,6 @@ rewritten, so `.git` remains approximately 1.40 GiB.
 - Full `npm audit` reports three high-severity findings in development-only
   transitive tooling; `npm audit --omit=dev` reports zero production findings.
 - No physical iPad/Android install, microphone, offline-update, or audio-device
-  acceptance was performed during this baseline. No deployment was performed.
+  acceptance was performed during this baseline. The local measurement did not
+  deploy; the subsequent exact-SHA GitHub Actions run `33466226635` passed and
+  deployed `8fad32f`, and its public browser journey was exercised.

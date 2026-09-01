@@ -281,6 +281,15 @@ oversample, then pad the canvas — and state the padding fraction, because
    pizzicato fallback described by this report is no longer current.
 3. Workshop LOOP plays the active car through `AudioEngine.playCarLoop`; PLAY
    lays out the train. That distinction remains the shipped behavior.
+4. The UI atlas now has 114 frames across four pages (5,317,982 encoded bytes;
+   237,633,536 decoded RGBA bytes at the 2026-08-31 baseline). Its deterministic
+   producer is `scripts/build_ui_atlas.py`; `scripts/check-ui-atlas-fresh.sh`
+   rebuilds into a temporary directory and compares JSON plus decoded PNG
+   pixels. Release and asset-size workflows run the checker, so the missing
+   producer/gate contract described in §6 was repaired.
+5. The single shared Phaser game described as undone in §6 shipped later on
+   2026-08-01. `design/PERF_SINGLE_PHASER_GAME.md` owns the measured result and
+   failure analysis.
 
 ---
 

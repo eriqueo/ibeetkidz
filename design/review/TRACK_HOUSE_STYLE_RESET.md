@@ -37,11 +37,11 @@ The shipped Yard EDIT plaque demonstrates the actual quality floor: a faceted st
 
 The corrected Track controls must borrow the **material density and layered construction** of the Yard plaque, then follow the Track screen's lower-console composition: card-like framed action illustrations seated into a dark stone-and-brass mechanical bed. They must not copy the Yard control as a blank dark square with a different small glyph.
 
-## Asset audit — confirmed mismatches
+## Pre-reset asset audit — confirmed mismatches
 
-The current RIDE control is a sparse flat icon on an empty dark slab: its locomotive lacks steel, brass, cab/window, wheel, lamp and material detail; its label is disproportionately large and its plain single-line rim does not match either the ornate Track console or the Yard plaque. The current tunnel mouth has the same problem at world scale: it is a symmetric purple block arch filled with unrelated coloured rectangles, rather than a side-on railway opening embedded in grass, rock, timber and the Track's visible rail/ballast world.
+The pre-reset RIDE control was a sparse flat icon on an empty dark slab: its locomotive lacked steel, brass, cab/window, wheel, lamp and material detail; its label was disproportionately large and its plain single-line rim did not match either the ornate Track console or the Yard plaque. The pre-reset tunnel mouth had the same problem at world scale: it was a symmetric purple block arch filled with unrelated coloured rectangles, rather than a side-on railway opening embedded in grass, rock, timber and the Track's visible rail/ballast world.
 
-The same correction is required across the batch. AR-064 tarp art must look like fabric laid over the existing detailed cars, not a geometric blue overlay. AR-065/069 controls must be framed illustrated cards within the Track console. AR-066/067 must read as traversable locations with dense terrain and construction detail. AR-068 must harmonise with the locomotive/car wheel treatment: a heavy shaded steel wheel with a restrained context-appropriate contact shadow, not a simplified emblem.
+That audit required the same correction across the batch: AR-064 tarp art had to look like fabric laid over the existing detailed cars, not a geometric blue overlay; AR-065/069 controls had to become framed illustrated cards; AR-066/067 had to read as traversable locations; and AR-068 had to harmonise with the locomotive/car wheel treatment. The approved results are recorded below.
 
 ## Approved control-card direction
 

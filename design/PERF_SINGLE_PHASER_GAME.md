@@ -5,6 +5,12 @@ second attempt. Measured on this machine, dev server, chromium: a full lap of th
 four spaces went from **~7.8 s to ~1.23 s**, and revisiting a space went from
 ~1.7 s to ~0.2 s. Numbers and method below.
 
+> Current-state note (2026-08-31): this document records the landing-time
+> performance evidence and remains the rationale for the shared-game design. It
+> is not a current asset inventory. The UI atlas is now reproducibly generated
+> and checked; `BASELINE.md` owns its current encoded/decoded size and the current
+> build measurements.
+
 ## The problem, measured
 
 `PhaserGame.tsx` booted a game per mounted view and `destroy(true)`d it on

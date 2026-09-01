@@ -2,7 +2,9 @@
 
 The Map, Workshop, Yard, and oval Track layouts are authored as Tiled JSON in
 `src/assets/maps/`. `TrackV3Scene` is a separate scrolling scene and does not
-use this object-layout adapter.
+use this object-layout adapter. In particular, `src/assets/maps/track.json`
+belongs to the legacy `?oval` route; editing it does not change the default
+side-scrolling Track.
 
 ## Source of truth
 

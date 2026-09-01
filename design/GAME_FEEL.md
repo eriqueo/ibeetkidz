@@ -13,6 +13,11 @@ about.
 Each law below carries the concrete way this project broke it, because the
 failures are more instructive than the rules.
 
+> The laws are current; the failure examples are a dated 2026-08-06 diagnosis,
+> mostly of the optional oval Track. Do not treat their file counts or statements
+> about missing art as a current inventory. `BASELINE.md` and the runtime tree
+> own current facts; the default Track is now the side-scroller.
+
 ---
 
 ## Law 1 — One pixel grid. Scale only by integers.
@@ -28,7 +33,8 @@ art look pasted on, and it is invisible in a screenshot — it only shows in
 motion, which is why it survives review.
 
 **How this project broke it.** Train car art is 128×128 native (`train.png`,
-1024×640, 40 frames = 5 types × 8 directions). It is drawn roughly 280 px wide,
+1024×640, 40 frames = 5 vehicles × 8 directions: one locomotive and four car
+types). It is drawn roughly 280 px wide,
 i.e. **2.19×**, and then `TrackScene.depthScaleAt()` multiplies that by a
 *continuously interpolated float* (`farScale → nearScale`) on every frame. So the
 train's pixels are 2.19× the size of the background's, and they reshuffle
@@ -192,16 +198,21 @@ if the underlying action resolves later.
 These are the structural choices that let the laws be enforced rather than
 merely intended.
 
-**Scenes are data.** Layout, collision, props and triggers are authored in Tiled
-and interpreted generically (`TiledParser` → `TiledSceneAdapter` / `ui-scene.ts`).
-Adding a prop is a map edit, not a plumbing edit.
+**Tiled-backed scenes are data.** Layout, collision, props and triggers are
+authored in Tiled and interpreted generically (`TiledParser` →
+`TiledSceneAdapter` / `ui-scene.ts`). Adding a prop there is a map edit, not a
+plumbing edit. The default `TrackV3Scene` is intentionally programmatic because
+its world scrolls and composes terrain dynamically; keep those coordinates in
+the Phaser presentation layer rather than leaking them into the core.
 
-**Geometry is pure and lives in the core.** Movement, collision, spacing and
-path math belong in `src/core/` as framework-free functions that take state and
-return state. They are then unit-testable with no browser, which is the only way
-these rules get regression coverage — you cannot write a test for "looks good,"
-but you can write one for "final scale is an integer" and "car gaps equal car
-length."
+**Geometry follows its responsibility and stays testable.** Domain movement and
+timing rules belong in `src/core/` as framework-free functions. Presentation-only
+spacing and layout helpers may live framework-free in `src/game/` beside their
+Phaser consumer (`train-chain.ts`, `yard-geometry.ts`); they must not become a
+second domain clock or duplicate a core rule. Keep the math callable without a
+browser wherever practical, because that is how these laws get regression
+coverage — you cannot test "looks good," but you can test "final scale is an
+integer" and "car gaps equal car length."
 
 **The renderer is thin.** Phaser reads core state and draws it: position, depth,
 animation frame. It should hold no rules.

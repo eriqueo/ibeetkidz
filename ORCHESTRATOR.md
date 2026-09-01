@@ -17,11 +17,13 @@ Each source owns a different fact. Do not create a competing copy.
 | Measured historical baselines | `BASELINE.md`; actual commands override stale prose |
 | Art contracts and active art queue | `ART_REQUESTS.md` |
 | Animation and world-integration laws | `design/GAME_FEEL.md` |
-| Current pickup | `/home/eric/900_vaults/brain/_inbox/handoffs/tech__build__ibeetkidz__release_orchestration.md` |
+| Durable brain-side project context | `/home/eric/900_vaults/brain/tech/development/builds/ibeetkidz.md` |
 | Actual state | Git, working tree, tests, CI, deployed artifacts, and observed runtime behavior |
 
-This charter owns orchestration procedure, not current project status. Handoffs are
-snapshots; repository and runtime evidence win when they disagree.
+This charter owns orchestration procedure, not current project status. A handoff is a
+dated scratch snapshot, never a standing source of truth; repository and runtime evidence
+win when it disagrees. Start a new pickup from the durable brain note and current Git/CI
+evidence, not from a superseded handoff.
 
 Rules backed by named tests, scripts, schemas, or workflows are mechanical gates. The
 remaining rules here are **auditable operational guidelines**, not repository-linted
@@ -243,8 +245,8 @@ Release sequence:
    candidate artifacts.
 9. Exercise the affected public journey in a fresh browser through real controls; inspect
    console, page, request, and HTTP failures.
-10. Record the deployed revision and evidence in the living handoff/project notes; retire
-    superseded scratch instead of creating another status log.
+10. Record the deployed revision and evidence in the durable project note; retire
+    superseded handoff scratch instead of creating another status log.
 
 Do not merge, push, deploy, message external parties, spend money, or auto-retry uncertain
 effects without authority for that boundary.
@@ -261,7 +263,8 @@ installed CLI and Project Director skill are syntax authority; do not copy launc
 
 Outside Herdr, or without a ledger, remain read-only toward worker panes and orchestration
 mutations. Do not initialize a competing ledger while another orchestrator may be active.
-Use Git plus the named handoff as temporary pickup evidence and state the limitation.
+Use Git plus the durable project note and any explicitly current dated handoff as
+temporary pickup evidence, and state the limitation.
 
 When initialized under explicit policy, the Project Director ledger is CRITICAL data. Do
 not silently add it to Git or `.gitignore`; establish backup and retention first.
