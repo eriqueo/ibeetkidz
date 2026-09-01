@@ -198,10 +198,11 @@ On delivery:
 
 3. Regenerate committed artifacts from source; never hand-sync an atlas.
 4. Run `bash scripts/check-ui-atlas-fresh.sh` when UI sprites/panels may affect it.
-5. Review the assembled runtime at production scale. An isolated PNG is not acceptance
+5. Run `npm run check:workshop-car-art` when Workshop car layers may affect it.
+6. Review the assembled runtime at production scale. An isolated PNG is not acceptance
    when live controls, text, characters, depth, motion, or adjacent art affect the result.
-6. Require real rotation, tiling, or state-swap evidence when the contract depends on it.
-7. Record Eric's visual verdict separately from mechanical pass/fail.
+7. Require real rotation, tiling, or state-swap evidence when the contract depends on it.
+8. Record Eric's visual verdict separately from mechanical pass/fail.
 
 ## Implementation and verification
 

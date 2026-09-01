@@ -13,7 +13,7 @@
     "check:notices": "node scripts/generate-third-party-notices.mjs --check",
     "check:pwa": "node scripts/check-pwa-build.mjs",
     "check:train-atlas": "bash scripts/check-train-atlas-fresh.sh",
-    "check:workshop-car-art": "python3 scripts/validate_workshop_open_car_art.py",
+    "check:workshop-car-art": "python3 scripts/validate_ar060_reopens.py",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",

@@ -38,6 +38,8 @@ jobs:
         run: bash scripts/check-ui-atlas-fresh.sh
       - name: Train atlas freshness release gate
         run: bash scripts/check-train-atlas-fresh.sh
+      - name: Workshop car geometry release gate
+        run: npm run check:workshop-car-art
       - run: npm run typecheck
       - run: npm run lint
       - run: npm run test
