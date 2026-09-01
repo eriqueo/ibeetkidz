@@ -22,7 +22,7 @@ estimates derived from old documentation.
 | Command | Result |
 |---|---|
 | `npm run typecheck` | exit 0; no TypeScript diagnostics |
-| `npm test` | 45 files passed; 682 tests passed; 0 skipped |
+| `npm test` | 45 files passed; 686 tests passed; 0 skipped |
 | `npm run lint` | exit 0; no ESLint diagnostics |
 | `npm run build` | exit 0; both deploy artifacts generated and checked |
 | `npm run check:no-editor` | exit 0; no editor code in either build |
@@ -53,7 +53,7 @@ passed that test without a retry.
 | Fact | Measured value |
 |---|---:|
 | Tracked files | 535 |
-| Tracked snapshot bytes | 81,833,553 |
+| Tracked snapshot bytes | 81,835,840 |
 | Tracked files under `src/` + `tests/` | 417 |
 | `src/assets/` tracked bytes | 39,045,497 |
 | `dist/` | 112 files; 23,151,557 bytes |

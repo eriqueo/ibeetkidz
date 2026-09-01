@@ -3234,13 +3234,15 @@ the same art.** Read this section before touching cabin art again.
 
 ### What is actually wrong
 
-The Workshop car is assembled from three pieces at runtime: a car BODY png with
+**Historical rationale recorded before AR-060 integration:**
+
+The Workshop car was assembled from three pieces at runtime: a car BODY png with
 a rectangular hole punched through it, a separate INTERIOR png stretched into
 that hole, and a separate foreground RAIL png over the crew's legs. Engineering
-has now fixed everything that layering can fix — registration is exact, the
+had fixed everything that layering could fix — registration was exact, the
 interior is per car type, the framing that made it read as a nested car is
-gone, and the interior even wears the car's livery paint so the palettes match.
-It still reads as pasted on, and it always will, for two reasons that no
+gone, and the interior even wore the car's livery paint so the palettes matched.
+It still read as pasted on, and it always would, for two reasons that no
 interior texture can solve:
 
 1. **The hole is a rectangle; the cars are not.** The same 1612 × 430 box is cut
@@ -3251,7 +3253,7 @@ interior texture can solve:
    perspectived by itself, and its edges meet the body's edges at a hard seam no
    matter how well the two are matched.
 
-Eric, on the current build: *"you see how its still not native to the art behind
+Eric, on the build at the time: *"you see how its still not native to the art behind
 it, it is still superimposed. maybe its just an art rewrite, to make the new art
 that can live load the characters just be built out to be full cars?"* That is
 the right call, and it is what this request asks for.

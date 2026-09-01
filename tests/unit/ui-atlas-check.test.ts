@@ -10,6 +10,8 @@ import { afterEach, describe, expect, it } from "vitest";
 import { PNG, type DecodedPng } from "pngjs";
 // @ts-expect-error -- production checker is intentionally plain Node ESM
 import { compareAtlasDirectories } from "../../scripts/check-ui-atlas-fresh.mjs";
+// @ts-expect-error -- production checker is intentionally plain Node ESM
+import { compareTrainAtlas } from "../../scripts/check-train-atlas-fresh.mjs";
 
 const fixtures: string[] = [];
 
@@ -29,13 +31,39 @@ function fixtureDirs(): { generated: string; committed: string } {
   return { generated, committed };
 }
 
-function png(color: readonly [number, number, number, number], deflateLevel: number): Uint8Array {
+function png(
+  color: readonly [number, number, number, number],
+  deflateLevel: number,
+  width = 1,
+  height = 1,
+): Uint8Array {
+  const data = new Uint8Array(width * height * 4);
+  for (let offset = 0; offset < data.length; offset += 4) {
+    data.set(color, offset);
+  }
   const image: DecodedPng = {
-    width: 1,
-    height: 1,
-    data: new Uint8Array(color),
+    width,
+    height,
+    data,
   };
   return PNG.sync.write(image, { deflateLevel });
+}
+
+function writeTrainAtlas(
+  dir: string,
+  color: readonly [number, number, number, number],
+  options: {
+    readonly deflateLevel?: number;
+    readonly height?: number;
+    readonly json?: string;
+    readonly width?: number;
+  } = {},
+): void {
+  writeFileSync(join(dir, "train.json"), options.json ?? "{\"frames\":{}}\n");
+  writeFileSync(
+    join(dir, "train.png"),
+    png(color, options.deflateLevel ?? 6, options.width, options.height),
+  );
 }
 
 function writeAtlas(
@@ -84,6 +112,46 @@ describe("UI-atlas semantic freshness checker", () => {
 
     expect(() => compareAtlasDirectories(dirs.generated, dirs.committed)).toThrow(
       "ui-atlas page set differs",
+    );
+  });
+});
+
+describe("train-atlas semantic freshness checker", () => {
+  it("accepts different PNG encodings with identical color model and pixels", () => {
+    const dirs = fixtureDirs();
+    writeTrainAtlas(dirs.generated, [10, 20, 30, 255], { deflateLevel: 0 });
+    writeTrainAtlas(dirs.committed, [10, 20, 30, 255], { deflateLevel: 9 });
+
+    expect(() => compareTrainAtlas(dirs.generated, dirs.committed)).not.toThrow();
+  });
+
+  it("rejects a decoded-pixel mismatch", () => {
+    const dirs = fixtureDirs();
+    writeTrainAtlas(dirs.generated, [10, 20, 30, 255]);
+    writeTrainAtlas(dirs.committed, [11, 20, 30, 255]);
+
+    expect(() => compareTrainAtlas(dirs.generated, dirs.committed)).toThrow(
+      "train.png decoded pixels differ",
+    );
+  });
+
+  it("rejects deterministic JSON drift", () => {
+    const dirs = fixtureDirs();
+    writeTrainAtlas(dirs.generated, [10, 20, 30, 255]);
+    writeTrainAtlas(dirs.committed, [10, 20, 30, 255], { json: "{\"frames\":{\"drift\":{}}}\n" });
+
+    expect(() => compareTrainAtlas(dirs.generated, dirs.committed)).toThrow(
+      "train.json differs",
+    );
+  });
+
+  it("rejects image dimensions that differ", () => {
+    const dirs = fixtureDirs();
+    writeTrainAtlas(dirs.generated, [10, 20, 30, 255]);
+    writeTrainAtlas(dirs.committed, [10, 20, 30, 255], { width: 2 });
+
+    expect(() => compareTrainAtlas(dirs.generated, dirs.committed)).toThrow(
+      "train.png dimensions or color model differ",
     );
   });
 });
