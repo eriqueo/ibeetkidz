@@ -486,6 +486,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   const idleNightSignature = patchSignatureOf(idleNight);
   const minVisibleDelta = 1;
   const maxRestorationRatio = 0.1;
+  const toolbarTransitionTimeout = 15_000;
   const idleHeaderToggle = await patchSignature(
     page,
     TRACK_TOOLBAR_TOGGLES.header.x,
@@ -501,7 +502,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
       await patchPixels(page, header.map!.x, header.map!.y),
     );
     return hiddenMapDelta;
-  }).toBeGreaterThan(minVisibleDelta);
+  }, { timeout: toolbarTransitionTimeout }).toBeGreaterThan(minVisibleDelta);
   await expect.poll(() => patchSignature(page, night.x, night.y))
     .toBe(idleNightSignature);
   await expect.poll(() => patchSignature(
@@ -518,7 +519,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
     const restoredMap = patchFromSnapshot(restoredSnapshot, header.map!.x, header.map!.y);
     restoredMapRatio = patchMeanDelta(idleMap, restoredMap) / hiddenMapDelta;
     return restoredMapRatio;
-  }, { timeout: 15_000 }).toBeLessThan(maxRestorationRatio);
+  }, { timeout: toolbarTransitionTimeout }).toBeLessThan(maxRestorationRatio);
 
   await tapDesignPoint(page, TRACK_TOOLBAR_TOGGLES.jobs.x, TRACK_TOOLBAR_TOGGLES.jobs.y);
   let hiddenNightDelta = 0;
@@ -528,7 +529,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
       await patchPixels(page, night.x, night.y),
     );
     return hiddenNightDelta;
-  }).toBeGreaterThan(minVisibleDelta);
+  }, { timeout: toolbarTransitionTimeout }).toBeGreaterThan(minVisibleDelta);
   await expect.poll(() => patchSignature(page, header.map!.x, header.map!.y))
     .toBe(idleMapSignature);
   await capture(page, testInfo, "track-toolbar-02-jobs-hidden");
@@ -539,7 +540,7 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
     const restoredNight = patchFromSnapshot(restoredSnapshot, night.x, night.y);
     restoredNightRatio = patchMeanDelta(idleNight, restoredNight) / hiddenNightDelta;
     return restoredNightRatio;
-  }, { timeout: 15_000 }).toBeLessThan(maxRestorationRatio);
+  }, { timeout: toolbarTransitionTimeout }).toBeLessThan(maxRestorationRatio);
 
   await testInfo.attach("toolbar-restoration-deltas", {
     body: JSON.stringify({
