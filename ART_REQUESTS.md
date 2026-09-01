@@ -3232,7 +3232,7 @@ interior/rail fallback and all of its source art were removed.
 complaint that has now been made three times about three different versions of
 the same art.** Read this section before touching cabin art again.
 
-### What is actually wrong
+### What was actually wrong
 
 **Historical rationale recorded before AR-060 integration:**
 
@@ -3240,7 +3240,7 @@ The Workshop car was assembled from three pieces at runtime: a car BODY png with
 a rectangular hole punched through it, a separate INTERIOR png stretched into
 that hole, and a separate foreground RAIL png over the crew's legs. Engineering
 had fixed everything that layering could fix — registration was exact, the
-interior is per car type, the framing that made it read as a nested car is
+interior was per car type, the framing that made it read as a nested car was
 gone, and the interior even wore the car's livery paint so the palettes matched.
 It still read as pasted on, and it always would, for two reasons that no
 interior texture can solve:

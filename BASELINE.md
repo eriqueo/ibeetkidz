@@ -22,14 +22,14 @@ estimates derived from old documentation.
 | Command | Result |
 |---|---|
 | `npm run typecheck` | exit 0; no TypeScript diagnostics |
-| `npm test` | 45 files passed; 686 tests passed; 0 skipped |
+| `npm test` | 43 files passed; 660 tests passed; 0 skipped |
 | `npm run lint` | exit 0; no ESLint diagnostics |
 | `npm run build` | exit 0; both deploy artifacts generated and checked |
 | `npm run check:no-editor` | exit 0; no editor code in either build |
 | `npm run check:pwa` | exit 0; both artifacts installable and fully precached |
-| `PW_PORT=5174 npm run test:e2e` | 71 passed; 1 opt-in stress test skipped; 0 failed |
+| `PW_PORT=5174 npm run test:e2e` | 70 passed; 1 opt-in stress test skipped; 0 failed |
 
-The full local E2E run has 72 tests. `audio-stress.spec.ts` remains opt-in. Some
+The full local E2E run has 71 tests. `audio-stress.spec.ts` remains opt-in. Some
 hardware-audio blocks also skip under CI, so do not infer a CI count from the
 local result; inspect the actual workflow run.
 
@@ -45,26 +45,27 @@ PW_PORT=5174 PW_PWA_PORT=4273 PW_PWA_UPDATE_PORT=4283 npm run test:e2e
 ```
 
 The audio-output decision point is load-sensitive on this machine. Reproduce an
-isolated failure before attributing it to application code. The final full gate
-passed that test without a retry.
+isolated failure before attributing it to application code. Tunnel transition
+assertions compare geometry captured in the same Phaser render frame and use the
+15-second traversal bound established by the surrounding acceptance tests.
 
 ## Repository and build inventory
 
 | Fact | Measured value |
 |---|---:|
-| Tracked files | 535 |
-| Tracked snapshot bytes | 81,835,840 |
-| Tracked files under `src/` + `tests/` | 417 |
-| `src/assets/` tracked bytes | 39,045,497 |
-| `dist/` | 112 files; 23,151,557 bytes |
-| `dist-gh/` | 112 files; 23,152,477 bytes |
+| Tracked files | 526 |
+| Tracked snapshot bytes | 81,791,635 |
+| Tracked files under `src/` + `tests/` | 408 |
+| `src/assets/` tracked bytes | 39,045,309 |
+| `dist/` | 112 files; 23,145,669 bytes |
+| `dist-gh/` | 112 files; 23,146,589 bytes |
 | UI atlas | 114 frames; 5,317,982 encoded bytes; 237,633,536 decoded RGBA bytes |
 | E2E spec files | 19 |
 
 Each service worker contains 114 manifest entries and 110 unique URLs. Four PWA
 icons are emitted twice by the plugin's manifest/glob paths; this is known
 optional configuration churn, not duplicated payload on disk. Unique precached
-payload is 23,128,988 bytes for `dist/` and 23,129,908 bytes for `dist-gh/`.
+payload is 23,123,100 bytes for `dist/` and 23,124,020 bytes for `dist-gh/`.
 `THIRD_PARTY_NOTICES.txt` is present and precached. No precache URL contains
 `editor`.
 
