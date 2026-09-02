@@ -120,6 +120,18 @@ def redraw() -> None:
         rect(d, (x+5, 1051, x+53, 1064), BRASS_DARK)
         d.line((x+9, 1054, x+48, 1054), fill=BRASS_LIGHT, width=2)
 
+    # A lower recorder routing trunk gives the machine its own physical job:
+    # copper signal conduits and brass plugs live only in the noninteractive
+    # apron below the two engine-owned outcome bays (y > 1036).
+    rect(d, (450, 1044, 1086, 1067), OUTLINE)
+    rect(d, (456, 1048, 1080, 1063), STEEL_DARK, STEEL_LIGHT, 1)
+    for x in (492, 612, 732, 852, 972, 1050):
+        d.rectangle((x-13, 1051, x+13, 1060), fill=BRASS_DARK)
+        d.rectangle((x-9, 1053, x+8, 1057), fill=BRASS)
+        d.point((x-7, 1053), fill=BRASS_LIGHT)
+    cable(d, [(458, 1046), (438, 1046), (438, 1060), (422, 1060)], width=3)
+    cable(d, [(1080, 1046), (1100, 1046), (1100, 1060), (1116, 1060)], width=3)
+
     # Enforce hard alpha around the complete silhouette; the original plate
     # already has authored alpha and this never introduces a soft matte.
     px = im.load()

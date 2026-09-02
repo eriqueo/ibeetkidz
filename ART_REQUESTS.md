@@ -262,7 +262,7 @@ or a coloured full-canvas backdrop.
 
 ### Added 2026-08-31 (rev 9) — release-blocking body and rotation corrections
 
-#### ❌ REOPENED 2026-08-31 — AR-051A · Redraw the My Voice machine body — P0
+#### ✅ DELIVERED 2026-09-02 — AR-051A · Redraw the My Voice machine body — P0
 
 The running `panel-voice.png` body is not accepted. Engineering has now removed
 the legacy arrival modal and put all six tools under one authored
@@ -290,6 +290,12 @@ bay.
 empty take and a recorded take, with the current live controls, shared title
 plaque and DONE button visible. An isolated PNG or an art-only mockup is not
 acceptance.
+
+> **Delivered:** 2026-09-02. The body now carries recorder-specific copper
+> routing hardware and brass jack detail only in permitted service areas. Exact
+> checks confirm the 1536×1152 canvas, hard alpha, transparent corners, and
+> unchanged record, status, FX, and outcome regions. The existing Pages
+> evidence test passes for both empty and recorded live-control assemblies.
 
 #### ❌ REOPENED 2026-08-31 — AR-068 · Wheel must rotate around one radius — P0
 
