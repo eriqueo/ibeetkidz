@@ -52,9 +52,10 @@ export interface UiSpriteDef {
 // simpler and steadier across the idle/pressed pair. Labelled steampunk plaques
 // (map / newcar / sendtoyard / picker tiles) are landscape and pass their own box.
 const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
-/** AR-065's coordinated Track controls share measured alpha registration. */
-const TRACK_CONTROL_CONTENT: ContentBox = [0.082, 0.082, 0.9395, 0.9551];
-const TRACK_PLAQUE_CONTENT: ContentBox = [0.083, 0.082, 0.9277, 0.9473];
+/** AR-069 measured opaque-content registrations: 512px controls = 28,28..491,495;
+ * 1024×683 MAP/SEND plaques = 16,16..1015,679. */
+const TRACK_CONTROL_CONTENT: ContentBox = [0.0546875, 0.0546875, 0.9609375, 0.96875];
+const TRACK_PLAQUE_CONTENT: ContentBox = [0.015625, 0.0234260615, 0.9921875, 0.9956076135];
 
 function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;

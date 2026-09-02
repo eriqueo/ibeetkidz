@@ -297,7 +297,7 @@ acceptance.
 > unchanged record, status, FX, and outcome regions. The existing Pages
 > evidence test passes for both empty and recorded live-control assemblies.
 
-#### ❌ REOPENED 2026-08-31 — AR-068 · Wheel must rotate around one radius — P0
+#### ✅ DELIVERED 2026-09-02 — AR-068 · Wheel must rotate around one radius — P0
 
 The delivered 76 × 76 wheel keeps the requested hub at **(38, 38)** but is not
 radially registered. On the hub centre lines its opaque tyre reaches 35 px
@@ -318,9 +318,14 @@ and 315°, all composited on the same crosshair and railhead, plus a production
 car capture during motion. `scripts/validate_house_style_track.py` now rejects
 unequal cardinal radii in addition to checking the hub and contact row.
 
+> **Delivered:** 2026-09-02. `wheel.png` now has a hard-pixel radius of 37 at all
+> four hub centre-line cardinal directions around (38,38), while its tyre still
+> reaches contact row 75. The eight-angle nearest-neighbour turntable and live
+> production Track traversal capture confirm stable registration.
+
 ### Added 2026-08-30 (rev 8) — integration QA correction
 
-#### ❌ REOPENED 2026-08-30 — AR-069 · Make the unified Track controls readable at their real size — P0
+#### ✅ DELIVERED 2026-09-02 — AR-069 · Make the unified Track controls readable at their real size — P0
 
 **Candidate review (`aaad950`):** keep its MAP, RIDE, CLEAR, LOOP, and TARP
 pixels as the approved direction, but do not mark the request corrected. The
@@ -394,6 +399,15 @@ family and update `TRACK_CONTROL_CONTENT` / `TRACK_PLAQUE_CONTENT` when that
 measurement changes. If any frame clips, any family member retains the flat
 AR-065 slab, or an action/state cannot be named without zooming, the delivery
 is still a candidate.
+
+> **Delivered:** 2026-09-02. All 19 required faces are present: the five
+> approved pairs are restored byte-identically from `aaad950`; STOP, SEND,
+> SLOW, SPEED and FAST now share their alpha registration, dark-plum machine
+> face, brass hardware and large legible action silhouettes. MAP and SEND retain
+> their 1024×683 landscape canvases; the other faces retain 512×512 canvases.
+> `TRACK_CONTROL_CONTENT` and `TRACK_PLAQUE_CONTENT` now use their measured
+> bounds. The literal 70px cream/sky review and full Track production evidence
+> both pass.
 
 #### ✅ DELIVERED 2026-08-30 — AR-064 · TARP needs both an obvious control and a visible covered-car state — P0
 

@@ -17,12 +17,12 @@ ATLAS = ROOT / "public/assets/spritesheets"
 
 discrete = {
     B / "btn-track-tarp-idle.png": (512, 512), B / "btn-track-tarp-seated.png": (512, 512),
-    B / "btn-nav-map-idle.png": (512, 512), B / "btn-nav-map-pressed.png": (512, 512),
+    B / "btn-nav-map-idle.png": (1024, 683), B / "btn-nav-map-pressed.png": (1024, 683),
     B / "btn-track-ride-idle.png": (512, 512), B / "btn-track-ride-pressed.png": (512, 512),
     B / "btn-track-clear-idle.png": (512, 512), B / "btn-track-clear-pressed.png": (512, 512),
     B / "btn-transport-loop-idle.png": (512, 512), B / "btn-transport-loop-pressed.png": (512, 512),
     B / "btn-transport-stop-idle.png": (512, 512), B / "btn-transport-stop-pressed.png": (512, 512),
-    B / "btn-send-song-idle.png": (512, 512), B / "btn-send-song-pressed.png": (512, 512),
+    B / "btn-send-song-idle.png": (1024, 683), B / "btn-send-song-pressed.png": (1024, 683),
     B / "btn-transport-slow-idle.png": (512, 512), B / "btn-transport-slow-pressed.png": (512, 512),
     B / "btn-transport-fast-idle.png": (512, 512), B / "btn-transport-fast-pressed.png": (512, 512),
     B / "track-speed-readout.png": (512, 512),
