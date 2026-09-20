@@ -38,6 +38,18 @@ performance on Eric's affected setup. Measurements live in [BASELINE.md](../BASE
    cars prepare each required sample once. Preparation receives its tempo
    explicitly, so an upcoming edit cannot change the live tempo before commit.
 
+4. **Own melody voices by overlap, not by note count.** A scheduled note takes
+   a pooled voice only when that voice is silent for the note's whole span
+   (length + release tail, doubled for the fastest terrain); otherwise a new
+   one is built. No cap and no stealing: the pool is exactly as large as the
+   densest overlap. Voices are shared across cars that feed the same effect
+   chain, and a Voice Keys sampler — polyphonic by itself — serves its lane
+   alone. Disposable derived audio sits in byte-budgeted LRU caches; an evicted
+   entry is re-rendered on next use and a sounding voice keeps its own buffer.
+   Effect chains are keyed by lane AND knob settings, which fixed duplicated
+   cars playing through each other's chain. `src/adapters/voice-pool.ts` and
+   `byte-lru.ts` hold the rules; measurements are in `BASELINE.md`.
+
 These changes preserve saved-song formats, repeated/muted cars, reverse,
 overlapping notes, pitch bends, rolls, recordings and export. They introduce no
 voice stealing or song truncation. Undo to the sounding plan invalidates pending
@@ -66,7 +78,7 @@ does not justify worse art.
 
 | Slice | Concrete improvement | Acceptance before release |
 |---|---|---|
-| Audio resources | Replace a dedicated instrument per future note with bounded active voice ownership; bound disposable effect/loop caches. | Preserve chords, bends, rolls, reversed samples and tails; define capacity behavior; dense three-car and long-session resource counts plateau. |
+| Audio resources (remainder) | Melody voices and derived caches are done (repair 4). Left: sample players are still one per scheduled hit, and any audible edit while riding rebuilds the whole schedule — both builds counted late events during tempo edits. Replace only the lanes an edit changed. | Same fixture in `BASELINE.md`; late events during edits fall on the same display; an unchanged lane is never interrupted. |
 | Graphics residency | Load tool/scene art when needed, using one generated registry for loading, budgets and offline files. | Keep a small warm set; never evict live textures; navigate all scenes offline after eviction. |
 | Offline and interruptions | Truthful offline-ready status; explicit pause/resume when iPad suspends audio; protect recordings across interrupted capture and updates. | Physical Safari and Home Screen app: cache, disconnect, reopen, record, save, reopen, export, rotate, lock/unlock, update. |
 | Full-car feedback | Use one explicit result for adding recorded sounds. Close a tool only after acceptance. | My Voice, Voice Keys and Magic Pad retain the take and explain “This car is full”; Sound Pads already provides the precedent. |

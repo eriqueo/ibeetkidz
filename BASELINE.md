@@ -69,10 +69,54 @@ imply 172.07 MiB decoded RGBA. Thus this display retains the earlier speed gain
 without the rejected art reduction. Larger/denser displays intentionally render
 more pixels; these measurements do not establish their performance.
 
+## Audio resource measurements
+
+Measured 2026-09-19 on the audio resource slice. Fixture: one car of six lanes —
+16th-note drums, an effected beat-snapped recording (fake mic), piano triads on
+every 16th through an echo chain, bells, a lead with a bend, a roll and a long
+note, and a Voice Keys sampler lane. 120 BPM, headless SwiftShader Chromium.
+`getAudioDiag()` now reports these counts; read them with `?audiodiag`.
+
+| Ride | Scheduled note events | Melody voices before | Melody voices now |
+|---|---:|---:|---:|
+| 1 car | 63 | 63 | 60 |
+| 3 cars, same car repeated | 189 | 189 | 63 |
+| 3 distinct (duplicated) cars | 189 | 189 | 63 |
+
+"Before" is exact by construction: the old scheduler built one instrument per
+note event. A voice is now reused only when it is silent for the next note's
+whole span — held length plus release tail, doubled for the fastest terrain — so
+chords, bends, rolls and tails keep their own voices and nothing is stolen. One
+bar of dense piano barely shares (each tail outlasts the bar); the saving is
+across bars, so the count follows the densest bar instead of the train length.
+Counts held steady through 12 tempo edits, six stop/start cycles and a further
+steady ride (they move with tempo, because spans are in seconds: 118 at 145 BPM
+with one copy's echo changed). In the same four-second window after pressing
+Ride, the three-car fixture fired 149 scheduled events against 60 before: the
+old build spent that time constructing instruments.
+
+Not improved: tempo edits while riding still rebuild the whole schedule, and
+both builds counted late events there (worst 243 ms now, 101 ms before, on a
+software renderer; samples too small to rank). Sample players are still one per
+scheduled hit (60 for this fixture). Neither is measured on Eric's laptop or an
+iPad.
+
+Disposable derived audio — effect bakes, beat-snapped loops, prepared schedule
+buffers, trimmed sampler copies and synthesized drums — now lives in
+least-recently-used caches capped at 24 MiB each (`DERIVED_CACHE_BYTES`, a
+guideline pending device evidence). Twelve tempos took the loop cache to 12
+entries / 4.6 MiB, far under the cap; eviction itself is covered by unit tests,
+not by this fixture. Recordings and built-ins are never in these caches.
+
+The same run exposed a wrong-sound bug: `duplicateCar` copies lanes with their
+ids, and the adapter shared one effect chain per lane id, so a copy with its
+echo/tone/crunch/wobble changed played through the original's chain on a ride.
+The chain key now includes those settings (observed: 1 → 2 effect nodes).
+
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 682 tests in 45 files passed; none skipped.
+- `npm test`: 697 tests in 46 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

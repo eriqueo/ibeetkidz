@@ -38,6 +38,27 @@ import {
   type ThereminWave,
 } from "../ports/sound-port.ts";
 import { encodeWav } from "./wav.ts";
+import { ByteLru } from "./byte-lru.ts";
+import { VoicePool } from "./voice-pool.ts";
+
+/** Decoded-audio budget for EACH disposable derived cache (see `ByteLru` for
+ *  the at-cap behavior). A 30 s mono take is ~5.5 MiB decoded, so this holds
+ *  several full-length effected takes per cache; iPad Safari is the device
+ *  this number protects. Guideline pending device evidence. */
+const DERIVED_CACHE_BYTES = 24 * 1024 * 1024;
+
+const audioBufferBytes = (b: { length: number; numberOfChannels: number }): number =>
+  b.length * b.numberOfChannels * 4;
+
+/** A pooled melody voice is reused only when it is silent for the whole of the
+ *  next note. Note lengths are fixed in SECONDS at schedule time, but a terrain
+ *  can squeeze the transport up to this factor faster — so spans are widened by
+ *  it, and "tiny train" can never retrigger a voice through its own tail.
+ *  Derived from the terrain clamp, the one producer of that ceiling. */
+const MAX_TEMPO_SQUEEZE = clampTempoScale(Number.MAX_VALUE);
+
+/** Envelope-settle margin added to a voice's release before it may be reused. */
+const VOICE_TAIL_MARGIN_SEC = 0.05;
 
 /** Longest a single hold-to-record take may run, in seconds — the ONE producer
  *  of that fact. Recording is hold-to-record, so a finger resting on the button
@@ -226,7 +247,7 @@ export class ToneSoundPort implements SoundPort {
   /** Encoded recording bytes, kept so the app can persist them. */
   private readonly recordingBlobs = new Map<BufferId, Blob>();
   /** Baked effect-chain results, keyed by source+chain signature. */
-  private readonly bakedCache = new Map<string, AudioBuffer>();
+  private readonly bakedCache = new ByteLru<string, AudioBuffer>(DERIVED_CACHE_BYTES, audioBufferBytes);
   /** In-flight bakes by the same key — a twin request (the same clip riding
    *  two train slots) awaits the one render instead of launching a double. */
   private readonly pendingBakes = new Map<string, Promise<AudioBuffer>>();
@@ -237,16 +258,37 @@ export class ToneSoundPort implements SoundPort {
    *  each render bounded by MAX_RECORD_SEC plus the effect tail. */
   private bakeQueue: Promise<unknown> = Promise.resolve();
   /** Beat-snapped (looped/trimmed) buffers, keyed by source+chain+beats@bpm. */
-  private readonly loopCache = new Map<string, AudioBuffer>();
+  private readonly loopCache = new ByteLru<string, AudioBuffer>(DERIVED_CACHE_BYTES, audioBufferBytes);
   /** Fully resolved schedule buffers. Unlike the component caches above, this
    *  map is also the synchronous hand-off between prepareClip and scheduleStep:
    *  once preparation resolves, scheduleStep must register before Transport
-   *  starts rather than crossing another promise turn. */
-  private readonly preparedClips = new Map<string, AudioBuffer>();
+   *  starts rather than crossing another promise turn. Its values are the SAME
+   *  objects the caches above (or `buffers`) hold, so it is bounded too — or it
+   *  would pin every buffer they evict. `prepareClip` touches an entry it
+   *  finds, so the plan being scheduled is always the most-recent set; a plan
+   *  larger than the budget falls back to scheduleStep's async resolve. */
+  private readonly preparedClips = new ByteLru<string, AudioBuffer>(DERIVED_CACHE_BYTES, audioBufferBytes);
   /** Silence-trimmed copies of recordings, keyed by buffer id, used as the
    *  Voice Keys sampler one-shot so a note speaks immediately (a raw take has
    *  dead air before the voice starts — a short note would otherwise be silent). */
-  private readonly voiceSampleCache = new Map<BufferId, Tone.ToneAudioBuffer>();
+  private readonly voiceSampleCache = new ByteLru<BufferId, Tone.ToneAudioBuffer>(
+    DERIVED_CACHE_BYTES,
+    audioBufferBytes,
+  );
+  /** Synthesized built-in drums by kind+ring+pitch bucket. Kept OUT of
+   *  `buffers` (originals, never evicted): dragging length/tune mints a new
+   *  bucket per stop, which grew without bound there. */
+  private readonly drumCache = new ByteLru<string, AudioBuffer>(DERIVED_CACHE_BYTES, audioBufferBytes);
+
+  private cacheDiag(): ReturnType<ToneSoundPort["getAudioDiag"]>["caches"] {
+    return {
+      baked: this.bakedCache.stats,
+      loop: this.loopCache.stats,
+      prepared: this.preparedClips.stats,
+      voiceSample: this.voiceSampleCache.stats,
+      drum: this.drumCache.stats,
+    };
+  }
   // Mic capture: the RAW getUserMedia stream + a MediaRecorder on it. The mic
   // deliberately does NOT route through WebAudio: on iOS, opening the mic
   // flips the audio session to play-and-record, which can change the hardware
@@ -337,12 +379,30 @@ export class ToneSoundPort implements SoundPort {
   // Live one-shot + scheduled players, tracked for cleanup.
   private readonly liveVoices = new Set<Tone.Player>();
   private readonly scheduledVoices: Tone.Player[] = [];
-  /** Per-melody-lane synth voices, scheduled on the transport. */
+  /** Melody voices scheduled on the transport — every one the pool built. */
   private readonly scheduledSynths: MelodyVoice[] = [];
+  /** Hands a scheduled note a voice that is silent for its whole span, else
+   *  builds one: sized by the music's real overlap, never by note count, and
+   *  never stealing. Reset with `clearScheduled`. */
+  private readonly melodyPool = new VoicePool<MelodyVoice>();
+  private scheduledNoteEvents = 0;
+  /** Stable identity for a destination node, for pool keys. */
+  private readonly nodeIds = new WeakMap<object, number>();
+  private nodeSeq = 0;
+
+  private nodeId(node: object): number {
+    let id = this.nodeIds.get(node);
+    if (id === undefined) {
+      id = ++this.nodeSeq;
+      this.nodeIds.set(node, id);
+    }
+    return id;
+  }
   /** Per-lane echo sends (FeedbackDelay nodes), torn down with the transport. */
   private readonly scheduledFx: Tone.ToneAudioNode[] = [];
-  /** One live fx chain per lane (keyed by `StepOptions.laneKey`), shared by all
-   *  of that lane's scheduled cells. Cleared with `clearScheduled`. */
+  /** One live fx chain per lane AND knob setting (see `scheduledDestination`
+   *  for why the lane key alone is not enough), shared by all of that lane's
+   *  scheduled cells. Cleared with `clearScheduled`. */
   private readonly laneChains = new Map<string, Tone.ToneAudioNode>();
 
   // BACKWARDS mode (the Track's tape-reverse switch): every SCHEDULED sample
@@ -448,6 +508,15 @@ export class ToneSoundPort implements SoundPort {
     schedWorstLateMs: number;
     /** Tone's live scheduling horizon — 0.1 until the adaptive ratchet fires. */
     lookAheadSec: number;
+    /** Resource ownership right now: scheduled note events vs the melody
+     *  voices built to serve them, scheduled sample players, lane fx nodes,
+     *  and the entry count + decoded bytes of each disposable derived cache.
+     *  A healthy long session plateaus; a leak climbs. */
+    noteEvents: number;
+    melodyVoices: number;
+    samplePlayers: number;
+    fxNodes: number;
+    caches: Record<"baked" | "loop" | "prepared" | "voiceSample" | "drum", { entries: number; bytes: number }>;
   } {
     let masterPeak = -1;
     if (this.analyser) {
@@ -472,6 +541,11 @@ export class ToneSoundPort implements SoundPort {
       schedLate20: this.schedStats.late20,
       schedWorstLateMs: this.schedStats.worstMs,
       lookAheadSec: this.liveCtx.lookAhead,
+      noteEvents: this.scheduledNoteEvents,
+      melodyVoices: this.scheduledSynths.length,
+      samplePlayers: this.scheduledVoices.length,
+      fxNodes: this.scheduledFx.length,
+      caches: this.cacheDiag(),
     };
   }
 
@@ -930,6 +1004,27 @@ export class ToneSoundPort implements SoundPort {
     return sample ? sample.duration : null;
   }
 
+  /** Release tails by instrument — a fact of the recipe, read once off a probe
+   *  voice so `makeMelodyVoice` stays the one producer of envelope numbers.
+   *  Bounded by the instrument shelf plus one entry per voice recording. */
+  private readonly melodyTails = new Map<InstrumentId, number>();
+
+  /** Seconds a monophonic voice keeps sounding after its note is released. */
+  private melodyTailSec(instrument: InstrumentId): number {
+    let tail = this.melodyTails.get(instrument);
+    if (tail === undefined) {
+      const probe = this.buildMelodyVoice(instrument);
+      const release =
+        probe instanceof Tone.Sampler ? 0
+        : probe instanceof Tone.PluckSynth ? probe.release
+        : probe.envelope.release;
+      tail = probe.toSeconds(release) + VOICE_TAIL_MARGIN_SEC;
+      probe.dispose();
+      this.melodyTails.set(instrument, tail);
+    }
+    return tail;
+  }
+
   previewNote(noteName: string, instrument: InstrumentId, volume = 1): void {
     // Audition with the lane's real instrument so the tap matches Play.
     const synth = this.buildMelodyVoice(instrument).toDestination();
@@ -976,7 +1071,14 @@ export class ToneSoundPort implements SoundPort {
    *  per cell, a busy car with wobble/crunch up carried 30+ chorus/bitcrush
    *  nodes and the audio thread fell to ~0.6x realtime — heard as skipping. */
   private scheduledDestination(opts: StepOptions): Tone.ToneAudioNode {
-    const cached = opts.laneKey ? this.laneChains.get(opts.laneKey) : undefined;
+    // The lane key alone is NOT unique on a ride: `duplicateCar` copies lanes
+    // with their ids, and knob edits land on one car only — so a copy with its
+    // echo turned up used to play through the original's chain. The settings
+    // that shape the chain are part of its identity.
+    const chainKey = opts.laneKey
+      ? [opts.laneKey, opts.echo, opts.tone, opts.crunch ?? 0, opts.wobble ?? 0].join("|")
+      : undefined;
+    const cached = chainKey ? this.laneChains.get(chainKey) : undefined;
     if (cached) return cached;
     // Build back-to-front so each stage targets the next; default = master out.
     let head: Tone.ToneAudioNode = this.liveDestination;
@@ -1028,7 +1130,7 @@ export class ToneSoundPort implements SoundPort {
       head = chorus;
     }
 
-    if (opts.laneKey) this.laneChains.set(opts.laneKey, head);
+    if (chainKey) this.laneChains.set(chainKey, head);
     return head;
   }
 
@@ -1120,10 +1222,10 @@ export class ToneSoundPort implements SoundPort {
     const durBucket = Math.round(durationSec * 20) / 20; // 0.05s steps
     const pitchBucket = Math.max(-24, Math.min(24, Math.round(pitch)));
     const key = `drum:${kind}:${durBucket}:${pitchBucket}`;
-    let buf = this.buffers.get(key);
+    let buf = this.drumCache.get(key);
     if (!buf) {
       buf = this.synthDrum(kind, { durationSec: durBucket, pitch: pitchBucket });
-      this.buffers.set(key, buf);
+      this.drumCache.set(key, buf);
     }
     return buf;
   }
@@ -1140,26 +1242,53 @@ export class ToneSoundPort implements SoundPort {
     cycleBars = 1,
     barOffset = 0,
   ): void {
-    const synth = this.buildMelodyVoice(instrument).connect(
-      this.scheduledDestination(opts),
-    );
-    synth.volume.value = Tone.gainToDb(Math.max(0.0001, opts.volume));
-    this.scheduledSynths.push(synth);
-    const interval = `${Math.max(1, cycleBars)}m`;
+    const cycle = Math.max(1, cycleBars);
+    const interval = `${cycle}m`;
     const offset =
       this.barSec() * barOffset + this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
     const hasBend = !!bend && bend.length > 0;
     // A sampled voice rings for at least its whole recorded length, so a short
     // note doesn't chop the "aaah" off; a longer note still stretches past it.
-    const voiceDur = synth instanceof Tone.Sampler
-      ? this.voiceSampleDuration(instrument)
-      : null;
+    // Non-null exactly when `buildMelodyVoice` returns the Sampler.
+    const voiceDur = this.voiceSampleDuration(instrument);
+    const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
+    const dur = voiceDur !== null ? Math.max(noteDur, Math.min(4, voiceDur)) : noteDur;
+    // How long this note occupies a voice. A Sampler is polyphonic by itself
+    // (a source per trigger), so one serves its whole lane: it needs nothing.
+    // Every other voice is monophonic — it is busy for the sounding span plus
+    // its release tail, widened by the fastest terrain (see MAX_TEMPO_SQUEEZE).
+    const soundingSec = roll > 1 ? Math.max(stepDur, dur) : dur;
+    const needSec =
+      voiceDur !== null
+        ? 0
+        : (soundingSec + this.melodyTailSec(instrument)) * MAX_TEMPO_SQUEEZE;
+    // Voices are interchangeable when they are the same instrument feeding the
+    // same node — so lanes of DIFFERENT cars (which sound in different bars)
+    // share, which is where a three-car ride gets its saving. A monophonic
+    // voice is silent when it is handed over, so each note sets its own lane
+    // level below; a Sampler's notes overlap, so its level stays in the key.
+    const destination = this.scheduledDestination(opts);
+    const volumeDb = Tone.gainToDb(Math.max(0.0001, opts.volume));
+    const poolKey = [
+      this.nodeId(destination), instrument, cycle, voiceDur !== null ? volumeDb : "",
+    ].join("|");
+    const synth = this.melodyPool.acquire(
+      poolKey,
+      { startSec: offset, needSec },
+      this.barSec() * cycle,
+      () => {
+        const built = this.buildMelodyVoice(instrument).connect(destination);
+        built.volume.value = volumeDb;
+        this.scheduledSynths.push(built);
+        return built;
+      },
+    );
+    this.scheduledNoteEvents++;
     this.liveTransport.scheduleRepeat(
       (time) => {
         this.recordSchedTiming(time);
-        const noteDur = Math.max(0.05, lengthSteps * stepDur * 0.92);
-        const dur = voiceDur !== null ? Math.max(noteDur, Math.min(4, voiceDur)) : noteDur;
+        if (voiceDur === null) synth.volume.setValueAtTime(volumeDb, time);
         if (hasBend && "frequency" in synth) {
           // Swoop: hold one voice and ramp its pitch through the bend points.
           // triggerAttack anchors the start frequency; each point is an
@@ -1591,6 +1720,8 @@ export class ToneSoundPort implements SoundPort {
     this.scheduledVoices.length = 0;
     for (const s of this.scheduledSynths) s.dispose();
     this.scheduledSynths.length = 0;
+    this.melodyPool.clear();
+    this.scheduledNoteEvents = 0;
     for (const fx of this.scheduledFx) fx.dispose();
     this.scheduledFx.length = 0;
     this.laneChains.clear();
