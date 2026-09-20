@@ -113,10 +113,36 @@ ids, and the adapter shared one effect chain per lane id, so a copy with its
 echo/tone/crunch/wobble changed played through the original's chain on a ride.
 The chain key now includes those settings (observed: 1 → 2 effect nodes).
 
+## Field evidence: the reported lag (2026-09-20)
+
+`?perf` mounts a recorder (frame pacing, Phaser update/render split, long
+tasks, audio scheduler counters; COPY/SAVE, no network). Eric's report from the
+affected laptop — Chrome 150, Intel Arc (MTL), 2532×1425 canvas at density 1, a
+three-car song with 27 layers and 27 recordings:
+
+- Steady state was healthy: 165 fps, 6.1 ms frames, update 0.2 ms, render
+  0.4 ms, zero late audio. **Rendering was not the lag.**
+- Every spike was a main-thread long task of 156–238 ms landing on a schedule
+  rebuild (Ride, mute/tarp, audible edit), with 4 late audio events behind them
+  and the lookahead already ratcheted to 0.2 s. A CPU profile put the time in
+  Tone node construction: each rebuild disposed and rebuilt ~90 instruments and
+  players. They are now silenced, disconnected and banked (96 voices / 128
+  players; past that a cleared one is disposed). Same dense three-car fixture,
+  eight reschedules, SwiftShader: **one 58 ms long task, against nine of
+  113–168 ms**. Not yet re-measured on Eric's laptop.
+- Entering the Track cost one 1.84 s long task: `texImage2D` for the three
+  lossless UI atlas pages, once per session at first use (1.07 s locally). It
+  cannot be removed without shrinking the art. `MapScene.warmUiAtlas` moves it
+  to the Map, in the background; locally the first Track entry dropped from
+  1046+239 ms of long tasks to 248 ms. The upload still blocks ~1 s on the Map.
+- The same session exposed a stale-install fault: fixed-name files under
+  `assets/` were precached with no revision, so installed apps never received a
+  repacked atlas and drew fallback rectangles. Fixed and enforced in `check:pwa`.
+
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 697 tests in 46 files passed; none skipped.
+- `npm test`: 700 tests in 46 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

@@ -205,11 +205,14 @@ async function driveToTrack(page: Page, url: string, obs: Observation): Promise<
   // the navigation itself. Re-tap ONLY while nothing has happened — that way a
   // lost first tap is recovered without ever double-tapping into the next
   // scene's controls.
+  // The Map's own atlas warm-up can still be in flight here; only the Track's
+  // sprite sheets count as "the tap landed".
+  const navRequests = (): string[] => sceneRequests().filter((u) => !/\/ui-atlas/.test(u));
   await expect
     .poll(
       async () => {
-        if (sceneRequests().length === 0) await tapMapLandmark(page, "track");
-        return sceneRequests().length;
+        if (navRequests().length === 0) await tapMapLandmark(page, "track");
+        return navRequests().length;
       },
       {
         timeout: 15_000,
@@ -220,18 +223,23 @@ async function driveToTrack(page: Page, url: string, obs: Observation): Promise<
     )
     .toBeGreaterThan(0);
 
+  // The chrome multiatlas is warmed on the Map now (MapScene.warmUiAtlas), so
+  // its pages can be requested BEFORE the tap. They are still fetched through
+  // the same `loadUiSprites` path arguments — which is what this spec covers —
+  // so they are judged over the whole run; the Track's own sprite sheets
+  // (above) are what prove the tap navigated.
+  const uiAtlasRequests = (): string[] =>
+    obs.requests.filter((u) => /\/ui-atlas(?:-\d+)?\.(?:json|png)$/.test(new URL(u).pathname));
   await expect
-    .poll(() => sceneRequests().some((u) => /\/ui-atlas-\d+\.png$/.test(u)), {
+    .poll(() => uiAtlasRequests().some((u) => /\/ui-atlas-\d+\.png$/.test(u)), {
       timeout: 20_000,
-      message:
-        "TrackScene's multiatlas pages never appeared — the tap did not reach the Track, " +
-        "so this run proves nothing.",
+      message: "the chrome multiatlas pages were never requested, on the Map or the Track.",
     })
     .toBe(true);
 
   // Let anything the scene asks for after the atlases settle before judging.
   await page.waitForTimeout(1_500);
-  return sceneRequests();
+  return [...new Set([...sceneRequests(), ...uiAtlasRequests()])];
 }
 
 /**

@@ -10,6 +10,7 @@ import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { spawnTiledScene, relayoutSpawns } from "../TiledSceneAdapter.ts";
 import mapMap from "../../assets/maps/map.json";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
+import { UI_ATLAS_KEY, loadUiSprites } from "../ui-sprites.ts";
 
 export class MapScene extends BackgroundScene {
   static readonly KEY = "MapScene";
@@ -53,6 +54,23 @@ export class MapScene extends BackgroundScene {
     }
     this.undoToast = attachUndoToast(this);
     this.announceReady();
+    this.warmUiAtlas();
+  }
+
+  /** Fetch and upload the shared UI atlas while the kid is looking at the Map.
+   *
+   *  Its three lossless pages take the GPU 1–2 s to accept, in one blocking
+   *  task, the first time any scene needs them — measured at 1.8 s on Eric's
+   *  laptop, landing on the first Workshop/Track entry, i.e. right when a kid
+   *  presses Ride. The cost cannot be removed without shrinking the art, so it
+   *  is moved to the one screen where nothing is animating or sounding. The
+   *  Map itself never waits for it, and leaving early is safe: a scene
+   *  shutdown resets this loader, and the next scene's guarded preload simply
+   *  loads the atlas itself, as it always did. */
+  private warmUiAtlas(): void {
+    if (this.textures.exists(UI_ATLAS_KEY)) return;
+    loadUiSprites(this);
+    this.load.start();
   }
 
   get undoOffer(): { offering: boolean; lost: string } {
