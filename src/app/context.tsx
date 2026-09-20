@@ -30,6 +30,7 @@ import { EventBus } from "../game/EventBus.ts";
 import type { EventMap } from "../game/EventBus.ts";
 import { STATION_VOICE } from "../game/instrument-station.ts";
 import type Phaser from "phaser";
+import { attachPerfProbe } from "./perf-probe.ts";
 
 // ── Singletons (one per page load) ──────────────────────────────────────────
 const toneSound = new ToneSoundPort();
@@ -154,6 +155,27 @@ if (
 ) {
   window.__ibeetkidz_audio__ = { diag: () => toneSound.getAudioDiag() };
 }
+
+// `?perf`: the field recorder for lag that only happens on a real device. A
+// no-op without the flag — see `perf-probe.ts`.
+attachPerfProbe({
+  audioDiag: () => toneSound.getAudioDiag(),
+  songShape: () => {
+    const p = getProject();
+    const layers = p.parts.flatMap((part) => part.layers);
+    return {
+      tempoBpm: p.tempoBpm,
+      trainCars: p.train.length,
+      parts: p.parts.length,
+      layers: layers.length,
+      melodyLayers: layers.filter((l) => l.kind === "melody").length,
+      clips: Object.keys(p.clips).length,
+      recordings: Object.values(p.clips).filter((c) => c.source.kind === "recording").length,
+      effectedClips: Object.values(p.clips).filter((c) => c.effects.length > 0).length,
+    };
+  },
+  onScene: (listener) => { EventBus.on("current-scene-ready", listener); },
+});
 
 // Dispatch wrapper: mutate state, then reconcile the transport if a beat is
 // playing so edits are heard immediately (mirrors the old main.ts behavior).
