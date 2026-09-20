@@ -75,7 +75,8 @@ test("the cars ride coupled, a car-length apart and not a lap-fraction apart", a
   const shots = await page.evaluate(async (probes: number[]) => {
     const s: any = (window as any).__ibeetkidz_test__.getScene();
     const frame = (): Promise<void> => new Promise((r) => requestAnimationFrame(() => r()));
-    // Parked: no bounce inflating anyone's width while we measure geometry.
+    // Parking stops travel, but changing the sounding bar still triggers a hop.
+    // Measure resting geometry; the next test checks the hop itself.
     s.setMoving(false);
     const widthOf = (tok: any): number => tok.getData("body").width * tok.scaleX;
     const out: any[] = [];
@@ -83,6 +84,11 @@ test("the cars ride coupled, a car-length apart and not a lap-fraction apart", a
       s.setProgress(t);
       await frame();
       await frame();
+      const deadline = performance.now() + 3000;
+      while (s.carTokens.some((c: any) => c.getData("hop") > 0)) {
+        if (performance.now() > deadline) throw new Error(`car hop did not settle at t=${t}`);
+        await frame();
+      }
       const sig = s.path.getPoint(0.25); // parkAngle — the crossing signal
       out.push({
         t,

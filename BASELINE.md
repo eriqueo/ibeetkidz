@@ -46,6 +46,13 @@ late audio events in eight-second samples. That fixture did not reproduce the
 reported laptop symptom. Do not compare its hardware numbers directly to the
 local software renderer.
 
+With the final artwork loaded, three repeated drum cars on the same software
+renderer averaged **27.50 and 27.57 ms** per frame, versus **113.2 and 121.4 ms**
+before repair. Resident texture dimensions imply 112.48 MiB of decoded RGBA.
+Both five-second samples had audible master output and no counted late audio
+events. These short stress samples establish a graphics improvement, not proof
+that every song or physical device is smooth.
+
 ## Verification
 
 - `npm run typecheck`: passed.
@@ -62,6 +69,10 @@ local software renderer.
   artifact-path failures in the external test harness. After correcting that
   harness path, both artifact checks passed on rerun. All 72 enabled journeys
   passed, including production Track, recording, offline and staged updates.
+- The hosted run exposed a timing assumption in the oval coupling test. It read
+  positions two frames after changing bars, while a car could still be hopping.
+  Local reproduction failed twice in three runs. The test now waits for the
+  actual hop to end, with a deadline; all spacing thresholds remain unchanged.
 
 | Built artifact | Files | Bytes |
 |---|---:|---:|
