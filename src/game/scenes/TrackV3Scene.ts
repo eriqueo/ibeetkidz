@@ -58,7 +58,7 @@ import {
 import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
-import { UI_ATLAS_KEY, UI_SPRITES, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
+import { UI_ATLAS_KEY, UI_SPRITES, TRACK_SPEED_WINDOW, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import {
   TRACK_HEADER,
   TRACK_JOB_BAR,
@@ -767,8 +767,7 @@ export class TrackV3Scene extends Phaser.Scene {
     );
   }
 
-  /** AR-065's empty LCD frame, with the live label/value kept inside the
-   *  artist-supplied native display window (122,168,268×128 on 512²). */
+  /** Keep the live label/value inside the accepted source's empty display. */
   private placeSpeedReadout(rect: PlacedRect): void {
     const def = UI_SPRITES["track-speed-readout"];
     const hasArt = Boolean(
@@ -787,10 +786,13 @@ export class TrackV3Scene extends Phaser.Scene {
       placeUiSprite(face, def, rect);
       const left = face.x - (face.width * face.scaleX) / 2;
       const top = face.y - (face.height * face.scaleY) / 2;
-      // The artist's window is measured on a 512px source, independently of
-      // the generated atlas resolution and trim rectangle.
-      const window = { x: face.width * 122 / 512, y: face.height * 168 / 512,
-        width: face.width * 268 / 512, height: face.height * 128 / 512 };
+      // Normalized source coordinates remain valid after lossless atlas trim.
+      const window = {
+        x: face.width * TRACK_SPEED_WINDOW.x,
+        y: face.height * TRACK_SPEED_WINDOW.y,
+        width: face.width * TRACK_SPEED_WINDOW.width,
+        height: face.height * TRACK_SPEED_WINDOW.height,
+      };
       cx = left + (window.x + window.width / 2) * face.scaleX;
       labelY = top + (window.y + window.height * 0.28) * face.scaleY;
       valueY = top + (window.y + window.height * 0.72) * face.scaleY;

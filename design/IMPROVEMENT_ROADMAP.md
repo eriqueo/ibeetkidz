@@ -16,15 +16,21 @@ performance on Eric's affected setup. Measurements live in [BASELINE.md](../BASE
 ## Implemented resource repairs
 
 1. **Separate design coordinates from drawing pixels.** Layout stays in the
-   authored coordinate system. WebGL uses a smaller fixed buffer, and each scene
-   projects into it through its camera. CSS fitting, hit areas and drag distances
+   authored coordinate system. WebGL matches the displayed physical pixels up to
+   the original 2560×1440 resolution, and each scene projects into that buffer
+   through its camera. CSS fitting, hit areas and drag distances
    remain independent of the buffer. Manual Magic Pad and knob input now uses
    camera coordinates. The Canvas renderer retains its original buffer.
-2. **Generate runtime art within a budget.** Preserve source artwork and labelled
-   controls. Reduce larger panels/characters, trim transparent margins using
-   Phaser atlas metadata, and crop unused page space. The generator rejects
+2. **Pack art without reducing its quality.** Restore all 19 rich control faces
+   from `c39e14e`. Keep every source at full resolution and full color. Trim
+   transparent margins using Phaser atlas metadata and crop unused page space.
+   This uses 135.55 MiB of decoded UI pages versus the original 231.97 MiB.
+   The generator rejects
    oversized output before replacing files. Policy lives in
    `scripts/ui-atlas-policy.json`; unit and release freshness checks enforce it.
+   `src/assets/track-controls.json` owns accepted source hashes, registration
+   boxes and the SPEED window. Release checks reject substituted controls and
+   any loss of visible pixels after the existing background-wash removal.
 3. **Keep unchanged music running.** Compile the existing notes, effects and bar
    order into one typed playback plan. Preparation, comparison and scheduling
    consume that plan. Cosmetic edits skip graph rebuilding; no-op commands skip
@@ -46,6 +52,17 @@ repair with its generated assets if a regression appears; no data migration is
 needed.
 
 ## Next implementation slices
+
+The visual regression had two separate causes. `0b747c8` replaced rich controls
+with an older, sparse family and incorrectly called that family approved.
+`40f08c4` then reduced larger atlas frames and fixed every display at 720p.
+Earlier page-wide palette quantization also changed colors when packing changed.
+Passing behavior tests did not establish visual fidelity. The repair therefore
+protects accepted source identity, generated pixel fidelity and display density
+separately. Future performance work must preserve these checks. Guidelines:
+change one cost at a time, compare the same song and display, and inspect actual
+Workshop and Track screens before release. A lower measured memory count alone
+does not justify worse art.
 
 | Slice | Concrete improvement | Acceptance before release |
 |---|---|---|

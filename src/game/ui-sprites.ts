@@ -20,6 +20,7 @@
 // files, not a glob of the whole directory — see the note in assets.ts.
 import type Phaser from "phaser";
 import { publicAssetUrl } from "./assets.ts";
+import trackControls from "../assets/track-controls.json";
 
 // All chrome art ships in ONE packed multiatlas (public/assets/spritesheets/
 // ui-atlas.*, rebuilt by scripts/build_ui_atlas.py). Frame names equal the
@@ -50,12 +51,23 @@ export interface UiSpriteDef {
 // Icon key-caps are near-square with a uniform ~13% transparent margin; the
 // measured per-file boxes are noisy (stray glow pixels), so a shared box is both
 // simpler and steadier across the idle/pressed pair. Labelled steampunk plaques
-// (map / newcar / sendtoyard / picker tiles) are landscape and pass their own box.
+// (newcar / sendtoyard / picker tiles) are landscape and pass their own box.
 const BUTTON_CONTENT: ContentBox = [0.13, 0.13, 0.87, 0.87];
-/** AR-069 measured opaque-content registrations: 512px controls = 28,28..491,495;
- * 1024×683 MAP/SEND plaques = 16,16..1015,679. */
-const TRACK_CONTROL_CONTENT: ContentBox = [0.0546875, 0.0546875, 0.9609375, 0.96875];
-const TRACK_PLAQUE_CONTENT: ContentBox = [0.015625, 0.0234260615, 0.9921875, 0.9956076135];
+/** Accepted rich artwork, exact source identity and measured registrations live
+ * together. The build checks each state's alpha bounds against this manifest. */
+function trackControlDef(id: keyof typeof trackControls.controls): UiSpriteDef {
+  const control = trackControls.controls[id];
+  const states = Object.fromEntries(Object.entries(control.states).map(([state, source]) => [state, source.frame]));
+  return {
+    states,
+    base: states[control.base]!,
+    content: control.content as unknown as ContentBox,
+    stretch: false,
+  };
+}
+
+/** Normalized empty display area, measured on the accepted SPEED source. */
+export const TRACK_SPEED_WINDOW = trackControls.speedWindow;
 
 function buttonDef(id: string, opts: { pressed?: boolean; content?: ContentBox } = {}): UiSpriteDef {
   const idleKey = `${id}-idle`;
@@ -93,32 +105,21 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-picker-tanker": pickerDef("tanker", [0.027, 0.242, 0.973, 0.733]),
   "btn-picker-hopper": pickerDef("hopper", [0.018, 0.225, 0.982, 0.748]),
   "btn-picker-flatcar": pickerDef("flatcar", [0.036, 0.261, 0.964, 0.714]),
-  // Bottom-bar transport: the unified dark steampunk keycap set (AR-010) —
-  // baked labels, same family as the yard keycaps, shared by Workshop + Track.
-  // Content boxes measured from each idle PNG's solid-alpha bbox.
-  "btn-transport-stop": buttonDef("btn-transport-stop", { content: TRACK_CONTROL_CONTENT }),
+  // Transport controls are shared by Workshop + Track. The rich AR-069 cards
+  // use the accepted source registrations; PLAY retains its separate artwork.
+  "btn-transport-stop": trackControlDef("btn-transport-stop"),
   "btn-transport-play": buttonDef("btn-transport-play", { content: [0.18, 0.155, 0.841, 0.833] }),
-  "btn-transport-loop": buttonDef("btn-transport-loop", { content: TRACK_CONTROL_CONTENT }),
-  "btn-transport-slow": buttonDef("btn-transport-slow", { content: TRACK_CONTROL_CONTENT }),
-  "btn-transport-fast": buttonDef("btn-transport-fast", { content: TRACK_CONTROL_CONTENT }),
-  // Track: the dedicated RIDE keycap (golden loco, baked label — no caption).
-  "btn-track-ride": buttonDef("btn-track-ride", { content: TRACK_CONTROL_CONTENT }),
+  "btn-transport-loop": trackControlDef("btn-transport-loop"),
+  "btn-transport-slow": trackControlDef("btn-transport-slow"),
+  "btn-transport-fast": trackControlDef("btn-transport-fast"),
+  // Track: the dedicated rich RIDE card (golden loco, baked label).
+  "btn-track-ride": trackControlDef("btn-track-ride"),
   // AR-043: the painted CLEAR plaque that retires the Track header's keycap
   // fallback. AR-020: the SEND SONG plaque on the oval Track's header.
-  "btn-track-clear": buttonDef("btn-track-clear", { content: TRACK_CONTROL_CONTENT }),
-  "btn-send-song": buttonDef("btn-send-song", { content: TRACK_PLAQUE_CONTENT }),
-  "btn-track-tarp": {
-    states: { idle: "btn-track-tarp-idle", seated: "btn-track-tarp-seated" },
-    base: "btn-track-tarp-idle",
-    content: TRACK_CONTROL_CONTENT,
-    stretch: false,
-  },
-  "track-speed-readout": {
-    states: { base: "track-speed-readout" },
-    base: "track-speed-readout",
-    content: TRACK_CONTROL_CONTENT,
-    stretch: false,
-  },
+  "btn-track-clear": trackControlDef("btn-track-clear"),
+  "btn-send-song": trackControlDef("btn-send-song"),
+  "btn-track-tarp": trackControlDef("btn-track-tarp"),
+  "track-speed-readout": trackControlDef("track-speed-readout"),
   // AR-057: the shared tool-panel chrome — a recessed ✕ socket and the wide
   // DONE plaque, in the same slot on every machine. Boxes measured off the
   // delivered idle PNGs.
@@ -139,10 +140,10 @@ export const UI_SPRITES: Readonly<Record<string, UiSpriteDef>> = {
   "btn-yard-unhitch": buttonDef("btn-yard-unhitch"),
   "btn-yard-totrack": buttonDef("btn-yard-totrack"),
   "btn-yard-delete": buttonDef("btn-yard-delete"),
-  // Cross-scene nav plaques (landscape parchment signs, baked text + arrows).
-  // Content boxes measured from each idle PNG's solid-alpha bbox (alpha > 220).
+  // Cross-scene navigation: rich MAP card and existing landscape plaques.
+  // The unchanged plaques retain their measured solid-alpha content boxes.
   // Only MAP has pressed art so far (ART_REQUESTS AR-006 covers the rest).
-  "btn-nav-map": buttonDef("btn-nav-map", { content: TRACK_PLAQUE_CONTENT }),
+  "btn-nav-map": trackControlDef("btn-nav-map"),
   "btn-nav-workshop": buttonDef("btn-nav-workshop", { pressed: false, content: [0.044, 0.254, 0.965, 0.703] }),
   "btn-nav-yard": buttonDef("btn-nav-yard", { pressed: false, content: [0.049, 0.225, 0.951, 0.733] }),
   "btn-nav-track": buttonDef("btn-nav-track", { pressed: false, content: [0.067, 0.255, 0.948, 0.734] }),

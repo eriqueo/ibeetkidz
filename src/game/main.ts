@@ -24,12 +24,12 @@ export function startGame(parent: HTMLElement): Phaser.Game {
     // restate a derived fact and invite the two drifting apart — if the pixel
     // policy ever changes, it changes HERE, once.
     pixelArt: true,
-    callbacks: { postBoot: configureDrawingBuffer },
+    callbacks: { postBoot: (game) => configureDrawingBuffer(game, () => window.devicePixelRatio) },
     scale: {
       // FIT a fixed 16:9 design resolution into the container, letterboxing and
       // centring so the whole scene stays on-screen (and fills mobile viewports
       // vertically). The scene lays everything out in this fixed 2560×1440 space;
-      // The camera maps it to a bounded drawing buffer; FIT handles CSS size.
+      // The camera maps it to the display-density buffer; FIT handles CSS size.
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
       parent,

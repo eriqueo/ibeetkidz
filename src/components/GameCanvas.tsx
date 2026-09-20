@@ -23,15 +23,18 @@ export const GameCanvas: FC = () => {
     // boot and a 0x0 measurement makes Scale.FIT oscillate forever. By layout
     // time it is in the document with its real size.
     ensureGame(host);
-    // Phaser caches the canvas bounds and only re-reads them on a window
-    // resize. Mobile browser chrome collapsing changes `100dvh` without one,
-    // and stale bounds mis-map every pointer (first taps land at world 0,0;
-    // buttons feel dead). Re-measure right before the pointer arrives.
+    // Observe the actual host after layout (including mobile chrome changes).
+    // Window resize/pointer events can arrive before its new bounds settle.
+    const resizeObserver = new ResizeObserver(refreshScale);
+    resizeObserver.observe(host);
+    // Keep pointer re-measurement for position-only changes too: ResizeObserver
+    // reports size changes, but cached canvas offsets can also become stale.
     //
     // No cleanup teardown of the game itself: it is page-scoped by design.
     host.addEventListener("pointerenter", refreshScale);
     host.addEventListener("pointerdown", refreshScale, true); // touch: no hover
     return () => {
+      resizeObserver.disconnect();
       host.removeEventListener("pointerenter", refreshScale);
       host.removeEventListener("pointerdown", refreshScale, true);
     };

@@ -61,7 +61,11 @@ export function showScene(scene: SceneClass): void {
 
 /** Re-measure the canvas against its parent. See `GameCanvas` for the why. */
 export function refreshScale(): void {
-  if (game?.isBooted) game.scale.refresh();
+  if (!game?.isBooted) return;
+  // FIT reads parentSize before refresh() re-measures it. Measure first so a
+  // resize cannot leave the canvas fitted to the previous parent dimensions.
+  game.scale.getParentBounds();
+  game.scale.refresh();
 }
 
 /** Test/teardown hatch. Nothing in the app calls this — the game is meant to

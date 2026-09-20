@@ -1,32 +1,38 @@
 """Render all 19 AR-069 faces at literal 70px header height on cream and sky backgrounds."""
 from __future__ import annotations
+import argparse
 from pathlib import Path
 from PIL import Image, ImageDraw
+from validate_ar069_controls import read_manifest, validate
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src/assets/sprites/buttons"
 OUT = ROOT / "design/review/ar069-all-controls-70px.png"
-FACES = (
-    ("MAP", "btn-nav-map-idle.png"), ("RIDE", "btn-track-ride-idle.png"),
-    ("STOP", "btn-transport-stop-idle.png"), ("CLEAR", "btn-track-clear-idle.png"),
-    ("SEND", "btn-send-song-idle.png"), ("SLOW", "btn-transport-slow-idle.png"),
-    ("SPEED", "track-speed-readout.png"), ("FAST", "btn-transport-fast-idle.png"),
-    ("LOOP", "btn-transport-loop-idle.png"), ("TARP", "btn-track-tarp-idle.png"),
-    ("MAP↓", "btn-nav-map-pressed.png"), ("RIDE↓", "btn-track-ride-pressed.png"),
-    ("STOP↓", "btn-transport-stop-pressed.png"), ("CLEAR↓", "btn-track-clear-pressed.png"),
-    ("SEND↓", "btn-send-song-pressed.png"), ("SLOW↓", "btn-transport-slow-pressed.png"),
-    ("FAST↓", "btn-transport-fast-pressed.png"), ("LOOP↓", "btn-transport-loop-pressed.png"),
-    ("TARP↓", "btn-track-tarp-seated.png"),
-)
 
 
-def scaled(name: str) -> Image.Image:
+def scaled(name: str, content: list[float]) -> Image.Image:
     im = Image.open(SRC / name).convert("RGBA")
+    im = im.crop(tuple(round(value * size) for value, size in zip(content, (im.width, im.height, im.width, im.height))))
     scale = 70 / im.height
     return im.resize((round(im.width * scale), 70), Image.Resampling.NEAREST)
 
 
 def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--output", type=Path, default=OUT)
+    output = parser.parse_args().output
+    validate()
+    controls = read_manifest()["controls"]
+    faces = []
+    for base_only in (True, False):
+        for name, control in controls.items():
+            for state, source in control["states"].items():
+                if (state == control["base"]) != base_only:
+                    continue
+                label = "SPEED" if name == "track-speed-readout" else name.split("-")[-1].upper()
+                if name == "btn-send-song":
+                    label = "SEND"
+                faces.append((label + ("" if base_only else " (on)"), source["frame"] + ".png", control["content"]))
     cell_w, cell_h = 130, 108
     sheet = Image.new("RGBA", (cell_w * 10, cell_h * 4), (246, 230, 181, 255))
     d = ImageDraw.Draw(sheet)
@@ -35,16 +41,16 @@ def main() -> None:
         d.rectangle((0, y_base, sheet.width, y_base + 2*cell_h), fill=bg)
         for j in range(10):
             d.line((j*cell_w, y_base, j*cell_w, y_base+2*cell_h), fill=(63,50,69,100), width=1)
-        for i, (label, name) in enumerate(FACES):
+        for i, (label, name, content) in enumerate(faces):
             row, col = divmod(i, 10)
-            tile = scaled(name)
+            tile = scaled(name, content)
             x = col*cell_w + (cell_w-tile.width)//2
             y = y_base + row*cell_h + 20
             sheet.alpha_composite(tile, (x,y))
             d.text((col*cell_w+5, y_base+row*cell_h+4), label, fill=(36,28,42,255))
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    sheet.convert("RGB").save(OUT)
-    print(f"wrote {OUT}")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    sheet.convert("RGB").save(output)
+    print(f"wrote {output}")
 
 if __name__ == '__main__':
     main()

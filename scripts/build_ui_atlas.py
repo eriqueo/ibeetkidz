@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Pack the Three-Zone UI chrome (buttons / instruments / panels) into a
 Phaser multiatlas so scenes reuse packed pages instead of loading each sprite
-separately. Runtime scale, page size and decoded budget live in ui-atlas-policy.json.
+separately. Page size and decoded budget live in ui-atlas-policy.json.
+Packing preserves source resolution and post-wash RGBA pixels.
 
 Output: public/assets/spritesheets/ui-atlas.json (+ ui-atlas-<n>.png pages).
 Frame names = file stems (btn-play-idle, inst-drums-hover, …), identical to
@@ -14,6 +15,7 @@ import glob
 import json
 import os
 from pathlib import Path
+from validate_ar069_controls import validate as validate_controls
 
 SRC_DIRS = [
     "src/assets/sprites/buttons",
@@ -105,12 +107,13 @@ def dewash(im: Image.Image) -> tuple[Image.Image, int]:
     out.putalpha(Image.frombytes("L", (w, h), bytes(alpha)))
     # Flatten the RGB of cleared pixels to black. Invisible either way, but it
     # collapses hundreds of "transparent but differently coloured" entries the
-    # 256-colour quantize below would otherwise spend palette slots on.
+    # encoder would otherwise store needlessly different invisible pixels.
     out.paste((0, 0, 0, 0), (0, 0, w, h), out.getchannel("A").point(lambda v: 0 if v else 255))
     return out, cleared
 
 
 def main(out_dir: str = OUT_DIR) -> None:
+    validate_controls()
     sprites = []
     washed = []
     for d in SRC_DIRS:
@@ -120,12 +123,9 @@ def main(out_dir: str = OUT_DIR) -> None:
             im, cleared = dewash(im)
             if cleared:
                 washed.append((name, cleared / (im.width * im.height)))
-            # Source art stays full-size. Runtime art follows the pixel game's
-            # displayed size; nearest-neighbour retains hard pixel edges.
-            # Small baked labels and percussion symbols must survive unchanged.
-            scale = 1 if Path(d).name in POLICY["fullResolutionDirectories"] else POLICY["runtimeScale"]
-            im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))),
-                           Image.Resampling.NEAREST)
+            # Trimming saves memory without deleting authored detail. Do not
+            # downsample or palette-quantize: atlas layout must not alter art.
+            scale = 1
             source_size = {"w": im.width, "h": im.height}
             bounds = im.getbbox() or (0, 0, 1, 1)
             im = im.crop(bounds)
@@ -179,7 +179,7 @@ def main(out_dir: str = OUT_DIR) -> None:
     # Fail before replacing any output; never silently omit art to fit a budget.
     if decoded_bytes > POLICY["maxDecodedBytes"]:
         raise ValueError(f"UI atlas needs {decoded_bytes} decoded bytes; "
-                         f"budget is {POLICY['maxDecodedBytes']}. Right-size the runtime art.")
+                         f"budget is {POLICY['maxDecodedBytes']}. Improve packing or split residency; do not reduce art detail.")
     os.makedirs(out_dir, exist_ok=True)
     for old in glob.glob(f"{out_dir}/ui-atlas-*.png"):
         os.remove(old)
@@ -188,7 +188,7 @@ def main(out_dir: str = OUT_DIR) -> None:
     for pi, page in enumerate(pages):
         # Crop unused rows AND columns. PNG compression does not save GPU memory.
         used_w, used_h = sizes[pi]
-        img = page.crop((0, 0, used_w, used_h)).quantize(colors=256, method=Image.FASTOCTREE)
+        img = page.crop((0, 0, used_w, used_h))
         fname = f"ui-atlas-{pi}.png"
         img.save(f"{out_dir}/{fname}", optimize=True)
         total += os.path.getsize(f"{out_dir}/{fname}")
@@ -199,8 +199,8 @@ def main(out_dir: str = OUT_DIR) -> None:
             "scale": 1,
             "frames": frames_per_page[pi],
         })
-    json.dump({"textures": textures, "meta": {"app": "build_ui_atlas.py", "version": "2.0",
-                                            "runtimeScale": POLICY["runtimeScale"]}},
+    json.dump({"textures": textures, "meta": {"app": "build_ui_atlas.py", "version": "3.0",
+                                            "runtimeScale": 1}},
               open(f"{out_dir}/ui-atlas.json", "w"))
     print(f"packed {len(sprites)} sprites into {len(pages)} page(s), {total / 1e6:.1f}MB total")
     print(f"decoded RGBA: {decoded_bytes / 2**20:.2f} MiB / {POLICY['maxDecodedBytes'] / 2**20:.0f} MiB budget")

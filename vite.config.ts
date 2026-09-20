@@ -57,8 +57,9 @@ export default defineConfig(({ mode }) => {
           // imported script performs that migration once, then leaves every
           // later release on the explicit-load handshake.
           importScripts: ["pwa-handshake-migration.js"],
-          // The largest measured game asset is just under 2 MB.
-          maximumFileSizeToCacheInBytes: 3 * 1024 * 1024,
+          // Full-color, lossless UI atlas pages reach 14.34 MiB. Keep them in
+          // the offline install; check:pwa rejects missing runtime assets.
+          maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
           // The plugin adds manifest.webmanifest itself; including it here
           // would create two revisions for one URL and invalidate the worker.
           globPatterns: ["**/*.{html,js,css,png,jpg,jpeg,webp,svg,ico,json,txt,woff,woff2,ttf,wav,mp3}"],

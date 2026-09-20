@@ -1,0 +1,218 @@
+{
+  "version": 1,
+  "sourceRevision": "c39e14e610658626527bc8e6b08d83989f5b7795",
+  "speedWindow": {
+    "x": 0.23828125,
+    "y": 0.328125,
+    "width": 0.5234375,
+    "height": 0.25
+  },
+  "controls": {
+    "btn-nav-map": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.078125,
+        0.0234375,
+        0.919921875,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-nav-map-idle",
+          "sha256": "7c7a88cc67cb8297794a19d1201612e242eec08442383b78a4f726e9d513f2f1"
+        },
+        "pressed": {
+          "frame": "btn-nav-map-pressed",
+          "sha256": "013f7405af0f0f9b2db90bbe93622f1b3d38d529556d2842b5d3ac62b77440f7"
+        }
+      }
+    },
+    "btn-track-ride": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.076171875,
+        0.0234375,
+        0.923828125,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-track-ride-idle",
+          "sha256": "824c6a6eb7218eff65980f8e6cfa3ca1a04385c3636739a94c71d5d7e68810d5"
+        },
+        "pressed": {
+          "frame": "btn-track-ride-pressed",
+          "sha256": "1e898825134621c796b6c54de90159ee6408d7be8d5b8ea1d10e7c9f80e082cf"
+        }
+      }
+    },
+    "btn-transport-stop": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.076171875,
+        0.0234375,
+        0.921875,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-transport-stop-idle",
+          "sha256": "136adaa00d260e51fd37654e45bd4f0d35c6349586fa54cf354b1fd39d35e238"
+        },
+        "pressed": {
+          "frame": "btn-transport-stop-pressed",
+          "sha256": "8b7f68b63c16eaca85d8db47118b2ef34a3f5b1f256081911d386db7f51b1ff8"
+        }
+      }
+    },
+    "btn-track-clear": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.072265625,
+        0.0234375,
+        0.92578125,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-track-clear-idle",
+          "sha256": "006aa5052135e74986f3916371ef855aac6e2407ae2f51d125012b16eb027abb"
+        },
+        "pressed": {
+          "frame": "btn-track-clear-pressed",
+          "sha256": "415c9ee4e31d4e73ac87b8507f54b71e9e2cfccde96ad67640b4a4cdb4d46268"
+        }
+      }
+    },
+    "btn-send-song": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.076171875,
+        0.0234375,
+        0.923828125,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-send-song-idle",
+          "sha256": "b7a62a87ca8eaca0b8bcb81cb5c40aef18df99a34fc35dd544742806e3a38384"
+        },
+        "pressed": {
+          "frame": "btn-send-song-pressed",
+          "sha256": "ba33e1f5678b14a92c950843dbe760c41804b9008cf9c459e051bdaf38684ba1"
+        }
+      }
+    },
+    "btn-transport-slow": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.076171875,
+        0.0234375,
+        0.923828125,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-transport-slow-idle",
+          "sha256": "0ee6e808d5ed805559a40e6a37d07d63b6569f2d5a12685aa9521d62c96ddf9d"
+        },
+        "pressed": {
+          "frame": "btn-transport-slow-pressed",
+          "sha256": "5db2515cb2c614b657faa789698a735f154cde0c90e6cfb6b406ee1fbc38fc63"
+        }
+      }
+    },
+    "track-speed-readout": {
+      "base": "base",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.078125,
+        0.0234375,
+        0.921875,
+        0.9765625
+      ],
+      "states": {
+        "base": {
+          "frame": "track-speed-readout",
+          "sha256": "3ed810d79cbfa57acd82bcc86f26831ed166cf988dc77d78302f0786afe28d5d"
+        }
+      }
+    },
+    "btn-transport-fast": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.078125,
+        0.0234375,
+        0.919921875,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-transport-fast-idle",
+          "sha256": "021a326dec7637e96d8f842a148004f1dff91037608bd582a82daaadf0c8cec7"
+        },
+        "pressed": {
+          "frame": "btn-transport-fast-pressed",
+          "sha256": "91abf68a7e5f26b2a478020b8507f19f3cf9dbc5a80985ee40fbd7746348bb31"
+        }
+      }
+    },
+    "btn-transport-loop": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.080078125,
+        0.0234375,
+        0.91796875,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-transport-loop-idle",
+          "sha256": "21c2d317e5d38afb7b853fdc61ef7e6fcd685b060ece9f07a662f0fbaf8a7672"
+        },
+        "pressed": {
+          "frame": "btn-transport-loop-pressed",
+          "sha256": "6a7171505ae5d5a9a35a4731b9e5fd442ada4a1717b4f0b9554f2948141ecd24"
+        }
+      }
+    },
+    "btn-track-tarp": {
+      "base": "idle",
+      "width": 512,
+      "height": 512,
+      "content": [
+        0.078125,
+        0.0234375,
+        0.919921875,
+        0.9765625
+      ],
+      "states": {
+        "idle": {
+          "frame": "btn-track-tarp-idle",
+          "sha256": "83b8e93b6dccd2d33f4f537a6701e88979db44708fe88deb410c53b7a23c9da4"
+        },
+        "seated": {
+          "frame": "btn-track-tarp-seated",
+          "sha256": "3bb1c1a0a64cb54c85cf726b6a276c50aa93d1287e6f35f219b1bbf22e777293"
+        }
+      }
+    }
+  }
+}

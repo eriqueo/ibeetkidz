@@ -159,10 +159,10 @@ positive references before drawing a line**:
 - `src/assets/sprites/track3/btn-bridge.png`
 - `src/assets/sprites/instruments/inst-drums-passive.png`
 
-For the Track controls, the flat AR-065 faces are a **negative** reference, not
-the style source. The accepted direction within candidate `aaad950` is its
-MAP/RIDE/CLEAR/LOOP/TARP material language; complete that family without
-copying its registration error described in AR-069.
+For Track controls, use the rich 19-face family identified by
+`src/assets/track-controls.json` and the current AR-069 correction below.
+The flat AR-065 faces and older `aaad950` controls are negative references.
+`design/review/ar069-all-controls-70px.png` is generated from the accepted sources.
 
 ### Two export lessons, learned the hard way — these are the contract now
 
@@ -325,7 +325,29 @@ unequal cardinal radii in addition to checking the hub and contact row.
 
 ### Added 2026-08-30 (rev 8) — integration QA correction
 
-#### ✅ DELIVERED 2026-09-02 — AR-069 · Make the unified Track controls readable at their real size — P0
+#### AR-069 · Rich Track controls — accepted source correction, 2026-09-19
+
+The release on September 2 restored the older `aaad950` controls and replaced
+the rest of the family with procedural flat art. That implementation contradicted
+the richer toy-railway direction recorded below. Its old "approved restore"
+wording described the wrong source and must not guide another restoration.
+
+The accepted 19 source PNGs are now byte-identical to `c39e14e` (`0b747c8^`),
+which contains the rich family delivered through `273faa0`, `1cd5d92`, and
+`5d02252`. They are 512×512 RGBA cards, including MAP and SEND. Runtime placement
+contains each measured visible frame inside its existing slot without stretching.
+The source images must retain their full detail; trimming transparent atlas
+padding is allowed, resampling or replacing their pixels is not.
+
+`src/assets/track-controls.json` records each accepted SHA256, paired-state
+registration, and the empty SPEED window. `scripts/validate_ar069_controls.py`
+checks the current files directly, including in shallow CI checkouts. The old
+`redraw_ar069_controls.py` command now restores only those exact bytes and verifies
+all historical blobs before writing. It cannot redraw the older family.
+
+The reviews below are historical evidence, not competing current approvals.
+
+##### Historical September 2 review (superseded)
 
 **Candidate review (`aaad950`):** keep its MAP, RIDE, CLEAR, LOOP, and TARP
 pixels as the approved direction, but do not mark the request corrected. The

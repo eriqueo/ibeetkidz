@@ -1,12 +1,12 @@
 # iBeetKidz baseline
 
-Measured 2026-09-19 for the playback and graphics resource repair. This file owns
+Measured 2026-09-19 for the art-preserving playback and graphics repair. This file owns
 current measurements; earlier release baselines remain in Git history. The
 [improvement roadmap](design/IMPROVEMENT_ROADMAP.md) owns next steps.
 
 ## Environment and limits
 
-- Local source: this release worktree, based on `0b747c82d81f64f34b29e5858b4033aff6985945`.
+- Local source: this release worktree, based on `e5fcd11`.
 - Node: 22.22.2; npm with the committed lockfile.
 - Browser: system Chromium on hwc-server, headless WebGL through SwiftShader.
 - Image tools: `uv run --with-requirements scripts/requirements-ui-atlas.txt`.
@@ -21,18 +21,25 @@ current measurements; earlier release baselines remain in Git history. The
 
 | Resource | Before repair | Current |
 |---|---:|---:|
-| WebGL backing buffer | 2560 × 1440 | 1280 × 720 |
+| WebGL backing buffer | fixed 2560 × 1440 | display CSS × pixel density, capped at 2560 × 1440 |
 | Layout coordinates | 2560 × 1440 | unchanged |
-| UI atlas decoded RGBA | 243,236,864 bytes | 79,650,712 bytes |
-| UI atlas PNG payload | 3,877,979 bytes | 2,194,239 bytes |
-| UI frames / pages | 114 / 4 | 114 / 5 |
+| UI atlas decoded RGBA | 243,236,864 bytes | 142,139,276 bytes |
+| UI atlas PNG payload | 3,877,979 bytes | 24,075,407 bytes |
+| UI frames / pages | 114 / 4 | 114 / 3 |
 
 Decoded bytes are width × height × four, including atlas padding. They are not
 measured total GPU allocation. Framebuffers, drivers and other textures add cost.
-Buttons and icons remain at original resolution. Larger artwork is reduced;
-transparent padding is trimmed without changing logical sprite bounds. The
-budget is enforced by `scripts/ui-atlas-policy.json`, the generator, and a unit
-check of the shipped PNG dimensions.
+All 114 frames retain source resolution and visible post-wash RGBA pixels.
+Transparent padding is trimmed without changing logical sprite bounds. The
+135.55 MiB decoded footprint is 41.6% below the original; its policy ceiling is
+160 MiB. Rich controls and removing lossy palette quantization increase download
+size. The largest page is 14.34 MiB; the offline per-file ceiling is 16 MiB and
+the build checks that every runtime asset enters the precache.
+
+The intermediate fixed-720p/half-size-art repair used 75.96 MiB, but Eric rejected
+its visual quality. It is not the accepted baseline. The current source-hash gate
+pins all 19 rich controls from `c39e14e`; the pixel gate rejects visible color or
+resolution loss. Both gates were observed rejecting violations this session.
 
 An isolated full/half/full buffer experiment on the same idle Track measured
 mean frame intervals of **96.54 / 25.74 / 101.84 ms**. Canvas and renderer dimensions
@@ -46,29 +53,42 @@ late audio events in eight-second samples. That fixture did not reproduce the
 reported laptop symptom. Do not compare its hardware numbers directly to the
 local software renderer.
 
-With the final artwork loaded, three repeated drum cars on the same software
+With the intermediate, reduced artwork loaded, three repeated drum cars on the same software
 renderer averaged **27.50 and 27.57 ms** per frame, versus **113.2 and 121.4 ms**
 before repair. Resident texture dimensions imply 112.48 MiB of decoded RGBA.
 Both five-second samples had audible master output and no counted late audio
 events. These short stress samples establish a graphics improvement, not proof
 that every song or physical device is smooth.
 
+After restoring rich controls and full-resolution, full-color atlas frames, the
+same three-car fixture averaged **27.19 and 26.47 ms** per frame. This used the
+same headless SwiftShader renderer, 1280×800 viewport and density 1 (1280×720
+drawing buffer). Both five-second samples produced master output, with zero
+counted late audio events and no browser errors. Resident texture dimensions
+imply 172.07 MiB decoded RGBA. Thus this display retains the earlier speed gain
+without the rejected art reduction. Larger/denser displays intentionally render
+more pixels; these measurements do not establish their performance.
+
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 679 tests in 44 files passed; none skipped.
+- `npm test`: 682 tests in 45 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.
-- UI/train atlas freshness, AR-069 alpha, Workshop car geometry: passed.
+- UI atlas regeneration/pixel fidelity and AR-069 source identity/alpha: passed.
 - New engine regressions first failed against the old behavior: redundant
   rescheduling, repeated preparation, and undo during preparation. They now pass.
-- The new real-browser resource assertion first failed on the old actual canvas
-  size, then passed across scene changes, revisits and tablet-size resizing.
-- Full local browser run: 70 passed, one opt-in stress test skipped, and two
-  artifact-path failures in the external test harness. After correcting that
-  harness path, both artifact checks passed on rerun. All 72 enabled journeys
-  passed, including production Track, recording, offline and staged updates.
+- Display-density assertions first rejected the fixed 720p buffer. The resize
+  journey also exposed stale parent bounds after returning from Track. Measuring
+  the parent before FIT and observing the host resolved it. Both density 1 and 2
+  journeys now pass through all scenes, real landmark clicks, resize and revisit.
+- Actual Workshop and three-car Track screenshots inspected at 1920×1080 density
+  1 and 1024×768 density 2 (2048×1152 drawing buffer). Rich controls and original
+  character/panel detail are present.
+- Full local browser suite: 73 passed, one opt-in audio stress check skipped.
+  This includes production screenshots, real controls, recording, export,
+  offline boot, staged updates and restored-art display-density checks.
 - The hosted run exposed a timing assumption in the oval coupling test. It read
   positions two frames after changing bars, while a car could still be hopping.
   Local reproduction failed twice in three runs. The test now waits for the
@@ -76,8 +96,8 @@ that every song or physical device is smooth.
 
 | Built artifact | Files | Bytes |
 |---|---:|---:|
-| `dist/` | 112 | 20,469,303 |
-| `dist-gh/` | 112 | 20,470,213 |
+| `dist/` | 110 | 42,353,955 |
+| `dist-gh/` | 110 | 42,354,865 |
 
 The image checker regenerates into a temporary directory and compares JSON and
 decoded PNG pixels. Regeneration uses the pinned Python requirements:

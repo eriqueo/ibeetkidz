@@ -9,6 +9,7 @@ import json
 from collections import deque
 from pathlib import Path
 from PIL import Image
+from validate_ar069_controls import validate as validate_controls
 
 ROOT = Path(__file__).resolve().parents[1]
 B = ROOT / "src/assets/sprites/buttons"
@@ -16,16 +17,6 @@ T = ROOT / "src/assets/sprites/track3"
 ATLAS = ROOT / "public/assets/spritesheets"
 
 discrete = {
-    B / "btn-track-tarp-idle.png": (512, 512), B / "btn-track-tarp-seated.png": (512, 512),
-    B / "btn-nav-map-idle.png": (1024, 683), B / "btn-nav-map-pressed.png": (1024, 683),
-    B / "btn-track-ride-idle.png": (512, 512), B / "btn-track-ride-pressed.png": (512, 512),
-    B / "btn-track-clear-idle.png": (512, 512), B / "btn-track-clear-pressed.png": (512, 512),
-    B / "btn-transport-loop-idle.png": (512, 512), B / "btn-transport-loop-pressed.png": (512, 512),
-    B / "btn-transport-stop-idle.png": (512, 512), B / "btn-transport-stop-pressed.png": (512, 512),
-    B / "btn-send-song-idle.png": (1024, 683), B / "btn-send-song-pressed.png": (1024, 683),
-    B / "btn-transport-slow-idle.png": (512, 512), B / "btn-transport-slow-pressed.png": (512, 512),
-    B / "btn-transport-fast-idle.png": (512, 512), B / "btn-transport-fast-pressed.png": (512, 512),
-    B / "track-speed-readout.png": (512, 512),
     T / "tarp-cover-boxcar.png": (300, 190), T / "tarp-cover-tanker.png": (300, 170),
     T / "tarp-cover-hopper.png": (300, 190), T / "tarp-cover-flatcar.png": (300, 110),
     T / "tunnel-mouth-left.png": (640, 640), T / "tunnel-mouth-right.png": (640, 640),
@@ -39,15 +30,6 @@ tiles = {
     T / "bridge-water.png": (640, 150),
 }
 pairs = (
-    (B / "btn-track-tarp-idle.png", B / "btn-track-tarp-seated.png"),
-    (B / "btn-nav-map-idle.png", B / "btn-nav-map-pressed.png"),
-    (B / "btn-track-ride-idle.png", B / "btn-track-ride-pressed.png"),
-    (B / "btn-track-clear-idle.png", B / "btn-track-clear-pressed.png"),
-    (B / "btn-transport-loop-idle.png", B / "btn-transport-loop-pressed.png"),
-    (B / "btn-transport-stop-idle.png", B / "btn-transport-stop-pressed.png"),
-    (B / "btn-send-song-idle.png", B / "btn-send-song-pressed.png"),
-    (B / "btn-transport-slow-idle.png", B / "btn-transport-slow-pressed.png"),
-    (B / "btn-transport-fast-idle.png", B / "btn-transport-fast-pressed.png"),
     (T / "tunnel-lamp-0.png", T / "tunnel-lamp-1.png"),
 )
 
@@ -127,11 +109,6 @@ def exact_blocker_checks() -> None:
     print("PASS mechanical tunnel floor has no baked lamps and exact wrap seam")
 
     speed = im(B / "track-speed-readout.png")
-    for y in range(168, 168 + 128):
-        for x in range(122, 122 + 268):
-            r, g, b, a = speed.getpixel((x, y))
-            assert a == 255 and 0.2126 * r + 0.7152 * g + 0.0722 * b <= 62, f"speed window not dark/opaque at {(x, y)}"
-    print("PASS mechanical SPEED runtime window is opaque and dark")
 
     wheel = im(T / "wheel.png")
     hub_x = hub_y = 38
@@ -165,6 +142,7 @@ def exact_blocker_checks() -> None:
     print("PASS mechanical ui atlas includes regenerated SPEED frame and page")
 
 
+validate_controls()
 for path, size in discrete.items():
     check_discrete(path, size)
 for path, size in tiles.items():
