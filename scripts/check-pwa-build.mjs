@@ -131,6 +131,16 @@ for (const { dir, base } of builds) {
       throw new Error(`${dir}/${name} is deployed but absent from the offline precache`);
     }
   }
+
+  // A precache entry without a revision is never fetched again. That is only
+  // safe when the URL itself changes with the bytes (Vite's content hash).
+  // Fixed-name files shipped this way once: installed apps kept a stale UI
+  // atlas under new code and drew every control as a fallback rectangle.
+  for (const [, url] of sw.matchAll(/url:"([^"]+)",revision:null/g)) {
+    if (!/-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/.test(url)) {
+      throw new Error(`${dir}/sw.js precaches fixed-name ${url} with no revision; an update would never reach installed apps`);
+    }
+  }
 }
 
 console.log("ok: both deploy artifacts are installable and fully precached");

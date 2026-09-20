@@ -60,6 +60,13 @@ export default defineConfig(({ mode }) => {
           // Full-color, lossless UI atlas pages reach 14.34 MiB. Keep them in
           // the offline install; check:pwa rejects missing runtime assets.
           maximumFileSizeToCacheInBytes: 16 * 1024 * 1024,
+          // Only a URL that carries Vite's content hash may skip a revision.
+          // The plugin's default exempts EVERYTHING under `assets/`, but the
+          // atlases in `assets/spritesheets/` keep fixed names — so an installed
+          // app kept its first copy of `ui-atlas-*.png` forever, and a release
+          // that repacked the atlas ran new code against the old pages (every
+          // control fell back to a flat rectangle). `check:pwa` enforces this.
+          dontCacheBustURLsMatching: /-[A-Za-z0-9_-]{8}\.[a-z0-9]+$/,
           // The plugin adds manifest.webmanifest itself; including it here
           // would create two revisions for one URL and invalidate the worker.
           globPatterns: ["**/*.{html,js,css,png,jpg,jpeg,webp,svg,ico,json,txt,woff,woff2,ttf,wav,mp3}"],
