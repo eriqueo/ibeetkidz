@@ -178,6 +178,23 @@ describe("loopCacheKey", () => {
 });
 
 describe("ToneSoundPort beat-snap cache", () => {
+  it("prepares the next tempo without changing live playback", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = snappedClip();
+    port.setTempo(90);
+    await port.prepareClip(clip, 180);
+    h.played.length = 0;
+    port.play(clip);
+    await flush();
+    expect(h.played[0]?.length).toBe(beatLength(4, 90));
+
+    port.setTempo(180);
+    h.repeats.length = 0;
+    port.scheduleStep(clip, 0, 16, { volume: 1, swing: 0, echo: 0, tone: 1 });
+    expect(h.repeats).toHaveLength(1); // already prepared, no async fallback
+  });
+
   it("registers a prepared cold clip on the transport synchronously", async () => {
     const port = new ToneSoundPort();
     await port.resume();

@@ -1223,8 +1223,9 @@ export class MagicToolPanel extends BaseToolPanel {
   }
 
   private emitPointer(phase: "down" | "move" | "up", p: Phaser.Input.Pointer): void {
-    const x = Phaser.Math.Clamp((p.x - this.zoneBox.x) / this.zoneBox.w, 0, 1);
-    const y = Phaser.Math.Clamp((p.y - this.zoneBox.y) / this.zoneBox.h, 0, 1);
+    const world = p.positionToCamera(this.scene.cameras.main) as Phaser.Math.Vector2;
+    const x = Phaser.Math.Clamp((world.x - this.zoneBox.x) / this.zoneBox.w, 0, 1);
+    const y = Phaser.Math.Clamp((world.y - this.zoneBox.y) / this.zoneBox.h, 0, 1);
     this.dot.setVisible(true).setPosition(this.zoneBox.x + x * this.zoneBox.w, this.zoneBox.y + y * this.zoneBox.h);
     EventBus.emit("tool-magic-pointer", phase, x, y);
   }
@@ -1505,11 +1506,12 @@ export class MelodyEditorPanel extends BaseToolPanel {
     onRelease?: (v: number) => void,
   ): void {
     img.on("pointerdown", (p: Phaser.Input.Pointer) => {
-      const startY = p.y;
+      const startY = (p.positionToCamera(this.scene.cameras.main) as Phaser.Math.Vector2).y;
       const startV = this.values[key];
       this.draggingKnob = key;
       const move = (mp: Phaser.Input.Pointer): void => {
-        const v = Math.min(1, Math.max(0, startV + (startY - mp.y) / 140));
+        const worldY = (mp.positionToCamera(this.scene.cameras.main) as Phaser.Math.Vector2).y;
+        const v = Math.min(1, Math.max(0, startV + (startY - worldY) / 140));
         if (Math.abs(v - this.values[key]) > 0.01) {
           this.values[key] = v;
           onChange(v);

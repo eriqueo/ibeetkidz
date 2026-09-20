@@ -13,6 +13,7 @@
 import Phaser from "phaser";
 import { EventBus } from "../EventBus.ts";
 import type { ImageAsset } from "../assets.ts";
+import { installSceneProjection } from "../rendering.ts";
 
 /**
  * "cover" fills the canvas and crops overflow (full-bleed scenery).
@@ -106,6 +107,7 @@ export abstract class BackgroundScene extends Phaser.Scene {
    *  emitting so the synchronous React state push triggered by the handshake is
    *  applied (not dropped by an `isActive()`-style guard). */
   protected announceReady(): void {
+    installSceneProjection(this);
     this.ready = true;
     EventBus.emit("current-scene-ready", this);
   }

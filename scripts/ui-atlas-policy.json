@@ -1,0 +1,6 @@
+{
+  "runtimeScale": 0.5,
+  "fullResolutionDirectories": ["buttons", "icons"],
+  "pageSize": 2048,
+  "maxDecodedBytes": 83886080
+}

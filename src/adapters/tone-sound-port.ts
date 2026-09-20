@@ -832,8 +832,8 @@ export class ToneSoundPort implements SoundPort {
     return buf;
   }
 
-  async prepareClip(clip: Clip): Promise<void> {
-    const bpm = this.tempoBpm;
+  async prepareClip(clip: Clip, tempoBpm = this.tempoBpm): Promise<void> {
+    const bpm = normalizeBpm(tempoBpm);
     const key = preparedClipKey(clip, bpm);
     if (this.preparedClips.has(key)) return;
     const buf = await this.resolveClip(clip, bpm);

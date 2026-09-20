@@ -159,7 +159,8 @@ def exact_blocker_checks() -> None:
     atlas = json.loads((ATLAS / "ui-atlas.json").read_text())
     frames = {frame["filename"]: (texture, frame) for texture in atlas["textures"] for frame in texture["frames"]}
     texture, frame = frames["track-speed-readout"]
-    assert frame["sourceSize"] == {"w": 512, "h": 512}, "stale SPEED atlas frame dimensions"
+    scale = frame["runtimeScale"]
+    assert frame["sourceSize"] == {"w": round(speed.width * scale), "h": round(speed.height * scale)}, "stale SPEED atlas frame dimensions"
     assert (ATLAS / texture["image"]).is_file(), "missing atlas page for SPEED"
     print("PASS mechanical ui atlas includes regenerated SPEED frame and page")
 

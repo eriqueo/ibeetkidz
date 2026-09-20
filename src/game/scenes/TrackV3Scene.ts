@@ -33,6 +33,8 @@
 // rather than eyeballed — the brief for the artist is a curve, not a vibe.
 
 import Phaser from "phaser";
+import { GAME_DESIGN_SIZE } from "../game-dimensions.ts";
+import { installSceneProjection } from "../rendering.ts";
 import { EventBus } from "../EventBus.ts";
 import {
   barAtPlayhead,
@@ -187,8 +189,8 @@ export interface V3TerrainRide {
   readonly endBar: number;
 }
 
-const W = 2560;
-const H = 1440;
+const W: number = GAME_DESIGN_SIZE.width;
+const H: number = GAME_DESIGN_SIZE.height;
 
 /** `pad-key`'s pale label face as fractions of its 512 canvas, measured by
  *  scanning the packed frame (2026-08-16). It is 64 % of the canvas wide and
@@ -665,6 +667,7 @@ export class TrackV3Scene extends Phaser.Scene {
     this.sendPanel.setUiState(this.sendState);
     this.sendPanel.layout(this.scale.gameSize.width, this.scale.gameSize.height);
     this.ready = true;
+    installSceneProjection(this);
     EventBus.emit("current-scene-ready", this);
   }
 
@@ -784,7 +787,10 @@ export class TrackV3Scene extends Phaser.Scene {
       placeUiSprite(face, def, rect);
       const left = face.x - (face.width * face.scaleX) / 2;
       const top = face.y - (face.height * face.scaleY) / 2;
-      const window = { x: 122, y: 168, width: 268, height: 128 } as const;
+      // The artist's window is measured on a 512px source, independently of
+      // the generated atlas resolution and trim rectangle.
+      const window = { x: face.width * 122 / 512, y: face.height * 168 / 512,
+        width: face.width * 268 / 512, height: face.height * 128 / 512 };
       cx = left + (window.x + window.width / 2) * face.scaleX;
       labelY = top + (window.y + window.height * 0.28) * face.scaleY;
       valueY = top + (window.y + window.height * 0.72) * face.scaleY;

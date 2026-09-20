@@ -10,6 +10,7 @@ import { trackCarActionSlots } from "../../src/game/track-car-actions.ts";
 import { tapCanvasAtClientPoint } from "./canvas-input.ts";
 import { tapMapLandmark } from "./map-landmark.ts";
 import { PNG } from "pngjs";
+import { GAME_DESIGN_SIZE } from "../../src/game/game-dimensions.ts";
 
 // Production-shaped visual release evidence for the default Track.
 //
@@ -141,10 +142,7 @@ async function tapDesignPoint(page: Page, x: number, y: number): Promise<void> {
   const canvas = page.locator("canvas").first();
   const box = await canvas.boundingBox();
   expect(box, "Phaser canvas must remain visible").not.toBeNull();
-  const intrinsic = await canvas.evaluate((element) => {
-    const c = element as HTMLCanvasElement;
-    return { width: c.width, height: c.height };
-  });
+  const intrinsic = GAME_DESIGN_SIZE;
   const screenX = box!.x + x * (box!.width / intrinsic.width);
   const screenY = box!.y + y * (box!.height / intrinsic.height);
   await tapCanvasAtClientPoint(page, screenX, screenY);
@@ -195,10 +193,7 @@ async function canvasMetrics(page: Page): Promise<CanvasMetrics> {
 
 async function canvasSnapshot(page: Page): Promise<CanvasSnapshot> {
   const canvas = page.locator("canvas").first();
-  const intrinsic = await canvas.evaluate((element) => {
-    const source = element as HTMLCanvasElement;
-    return { width: source.width, height: source.height };
-  });
+  const intrinsic = GAME_DESIGN_SIZE;
   const image = decodePng(await canvas.screenshot({ animations: "allow" }));
   return { intrinsic, image };
 }
@@ -305,10 +300,7 @@ async function captureDesignCrop(
   const canvas = page.locator("canvas").first();
   const box = await canvas.boundingBox();
   expect(box, `${name}: production canvas must remain visible`).not.toBeNull();
-  const intrinsic = await canvas.evaluate((element) => {
-    const source = element as HTMLCanvasElement;
-    return { width: source.width, height: source.height };
-  });
+  const intrinsic = GAME_DESIGN_SIZE;
   const path = testInfo.outputPath(`${name}.png`);
   await page.screenshot({
     path,
@@ -335,9 +327,7 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
 
   const idle = await capture(page, testInfo, "track-01-idle");
   const headerBottom = TRACK_HEADER.plate.y + TRACK_HEADER.plate.height / 2;
-  const designHeight = await page.locator("canvas").first().evaluate(
-    (element) => (element as HTMLCanvasElement).height,
-  );
+  const designHeight = GAME_DESIGN_SIZE.height;
   expect(
     headerBottom / designHeight,
     "the header plate must leave at least two-thirds of the Track for the world and train",

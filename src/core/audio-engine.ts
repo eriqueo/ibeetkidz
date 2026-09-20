@@ -2,13 +2,11 @@
 // It owns NO DSP itself — everything routes through SoundPort. Its job is the
 // state -> sound reconciliation loop and gesture-gated startup.
 
-import type { Layer, Project } from "./types.ts";
-import { STEP_COUNT } from "./types.ts";
+import type { Project } from "./types.ts";
 import type { SoundPort } from "../ports/sound-port.ts";
 import type { QuantizeGrid } from "./quantize.ts";
-import { degreeToNote } from "./scale.ts";
-import { activeLayers, liveTrain, partForCar } from "./project-state.ts";
-import { resolveInstrument } from "./instruments.ts";
+import { liveTrain } from "./project-state.ts";
+import { playbackPlan, playbackFingerprint, preparePlayback, schedulePlayback, type PlayMode } from "./playback-plan.ts";
 import {
   DEFAULT_HOLD_BARS,
   LATCH_HOLD_BARS,
@@ -18,28 +16,6 @@ import {
   type TerrainKind,
   type TerrainRide,
 } from "./terrain.ts";
-
-/** What the transport is playing: "loop" repeats the active car forever (Home's
- *  Play — today's behavior); "ride" plays the whole arrangement, car after car,
- *  then loops the song (the Tracks strip's Ride). */
-type PlayMode = "loop" | "ride";
-
-/**
- * Where an event that starts at step `i` and lasts `span` steps lands when the
- * bar is played backwards.
- *
- * `total - i - span`, not `total - 1 - i`, and the difference matters for
- * anything longer than one step: reversing time reverses an event's ENDS, so a
- * note occupying [i, i+span) has to come back occupying [total-i-span, total-i).
- * Mirroring the start alone would push every long note `span-1` steps late and
- * hang the last one off the end of the bar.
- *
- * Pure and total: clamped at 0 so a malformed span cannot schedule before the
- * downbeat.
- */
-function mirrorIndex(i: number, span: number, total: number): number {
-  return Math.max(0, total - i - Math.max(1, span));
-}
 
 export class AudioEngine {
   private started = false;
@@ -51,6 +27,9 @@ export class AudioEngine {
   /** Supersedes in-flight live reconciliations. The old schedule stays intact
    *  while a cold clip prepares; only the newest project may replace it. */
   private reconcileGen = 0;
+  /** Single-entry, disposable cache: replace on commit; discard on stop/export.
+   * No history or project objects are retained. */
+  private scheduledFingerprint: string | null = null;
 
   constructor(private readonly sound: SoundPort) {}
 
@@ -148,8 +127,8 @@ export class AudioEngine {
    * Playing a song backwards is three mirrors, and the sample was only one:
    *
    *   1. the SAMPLE plays tape-reversed              (`sound.setReversed`)
-   *   2. the STEPS within a bar run last-to-first    (`mirrorIndex`)
-   *   3. the BARS of the train run last-to-first     (`scheduleArrangement`)
+   *   2. the STEPS within a bar run last-to-first    (`playbackPlan`)
+   *   3. the BARS of the train run last-to-first     (`playbackPlan`)
    *
    * Toggling while the song runs reconciles in place, so the flip is heard on
    * the very next scheduled pass without stopping the groove. Like terrain,
@@ -173,44 +152,28 @@ export class AudioEngine {
     this.sound.setQuantize(grid);
   }
 
-  /** Reconcile transport + scheduled voices to match the project. Clears and
-   *  reschedules WITHOUT stopping the transport, so the groove keeps playing
-   *  seamlessly while the kid edits. Honors the current play mode: "loop" rides
+  /** Reconcile transport + scheduled voices to match the project. Audible edits
+   *  replace the schedule without stopping; presentation-only edits leave the
+   *  live graph untouched. Honors the current play mode: "loop" rides
    *  the active car alone (one bar); "ride" lays out the whole arrangement. */
   async reconcile(project: Project): Promise<void> {
     if (!this.started) return;
     await this.reconcileIn(this.mode, project);
   }
 
-  private async reconcileIn(mode: PlayMode, project: Project): Promise<boolean> {
+  private async reconcileIn(mode: PlayMode, project: Project, force = false): Promise<boolean> {
+    // Even an unchanged plan supersedes a pending edit (e.g. undo while baking).
     const gen = ++this.reconcileGen;
-    this.sound.setTempo(project.tempoBpm);
-    await this.prepareMode(mode, project);
+    const plan = playbackPlan(project, mode, this.reversed);
+    const fingerprint = playbackFingerprint(plan);
+    if (!force && this.playing && fingerprint === this.scheduledFingerprint) return true;
+    await preparePlayback(plan, this.sound);
     if (gen !== this.reconcileGen) return false;
+    this.sound.setTempo(plan.tempoBpm);
     this.sound.clearScheduled();
-    if (mode === "ride") this.scheduleArrangement(project);
-    else this.scheduleLayers(project, activeLayers(project), 1, 0);
+    schedulePlayback(plan, this.sound);
+    this.scheduledFingerprint = fingerprint;
     return true;
-  }
-
-  /** Lay out the whole train as one long, repeating loop: each slot occupies one
-   *  bar in order, and the whole song repeats every `train.length` bars. This
-   *  reuses the proven 1-bar scheduler at a longer cycle, so section changes are
-   *  gapless (Tone handles the timeline) without any mid-bar reschedule that
-   *  would clip a bar. Muted (tarped) cars are simply skipped — that bar is
-   *  silent while the slot still occupies its place in the timeline. */
-  private scheduleArrangement(project: Project): void {
-    const train = liveTrain(project);
-    const length = Math.max(1, train.length);
-    train.forEach((car, k) => {
-      if (car.muted) return; // tarped → silent bar
-      const part = partForCar(project, car);
-      // BACKWARDS mirror 3 of 3: the last car's bar plays first. A song run
-      // backwards has to arrive at its beginning, so the ORDER of the sections
-      // reverses, not only what happens inside each one.
-      const slot = this.reversed ? length - 1 - k : k;
-      if (part) this.scheduleLayers(project, part.layers, length, slot);
-    });
   }
 
   /** Track view: stop everything, then loop just one library car (one bar). Used
@@ -221,103 +184,16 @@ export class AudioEngine {
     if (!part) return;
     const gen = ++this.playGen;
     this.reconcileGen++;
-    this.sound.setTempo(project.tempoBpm);
-    await this.prepareLayers(project, part.layers);
+    const plan = playbackPlan(project, "loop", this.reversed, part.layers);
+    await preparePlayback(plan, this.sound);
     if (gen !== this.playGen) return;
     this.mode = "loop";
+    this.sound.setTempo(plan.tempoBpm);
     this.sound.clearScheduled();
-    this.scheduleLayers(project, part.layers, 1, 0);
+    schedulePlayback(plan, this.sound);
+    this.scheduledFingerprint = playbackFingerprint(plan);
     this.sound.startTransport();
     this.playing = true;
-  }
-
-  /** Schedule one car's lanes onto the transport. `cycleBars` is the loop length
-   *  in bars (1 for a single car; the song length when riding) and `barOffset`
-   *  positions this car within that cycle. */
-  private scheduleLayers(
-    project: Project,
-    layers: readonly Layer[],
-    cycleBars: number,
-    barOffset: number,
-  ): void {
-    for (const layer of layers) {
-      if (layer.muted) continue;
-      const clip = project.clips[layer.clipId];
-      if (!clip) continue;
-      // Per-lane groove overrides the song swing once a kid tweaks it.
-      const opts = {
-        volume: layer.volume,
-        swing: layer.swing ?? project.swing,
-        echo: layer.echo,
-        tone: layer.tone,
-        wobble: layer.wobble ?? 0,
-        crunch: layer.crunch ?? 0,
-        // One live fx chain per lane, shared by all its cells (see StepOptions).
-        laneKey: layer.id,
-      };
-      // BACKWARDS mirror 2 of 3: within the bar, the last step plays first.
-      const at = (i: number, span: number, total: number): number =>
-        this.reversed ? mirrorIndex(i, span, total) : i;
-      if (layer.kind === "melody") {
-        const total = layer.notes.length || STEP_COUNT;
-        const instrument = resolveInstrument(layer.instrument, layer.wave);
-        layer.notes.forEach((chord, i) => {
-          for (const n of chord) {
-            const note = degreeToNote(project.scaleId, project.keyId, n.row);
-            // Resolve bend pin rows → note names here so the adapter stays free
-            // of music theory (Magic Notes lives in the core).
-            const bend = n.pins?.map((p) => ({
-              // A pin's `t` is a position INSIDE its note, so a backwards song
-              // runs it backwards too — otherwise a bend that rose to its peak
-              // would still rise while everything around it fell.
-              t: this.reversed ? 1 - p.t : p.t,
-              noteName: degreeToNote(project.scaleId, project.keyId, p.row),
-            }));
-            this.sound.scheduleNote(
-              note, instrument, at(i, n.length ?? 1, total), total, opts,
-              n.length, n.roll ?? 1, bend, cycleBars, barOffset,
-            );
-          }
-        });
-      } else {
-        const total = layer.steps.length || STEP_COUNT;
-        layer.steps.forEach((cell, i) => {
-          // A drum hit's `row` is its tune (semitone offset); 0 = natural.
-          if (cell)
-            this.sound.scheduleStep(
-              clip, at(i, cell.length ?? 1, total), total, opts,
-              cell.length, cell.roll ?? 1, cell.row,
-              cycleBars, barOffset,
-            );
-        });
-      }
-    }
-  }
-
-  /** Prepare each sounding sample once. Melody voices are constructed
-   *  synchronously and need no preparation. */
-  private async prepareLayers(project: Project, layers: readonly Layer[]): Promise<void> {
-    const clips = new Map<string, (typeof project.clips)[string]>();
-    for (const layer of layers) {
-      if (layer.muted || layer.kind === "melody") continue;
-      const clip = project.clips[layer.clipId];
-      if (clip) clips.set(clip.id, clip);
-    }
-    await Promise.all([...clips.values()].map((clip) => this.sound.prepareClip(clip)));
-  }
-
-  private async prepareMode(mode: PlayMode, project: Project): Promise<void> {
-    if (mode === "loop") {
-      await this.prepareLayers(project, activeLayers(project));
-      return;
-    }
-    await Promise.all(
-      liveTrain(project).map((car) => {
-        if (car.muted) return Promise.resolve();
-        const part = partForCar(project, car);
-        return part ? this.prepareLayers(project, part.layers) : Promise.resolve();
-      }),
-    );
   }
 
   /** Start (or restart) playback in a mode: reschedule for it, then run the
@@ -325,7 +201,7 @@ export class AudioEngine {
   private async playIn(mode: PlayMode, project: Project): Promise<void> {
     if (!this.started) return;
     const gen = ++this.playGen;
-    const committed = await this.reconcileIn(mode, project);
+    const committed = await this.reconcileIn(mode, project, true);
     if (!committed || gen !== this.playGen) return;
     this.mode = mode;
     this.sound.startTransport();
@@ -352,11 +228,13 @@ export class AudioEngine {
     this.reconcileGen++;
     this.sound.stopTransport();
     this.mode = "ride";
-    this.sound.setTempo(project.tempoBpm);
-    await this.prepareMode("ride", project);
+    this.scheduledFingerprint = null;
+    const plan = playbackPlan(project, "ride", this.reversed);
+    await preparePlayback(plan, this.sound);
     if (gen !== this.playGen) throw new Error("audio render superseded");
+    this.sound.setTempo(plan.tempoBpm);
     this.sound.clearScheduled();
-    this.scheduleArrangement(project);
+    schedulePlayback(plan, this.sound);
     this.playing = true;
     try {
       return await this.sound.captureBars(Math.max(1, liveTrain(project).length));
@@ -381,6 +259,7 @@ export class AudioEngine {
     this.reconcileGen++;
     this.sound.stopTransport();
     this.playing = false;
+    this.scheduledFingerprint = null;
     // Latches are a property of the RIDE; stopping the ride is flat ground.
     this.latched.clear();
   }

@@ -3,11 +3,11 @@ import { emptyProject, serialize } from "../../src/core/project-state.ts";
 import { tapCanvasAtClientPoint } from "./canvas-input.ts";
 import { tapMapLandmark } from "./map-landmark.ts";
 import { PNG } from "pngjs";
+import { GAME_DESIGN_SIZE as DESIGN } from "../../src/game/game-dimensions.ts";
 
-// Acceptance requires the real 2560×1440 game canvas, not a 1280×720 review-scale screenshot.
+// Inspect the production canvas displayed at the full design size.
 const VIEWPORT = { width: 2560, height: 1440 };
 const PROJECTS_KEY = "ibeetkidz:projects";
-const DESIGN = { width: 2560, height: 1440 };
 
 // Workshop map's live inst-mic interaction: (394,915,272,224).
 const MIC_STATION = { x: 530, y: 1027 };
@@ -27,13 +27,9 @@ async function designPoint(page: Page, point: { x: number; y: number }): Promise
   const canvas = page.locator("canvas").first();
   const box = await canvas.boundingBox();
   expect(box, "production canvas must be visible").not.toBeNull();
-  const intrinsic = await canvas.evaluate((node) => {
-    const canvas = node as HTMLCanvasElement;
-    return { width: canvas.width, height: canvas.height };
-  });
   return {
-    x: box!.x + point.x * (box!.width / intrinsic.width),
-    y: box!.y + point.y * (box!.height / intrinsic.height),
+    x: box!.x + point.x * (box!.width / DESIGN.width),
+    y: box!.y + point.y * (box!.height / DESIGN.height),
   };
 }
 

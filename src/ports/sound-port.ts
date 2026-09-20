@@ -90,8 +90,9 @@ export interface SoundPort {
   /** Resolve any asynchronous sample/effect work needed before a transport
    *  schedule is committed. Idempotent and cached by the adapter. The engine
    *  awaits this for every sounding clip before it starts the transport, so a
-   *  cold bake cannot miss the first pass of the song. */
-  prepareClip(clip: Clip): Promise<void>;
+   *  cold bake cannot miss the first pass of the song. An explicit tempo prepares
+   *  an upcoming edit without changing the currently sounding transport. */
+  prepareClip(clip: Clip, tempoBpm?: number): Promise<void>;
 
   /** Audition a single melody note now (used when a kid taps a note cell), so
    *  the grid gives instant feedback without waiting for Play. Voiced with the

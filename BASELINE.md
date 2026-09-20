@@ -1,147 +1,95 @@
 # iBeetKidz baseline
 
-This is the measured 2026-08-31 cleanup-release baseline. Historical re-baselines and
-session narratives belong in Git history; durable architecture rationale belongs
-in `design/HISTORY.md`. Do not copy these counts into another living document.
+Measured 2026-09-19 for the playback and graphics resource repair. This file owns
+current measurements; earlier release baselines remain in Git history. The
+[improvement roadmap](design/IMPROVEMENT_ROADMAP.md) owns next steps.
 
-## Measurement
+## Environment and limits
 
-- Date: 2026-08-31
-- Locally measured commit: `ed0eb496f0d9febd922c49dea3ee129199f8ee28`
-- Deployed release: `8fad32f4ba6a0156f6af9f351bdab2ff2dccc1c9`
-  (the intervening commits change only a headed-test timeout and documentation)
-- Node: 24.18.0
-- Package manager: npm with the committed `package-lock.json`
-- Browser: Playwright Chromium 1228
-- Gate environment: clean archive of the measured commit; unrelated concurrent
-  work in the primary checkout was excluded
+- Local source: this release worktree, based on `0b747c82d81f64f34b29e5858b4033aff6985945`.
+- Node: 22.22.2; npm with the committed lockfile.
+- Browser: system Chromium on hwc-server, headless WebGL through SwiftShader.
+- Image tools: `uv run --with-requirements scripts/requirements-ui-atlas.txt`.
+- Local Playwright uses an external config selecting system Chromium. Its server
+  working directories and artifact fixture path point to this repository.
+- Physical iPad, Eric's exact affected song/browser, and ten-minute thermal
+  behavior remain unverified. Software-renderer results are not iPad results.
+- This file records local evidence. Deployment is subject to the exact commit's
+  GitHub Actions release gate and a live browser check.
 
-All counts below come from commands run during this re-baseline. They are not
-estimates derived from old documentation. Gate, build, and payload measurements
-come from `ed0eb49`; the tracked-snapshot byte row explicitly records the final
-`8fad32f` release tree.
+## Resource measurements
 
-## Required gate
+| Resource | Before repair | Current |
+|---|---:|---:|
+| WebGL backing buffer | 2560 × 1440 | 1280 × 720 |
+| Layout coordinates | 2560 × 1440 | unchanged |
+| UI atlas decoded RGBA | 243,236,864 bytes | 79,650,712 bytes |
+| UI atlas PNG payload | 3,877,979 bytes | 2,194,239 bytes |
+| UI frames / pages | 114 / 4 | 114 / 5 |
 
-| Command | Result | Duration |
-|---|---|---:|
-| `npm run typecheck` | exit 0; no TypeScript diagnostics | 5.07 s |
-| `npm test` | 43 files passed; 660 tests passed; 0 skipped | 5.20 s |
-| `npm run lint` | exit 0; no ESLint diagnostics | 5.56 s |
-| `npm run build` | exit 0; both deploy artifacts generated and checked | 22.48 s |
-| `npm run check:no-editor` | exit 0; no editor code in either build | 0.22 s |
-| `npm run check:pwa` | exit 0; both artifacts installable and fully precached | 0.23 s |
-| `PW_PORT=5174 npm run test:e2e` | 70 passed; 1 opt-in stress test skipped; 0 failed | 690.96 s |
+Decoded bytes are width × height × four, including atlas padding. They are not
+measured total GPU allocation. Framebuffers, drivers and other textures add cost.
+Buttons and icons remain at original resolution. Larger artwork is reduced;
+transparent padding is trimmed without changing logical sprite bounds. The
+budget is enforced by `scripts/ui-atlas-policy.json`, the generator, and a unit
+check of the shipped PNG dimensions.
 
-The full local E2E run has 71 tests. `audio-stress.spec.ts` remains opt-in. Some
-hardware-audio blocks also skip under CI, so do not infer a CI count from the
-local result; inspect the actual workflow run.
+An isolated full/half/full buffer experiment on the same idle Track measured
+mean frame intervals of **96.54 / 25.74 / 101.84 ms**. Canvas and renderer dimensions
+both changed; logical dimensions remained fixed. This supports the pixel-budget
+change but is not a device-wide frame-rate guarantee. The earlier viewport-only
+experiment did not change the backing buffer and is not used as release proof.
 
-### Playwright ports
+Before repair, a visible Intel Arc preview of the earlier live build averaged
+16.69 ms for one car and 16.70 ms for three repeated drum cars, with no observed
+late audio events in eight-second samples. That fixture did not reproduce the
+reported laptop symptom. Do not compare its hardware numbers directly to the
+local software renderer.
 
-`PW_PORT` controls the development server only. Playwright also starts PWA
-servers on 4173 and 4183. If another run owns those ports, that is an environment
-collision before application tests, not an application failure. Isolate all
-three without changing product behavior:
+## Verification
+
+- `npm run typecheck`: passed.
+- `npm test`: 679 tests in 44 files passed; none skipped.
+- `npm run lint`: passed.
+- `npm run build`: both root and Pages artifacts passed, including notices,
+  editor exclusion and PWA precache checks.
+- UI/train atlas freshness, AR-069 alpha, Workshop car geometry: passed.
+- New engine regressions first failed against the old behavior: redundant
+  rescheduling, repeated preparation, and undo during preparation. They now pass.
+- The new real-browser resource assertion first failed on the old actual canvas
+  size, then passed across scene changes, revisits and tablet-size resizing.
+- Full local browser run: 70 passed, one opt-in stress test skipped, and two
+  artifact-path failures in the external test harness. After correcting that
+  harness path, both artifact checks passed on rerun. All 72 enabled journeys
+  passed, including production Track, recording, offline and staged updates.
+
+| Built artifact | Files | Bytes |
+|---|---:|---:|
+| `dist/` | 112 | 20,469,303 |
+| `dist-gh/` | 112 | 20,470,213 |
+
+The image checker regenerates into a temporary directory and compares JSON and
+decoded PNG pixels. Regeneration uses the pinned Python requirements:
 
 ```sh
-PW_PORT=5174 PW_PWA_PORT=4273 PW_PWA_UPDATE_PORT=4283 npm run test:e2e
+uv run --with-requirements scripts/requirements-ui-atlas.txt python scripts/build_ui_atlas.py
+uv run --with-requirements scripts/requirements-ui-atlas.txt bash scripts/check-ui-atlas-fresh.sh
 ```
 
-The audio-output decision point is load-sensitive on this machine. Reproduce an
-isolated failure before attributing it to application code. Tunnel transition
-assertions compare geometry captured in the same Phaser render frame and use the
-15-second traversal bound established by the surrounding acceptance tests.
+Normal release checks remain `npm run typecheck`, `npm test`, `npm run lint`,
+`npm run build`, and the affected browser journeys. Pin all three Playwright
+ports when another project may already own the defaults:
 
-## Repository and build inventory
+```sh
+PW_PORT=5198 PW_PWA_PORT=4197 PW_PWA_UPDATE_PORT=4198 npm run test:e2e
+```
 
-| Fact | Measured value |
-|---|---:|
-| Tracked files | 526 |
-| Tracked snapshot bytes (`8fad32f`) | 81,791,813 |
-| Tracked files under `src/` + `tests/` | 408 |
-| `src/assets/` tracked bytes | 39,045,309 |
-| `dist/` | 112 files; 23,145,669 bytes |
-| `dist-gh/` | 112 files; 23,146,589 bytes |
-| UI atlas | 114 frames; 5,317,982 encoded bytes; 237,633,536 decoded RGBA bytes |
-| E2E spec files | 19 |
+## Retained provenance constraints
 
-Each service worker contains 114 manifest entries and 110 unique URLs. Four PWA
-icons are emitted twice by the plugin's manifest/glob paths; this is known
-optional configuration churn, not duplicated payload on disk. Unique precached
-payload is 23,123,100 bytes for `dist/` and 23,124,020 bytes for `dist-gh/`.
-`THIRD_PARTY_NOTICES.txt` is present and precached. No precache URL contains
-`editor`.
-
-The 96 retired AR-015 references remain available locally under ignored
-`art/ar015/`, and 39 raw train references remain under ignored
-`art/train-refs/`; neither directory is a build input. Git history was not
-rewritten, so `.git` remains approximately 1.40 GiB.
-
-## Generated and legal artifacts
-
-- `THIRD_PARTY_NOTICES.txt` and `public/THIRD_PARTY_NOTICES.txt` are generated
-  from the lockfile, installed package licenses, explicit generated-runtime
-  packages, and `legal/third-party-assets.json`. `check:pwa` compares the
-  declared Workbox package set with the modules in each emitted runtime:
-
-  ```sh
-  npm run generate:notices
-  npm run check:notices
-  ```
-
-- `public/assets/spritesheets/ui-atlas*` is generated from
-  `src/assets/sprites/{buttons,instruments,panels,icons}`. The checker compares
-  deterministic JSON plus PNG dimensions, color model, and decoded pixels in a
-  temporary directory:
-
-  ```sh
-  bash scripts/check-ui-atlas-fresh.sh
-  ```
-
-  Measured duration: 33.92 s.
-
-  If Pillow is unavailable in the host Python:
-
-  ```sh
-  nix-shell -p 'python3.withPackages (ps: [ ps.pillow ])' \
-    --run 'bash scripts/check-ui-atlas-fresh.sh'
-  ```
-
-- `public/assets/spritesheets/train.{png,json}` is generated from the 40
-  accepted RGBA cells and manifest under `src/assets/sprites/train-atlas/`.
-  Ignored `art/train-refs/` files are historical references, not build inputs.
-  The release workflow checks deterministic JSON plus PNG dimensions, color
-  model, and decoded pixels:
-
-  ```sh
-  python3 scripts/build_train_atlas.py
-  npm run check:train-atlas
-  ```
-
-  Measured checker duration: 2.94 s.
-
-  If Pillow is unavailable in the host Python, use the same pinned Nix shell as
-  the UI-atlas check:
-
-  ```sh
-  nix-shell -p 'python3.withPackages (ps: [ ps.pillow ])' \
-    --run 'npm run check:train-atlas'
-  ```
-
-## Known open findings
-
-- The AR-060F and AR-060T Workshop corrections are accepted, and
-  `npm run check:workshop-car-art` is a Pages release gate. The flatcar helper's
-  original `design/review/ar060-flatcar-source.png` input was not pushed;
-  `ART_REQUESTS.md` carries the bounded provenance handoff. The accepted runtime
-  PNGs must not be redrawn while that source is recovered.
-- Signal, smoke, and tarp atlases still lack complete tracked regeneration
-  provenance. Preserve these load-bearing outputs until their source-of-truth
-  decisions are made.
-- Full `npm audit` reports three high-severity findings in development-only
-  transitive tooling; `npm audit --omit=dev` reports zero production findings.
-- No physical iPad/Android install, microphone, offline-update, or audio-device
-  acceptance was performed during this baseline. The local measurement did not
-  deploy; the subsequent exact-SHA GitHub Actions run `33466226635` passed and
-  deployed `8fad32f`, and its public browser journey was exercised.
+- The accepted AR-060F/AR-060T runtime PNGs remain intact. The original flatcar
+  helper input is still covered by the handoff in `ART_REQUESTS.md`.
+- Signal, smoke and tarp atlas regeneration provenance is still incomplete.
+  Preserve those load-bearing outputs until source ownership is resolved.
+- The shared-game design remains intentional; see
+  `design/PERF_SINGLE_PHASER_GAME.md`. Smaller runtime assets must not reintroduce
+  a new game/context on each navigation.

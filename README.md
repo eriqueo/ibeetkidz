@@ -88,6 +88,7 @@ bash scripts/check-ui-atlas-fresh.sh
 - `CLAUDE.md` / `AGENTS.md`: engineering workflow and contributor rules.
 - `design/HISTORY.md`: current architecture plus rationale retained from retired designs.
 - `BASELINE.md`: dated, measured verification records; never infer current counts from prose.
+- `design/IMPROVEMENT_ROADMAP.md`: resource repairs and the next offline/control improvements.
 - `SCENE_AUTHORING_GUIDE.md`: Tiled scene-authoring workflow.
 - `ART_REQUESTS.md`: active art contract and delivery record.
 - `design/GAME_FEEL.md`: animation and world-integration laws.

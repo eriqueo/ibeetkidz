@@ -5,7 +5,7 @@ import {
   makeLayer,
   reduce,
 } from "../../src/core/project-state.ts";
-import type { Clip, Project } from "../../src/core/types.ts";
+import type { Clip, Layer, Project } from "../../src/core/types.ts";
 import type { SoundPort } from "../../src/ports/sound-port.ts";
 import { LATCH_HOLD_BARS, NEUTRAL_TERRAIN, TERRAIN, combineModes, type TerrainEffect } from "../../src/core/terrain.ts";
 
@@ -184,6 +184,103 @@ function twoCarTrain(): Project {
 }
 
 describe("AudioEngine play modes", () => {
+  it.each([
+    { volume: 0.3 }, { swing: 0.7 }, { echo: 0.4 }, { tone: 0.2 },
+    { wobble: 0.8 }, { crunch: 0.5 }, { muted: true },
+    { steps: [{ row: 4, length: 3, roll: 2 }] },
+  ] satisfies Partial<Layer>[])("reconciles audible lane changes: %j", async (change) => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    await engine.playLoop(project);
+    const clears = sound.clears;
+    await engine.reconcile({ ...project, parts: project.parts.map((part) => ({
+      ...part, layers: part.layers.map((layer) => ({ ...layer, ...change })),
+    })) });
+    expect(sound.clears).toBe(clears + 1);
+  });
+
+  it.each([
+    { effects: [{ id: "reverse", amount: 1 }] },
+    { loopBeats: 4 },
+    { source: { kind: "recording", bufferId: "new-take" } },
+  ] satisfies Partial<Clip>[])("reconciles audible clip changes: %j", async (change) => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    await engine.playLoop(project);
+    const clears = sound.clears;
+    await engine.reconcile({ ...project, clips: { ...project.clips,
+      d1: { ...project.clips.d1!, ...change },
+    } });
+    expect(sound.clears).toBe(clears + 1);
+  });
+
+  it("keeps sounding voices across no-ops, navigation, and cosmetic edits", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = twoCarTrain();
+    await engine.playRide(project);
+    const events = [...sound.events];
+    const clears = sound.clears;
+    await engine.reconcile(project);
+    await engine.reconcile({
+      ...project,
+      activePartId: project.parts[0]!.id,
+      parts: project.parts.map((part) => ({ ...part, name: "Blue car", color: "#00f", carType: "tanker" })),
+      clips: Object.fromEntries(Object.entries(project.clips).map(([id, clip]) =>
+        [id, { ...clip, label: "Renamed", color: "#00f" }])),
+    });
+    expect(sound.clears).toBe(clears);
+    expect(sound.events).toEqual(events);
+  });
+
+  it("prepares a repeated car's sample only once for the whole ride", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    let project = oneHitCar();
+    for (let i = 0; i < 2; i++) project = reduce(project, {
+      type: "addToTrain", instanceId: `repeat-${i}`, partId: project.activePartId,
+    });
+    await engine.playRide(project);
+    expect(sound.scheduled).toHaveLength(3);
+    expect(sound.events.filter((event) => event === "prepare:d1")).toHaveLength(1);
+  });
+
+  it("undo to the sounding plan cancels a pending audible edit without rebuilding", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = oneHitCar();
+    await engine.playLoop(project);
+    const clears = sound.clears;
+    const gate = deferred();
+    sound.prepareClipImpl = () => gate.promise;
+    const pending = engine.reconcile(reduce(project, { type: "toggleStep", layerId: "d1", index: 1 }));
+    // This must return without waiting for the cold edit's preparation.
+    await engine.reconcile(project);
+    gate.resolve();
+    await pending;
+    expect(sound.clears).toBe(clears);
+    expect(sound.scheduled.map((event) => event.stepIndex)).toEqual([0]);
+  });
+
+  it("still replaces audible edits and rebuilds after stop and export", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    let project = oneHitCar();
+    await engine.playLoop(project);
+    project = reduce(project, { type: "toggleStep", layerId: "d1", index: 1 });
+    await engine.reconcile(project);
+    expect(sound.scheduled.map((event) => event.stepIndex)).toEqual([0, 1]);
+    engine.stop();
+    const clears = sound.clears;
+    await engine.playLoop(project);
+    expect(sound.clears).toBe(clears + 1);
+    await engine.renderSong(project);
+    await engine.playLoop(project);
+    expect(sound.scheduled).toHaveLength(2);
+  });
+
   it("prepares every cold clip before registering schedules and starting transport", async () => {
     const sound = new FakeSoundPort();
     const gate = deferred();
@@ -370,7 +467,7 @@ describe("AudioEngine play modes", () => {
     project = reduce(project, { type: "addToTrain", instanceId: "i2", partId: "car-2" });
     await engine.playRide(project);
     const clearsAfterPlay = sound.clears;
-    await engine.reconcile(project); // an edit while riding
+    await engine.reconcile({ ...project, tempoBpm: project.tempoBpm + 10 });
     expect(sound.clears).toBe(clearsAfterPlay + 1);
     expect(sound.scheduled).toHaveLength(2); // still the whole song
   });

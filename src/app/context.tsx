@@ -166,15 +166,13 @@ if (
 function dispatch(cmd: Command): void {
   const before = store.getSnapshot();
   store.dispatch(cmd);
+  // Refused/no-op commands need neither an audio plan nor an undo offer.
+  if (store.getSnapshot() === before) return;
   if (engine.isPlaying) {
     void engine.reconcile(getProject()).catch((err: unknown) => {
       console.warn("audio reconcile failed", err);
     });
   }
-  // A no-op command changes nothing and pushes no history entry, so there would
-  // be nothing for "put it back" to restore — checking the store rather than
-  // the command keeps this honest about what actually happened.
-  if (store.getSnapshot() === before) return;
   const lost = offersUndo(cmd) ? lostBy(cmd) : null;
   if (lost) publishUndoOffer(lost);
   else if (commandHistoryPolicy(cmd) !== "navigation") withdrawUndoOffer();
@@ -199,14 +197,12 @@ function dispatchAll(cmds: readonly Command[], offer?: string): void {
   if (cmds.length === 0) return;
   const before = store.getSnapshot();
   store.dispatchAll(cmds);
+  if (store.getSnapshot() === before) return;
   if (engine.isPlaying) {
     void engine.reconcile(getProject()).catch((err: unknown) => {
       console.warn("audio reconcile failed", err);
     });
   }
-  // Same rule as the single-command arm: ask the STORE whether anything moved,
-  // not the commands what they intended. A batch can be entirely refused.
-  if (store.getSnapshot() === before) return;
   if (offer) publishUndoOffer(offer);
   else withdrawUndoOffer();
 }

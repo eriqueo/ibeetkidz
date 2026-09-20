@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Pack the Three-Zone UI chrome (buttons / instruments / panels) into a
-Phaser multiatlas so a scene loads ONE packed image instead of ~38 separate
-PNGs — GitHub Pages round-trips per view switch were the load-time killer.
+Phaser multiatlas so scenes reuse packed pages instead of loading each sprite
+separately. Runtime scale, page size and decoded budget live in ui-atlas-policy.json.
 
 Output: public/assets/spritesheets/ui-atlas.json (+ ui-atlas-<n>.png pages).
 Frame names = file stems (btn-play-idle, inst-drums-hover, …), identical to
@@ -13,6 +13,7 @@ import argparse
 import glob
 import json
 import os
+from pathlib import Path
 
 SRC_DIRS = [
     "src/assets/sprites/buttons",
@@ -24,7 +25,8 @@ SRC_DIRS = [
     "src/assets/sprites/icons",
 ]
 OUT_DIR = "public/assets/spritesheets"
-PAGE = 4096  # safe GPU texture ceiling (older iPads)
+POLICY = json.loads(Path(__file__).with_name("ui-atlas-policy.json").read_text())
+PAGE = POLICY["pageSize"]
 PAD = 2
 
 # ── the background wash, keyed out here ─────────────────────────────────────
@@ -118,7 +120,18 @@ def main(out_dir: str = OUT_DIR) -> None:
             im, cleared = dewash(im)
             if cleared:
                 washed.append((name, cleared / (im.width * im.height)))
-            sprites.append((name, im))
+            # Source art stays full-size. Runtime art follows the pixel game's
+            # displayed size; nearest-neighbour retains hard pixel edges.
+            # Small baked labels and percussion symbols must survive unchanged.
+            scale = 1 if Path(d).name in POLICY["fullResolutionDirectories"] else POLICY["runtimeScale"]
+            im = im.resize((max(1, round(im.width * scale)), max(1, round(im.height * scale))),
+                           Image.Resampling.NEAREST)
+            source_size = {"w": im.width, "h": im.height}
+            bounds = im.getbbox() or (0, 0, 1, 1)
+            im = im.crop(bounds)
+            if im.width > PAGE or im.height > PAGE:
+                raise ValueError(f"{name}: runtime sprite exceeds {PAGE}px atlas page")
+            sprites.append((name, im, source_size, bounds, scale))
     if washed:
         print(f"keyed a background wash out of {len(washed)} sprite(s):")
         for name, frac in sorted(washed, key=lambda t: -t[1]):
@@ -144,7 +157,7 @@ def main(out_dir: str = OUT_DIR) -> None:
         return len(pages) - 1, 0, 0
 
     frames_per_page: list[list[dict]] = []
-    for name, im in sprites:
+    for name, im, source_size, bounds, scale in sprites:
         pi, x, y = place(im.width, im.height)
         while len(frames_per_page) <= pi:
             frames_per_page.append([])
@@ -153,33 +166,44 @@ def main(out_dir: str = OUT_DIR) -> None:
             "filename": name,
             "frame": {"x": x, "y": y, "w": im.width, "h": im.height},
             "rotated": False,
-            "trimmed": False,
-            "spriteSourceSize": {"x": 0, "y": 0, "w": im.width, "h": im.height},
-            "sourceSize": {"w": im.width, "h": im.height},
+            "trimmed": True,
+            "spriteSourceSize": {"x": bounds[0], "y": bounds[1], "w": im.width, "h": im.height},
+            "sourceSize": source_size,
+            "runtimeScale": scale,
         })
 
+    sizes = [(max(f["frame"]["x"] + f["frame"]["w"] for f in frames),
+              max(f["frame"]["y"] + f["frame"]["h"] for f in frames))
+             for frames in frames_per_page]
+    decoded_bytes = sum(w * h * 4 for w, h in sizes)
+    # Fail before replacing any output; never silently omit art to fit a budget.
+    if decoded_bytes > POLICY["maxDecodedBytes"]:
+        raise ValueError(f"UI atlas needs {decoded_bytes} decoded bytes; "
+                         f"budget is {POLICY['maxDecodedBytes']}. Right-size the runtime art.")
     os.makedirs(out_dir, exist_ok=True)
     for old in glob.glob(f"{out_dir}/ui-atlas-*.png"):
         os.remove(old)
     textures = []
     total = 0
     for pi, page in enumerate(pages):
-        # crop the page to used height, quantize to palette PNG
-        used_h = max(s[1] + s[2] for s in shelves[pi])
-        img = page.crop((0, 0, PAGE, used_h)).quantize(colors=256, method=Image.FASTOCTREE)
+        # Crop unused rows AND columns. PNG compression does not save GPU memory.
+        used_w, used_h = sizes[pi]
+        img = page.crop((0, 0, used_w, used_h)).quantize(colors=256, method=Image.FASTOCTREE)
         fname = f"ui-atlas-{pi}.png"
         img.save(f"{out_dir}/{fname}", optimize=True)
         total += os.path.getsize(f"{out_dir}/{fname}")
         textures.append({
             "image": fname,
             "format": "RGBA8888",
-            "size": {"w": PAGE, "h": used_h},
+            "size": {"w": used_w, "h": used_h},
             "scale": 1,
             "frames": frames_per_page[pi],
         })
-    json.dump({"textures": textures, "meta": {"app": "build_ui_atlas.py", "version": "1.0"}},
+    json.dump({"textures": textures, "meta": {"app": "build_ui_atlas.py", "version": "2.0",
+                                            "runtimeScale": POLICY["runtimeScale"]}},
               open(f"{out_dir}/ui-atlas.json", "w"))
     print(f"packed {len(sprites)} sprites into {len(pages)} page(s), {total / 1e6:.1f}MB total")
+    print(f"decoded RGBA: {decoded_bytes / 2**20:.2f} MiB / {POLICY['maxDecodedBytes'] / 2**20:.0f} MiB budget")
 
 
 if __name__ == "__main__":

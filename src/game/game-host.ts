@@ -3,8 +3,8 @@
 // Why: a `Phaser.Game` owns exactly one `TextureManager`, so the v2 shape — a
 // game per mounted view, destroyed on unmount — shared nothing. Every move
 // between spaces threw away the WebGL context and re-decoded and re-uploaded
-// every texture. The packed chrome atlas alone is ~176 MB of VRAM and three of
-// the four spaces load it, so it was paid again on each navigation.
+// every texture. Three of the four spaces share the chrome atlas, so that
+// decode/upload cost was paid again on each navigation.
 //
 // This module owns the game and the host element; `SceneSwitch` owns the policy
 // for which scene runs (and the ordering rules, which are the subtle part).

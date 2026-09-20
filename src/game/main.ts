@@ -4,6 +4,8 @@
 // every space. It deliberately starts with no scenes — the SceneManager is
 // driven entirely by `SceneSwitch`.
 import Phaser from "phaser";
+import { GAME_DESIGN_SIZE } from "./game-dimensions.ts";
+import { configureDrawingBuffer } from "./rendering.ts";
 
 export function startGame(parent: HTMLElement): Phaser.Game {
   return new Phaser.Game({
@@ -22,16 +24,16 @@ export function startGame(parent: HTMLElement): Phaser.Game {
     // restate a derived fact and invite the two drifting apart — if the pixel
     // policy ever changes, it changes HERE, once.
     pixelArt: true,
+    callbacks: { postBoot: configureDrawingBuffer },
     scale: {
       // FIT a fixed 16:9 design resolution into the container, letterboxing and
       // centring so the whole scene stays on-screen (and fills mobile viewports
       // vertically). The scene lays everything out in this fixed 2560×1440 space;
-      // Phaser scales the canvas to the device.
+      // The camera maps it to a bounded drawing buffer; FIT handles CSS size.
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.CENTER_BOTH,
       parent,
-      width: 2560,
-      height: 1440,
+      ...GAME_DESIGN_SIZE,
     },
     scene: [],
   });
