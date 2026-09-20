@@ -214,9 +214,11 @@ test("tapping the real pixels of a button actually does something", async ({ pag
   //    unreachable behind any open panel.) The nav taps therefore come first,
   //    while the chrome is genuinely exposed — otherwise this spec would report
   //    a dead button when the button is merely covered.
-  await tapSpawn(page, "WorkshopScene", "btn-nav-yard");
+  // SEND TO YARD is the bar's one route to the Yard (the twin YARD plaque was
+  // removed as redundant); the view changes once the car has slid out.
+  await tapSpawn(page, "WorkshopScene", "btn-send-to-yard");
   await expect
-    .poll(() => activeView(page), { message: "tapping the Workshop's YARD plaque did nothing" })
+    .poll(() => activeView(page), { message: "tapping the Workshop's SEND TO YARD plaque did nothing" })
     .toBe("yard");
   await waitForScene(page, "YardScene");
 

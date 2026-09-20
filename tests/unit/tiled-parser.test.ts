@@ -51,7 +51,7 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
     // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display,
     // + `inst-keys`, + `inst-pads` and `inst-magic` once AR-024 landed their
     // art (both tool panels were already built and reachable only by event).
-    expect(spawns).toHaveLength(21);
+    expect(spawns).toHaveLength(20);
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");
@@ -91,7 +91,7 @@ describe("top-bar plaques", () => {
     expect(s.arg).toBeUndefined();
     // Eric's ask: plaques must sit INSIDE the header art, not on its frame.
     const header = need("panel-header");
-    for (const plaque of [s, need("btn-nav-yard")]) {
+    for (const plaque of [s, need("btn-newcar")]) {
       expect(plaque.cx - plaque.w / 2).toBeGreaterThan(header.cx - header.w / 2);
       expect(plaque.cx + plaque.w / 2).toBeLessThan(header.cx + header.w / 2);
       expect(plaque.cy - plaque.h / 2).toBeGreaterThan(header.cy - header.h / 2);
@@ -99,12 +99,30 @@ describe("top-bar plaques", () => {
     }
   });
 
-  it("wires the New Car plaque → toggle-car-picker (left of SEND TO YARD)", () => {
+  it("wires the New Car plaque → toggle-car-picker, centred in the header", () => {
     const s = need("btn-newcar");
     expect(s.sprite).toBe("btn-newcar");
     expect(s.action).toBe("toggle-car-picker");
-    // Shifted off-centre to make header room for the SEND TO YARD plaque.
-    expect(s.cx).toBeCloseTo(0.449, 2);
+    expect(s.cx).toBeCloseTo(0.5, 2);
+  });
+
+  // Eric, 2026-09-20: the bar's plaques were "all different sizes", and a YARD
+  // plaque sat beside SEND TO YARD doing the same trip without the send-off.
+  it("gives every top-bar plaque one height and one baseline, evenly spaced", () => {
+    const [map, car, send] = ["btn-nav-map", "btn-newcar", "btn-send-to-yard"].map(need);
+    for (const plaque of [car!, send!]) {
+      expect(plaque.h).toBeCloseTo(map!.h, 4);
+      expect(plaque.cy).toBeCloseTo(map!.cy, 4);
+    }
+    expect(send!.w).toBeCloseTo(car!.w, 4);
+    expect(car!.cx - map!.cx).toBeCloseTo(send!.cx - car!.cx, 2);
+  });
+
+  it("has ONE way to the Yard from the Workshop bar", () => {
+    const toYard = spawns.filter(
+      (s) => s.action === "nav-yard" || s.action === "workshop-send-to-yard",
+    );
+    expect(toYard.map((s) => s.id)).toEqual(["btn-send-to-yard"]);
   });
 
   it("wires the SEND TO YARD plaque → workshop-send-to-yard, inside the header", () => {
@@ -116,12 +134,6 @@ describe("top-bar plaques", () => {
     expect(s.cx + s.w / 2).toBeLessThan(header.cx + header.w / 2);
     expect(s.cy - s.h / 2).toBeGreaterThan(header.cy - header.h / 2);
     expect(s.cy + s.h / 2).toBeLessThan(header.cy + header.h / 2);
-  });
-
-  it("wires the Yard plaque → nav-yard", () => {
-    const s = need("btn-nav-yard");
-    expect(s.sprite).toBe("btn-nav-yard");
-    expect(s.action).toBe("nav-yard");
   });
 });
 
