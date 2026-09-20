@@ -386,6 +386,81 @@ export class ToneSoundPort implements SoundPort {
    *  never stealing. Reset with `clearScheduled`. */
   private readonly melodyPool = new VoicePool<MelodyVoice>();
   private scheduledNoteEvents = 0;
+  // Recycled across reschedules. Every audible edit (and every Ride, mute or
+  // tarp) clears and rebuilds the schedule; building ~90 Tone instruments and
+  // players from scratch froze the main thread for 160–240 ms on a FAST laptop
+  // (Eric's field report, 2026-09-20: rendering was a steady 165 fps, and each
+  // freeze landed exactly on a rebuild, with late audio behind it). A cleared
+  // voice is silenced and disconnected, then handed to the next schedule.
+  // Bounded: past the cap a cleared voice is disposed, as all of them used to be.
+  private static readonly SPARE_VOICE_CAP = 96;
+  private static readonly SPARE_PLAYER_CAP = 128;
+  private readonly spareVoices = new Map<string, MelodyVoice[]>();
+  private spareVoiceCount = 0;
+  private readonly sparePlayers: Tone.Player[] = [];
+  /** The recycle key each live voice was built under. */
+  private readonly voiceKinds = new Map<MelodyVoice, string>();
+
+  /** A scheduled sample player on `buf` feeding `destination`. */
+  private scheduledPlayer(buf: AudioBuffer, destination: Tone.ToneAudioNode): Tone.Player {
+    let player = this.sparePlayers.pop();
+    if (player) player.buffer.set(buf);
+    else player = new Tone.Player({ url: buf, context: this.liveCtx });
+    player.connect(destination);
+    player.playbackRate = this.tempoScale; // join a terrain already underway
+    this.scheduledVoices.push(player);
+    return player;
+  }
+
+  /** A melody voice for `instrument`. `sampled` separates a Voice Keys sampler
+   *  from the synth the same id falls back to before its recording decodes. */
+  private scheduledVoice(
+    instrument: InstrumentId,
+    sampled: boolean,
+    destination: Tone.ToneAudioNode,
+  ): MelodyVoice {
+    const kind = `${instrument}|${sampled ? "sampler" : "synth"}`;
+    const spare = this.spareVoices.get(kind)?.pop();
+    if (spare) this.spareVoiceCount--;
+    const voice = spare ?? this.buildMelodyVoice(instrument);
+    voice.connect(destination);
+    this.voiceKinds.set(voice, kind);
+    this.scheduledSynths.push(voice);
+    return voice;
+  }
+
+  /** Silence every scheduled voice and player and bank them for the next
+   *  schedule. Disconnecting is what silences: anything the old schedule had
+   *  already queued inside the lookahead window can no longer be heard, and
+   *  the next note retriggers the voice the way any monophonic line does. */
+  private recycleScheduled(): void {
+    for (const player of this.scheduledVoices) {
+      player.stop();
+      player.disconnect();
+      if (this.sparePlayers.length < ToneSoundPort.SPARE_PLAYER_CAP) this.sparePlayers.push(player);
+      else player.dispose();
+    }
+    this.scheduledVoices.length = 0;
+    for (const voice of this.scheduledSynths) {
+      const kind = this.voiceKinds.get(voice);
+      this.voiceKinds.delete(voice);
+      if (voice instanceof Tone.Sampler) voice.releaseAll();
+      else voice.triggerRelease();
+      // A bend's pitch ramps must not glide into the next schedule's notes.
+      if ("frequency" in voice) voice.frequency.cancelScheduledValues(this.liveCtx.immediate());
+      voice.disconnect();
+      if (kind !== undefined && this.spareVoiceCount < ToneSoundPort.SPARE_VOICE_CAP) {
+        const bin = this.spareVoices.get(kind);
+        if (bin) bin.push(voice);
+        else this.spareVoices.set(kind, [voice]);
+        this.spareVoiceCount++;
+      } else {
+        voice.dispose();
+      }
+    }
+    this.scheduledSynths.length = 0;
+  }
+
   /** Stable identity for a destination node, for pool keys. */
   private readonly nodeIds = new WeakMap<object, number>();
   private nodeSeq = 0;
@@ -1175,12 +1250,10 @@ export class ToneSoundPort implements SoundPort {
         roll > 1
           ? defDur
           : Math.max(defDur, Math.min(lengthSteps, totalSteps) * stepDur);
-      const player = new Tone.Player({
-        url: this.playable(this.drumBuffer(kind, durationSec, pitch)),
-        context: this.liveCtx,
-      }).connect(this.scheduledDestination(opts));
-      player.playbackRate = this.tempoScale; // join a terrain already underway
-      this.scheduledVoices.push(player);
+      const player = this.scheduledPlayer(
+        this.playable(this.drumBuffer(kind, durationSec, pitch)),
+        this.scheduledDestination(opts),
+      );
       this.liveTransport.scheduleRepeat((time) => {
         this.recordSchedTiming(time);
         startAll(player, time);
@@ -1189,11 +1262,7 @@ export class ToneSoundPort implements SoundPort {
     }
 
     const register = (buf: AudioBuffer): void => {
-      const player = new Tone.Player({ url: this.playable(buf), context: this.liveCtx }).connect(
-        this.scheduledDestination(opts),
-      );
-      player.playbackRate = this.tempoScale; // join a terrain already underway
-      this.scheduledVoices.push(player);
+      const player = this.scheduledPlayer(this.playable(buf), this.scheduledDestination(opts));
       this.liveTransport.scheduleRepeat((time) => {
         this.recordSchedTiming(time);
         startAll(player, time);
@@ -1278,10 +1347,9 @@ export class ToneSoundPort implements SoundPort {
       { startSec: offset, needSec },
       this.barSec() * cycle,
       () => {
-        const built = this.buildMelodyVoice(instrument).connect(destination);
-        built.volume.value = volumeDb;
-        this.scheduledSynths.push(built);
-        return built;
+        const voice = this.scheduledVoice(instrument, voiceDur !== null, destination);
+        voice.volume.value = volumeDb;
+        return voice;
       },
     );
     this.scheduledNoteEvents++;
@@ -1716,10 +1784,7 @@ export class ToneSoundPort implements SoundPort {
     // forever. Editing while riding therefore ends the terrain, deliberately.
     this.clearTerrain();
     this.liveTransport.cancel();
-    for (const p of this.scheduledVoices) p.dispose();
-    this.scheduledVoices.length = 0;
-    for (const s of this.scheduledSynths) s.dispose();
-    this.scheduledSynths.length = 0;
+    this.recycleScheduled();
     this.melodyPool.clear();
     this.scheduledNoteEvents = 0;
     for (const fx of this.scheduledFx) fx.dispose();

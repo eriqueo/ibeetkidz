@@ -72,15 +72,29 @@ const h = vi.hoisted(() => {
   /** Every buffer a Player was constructed with, in order. */
   const played: FakeBuffer[] = [];
 
+  const built = { players: 0 };
+
   class FakePlayer {
     onstop: (() => void) | undefined;
-    readonly buffer: FakeBuffer;
+    // Like the real Player's ToneAudioBuffer: a holder whose audio can be
+    // swapped, which is how a recycled player takes its next sound.
+    readonly buffer = {
+      set: (next: FakeBuffer): void => {
+        played.push(next);
+      },
+    };
     // The adapter constructs players as `new Player(buffer)` inside the bake
     // and `new Player({ url, context })` on live paths — record the buffer
     // either way, like the real Player accepts both shapes.
     constructor(arg: FakeBuffer | { url: FakeBuffer }) {
-      this.buffer = "url" in arg ? arg.url : arg;
-      played.push(this.buffer);
+      built.players++;
+      played.push("url" in arg ? arg.url : arg);
+    }
+    stop(): this {
+      return this;
+    }
+    disconnect(): this {
+      return this;
     }
     toDestination(): this {
       return this;
@@ -102,7 +116,7 @@ const h = vi.hoisted(() => {
     return { get: () => baked };
   };
 
-  return { SR, ctx, transport, destination, played, repeats, FakePlayer, Offline, makeBuffer };
+  return { SR, ctx, transport, destination, played, built, repeats, FakePlayer, Offline, makeBuffer };
 });
 
 vi.mock("tone", async (importOriginal) => {
@@ -174,6 +188,47 @@ describe("loopCacheKey", () => {
     expect(normalizeBpm(0)).toBe(120);
     expect(normalizeBpm(Number.NaN)).toBe(120);
     expect(loopCacheKey(snappedClip(), 0)).toBe(loopCacheKey(snappedClip(), 120));
+  });
+});
+
+describe("ToneSoundPort reschedule cost", () => {
+  // Eric's field report (2026-09-20): every reschedule froze the main thread
+  // 160–240 ms because it disposed and rebuilt every player. A cleared player
+  // is banked and takes the next schedule's buffer instead.
+  it("rebuilds a cleared schedule without constructing new players", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = snappedClip();
+    await port.prepareClip(clip);
+    const opts = { volume: 1, swing: 0, echo: 0, tone: 1 };
+    const schedule = (): void => {
+      for (let step = 0; step < 8; step++) port.scheduleStep(clip, step, 16, opts);
+    };
+
+    schedule();
+    const afterFirst = h.built.players;
+    h.played.length = 0;
+    for (let i = 0; i < 5; i++) {
+      port.clearScheduled();
+      schedule();
+    }
+    expect(h.built.players).toBe(afterFirst);
+    // …and every recycled player was handed the buffer it must now play.
+    expect(h.played).toHaveLength(40);
+  });
+
+  it("builds more only when a schedule needs more than were banked", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = snappedClip();
+    await port.prepareClip(clip);
+    const opts = { volume: 1, swing: 0, echo: 0, tone: 1 };
+    port.scheduleStep(clip, 0, 16, opts);
+    const afterOne = h.built.players;
+    port.clearScheduled();
+    port.scheduleStep(clip, 0, 16, opts);
+    port.scheduleStep(clip, 4, 16, opts);
+    expect(h.built.players).toBe(afterOne + 1);
   });
 });
 
