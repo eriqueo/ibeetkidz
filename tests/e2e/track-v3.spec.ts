@@ -705,10 +705,16 @@ test("a tunnel enters, scrolls with the train, and exits instead of dimming in p
   await expect.poll(async () => entering.portalX - (await state(page)).tunnel.portalX)
     .toBeGreaterThan(100);
   const scrolledEntry = await state(page);
+  // The floor is CROPPED at the ground seam, and a TileSprite crops in screen
+  // space: its texture is pinned to the world only when its phase, measured
+  // from its own left edge, advances by exactly the portal's travel. (This
+  // used to compare the raw offset, which passed while the masonry slid at
+  // twice the portal's speed — the crop edge and the phase both moved.)
+  const floorPhase = (t: typeof entering): number => t.floorOffset - t.groundSeamX;
   expect(
     Math.abs(
       (entering.portalX - scrolledEntry.tunnel.portalX)
-      - (scrolledEntry.tunnel.floorOffset - entering.floorOffset),
+      - (floorPhase(scrolledEntry.tunnel) - floorPhase(entering)),
     ),
     "the portal and tunnel floor must travel as one world structure instead of wiping across the viewport",
   ).toBeLessThanOrEqual(1);

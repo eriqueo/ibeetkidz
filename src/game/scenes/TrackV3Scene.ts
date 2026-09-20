@@ -214,6 +214,12 @@ const LANTERN_CLEARANCE = 26;
 const TUNNEL_ENTRY_BACKDROP_INSET = 320;
 const TUNNEL_ENTRY_GROUND_INSET = 560;
 const TUNNEL_EXIT_SEAM_INSET = 80;
+/** Rows of `tunnel-roof.png` used: the cap course + beam, and the hanging rock
+ *  below the tall masonry band. Together with `TUNNEL_TOP_Y` they keep the
+ *  enclosure under the 640px mouth's mound (peak ≈ 490 above the rail) and the
+ *  rock tips where they were (200 above the rail, clear of the crew). */
+const TUNNEL_CAP = { sourceY: 20, height: 70 } as const;
+const TUNNEL_ROCK = { sourceY: 340, height: 180 } as const;
 
 // Horizon bands, back to front.
 const SKY_Y = 0;
@@ -223,6 +229,9 @@ const GROUND_Y = 870; // top of the ground slab
 const RAIL_Y = 900; // where wheels touch on FLAT ground
 const FORE_Y = 865;
 const FORE_H = 130;
+const TUNNEL_TOP_Y = RAIL_Y - TUNNEL_CAP.height - TUNNEL_ROCK.height - 200;
+/** Lamps hang among the rock tips, above the tallest crew. */
+const TUNNEL_LAMP_Y = RAIL_Y - 300;
 /** Clear of the top plate (which hangs to y=370), so the caption for an
  *  approaching terrain is never half-behind the nav bar. */
 const TERRAIN_LABEL_Y = 500;
@@ -309,6 +318,7 @@ export class TrackV3Scene extends Phaser.Scene {
    *  while the train is inside, completing the tunnel as a single location. */
   private tunnelFloor?: Phaser.GameObjects.TileSprite;
   private tunnelRoof?: Phaser.GameObjects.TileSprite;
+  private tunnelCap?: Phaser.GameObjects.TileSprite;
   private tunnelMouth?: Phaser.GameObjects.Image;
   private tunnelLamps: Phaser.GameObjects.Image[] = [];
   private tunnelOn = false;
@@ -617,11 +627,19 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0)
       .setDepth(DEPTH.tunnelBack)
       .setVisible(false);
+    // The enclosure is built to the PORTAL's scale. The wall and roof art are
+    // 720 and 520 px tall, but the mouth's mound peaks ~490 px above the rail:
+    // mounted at full height they stood 230 px clear of the hill they are
+    // supposed to be inside, as a stone tower beside the entrance. So the wall
+    // shows its lower courses only (bottom-aligned to the rail), and the roof
+    // is its cap course plus its hanging rock, without the tall masonry band
+    // between them.
     this.tunnelWall = this.add
-      .tileSprite(0, RAIL_Y - 720, W, 720, "trk-tunnel-wall")
+      .tileSprite(0, TUNNEL_TOP_Y, W, RAIL_Y - TUNNEL_TOP_Y, "trk-tunnel-wall")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack)
       .setVisible(false);
+    this.tunnelWall.tilePositionY = 720 - (RAIL_Y - TUNNEL_TOP_Y);
     this.tunnelFloor = this.add
       // Starts under the existing rail/ballast crown. It is behind the train
       // but in front of the day ground, so a tunnel is one dark railway room
@@ -630,11 +648,18 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack + 0.05)
       .setVisible(false);
-    this.tunnelRoof = this.add
-      .tileSprite(0, RAIL_Y - 720, W, 520, "trk-tunnel-roof")
+    this.tunnelCap = this.add
+      .tileSprite(0, TUNNEL_TOP_Y, W, TUNNEL_CAP.height, "trk-tunnel-roof")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelFront)
       .setVisible(false);
+    this.tunnelCap.tilePositionY = TUNNEL_CAP.sourceY;
+    this.tunnelRoof = this.add
+      .tileSprite(0, TUNNEL_TOP_Y + TUNNEL_CAP.height, W, TUNNEL_ROCK.height, "trk-tunnel-roof")
+      .setOrigin(0, 0)
+      .setDepth(DEPTH.tunnelFront)
+      .setVisible(false);
+    this.tunnelRoof.tilePositionY = TUNNEL_ROCK.sourceY;
     this.tunnelMouth = this.add
       .image(W, RAIL_Y, "trk-tunnel-mouth-left")
       .setOrigin(0, 1)
@@ -643,9 +668,11 @@ export class TrackV3Scene extends Phaser.Scene {
     for (let i = 0; i < 7; i++) {
       this.tunnelLamps.push(
         this.add
-          .image(0, RAIL_Y - 390, "trk-tunnel-lamp-0")
+          .image(0, TUNNEL_LAMP_Y, "trk-tunnel-lamp-0")
           .setOrigin(0.5)
-          .setDepth(DEPTH.tunnelBack + 0.1)
+          // In FRONT of the hanging rock: behind it, the rock covered the top
+          // half of every lamp and the remainder read as a broken dial.
+          .setDepth(DEPTH.tunnelFront + 0.01)
           .setVisible(false),
       );
     }
@@ -1307,11 +1334,13 @@ export class TrackV3Scene extends Phaser.Scene {
     this.tunnelOn = false;
     this.tunnelPhase = "off";
     this.tunnelMouth?.setVisible(false);
-    for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
-      layer?.setVisible(false);
-    }
+    for (const layer of this.tunnelLayers()) layer?.setVisible(false);
     this.restoreDaylight();
     for (const lamp of this.tunnelLamps) lamp.setVisible(false);
+  }
+
+  private tunnelLayers(): (Phaser.GameObjects.Rectangle | Phaser.GameObjects.TileSprite | undefined)[] {
+    return [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelCap, this.tunnelRoof];
   }
 
   /** React → scene: the tiny/giant switches' train size. The whole consist —
@@ -1366,11 +1395,14 @@ export class TrackV3Scene extends Phaser.Scene {
     if (this.hills) this.hills.tilePositionX = parallaxOffset(this.pos, this.view, 0.18);
     if (this.trees) this.trees.tilePositionX = parallaxOffset(this.pos, this.view, 0.42);
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);
-    if (this.fore) this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45);
-
 
     const dist = travelPx(this.pos, this.view);
     this.layoutTunnel(dist);
+    // After the tunnel has placed the fringe's crop: a cropped TileSprite keeps
+    // its texture pinned to the world only if its own x is part of the phase.
+    if (this.fore) {
+      this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45) + this.fore.x;
+    }
     this.layoutTerrain();
     this.layoutTrain(dist);
   }
@@ -1411,30 +1443,34 @@ export class TrackV3Scene extends Phaser.Scene {
     } else {
       this.applyTunnelRegions(-640, 0, 0, true);
     }
-    if (this.tunnelWall) {
-      this.tunnelWall.tilePositionX = parallaxOffset(this.pos, this.view, 0.82);
-    }
-    if (this.tunnelFloor) {
-      this.tunnelFloor.tilePositionX = parallaxOffset(this.pos, this.view, 1);
-    }
-    if (this.tunnelRoof) {
-      this.tunnelRoof.tilePositionX = parallaxOffset(this.pos, this.view, 1.08);
-    }
+    // ONE rate for the whole structure — the portal's. The wall used to trail
+    // at 0.82 and the roof lead at 1.08 as a depth cue, but both are cropped at
+    // the portal, so the masonry visibly slid out of and into the entrance.
+    // A TileSprite crops in screen space, so its texture phase is offset by
+    // its own x to stay pinned to the world while the crop edge moves.
+    // (`applyTunnelRegions` writes the phase, every time it moves a crop.)
+    const worldOffset = parallaxOffset(this.pos, this.view, 1);
 
     const lampPitch = 420;
-    const lampOffset = ((parallaxOffset(this.pos, this.view, 0.94) % lampPitch) + lampPitch) % lampPitch;
+    const lampOffset = lampPitch - (((worldOffset % lampPitch) + lampPitch) % lampPitch);
     const beat = Math.floor(this.pos * BEATS_PER_BAR);
-    const enclosureRight = this.tunnelRegion.enclosureX + this.tunnelRegion.enclosureWidth;
+    // Lamps draw in front of the rock, which puts them in front of the mouth
+    // too — so they keep clear of its whole 640px canvas, not just the seam.
+    const lampHalf = 48;
+    const lampLeft = entering ? portalX + 640 + lampHalf : this.tunnelRegion.enclosureX;
+    const enclosureRight = exiting
+      ? portalX - lampHalf
+      : this.tunnelRegion.enclosureX + this.tunnelRegion.enclosureWidth;
     this.tunnelLamps.forEach((lamp, index) => {
       const x = Math.round(index * lampPitch + lampOffset - lampPitch);
       lamp
         .setAlpha(1)
         .setVisible(
           this.tunnelRegion.enclosureWidth > 0
-          && x >= this.tunnelRegion.enclosureX
+          && x >= lampLeft
           && x <= enclosureRight,
         )
-        .setPosition(x, RAIL_Y - 390);
+        .setPosition(x, TUNNEL_LAMP_Y);
       const key = (beat + index) % 2 === 0 ? "trk-tunnel-lamp-0" : "trk-tunnel-lamp-1";
       if (lamp.texture.key !== key) lamp.setTexture(key);
     });
@@ -1456,9 +1492,7 @@ export class TrackV3Scene extends Phaser.Scene {
           this.applyTunnelRegions(-640, 0, 0, true);
         } else {
           this.tunnelPhase = "off";
-          for (const layer of [this.tunnelShade, this.tunnelWall, this.tunnelFloor, this.tunnelRoof]) {
-            layer?.setVisible(false);
-          }
+          for (const layer of this.tunnelLayers()) layer?.setVisible(false);
           this.restoreDaylight();
           for (const lamp of this.tunnelLamps) lamp.setVisible(false);
         }
@@ -1491,7 +1525,7 @@ export class TrackV3Scene extends Phaser.Scene {
       daylightX,
       daylightWidth,
     };
-    for (const layer of [this.tunnelWall, this.tunnelRoof]) {
+    for (const layer of [this.tunnelWall, this.tunnelCap, this.tunnelRoof]) {
       if (!layer) continue;
       layer.setPosition(enclosureX, layer.y).setSize(enclosureWidth, layer.height);
       layer.setVisible(enclosureWidth > 0).setAlpha(1);
@@ -1511,6 +1545,10 @@ export class TrackV3Scene extends Phaser.Scene {
         .setSize(width, this.tunnelFloor.height)
         .setVisible(width > 0)
         .setAlpha(1);
+    }
+    const worldOffset = parallaxOffset(this.pos, this.view, 1);
+    for (const layer of [this.tunnelWall, this.tunnelCap, this.tunnelRoof, this.tunnelFloor]) {
+      if (layer) layer.tilePositionX = worldOffset + layer.x;
     }
     const daylightGroundX = enclosureOnRight ? 0 : groundSeamX;
     const daylightGroundWidth = enclosureOnRight ? groundSeamX : W - groundSeamX;
@@ -1844,6 +1882,17 @@ export class TrackV3Scene extends Phaser.Scene {
       .setVisible(true);
   }
 
+  private clipToDaylight<T extends { span: { x: number; width: number } }>(item: T | null): T | null {
+    if (!item || this.tunnelPhase === "off") return item;
+    const seam = this.tunnelRegion.groundSeamX;
+    // Entering (and inside) the enclosure is on the right; exiting, on the left.
+    const dayLeft = this.tunnelPhase === "exiting" ? seam : 0;
+    const dayRight = this.tunnelPhase === "exiting" ? W : seam;
+    const left = Math.max(item.span.x, dayLeft);
+    const right = Math.min(item.span.x + item.span.width, dayRight);
+    return right - left > 0 ? { ...item, span: { x: left, width: right - left } } : null;
+  }
+
   private layoutTerrain(): void {
     // Modes STACK: every geometry kind lays out from its own span, so a
     // mound, a deck and a squall can all be in the world at once.
@@ -1854,7 +1903,14 @@ export class TrackV3Scene extends Phaser.Scene {
       return span && span.width > 0 ? { ride, span } : null;
     };
     const hill = spanOf("hill");
-    const bridge = spanOf("bridge");
+    // A tunnel is a stone room with its own floor: a trestle over open water
+    // cannot be inside it. The bridge still sounds (modes stack musically) but
+    // is only DRAWN in daylight, cut at the portal's ground seam — which the
+    // mouth's mound covers. The deck is level, so the train's pose is unchanged.
+    // The UNCLIPPED span still shapes everything that follows the support —
+    // the mound's cut-out and the deck's own texture phase.
+    const bridgeFull = spanOf("bridge");
+    const bridge = this.clipToDaylight(bridgeFull);
     const rain = spanOf("rain");
 
     // Keep the caption over the NEWEST span but inside the screen, so a
@@ -1905,9 +1961,9 @@ export class TrackV3Scene extends Phaser.Scene {
 
       const hillLeft = hill.span.x;
       const hillRight = hill.span.x + hill.span.width;
-      if (bridge) {
-        const bridgeLeft = bridge.span.x;
-        const bridgeRight = bridge.span.x + bridge.span.width;
+      if (bridgeFull) {
+        const bridgeLeft = bridgeFull.span.x;
+        const bridgeRight = bridgeFull.span.x + bridgeFull.span.width;
         // Two real cropped images, not a GeometryMask: Phaser 4's WebGL mask
         // path ignored the invisible mask graphics in production even though
         // scene state said a mask existed. Explicit segments have the same
@@ -1953,16 +2009,20 @@ export class TrackV3Scene extends Phaser.Scene {
       // The deck is one rigid structure with its banks and piers. Its span
       // already moves with transport distance, so scrolling the texture too
       // makes planks and braces slide inside the bridge like a conveyor belt.
-      this.bridgeDeck.tilePositionX = 0;
-      this.bridgeBankLeft?.setPosition(x, RAIL_Y);
-      this.bridgeBankRight?.setPosition(x + w, RAIL_Y);
+      // (A deck clipped at a tunnel portal keeps the phase of its true start.)
+      const fullX = Math.round(bridgeFull?.span.x ?? x);
+      const fullRight = fullX + Math.round(bridgeFull?.span.width ?? w);
+      this.bridgeDeck.tilePositionX = x - fullX;
+      // A bank belongs to a real end of the bridge, never to a portal cut.
+      this.bridgeBankLeft?.setPosition(x, RAIL_Y).setVisible(x === fullX);
+      this.bridgeBankRight?.setPosition(x + w, RAIL_Y).setVisible(x + w === fullRight);
 
       const pierPitch = 420;
-      const firstPier = x + pierPitch * 0.72;
+      const firstPier = fullX + pierPitch * 0.72;
       this.bridgePiers.forEach((pier, index) => {
         const px = firstPier + index * pierPitch;
         pier
-          .setVisible(px < x + w - pierPitch * 0.35)
+          .setVisible(px < fullRight - pierPitch * 0.35 && px >= x && px <= x + w)
           .setPosition(Math.round(px), RAIL_Y + 24);
       });
     }
