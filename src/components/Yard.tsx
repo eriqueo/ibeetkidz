@@ -69,6 +69,15 @@ export const Yard: FC = () => {
     sceneRef.current?.setCars(cars, train, project.activePartId);
   }, [cars, train, project.activePartId]);
 
+  // The Yard is quiet until a car is tapped. A Workshop loop used to follow the
+  // kid in here, where nothing can stop it. Eric also heard that carried-over
+  // loop skip in the Yard (2026-09-21); its `?perf` report showed no late
+  // audio and clean frames, so the cause is NOT known — this removes the
+  // situation, it does not explain it.
+  useEffect(() => {
+    engine.stop();
+  }, [engine]);
+
   // Phaser (YardScene) + the data-driven Tiled hits → state, across the EventBus.
   // The crane/departure ANIMATIONS live in YardScene: the panel "couple"/"send"
   // hits emit `yard-add`/`yard-depart` intents (handled in the scene), whose tween
@@ -78,12 +87,12 @@ export const Yard: FC = () => {
   useEffect(() => {
     // Tapping a car in the palette also PLAYS it. Identity by sight answers
     // "where is the one I want?"; hearing it answers "is this the one?" — the
-    // confirmation gesture, and it is the same `playCarLoop` the Workshop's
-    // LOOP button already uses. `playCarLoop` no-ops until the AudioContext has
-    // been started by the boot gesture, so this touches nothing before then.
+    // confirmation gesture. ONCE through, then silence: the Yard has no STOP,
+    // so a loop started here (or carried in from the Workshop) had no way to
+    // end. It no-ops until the boot gesture has started the AudioContext.
     const onSelect = (partId: string) => {
       dispatch({ type: "setActivePart", partId });
-      void engine.playCarLoop(partId, projectRef.current).catch((err: unknown) => {
+      void engine.playCarOnce(partId, projectRef.current).catch((err: unknown) => {
         console.warn("audio playback failed", err);
       });
     };

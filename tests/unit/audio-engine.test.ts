@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AudioEngine } from "../../src/core/audio-engine.ts";
 import {
   emptyProject,
@@ -185,6 +185,46 @@ function twoCarTrain(): Project {
   s = reduce(s, { type: "toggleStep", layerId: "lB", index: 0 });
   return reduce(s, { type: "addToTrain", instanceId: "iB", partId: "car-B" });
 }
+
+describe("AudioEngine playCarOnce", () => {
+  it("plays the car for one bar, then stops", async () => {
+    vi.useFakeTimers();
+    try {
+      const sound = new FakeSoundPort();
+      const engine = await booted(sound);
+      const project = { ...twoCarTrain(), tempoBpm: 120 }; // one bar = 2000 ms
+      const once = engine.playCarOnce("car-B", project);
+      await vi.advanceTimersByTimeAsync(1900);
+      expect(engine.isPlaying).toBe(true);
+      await vi.advanceTimersByTimeAsync(200);
+      await once;
+      expect(engine.isPlaying).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("a second tap restarts the bar and the first tap's stop is void", async () => {
+    vi.useFakeTimers();
+    try {
+      const sound = new FakeSoundPort();
+      const engine = await booted(sound);
+      const project = { ...twoCarTrain(), tempoBpm: 120 };
+      const first = engine.playCarOnce(project.parts[0]!.id, project);
+      await vi.advanceTimersByTimeAsync(1500);
+      expect(engine.isPlaying).toBe(true);
+      const second = engine.playCarOnce("car-B", project);
+      await vi.advanceTimersByTimeAsync(1000); // past the FIRST tap's bar end
+      await first;
+      expect(engine.isPlaying).toBe(true);
+      await vi.advanceTimersByTimeAsync(1100);
+      await second;
+      expect(engine.isPlaying).toBe(false);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
 
 describe("AudioEngine rehearsal", () => {
   /** Two cars with a hit on every step: 32 plan events, several slices. */

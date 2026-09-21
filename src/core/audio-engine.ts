@@ -200,6 +200,19 @@ export class AudioEngine {
     this.playing = true;
   }
 
+  /** The Yard's "is this the one?": play one library car ONCE through, then
+   *  stop. The Yard has no transport controls, so a loop started there could
+   *  never be stopped; a tap is a question and one bar is the answer. Any
+   *  newer play, edit or stop supersedes the pending stop. */
+  async playCarOnce(partId: string, project: Project): Promise<void> {
+    await this.playCarLoop(partId, project);
+    if (!this.playing) return;
+    const gen = this.playGen;
+    const barMs = (60_000 / Math.max(1, project.tempoBpm)) * 4;
+    await new Promise<void>((resolve) => setTimeout(resolve, barMs));
+    if (gen === this.playGen && this.playing) this.stop();
+  }
+
   /** Start (or restart) playback in a mode: reschedule for it, then run the
    *  transport. "loop" = Home's Play (active car); "ride" = the whole song. */
   private async playIn(mode: PlayMode, project: Project): Promise<void> {
