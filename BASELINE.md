@@ -139,10 +139,30 @@ three-car song with 27 layers and 27 recordings:
   `assets/` were precached with no revision, so installed apps never received a
   repacked atlas and drew fallback rectangles. Fixed and enforced in `check:pwa`.
 
+### Second report (2026-09-21): the lag that frame timing cannot see
+
+Same laptop and song, on the recycling build. The rebuild freezes were gone: a
+tarp and its removal cost 24 and 18 ms frames, no long task, zero late audio,
+and every other second held 165 fps at 6.1 ms. Eric still saw "super laggy".
+
+The train's position was read straight off `AudioContext.currentTime`, which
+does not advance continuously: on Linux Chrome at 48 kHz it holds, then jumps
+42.67 ms (2048 frames). Measured in system Chromium: 148 of 240 frames saw no
+change at 60 Hz; at 165 Hz that is roughly six frames in seven. The world moved
+about 23 times a second however fast it was drawn. `SmoothClock`
+(`src/adapters/smooth-clock.ts`) rebuilds the clock as wall time plus a slowly
+filtered offset, at the mean of the sawtooth so sync is unchanged, and the
+Track draws from `getTransportBars()`. Drawn position per frame on one ride,
+before → now: **104 of 299 frames still → 0**, smallest move 0 → 0.85× the
+mean. Audio scheduling does not use it. The recorder now reports `stillFrames`
+and `motionUneven`, because its first version could not see this at all.
+Not yet confirmed on Eric's laptop. Still open from this report: one 1.76 s
+long task on the Map (the atlas upload) and 232 ms on the first Ride.
+
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 700 tests in 46 files passed; none skipped.
+- `npm test`: 705 tests in 47 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

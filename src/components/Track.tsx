@@ -449,14 +449,13 @@ export const Track: FC = () => {
         const riding = engine.isPlaying && engine.playMode === "ride";
         v3scene.setMoving(riding);
         if (riding) {
-          const RES = 4096;
-          const sub = sound.getTransportStep(RES);
-          const frac = sub >= 0 ? sub / RES : 0;
           // ABSOLUTE bars, not a normalized lap: the side-scroller lays the
           // world out in bar order and never wraps its own position, so a
-          // terrain scheduled at bar 37 is drawn at bar 37.
-          const bar = engine.getTransportBar?.() ?? 0;
-          v3scene.setSongPosition(bar + frac);
+          // terrain scheduled at bar 37 is drawn at bar 37. ONE read, off the
+          // smoothed clock: the raw audio clock stands still for most frames.
+          const pos = Math.max(0, engine.getTransportBars());
+          const bar = Math.floor(pos);
+          v3scene.setSongPosition(pos);
           // Each LATCHED geometry mode re-arms its visual unit as the train
           // crosses its span boundary: mound after mound is a mountain range,
           // deck after deck a viaduct. The profile returns to ground at every
@@ -487,17 +486,13 @@ export const Track: FC = () => {
         const riding = engine.isPlaying && engine.playMode === "ride";
         scene.setMoving(riding);
         if (riding) {
-          // Read the in-bar position at high resolution — getTransportStep(n)
-          // FLOORS to n subdivisions, so reading at STEP_COUNT quantized the
-          // ride to 16 visible hops per bar (the jerky train).
-          const RES = 4096;
-          const sub = sound.getTransportStep(RES);
-          const frac = sub >= 0 ? sub / RES : 0;
+          // One continuous read off the smoothed clock. Stepped reads made the
+          // jerky train twice: 16 hops per bar, then the audio clock's own
+          // buffer-sized jumps.
           const totalBars = carsRef.current.length;
           if (totalBars > 0) {
-            const bar = engine.getTransportBar?.() ?? 0;
-            const songBar = ((bar % totalBars) + totalBars) % totalBars;
-            scene.setProgress((songBar + frac) / totalBars);
+            const pos = Math.max(0, engine.getTransportBars());
+            scene.setProgress((pos % totalBars) / totalBars);
           }
         }
       }

@@ -50,6 +50,12 @@ interface SecondRow {
   fxNodes: unknown;
   lookAheadSec: unknown;
   heapMB: number | null;
+  /** Frames on which a riding train was drawn where it already was. Frame
+   *  pacing cannot see this: the first field report showed a perfect 165 fps
+   *  while the world moved 23 times a second. */
+  stillFrames: number;
+  /** Largest single-frame move over the mean move; 1 is perfectly even. */
+  motionUneven: number;
 }
 
 const round = (n: number): number => Math.round(n * 10) / 10;
@@ -70,6 +76,8 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
   let renders: number[] = [];
   let stepAt = 0;
   let renderAt = 0;
+  let moves: number[] = [];
+  let drawnAt: number | null = null;
 
   deps.onScene((next) => {
     scene = next;
@@ -184,10 +192,20 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
   const tick = (now: number): void => {
     intervals.push(now - last);
     last = now;
+    // A number only while the train rides; see TrackV3Scene.songPosition.
+    const drawn = (scene as { songPosition?: unknown } | null)?.songPosition;
+    if (typeof drawn === "number") {
+      if (drawnAt !== null) moves.push(Math.abs(drawn - drawnAt));
+      drawnAt = drawn;
+    } else {
+      drawnAt = null;
+    }
     if (now - secondStart >= 1000) {
       const frame = stats(intervals);
       const update = stats(updates);
       const render = stats(renders);
+      const total = moves.reduce((a, b) => a + b, 0);
+      const motion = { mean: total / Math.max(1, moves.length), max: Math.max(0, ...moves) };
       const diag = deps.audioDiag();
       const late = num(diag["schedLate20"]);
       const events = num(diag["schedEvents"]);
@@ -216,6 +234,8 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
         fxNodes: diag["fxNodes"],
         lookAheadSec: diag["lookAheadSec"],
         heapMB: memory ? round(memory.usedJSHeapSize / 1048576) : null,
+        stillFrames: moves.filter((m) => m === 0).length,
+        motionUneven: moves.length > 0 && motion.mean > 0 ? round(motion.max / motion.mean) : 0,
       };
       lateBase = late;
       eventsBase = events;
@@ -224,11 +244,13 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       readout.textContent =
         `${row.frames} fps · frame ${row.meanMs}/${row.p95Ms}/${row.maxMs} ms (mean/p95/max)\n` +
         `update ${row.updateMeanMs} · render ${row.renderMeanMs} ms · slow frames ${row.over33}\n` +
-        `audio late ${row.late20} · voices ${String(row.melodyVoices)}+${String(row.samplePlayers)} · ${rows.length}s kept`;
+        `audio late ${row.late20} · voices ${String(row.melodyVoices)}+${String(row.samplePlayers)} · ${rows.length}s kept\n` +
+        `motion: still frames ${row.stillFrames} · unevenness ${row.motionUneven}`;
       readout.style.whiteSpace = "pre";
       intervals = [];
       updates = [];
       renders = [];
+      moves = [];
       secondStart = now;
     }
     requestAnimationFrame(tick);

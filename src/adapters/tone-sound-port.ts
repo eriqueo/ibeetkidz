@@ -40,6 +40,7 @@ import {
 import { encodeWav } from "./wav.ts";
 import { ByteLru } from "./byte-lru.ts";
 import { VoicePool } from "./voice-pool.ts";
+import { SmoothClock } from "./smooth-clock.ts";
 
 /** Decoded-audio budget for EACH disposable derived cache (see `ByteLru` for
  *  the at-cap behavior). A 30 s mono take is ~5.5 MiB decoded, so this holds
@@ -385,6 +386,7 @@ export class ToneSoundPort implements SoundPort {
    *  builds one: sized by the music's real overlap, never by note count, and
    *  never stealing. Reset with `clearScheduled`. */
   private readonly melodyPool = new VoicePool<MelodyVoice>();
+  private readonly drawClock = new SmoothClock();
   private scheduledNoteEvents = 0;
   // Recycled across reschedules. Every audible edit (and every Ride, mute or
   // tarp) clears and rebuilds the schedule; building ~90 Tone instruments and
@@ -1832,6 +1834,18 @@ export class ToneSoundPort implements SoundPort {
     const ticks = this.audibleTicks();
     if (ticks < 0) return -1;
     return Math.floor(ticks / this.ticksPerBar);
+  }
+
+  getTransportBars(): number {
+    const t = this.liveTransport;
+    if (t.state !== "started") {
+      this.drawClock.reset();
+      return -1;
+    }
+    // The raw audio clock moves one hardware buffer at a time (43 ms on Linux
+    // Chrome), which is a standing train on most frames. See smooth-clock.ts.
+    const at = this.drawClock.read(this.liveCtx.immediate(), performance.now() / 1000);
+    return Math.max(0, t.getTicksAtTime(at)) / this.ticksPerBar;
   }
 
   // ── Procedural synthesis ─────────────────────────────────────────────────

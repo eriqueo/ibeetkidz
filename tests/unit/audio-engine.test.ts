@@ -128,6 +128,9 @@ class FakeSoundPort implements SoundPort {
   getTransportBar(): number {
     return this.bar;
   }
+  getTransportBars(): number {
+    return this.bar;
+  }
 }
 
 /** A project with one drum lane (a single hit at step 0) per car. */

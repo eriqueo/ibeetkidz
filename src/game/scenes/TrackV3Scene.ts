@@ -1361,6 +1361,13 @@ export class TrackV3Scene extends Phaser.Scene {
     if (Number.isFinite(bars)) this.pos = bars;
   }
 
+  /** The position last drawn, in bars, or null while the train stands. Read
+   *  by the `?perf` recorder, which judges the motion a viewer sees rather
+   *  than the clock behind it. */
+  get songPosition(): number | null {
+    return this.moving ? this.pos : null;
+  }
+
   setMoving(moving: boolean): void {
     this.moving = moving;
     if (!moving) this.speedBars = 0;
