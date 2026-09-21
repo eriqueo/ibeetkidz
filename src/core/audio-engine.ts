@@ -17,6 +17,10 @@ import {
   type TerrainRide,
 } from "./terrain.ts";
 
+/** Plan events scheduled per task while rehearsing. A newly built voice costs
+ *  about 3 ms, so four keeps a slice near one 60 Hz frame at worst. */
+const REHEARSE_SLICE = 4;
+
 export class AudioEngine {
   private started = false;
   private playing = false;
@@ -206,6 +210,34 @@ export class AudioEngine {
     this.mode = mode;
     this.sound.startTransport();
     this.playing = true;
+  }
+
+  /** Build what a Ride will need BEFORE it is pressed, a few events at a time.
+   *
+   *  The adapter banks cleared voices and players for the next schedule, so
+   *  only the FIRST schedule of a session builds them — ~90 Tone nodes, one
+   *  230–290 ms freeze on Eric's laptop, landing on the Ride press just as the
+   *  train starts to move. This schedules the same plan against the stopped
+   *  transport in small slices (nothing sounds: the transport is not running),
+   *  then clears it, which banks everything. Any play or edit supersedes it;
+   *  whatever was built by then is still banked by that path's own clear. */
+  async rehearse(project: Project, mode: PlayMode = "ride"): Promise<void> {
+    if (!this.started || this.playing) return;
+    const play = this.playGen;
+    const reconcile = this.reconcileGen;
+    const superseded = (): boolean =>
+      this.playing || play !== this.playGen || reconcile !== this.reconcileGen;
+    const plan = playbackPlan(project, mode, this.reversed);
+    await preparePlayback(plan, this.sound);
+    if (superseded()) return;
+    this.sound.setTempo(plan.tempoBpm);
+    this.sound.clearScheduled();
+    for (let i = 0; i < plan.events.length; i += REHEARSE_SLICE) {
+      schedulePlayback({ ...plan, events: plan.events.slice(i, i + REHEARSE_SLICE) }, this.sound);
+      await new Promise<void>((resolve) => setTimeout(resolve, 0));
+      if (superseded()) return;
+    }
+    this.sound.clearScheduled();
   }
 
   /** Home's Play: loop the active car forever (unchanged single-loop behavior). */

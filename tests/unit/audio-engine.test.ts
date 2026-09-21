@@ -186,6 +186,59 @@ function twoCarTrain(): Project {
   return reduce(s, { type: "addToTrain", instanceId: "iB", partId: "car-B" });
 }
 
+describe("AudioEngine rehearsal", () => {
+  /** Two cars with a hit on every step: 32 plan events, several slices. */
+  function busyTrain(): Project {
+    const project = twoCarTrain();
+    return { ...project, parts: project.parts.map((part) => ({
+      ...part, layers: part.layers.map((layer) => ({
+        ...layer, steps: layer.steps.map(() => ({ row: 0, length: 1 })),
+      })),
+    })) };
+  }
+
+  it("schedules the whole ride silently, then banks it", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = busyTrain();
+    await engine.playRide(project);
+    const rideEvents = sound.scheduled.length;
+    engine.stop();
+    sound.events.length = 0;
+
+    await engine.rehearse(project);
+
+    expect(sound.events.filter((e) => e.startsWith("schedule:")).length).toBe(rideEvents);
+    expect(sound.events.some((e) => e.startsWith("start:"))).toBe(false);
+    expect(sound.scheduled.length).toBe(0); // cleared → the adapter banks the voices
+    expect(engine.isPlaying).toBe(false);
+  });
+
+  it("gives way to a Ride pressed while it runs", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = busyTrain();
+    const rehearsal = engine.rehearse(project);
+    await engine.playRide(project);
+    const rideEvents = sound.scheduled.length;
+    await rehearsal;
+
+    // The rehearsal neither cleared the live schedule nor added to it.
+    expect(sound.scheduled.length).toBe(rideEvents);
+    expect(engine.isPlaying).toBe(true);
+  });
+
+  it("does nothing while music is playing", async () => {
+    const sound = new FakeSoundPort();
+    const engine = await booted(sound);
+    const project = busyTrain();
+    await engine.playRide(project);
+    const clears = sound.clears;
+    await engine.rehearse(project);
+    expect(sound.clears).toBe(clears);
+  });
+});
+
 describe("AudioEngine play modes", () => {
   it.each([
     { volume: 0.3 }, { swing: 0.7 }, { echo: 0.4 }, { tone: 0.2 },

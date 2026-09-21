@@ -179,13 +179,19 @@ riding second, zero late audio, 165 fps. Two things were left in it.
   **103 + 229 ms**. WebGL only; Canvas and any refusal use Phaser's own path.
   The Map warm-up stays. Not yet re-measured on Eric's laptop.
 
-Still open: ~230–290 ms on the first Ride of a session (first build of every
-voice and player).
+The first Ride of a session froze 230–290 ms there: the one schedule that has
+no banked voices to reuse. `AudioEngine.rehearse` now schedules the ride's plan
+against the STOPPED transport, four events per task, when the Track opens, then
+clears it — which banks every voice and player. Any play or edit supersedes it.
+Dense three-car fixture, CPU time inside Tone in the 600 ms after the Ride
+press (sampling profiler, SwiftShader): **416 ms → 42 ms**; no long task over
+60 ms while rehearsing. Not yet re-measured on Eric's laptop. The Workshop's
+first Play is not rehearsed (one car, a smaller build).
 
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 705 tests in 47 files passed; none skipped.
+- `npm test`: 708 tests in 47 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

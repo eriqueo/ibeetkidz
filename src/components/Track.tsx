@@ -219,6 +219,13 @@ export const Track: FC = () => {
     sceneRef.current?.setCars(cars);
     v3Ref.current?.setCars(v3CarsRef.current);
   }, [cars, v3Cars]);
+
+  // Build the ride's voices while the kid is still looking at the train, so
+  // the Ride press does not freeze on them. A failed rehearsal costs nothing:
+  // the Ride builds whatever is missing, as it always did.
+  useEffect(() => {
+    engine.rehearse(projectRef.current).catch(() => undefined);
+  }, [engine]);
   useEffect(() => {
     sceneRef.current?.setTempo(project.tempoBpm);
     v3Ref.current?.setTempo(project.tempoBpm);
