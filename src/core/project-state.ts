@@ -522,6 +522,12 @@ export function reduce(state: Project, cmd: Command): Project {
       return { ...state, clips: { ...state.clips, [clip.id]: updated } };
     }
 
+    case "chooseEffect": {
+      const clip = state.clips[cmd.clipId];
+      if (!clip) return state;
+      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, effects: [cmd.effect] } } };
+    }
+
     case "removeEffect": {
       const clip = state.clips[cmd.clipId];
       if (!clip || cmd.index < 0 || cmd.index >= clip.effects.length) return state;

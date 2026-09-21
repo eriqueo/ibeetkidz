@@ -522,10 +522,20 @@ export const Workshop: FC = () => {
       const id = voiceClipRef.current;
       if (!id) return;
       const amount = effectId === "crazy" ? rng.next() : 0.6;
-      dispatch({ type: "applyEffect", clipId: id, effect: { id: effectId, amount } });
+      // A PICK: each tile replaces the last, so a kid can compare them. They
+      // used to stack, and the fourth tap was mush with no way back.
+      dispatch({ type: "chooseEffect", clipId: id, effect: { id: effectId, amount } });
       const updated = getProject().clips[id];
       if (updated) sound.play(updated);
-      setVoiceStatus("✨ Funny effect added!");
+      setVoiceStatus("✨ Try another, or put it in your car!");
+    };
+    // The voice was just put in the car: let the kid HEAR it there. Recording
+    // stopped the loop (the mic would hear the speakers), and until this the
+    // panel closed into silence — the new lane sat mute until someone found PLAY.
+    const hearTheCar = (): void => {
+      void engine.playLoop(getProject()).catch((err: unknown) => {
+        console.warn("audio playback failed", err);
+      });
     };
     const onVoiceSend = (as: "beat" | "notes"): void => {
       const id = voiceClipRef.current;
@@ -543,7 +553,14 @@ export const Workshop: FC = () => {
           dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(clip.source.bufferId), station: "mic", notes }) });
         }
       }
+      // A full car refuses the lane. Keep the take and say why, rather than
+      // closing on a recording that silently went nowhere.
+      if (!activeLayers(getProject()).some((l) => l.id === id)) {
+        setVoiceStatus("This car is full! Take a sound out, or make a new car.");
+        return;
+      }
       setOpenTool(null);
+      hearTheCar();
     };
 
     // Voice Keys ───────────────────────────────────────────
@@ -576,7 +593,12 @@ export const Workshop: FC = () => {
         ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
         dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(c.source.bufferId), station: "keys", notes }) });
       }
+      if (!activeLayers(getProject()).some((l) => l.id === id)) {
+        setKeysStatus("This car is full! Take a sound out, or make a new car.");
+        return;
+      }
       setOpenTool(null);
+      hearTheCar();
     };
 
     // Sound Pads ───────────────────────────────────────────

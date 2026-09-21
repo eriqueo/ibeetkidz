@@ -70,6 +70,16 @@ describe("reduce", () => {
     expect(s.clips["c1"]?.effects.map((e) => e.id)).toEqual(["reverse", "echo"]);
   });
 
+  it("chooseEffect is a pick: the clip wears exactly the last one chosen", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    for (const id of ["reverse", "pitchUp", "pitchDown", "robot"] as const) {
+      s = reduce(s, { type: "chooseEffect", clipId: "c1", effect: { id, amount: 0.6 } });
+    }
+    expect(s.clips["c1"]?.effects.map((e) => e.id)).toEqual(["robot"]);
+    const same = emptyProject("p");
+    expect(reduce(same, { type: "chooseEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(same);
+  });
+
   it("ignores applyEffect for unknown clip (returns same reference)", () => {
     const s = emptyProject("p");
     expect(reduce(s, { type: "applyEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(s);

@@ -64,6 +64,9 @@ const FX_TILES: { id: EffectId; label: string; emoji: string; color: number }[] 
   { id: "crazy", label: "CRAZY!", emoji: "🤪", color: 0xfb5607 },
 ];
 
+const FX_CAPTION_COLS = Math.max(...FX_TILES.map((t) => t.label.length));
+const DRUM_CAPTION_COLS = Math.max(...DRUM_SOUNDS.map((d) => d.label.length));
+
 const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
   { wave: "triangle", label: "Soft", emoji: "🔺" },
   { wave: "sine", label: "Smooth", emoji: "🌊" },
@@ -138,6 +141,9 @@ export class PanelButton {
   private face: Phaser.GameObjects.Image | null = null;
   private faceDef: UiSpriteDef | null = null;
   private icon: Phaser.GameObjects.Image | null = null;
+  /** The label is a caption sharing the keycap with an icon above it. */
+  private captioned = false;
+  private captionCols = 0;
 
   private fill: number;
 
@@ -150,7 +156,12 @@ export class PanelButton {
     // neutral keycap, tinted with the same `fill` the rectangle wore so a sound
     // keeps its colour identity; AR-057's `btn-panel-close` / `btn-panel-done`
     // are authored controls that carry their own colour and are not tinted.
-    opts: { face?: string; tintFace?: boolean; bakedLabel?: boolean; icon?: string | null } = {},
+    // `caption` is the WORD kept under a painted icon. An icon alone left the
+    // effect rack and the drum shelf as rows of unnamed pictures: Eric, an
+    // adult who can read, could not tell what any of them did (2026-09-21).
+    // `captionCols` is the longest caption in the rack, so every tile in it
+    // sets its word at ONE size instead of each shrinking to its own length.
+    opts: { face?: string; tintFace?: boolean; bakedLabel?: boolean; icon?: string | null; caption?: string; captionCols?: number } = {},
   ) {
     this.fill = fill;
     this.bg = scene.add.rectangle(0, 0, 10, 10, fill).setStrokeStyle(3, PANEL_EDGE);
@@ -174,9 +185,14 @@ export class PanelButton {
     if (hasUiFrame(scene, opts.icon)) {
       this.icon = scene.add.image(0, 0, UI_ATLAS_KEY, opts.icon!).setOrigin(0.5);
       kids.push(this.icon);
-      // The icon IS the label for a non-reader; the emoji it replaces would
-      // just sit on top of it.
-      this.label.setText("");
+      // The icon replaces the EMOJI, which would just sit on top of it. The
+      // word stays, under the picture, when the caller gave one.
+      this.label.setText(opts.caption ?? "");
+      this.captioned = opts.caption !== undefined;
+      this.captionCols = opts.captionCols ?? opts.caption?.length ?? 0;
+      // Cream with a dark edge: the keycap under it is tinted any of ten
+      // colours, and ink chosen for the flat fill vanished on most of them.
+      if (this.captioned) this.label.setColor(TEXT).setStroke("#1a1210", 4);
     }
     this.container = scene.add.container(0, 0, kids);
     this.hit = new Phaser.Geom.Rectangle(-5, -5, 10, 10);
@@ -244,18 +260,25 @@ export class PanelButton {
     const pad = Math.max(8, Math.min(faceW, faceH) * 0.12);
     const lines = this.label.text.split("\n");
     const cols = Math.max(1, ...lines.map((l) => l.length));
+    // A caption gets the bottom third of the face; the icon keeps the rest.
+    const bandH = this.captioned ? faceH * 0.3 : faceH;
     const fit = Math.min(
       fontPx,
-      (faceW - pad) / (cols * FONT_ADVANCE_EM),
-      (faceH - pad) / (lines.length * FONT_LINE_EM),
+      (faceW - pad) / (Math.max(cols, this.captionCols) * FONT_ADVANCE_EM),
+      (bandH - (this.captioned ? 0 : pad)) / (lines.length * FONT_LINE_EM),
     );
+    // A caption that cannot reach 7 px is a smudge, not a word: on a key that
+    // small the icon keeps the whole face (the drum shelf on a small screen).
+    const showCaption = this.captioned && fit >= 7;
+    this.label.setVisible(!this.captioned || showCaption);
     this.label.setFontSize(Math.max(7, Math.floor(fit)));
     this.label.setWordWrapWidth(faceW - pad);
+    this.label.setPosition(0, showCaption ? faceH / 2 - bandH / 2 : 0);
     // Inside the keycap's face, not filling it — the socket's bevel has to stay
     // visible or the raised/seated states stop reading.
     if (this.icon) {
-      const d = Math.min(b.w, b.h) * 0.62;
-      this.icon.setDisplaySize(d, d).setPosition(0, 0);
+      const d = Math.min(b.w, b.h) * (showCaption ? 0.46 : 0.62);
+      this.icon.setDisplaySize(d, d).setPosition(0, showCaption ? -faceH * 0.13 : 0);
     }
   }
 
@@ -549,7 +572,7 @@ export class VoiceToolPanel extends BaseToolPanel {
     // tints, so each effect keeps its colour and stops fighting the plate.
     this.fxBtns = FX_TILES.map((t) => ({
       id: t.id,
-      btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { face: "pad-key", tintFace: true, icon: fxIconFrame(t.id) }),
+      btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { face: "pad-key", tintFace: true, icon: fxIconFrame(t.id), caption: t.label, captionCols: FX_CAPTION_COLS }),
     }));
     // NOT two "done" buttons — a CHOICE of what the recording becomes, which is
     // the one thing DONE cannot decide for the kid. Labelled as a pick ("make
@@ -1012,7 +1035,7 @@ export class PercussionToolPanel extends BaseToolPanel {
         // AR-054: the shelf is ten sockets in the plate, so its faces are the
         // painted keycap with the sound's own icon on it — not ten flat
         // stickers wearing system emoji next to chunky pixel art.
-        { face: "pad-key", tintFace: true, icon: soundIconFrame(drum.assetId) },
+        { face: "pad-key", tintFace: true, icon: soundIconFrame(drum.assetId), caption: drum.label, captionCols: DRUM_CAPTION_COLS },
       );
       this.add(btn.container);
       return btn;
@@ -1348,6 +1371,17 @@ export class MelodyEditorPanel extends BaseToolPanel {
     toggle: { cx: 0.8325, cy: 0.775, w: 0.16 },
   } as const;
 
+  /** One word per deck tile, at the tile centres measured above. */
+  private static readonly DECK_WORDS = [
+    { word: "WOBBLE", cx: 0.173 },
+    { word: "CRUNCH", cx: 0.396 },
+    { word: "LOUD", cx: 0.611 },
+    { word: "TWICE", cx: 0.8325 },
+  ] as const;
+  /** In the gap between each control and the glyph baked under it. */
+  private static readonly DECK_WORD_CY = 0.864;
+  private deckWords: Phaser.GameObjects.Text[] = [];
+
   protected buildContent(): void {
     // The framed art replaces the generic parchment body. The shared authored
     // header remains independent, like it does for every other machine.
@@ -1427,6 +1461,13 @@ export class MelodyEditorPanel extends BaseToolPanel {
       this.kickToggle();
     });
     this.add([this.knobWobble, this.knobCrunch, this.levelFill, this.fader, this.toggle]);
+    // A WORD per control. The plate bakes a glyph under each tile (waves, a
+    // zig-zag, a speaker, two notes) and nothing else; Eric could not tell what
+    // any of the four did. Interim until AR-072's painted name-plaques land.
+    this.deckWords = MelodyEditorPanel.DECK_WORDS.map(({ word }) =>
+      this.scene.add.text(0, 0, word, { fontFamily: FONT, fontSize: "10px", color: TEXT }).setOrigin(0.5).setStroke("#1a1210", 4),
+    );
+    this.add(this.deckWords);
   }
 
   /** The one place ×2 is armed or disarmed, so the lever frame, the note
@@ -1612,6 +1653,11 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // rather than as a hairline drawn beside it.
     this.levelFillW = Math.max(2, art.w * A.fader.slotW);
     this.placeFader();
+    MelodyEditorPanel.DECK_WORDS.forEach(({ cx }, n) => {
+      this.deckWords[n]
+        ?.setFontSize(Math.max(7, Math.round(art.w * 0.019)))
+        .setPosition(art.x + art.w * cx, art.y + art.h * MelodyEditorPanel.DECK_WORD_CY);
+    });
   }
 
   apply(model: ToolModel): void {

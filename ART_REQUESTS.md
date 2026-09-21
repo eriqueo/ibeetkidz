@@ -19,7 +19,105 @@
 
 ---
 
-## ACTIVE ART HANDOFF — 2026-09-01 (rev 11)
+## ACTIVE ART HANDOFF — 2026-09-21 (rev 12) · the tool panels' small art
+
+Eric, playing the live build on 2026-09-21, rejected three things in the
+Workshop tool panels: **"these are terrible art, as well as the drum choice
+art"**, and **"there is also no word describing what each of these do."**
+Screens he judged: the My Voice effect rack, the instrument editor's control
+deck, and the drum choices. Engineering has shipped the honest interim (a word
+under every icon, cream with a dark edge, one size per rack). The pictures and
+one whole panel are art work, below. AR-056 and the AR-054 `drum-*` icons are
+**reopened** by this: they passed their own spec (128 px, 1 px outline, one
+glint) and that spec was the fault — it produced thin flat line-glyphs that sit
+on the machine like stickers, next to characters and plaques that are fully
+painted.
+
+**The bar for all three:** put the new piece beside `btn-newcar`, the MAP
+plaque and a Workshop character at the size it ships. If it reads as a
+different, cheaper game, it is not done. Negative references: the current
+`fx-*.png`, `drum-*.png`, and the four deck glyphs.
+
+### ⚠ OPEN — AR-070 · Effect and drum icons, repainted as objects — P0
+
+Replace the line-glyph icons with small PAINTED OBJECTS in the house style:
+shaded volumes, brass/wood/enamel materials, dark-plum outline, hard 2–3 px drop
+shadow, one cream glint, no gradients or glow. Each is a thing a four-year-old
+can name, not a diagram of a signal.
+
+- Canvas **256 × 256**, true alpha 0 outside the art, subject filling ~80 %.
+  They ship at 60–150 px, so silhouette first, detail second.
+- They sit on the tinted `pad-key` keycap, **above a one-word caption** that
+  takes the bottom third of the key. Keep the subject in the upper two-thirds.
+- Must survive every keycap tint in the rack (the tint is on the key, not the
+  icon): do not rely on a colour that matches one of them.
+
+| File (unchanged names) | Word under it | Paint this |
+|---|---|---|
+| `fx-reverse.png` | Backwards | A brass gramophone/tape reel with a bold arrow curling LEFT. |
+| `fx-pitch-up.png` | Chipmunk | The Workshop chipmunk's head, cheeks full, tiny notes flying up. |
+| `fx-pitch-down.png` | Monster | A friendly big-jawed monster head, one heavy note sinking. |
+| `fx-robot.png` | Robot | A riveted tin robot head with a speaker-grille mouth. |
+| `fx-echo.png` | Echo | A canyon or a brass horn with the same ring repeated, shrinking. |
+| `fx-crazy.png` | CRAZY! | A jack-in-the-box / spring bursting with stars and notes. |
+| `fx-reverb.png`, `fx-bitcrush.png` | Big Room, Crunchy | **Only if Eric keeps eight effects** — see the count note below. A cathedral bell hall; a block of chunky broken pixels. |
+| `drum-*.png` (all shipped ids) | the sound's label | The INSTRUMENT itself, painted, one object each, three-quarter view, same light. Shipped ids and words: `kick` Boom, `snare` Snap, `hihat` Tss, `clap` Clap (two hands), `tom` Bonk, `cowbell` Ding, `openhat` Sssss, `rim` Tik (a stick on a rim), `shaker` Shaka, `conga` Tumba. |
+
+**Count note — Eric's decision, engineering's recommendation.** Eric: "I don't
+know if we need all these choices, as well as … all of the drum choices."
+Engineering recommends **six effects** (drop Big Room and Crunchy: both are
+subtle next to the other six, and a kid comparing tiles hears little) and **six
+drums**. Paint the six effects first. Do not repaint the plates for a new
+socket count until Eric confirms; six keys lay out 3 × 2 in the existing My
+Voice bay without new plate art.
+
+**Unblocks:** engineering swaps frames by name — no code change — and removes
+"reopened" here once Eric accepts them on the live build.
+
+### ⚠ OPEN — AR-071 · The Sound Pads panel has no machine at all — P0
+
+Every other tool is a painted machine (AR-050/051/058). Sound Pads is still a
+flat cream rectangle with flat candy tiles and SYSTEM EMOJI for the sounds
+(`design/review/` has none for it; see the live panel). It is the first thing a
+kid opens to choose a drum, and it is the greybox.
+
+Deliver one plate in the AR-051 family (charcoal steel, brass corners, wood
+inlay, same light, same rivet language), **2560 × 1440 canvas, true alpha**:
+
+- Three shelves with a painted header plaque each: **DRUMS**, **NOTES**,
+  **YOUR SOUNDS** (the engine draws the words; leave a cream name-strip).
+- Recessed sockets for `pad-key` keycaps: **6** on DRUMS (pending the count
+  note in AR-070; say so if you paint 10), **6** on NOTES, **6** on YOUR
+  SOUNDS. Square sockets, equal pitch, all three shelves on one grid.
+- A cream instruction strip along the bottom for one line of engine text.
+- Six note icons in the AR-070 style, `note-do`, `note-re`, `note-mi`, `note-sol`, `note-la`, `note-do2`: six tuned
+  bars or bells of rising size, so pitch reads as size.
+
+**Engineering needs back:** socket rectangles in canvas pixels (the AR-051
+delivery format), so the keys land in the recesses.
+
+### ⚠ OPEN — AR-072 · The editor deck's four control plaques — P1
+
+Under the instrument editor's two knobs, fader and ×2 switch sit four thin cream
+glyphs (three wavy lines, a zig-zag, a speaker, two notes). Eric could not tell
+what any control does. The knobs, fader and switch themselves are good and stay.
+
+Deliver four small painted brass name-plaques, one per control bay, each with a
+picture and room for one engine-drawn word on a cream strip:
+
+| Control | Word | Picture |
+|---|---|---|
+| left knob | WOBBLE | a jelly / a wobbling spring |
+| right knob | CRUNCH | a gear biting a note |
+| fader | LOUD | a small horn → a big horn |
+| switch | TWICE | one note becoming two |
+
+Canvas 512 × 192 each, true alpha, same brass and light as `btn-panel-done`.
+Until they land, engineering draws the word alone under each control.
+
+---
+
+## PREVIOUS HANDOFF — 2026-09-01 (rev 11)
 
 AR-060F and AR-060T are visually accepted and integrated. There is **no car
 redraw in this round**. One provenance input was omitted from the pushed

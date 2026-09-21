@@ -191,7 +191,7 @@ first Play is not rehearsed (one car, a smaller build).
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 708 tests in 47 files passed; none skipped.
+- `npm test`: 709 tests in 47 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

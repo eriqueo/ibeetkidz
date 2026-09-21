@@ -251,6 +251,10 @@ export type Command =
   | { readonly type: "addClip"; readonly clip: Clip }
   | { readonly type: "removeClip"; readonly clipId: string }
   | { readonly type: "applyEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
+  /** A PICK, not a stack: the clip wears exactly this effect. The My Voice rack
+   *  is eight tiles a kid taps to compare; stacking them turned the fourth tap
+   *  into reverse+chipmunk+monster+robot mush with no way back. */
+  | { readonly type: "chooseEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
   // Remove one effect from a clip's chain by position (full FX editing: a kid can
   // re-open a recording later and peel an effect back off). No-op out of range.
   | { readonly type: "removeEffect"; readonly clipId: string; readonly index: number }
