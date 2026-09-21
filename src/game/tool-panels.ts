@@ -11,7 +11,7 @@ import { EventBus } from "./EventBus.ts";
 import { headerPlateField, WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, type UiSpriteDef } from "./ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
-import { DRUM_SOUNDS } from "../core/sound-catalog.ts";
+import { OFFERED_DRUMS } from "../core/sound-catalog.ts";
 import { MELODY_ROWS } from "../core/scale.ts";
 import { MAX_LAYERS, STEP_COUNT, type EffectId, type ThereminWave } from "../core/types.ts";
 
@@ -59,13 +59,15 @@ const FX_TILES: { id: EffectId; label: string; emoji: string; color: number }[] 
   { id: "pitchDown", label: "Monster", emoji: "👹", color: 0x8338ec },
   { id: "robot", label: "Robot", emoji: "🤖", color: 0x3a86ff },
   { id: "echo", label: "Echo", emoji: "🌀", color: 0x06d6a0 },
-  { id: "reverb", label: "Big Room", emoji: "🏛️", color: 0x118ab2 },
-  { id: "bitcrush", label: "Crunchy", emoji: "🎮", color: 0xef476f },
   { id: "crazy", label: "CRAZY!", emoji: "🤪", color: 0xfb5607 },
+  // Big Room (`reverb`) and Crunchy (`bitcrush`) are no longer OFFERED — Eric
+  // cut the rack to six on 2026-09-21; next to the others a kid comparing
+  // tiles heard little. Both stay valid `EffectId`s: saved clips wearing them
+  // still play, and CRAZY! still rolls `bitcrush` (see `expandCrazy`).
 ];
 
 const FX_CAPTION_COLS = Math.max(...FX_TILES.map((t) => t.label.length));
-const DRUM_CAPTION_COLS = Math.max(...DRUM_SOUNDS.map((d) => d.label.length));
+const DRUM_CAPTION_COLS = Math.max(...OFFERED_DRUMS.map((d) => d.label.length));
 
 const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
   { wave: "triangle", label: "Soft", emoji: "🔺" },
@@ -551,6 +553,8 @@ export class VoiceToolPanel extends BaseToolPanel {
   private recordBtn!: PanelButton;
   private status!: Phaser.GameObjects.Text;
   private fxBtns: { id: EffectId; btn: PanelButton }[] = [];
+  /** Which of the plate's eight sockets each of the six tiles sits in. */
+  private static readonly FX_SOCKETS = [0, 1, 2, 3, 5, 6] as const;
   private sendBeat!: PanelButton;
   private sendNotes!: PanelButton;
 
@@ -598,7 +602,14 @@ export class VoiceToolPanel extends BaseToolPanel {
 
     this.recordBtn.place(rec, Math.max(11, rec.h * 0.22));
     this.status.setPosition(i.x + i.w / 2, statusY).setFontSize(Math.max(9, i.h * 0.03));
-    gridIn(fx, 4, 2).forEach((b, k) => this.fxBtns[k]?.btn.place(b, Math.max(9, b.h * 0.18)));
+    // The plate paints a 4 × 2 rack and six effects are offered: four across
+    // the top, two in the MIDDLE of the bottom row, so the empty sockets are a
+    // symmetric pair until the plate is redrawn for six (AR-070 count note).
+    const sockets = gridIn(fx, 4, 2);
+    VoiceToolPanel.FX_SOCKETS.forEach((socket, k) => {
+      const b = sockets[socket];
+      if (b) this.fxBtns[k]?.btn.place(b, Math.max(9, b.h * 0.18));
+    });
     this.sendBeat.place(sendA, Math.max(10, sendA.h * 0.3));
     this.sendNotes.place(sendB, Math.max(10, sendB.h * 0.3));
   }
@@ -981,6 +992,8 @@ export class PadsToolPanel extends BaseToolPanel {
 // Everything routes through the SAME events the chalkboard already emits, so
 // this panel adds zero new reducers and cannot disagree with the board.
 export class PercussionToolPanel extends BaseToolPanel {
+  /** Recesses painted into the plate's drum shelf. */
+  private static readonly SHELF_RECESSES = 10;
   /** AR-050's painted drum-machine plate. Regions MEASURED off the delivered
    *  PNG (1536×1152): the recessed grid field inside the wooden frame, and
    *  the ten-recess drum shelf strip — the engine controls mount INTO them.
@@ -1026,7 +1039,7 @@ export class PercussionToolPanel extends BaseToolPanel {
       .text(0, 0, "TAP A DRUM BELOW TO ADD IT", { fontFamily: FONT, fontSize: "12px", color: "#e8dcc8" })
       .setOrigin(0.5);
     this.add(this.hint);
-    this.addButtons = DRUM_SOUNDS.map((drum) => {
+    this.addButtons = OFFERED_DRUMS.map((drum) => {
       const btn = new PanelButton(
         this.scene,
         drum.emoji,
@@ -1150,10 +1163,13 @@ export class PercussionToolPanel extends BaseToolPanel {
         cell.setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
       });
     });
-    // The drum shelf: one pad per recess.
-    const bw = shelf.w / this.addButtons.length;
+    // The drum shelf: one pad per recess. The plate paints TEN recesses and six
+    // drums are offered, so the six sit in the middle six and the outer four
+    // stay empty until AR-058's plate is redrawn for six (AR-070 count note).
+    const bw = shelf.w / PercussionToolPanel.SHELF_RECESSES;
+    const first = (PercussionToolPanel.SHELF_RECESSES - this.addButtons.length) / 2;
     this.addButtons.forEach((btn, k) => {
-      btn.place({ x: shelf.x + k * bw + bw * 0.1, y: shelf.y + shelf.h * 0.1, w: bw * 0.8, h: shelf.h * 0.8 }, Math.max(12, shelf.h * 0.3));
+      btn.place({ x: shelf.x + (first + k) * bw + bw * 0.1, y: shelf.y + shelf.h * 0.1, w: bw * 0.8, h: shelf.h * 0.8 }, Math.max(12, shelf.h * 0.3));
     });
     this.hint.setPosition(grid.x + grid.w / 2, grid.y + grid.h * 0.5).setFontSize(Math.max(11, grid.h * 0.05));
   }

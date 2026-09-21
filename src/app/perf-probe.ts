@@ -56,6 +56,11 @@ interface SecondRow {
   stillFrames: number;
   /** Largest single-frame move over the mean move; 1 is perfectly even. */
   motionUneven: number;
+  /** Audio-thread dropouts this second (count, and ms of lost sound), or null
+   *  where the browser does not report them. The only field that can see a
+   *  glitch that every main-thread number calls healthy. */
+  dropouts: number | null;
+  dropoutMs: number | null;
 }
 
 const round = (n: number): number => Math.round(n * 10) / 10;
@@ -203,6 +208,7 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       startedAt = performance.now();
       longTaskFloor = startedAt;
       lateBase = -1; // re-base the audio counters on the new window
+      dropBase = { events: -1, sec: 0 };
       // Start the first second here, so its row holds no frames from before.
       secondStart = startedAt;
       intervals = [];
@@ -223,6 +229,7 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
   let secondStart = last;
   let lateBase = -1;
   let eventsBase = 0;
+  let dropBase = { events: -1, sec: 0 };
   const tick = (now: number): void => {
     intervals.push(now - last);
     last = now;
@@ -244,6 +251,8 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       const total = moves.reduce((a, b) => a + b, 0);
       const motion = { mean: total / Math.max(1, moves.length), max: Math.max(0, ...moves) };
       const diag = deps.audioDiag();
+      const output = diag["output"] as { underrunEvents: number; underrunSec: number } | null | undefined;
+      if (output && dropBase.events < 0) dropBase = { events: output.underrunEvents, sec: output.underrunSec };
       const late = num(diag["schedLate20"]);
       const events = num(diag["schedEvents"]);
       if (lateBase < 0) { lateBase = late; eventsBase = events; }
@@ -273,7 +282,10 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
         heapMB: memory ? round(memory.usedJSHeapSize / 1048576) : null,
         stillFrames: moves.filter((m) => m === 0).length,
         motionUneven: moves.length > 0 && motion.mean > 0 ? round(motion.max / motion.mean) : 0,
+        dropouts: output ? output.underrunEvents - dropBase.events : null,
+        dropoutMs: output ? round((output.underrunSec - dropBase.sec) * 1000) : null,
       };
+      if (output) dropBase = { events: output.underrunEvents, sec: output.underrunSec };
       lateBase = late;
       eventsBase = events;
       // The live readout keeps running while stopped; only the report freezes.
@@ -286,7 +298,8 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
         `${row.frames} fps · frame ${row.meanMs}/${row.p95Ms}/${row.maxMs} ms (mean/p95/max)\n` +
         `update ${row.updateMeanMs} · render ${row.renderMeanMs} ms · slow frames ${row.over33}\n` +
         `audio late ${row.late20} · voices ${String(row.melodyVoices)}+${String(row.samplePlayers)} · ${rows.length}s kept\n` +
-        `motion: still frames ${row.stillFrames} · unevenness ${row.motionUneven}`;
+        `motion: still frames ${row.stillFrames} · unevenness ${row.motionUneven}\n` +
+        `audio dropouts ${row.dropouts === null ? "n/a in this browser" : `${row.dropouts} (${String(row.dropoutMs)} ms)`}`;
       readout.style.whiteSpace = "pre";
       intervals = [];
       updates = [];

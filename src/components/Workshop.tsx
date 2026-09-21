@@ -21,7 +21,7 @@ import {
 import { STATION_LABEL, STATION_VOICE, laneSprite, riderSprite } from "../game/instrument-station.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
 import { carLiveries } from "../core/car-identity.ts";
-import { BUILTIN_SOUNDS, getBuiltin, type BuiltinSound } from "../core/sound-catalog.ts";
+import { BUILTIN_SOUNDS, getBuiltin, isOffered, type BuiltinSound } from "../core/sound-catalog.ts";
 import { PhaserScene, VIEW_OVERLAY } from "./PhaserScene.tsx";
 import { EventBus } from "../game/EventBus.ts";
 import { WORKSHOP_GRID_V2 } from "../game/scene-layout.ts";
@@ -170,7 +170,9 @@ export const Workshop: FC = () => {
     const inCar = new Set(layers.map((l) => l.clipId));
     const recordings = Object.values(project.clips).filter((c) => c.source.kind === "recording");
     const pads = [
-      ...BUILTIN_SOUNDS.map((s) => {
+      // A drum no longer offered still shows while it is IN this car, so an
+      // older song's lane keeps its pad (and its way out).
+      ...BUILTIN_SOUNDS.filter((s) => isOffered(s) || inCar.has(builtinLaneId(s))).map((s) => {
         const laneId = builtinLaneId(s);
         return {
           id: `builtin:${s.assetId}`,

@@ -108,6 +108,10 @@ interface TestBridge {
   // iOS session-flip bug's failure mode).
   bufferDuration: (bufferId: string) => number | null;
   bufferPeak: (bufferId: string) => number | null;
+  // The song as the SPEAKERS would get it: one ride captured off the master
+  // bus, as WAV bytes. The only probe that can hear a note being cut short;
+  // every counter above reads "healthy" while that happens.
+  renderSongWav: () => Promise<number[]>;
 }
 declare global {
   interface Window {
@@ -139,6 +143,8 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     engineStarted: () => engine.isStarted,
     bufferDuration: (bufferId) => toneSound.getBufferDuration(bufferId),
     bufferPeak: (bufferId) => toneSound.getBufferPeak(bufferId),
+    renderSongWav: async () =>
+      [...new Uint8Array(await (await engine.renderSong(getProject())).arrayBuffer())],
   };
 }
 

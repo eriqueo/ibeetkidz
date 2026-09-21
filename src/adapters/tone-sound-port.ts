@@ -594,6 +594,17 @@ export class ToneSoundPort implements SoundPort {
     samplePlayers: number;
     fxNodes: number;
     caches: Record<"baked" | "loop" | "prepared" | "voiceSample" | "drum", { entries: number; bytes: number }>;
+    /** The AUDIO THREAD's own health (Chrome's `playbackStats`; null where the
+     *  browser has none). Everything above is measured on the main thread and
+     *  read "healthy" while Eric heard notes break up (2026-09-21): a dropout is
+     *  the output device starving, which only this counts. Cumulative. */
+    output: {
+      underrunEvents: number;
+      underrunSec: number;
+      sampleRate: number;
+      baseLatencySec: number;
+      outputLatencySec: number;
+    } | null;
   } {
     let masterPeak = -1;
     if (this.analyser) {
@@ -623,6 +634,27 @@ export class ToneSoundPort implements SoundPort {
       samplePlayers: this.scheduledVoices.length,
       fxNodes: this.scheduledFx.length,
       caches: this.cacheDiag(),
+      output: this.outputDiag(),
+    };
+  }
+
+  private outputDiag(): ReturnType<ToneSoundPort["getAudioDiag"]>["output"] {
+    if (!this.ctx) return null;
+    // `rawContext` is standardized-audio-context's WRAPPER, which forwards only
+    // the API it knows; the browser's own context sits behind `_nativeContext`.
+    type Native = AudioContext & {
+      playbackStats?: { fallbackFramesEvents?: number; fallbackFramesDuration?: number; underrunEvents?: number; underrunDuration?: number };
+    };
+    const native = (this.ctx as AudioContext & { _nativeContext?: Native })._nativeContext ?? (this.ctx as Native);
+    // Shipped as `underrun*`, renamed `fallbackFrames*`; read whichever exists.
+    const stats = native.playbackStats;
+    if (!stats) return null;
+    return {
+      underrunEvents: stats.fallbackFramesEvents ?? stats.underrunEvents ?? 0,
+      underrunSec: stats.fallbackFramesDuration ?? stats.underrunDuration ?? 0,
+      sampleRate: native.sampleRate,
+      baseLatencySec: native.baseLatency ?? 0,
+      outputLatencySec: native.outputLatency ?? 0,
     };
   }
 

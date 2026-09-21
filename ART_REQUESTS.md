@@ -60,16 +60,25 @@ can name, not a diagram of a signal.
 | `fx-robot.png` | Robot | A riveted tin robot head with a speaker-grille mouth. |
 | `fx-echo.png` | Echo | A canyon or a brass horn with the same ring repeated, shrinking. |
 | `fx-crazy.png` | CRAZY! | A jack-in-the-box / spring bursting with stars and notes. |
-| `fx-reverb.png`, `fx-bitcrush.png` | Big Room, Crunchy | **Only if Eric keeps eight effects** — see the count note below. A cathedral bell hall; a block of chunky broken pixels. |
 | `drum-*.png` (all shipped ids) | the sound's label | The INSTRUMENT itself, painted, one object each, three-quarter view, same light. Shipped ids and words: `kick` Boom, `snare` Snap, `hihat` Tss, `clap` Clap (two hands), `tom` Bonk, `cowbell` Ding, `openhat` Sssss, `rim` Tik (a stick on a rim), `shaker` Shaka, `conga` Tumba. |
 
-**Count note — Eric's decision, engineering's recommendation.** Eric: "I don't
-know if we need all these choices, as well as … all of the drum choices."
-Engineering recommends **six effects** (drop Big Room and Crunchy: both are
-subtle next to the other six, and a kid comparing tiles hears little) and **six
-drums**. Paint the six effects first. Do not repaint the plates for a new
-socket count until Eric confirms; six keys lay out 3 × 2 in the existing My
-Voice bay without new plate art.
+**Count — DECIDED by Eric 2026-09-21: six effects, six drums.** Shipped in
+code the same day. Effects offered: Backwards, Chipmunk, Monster, Robot, Echo,
+CRAZY! (Big Room and Crunchy are gone from the rack; do **not** paint
+`fx-reverb` or `fx-bitcrush`). Drums offered: `kick`, `snare`, `hihat`, `clap`,
+`tom`, `cowbell` (paint only these six; `openhat`, `rim`, `shaker`, `conga`
+remain playable in old songs but are never shown on a shelf again).
+
+That leaves two plates with empty sockets, which is now part of this request:
+
+- **My Voice plate** (`AR-051A`): the effect rack paints 4 × 2 sockets; six
+  tiles currently sit four-over-two with an empty socket each side of the bottom
+  row. Redraw the rack as **3 × 2**, larger sockets, same bay.
+- **Percussion plate** (`AR-058`): the drum shelf paints ten recesses; the six
+  keys sit in the middle six. Redraw the shelf as **six** larger recesses —
+  at ten the keys were ~40 px on a laptop and their words did not fit.
+
+Deliver both with socket rectangles in canvas pixels, as before.
 
 **Unblocks:** engineering swaps frames by name — no code change — and removes
 "reopened" here once Eric accepts them on the live build.
@@ -86,8 +95,8 @@ inlay, same light, same rivet language), **2560 × 1440 canvas, true alpha**:
 
 - Three shelves with a painted header plaque each: **DRUMS**, **NOTES**,
   **YOUR SOUNDS** (the engine draws the words; leave a cream name-strip).
-- Recessed sockets for `pad-key` keycaps: **6** on DRUMS (pending the count
-  note in AR-070; say so if you paint 10), **6** on NOTES, **6** on YOUR
+- Recessed sockets for `pad-key` keycaps: **6** on DRUMS (decided — see the
+  count in AR-070), **6** on NOTES, **6** on YOUR
   SOUNDS. Square sockets, equal pitch, all three shelves on one grid.
 - A cream instruction strip along the bottom for one line of engine text.
 - Six note icons in the AR-070 style, `note-do`, `note-re`, `note-mi`, `note-sol`, `note-la`, `note-do2`: six tuned

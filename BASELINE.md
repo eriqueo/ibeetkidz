@@ -188,10 +188,36 @@ press (sampling profiler, SwiftShader): **416 ms → 42 ms**; no long task over
 60 ms while rehearsing. Not yet re-measured on Eric's laptop. The Workshop's
 first Play is not rehearsed (one car, a smaller build).
 
+### "Notes cut off early" (2026-09-21): what it is NOT
+
+Eric described the remaining glitch as notes ending prematurely, on a steady
+Workshop loop whose report read perfectly healthy (no long task, no late event).
+The voice pool and the voice recycler were the obvious suspects and were tested
+by ear-equivalent: the dev bridge gained `renderSongWav()` (one ride captured
+off the master bus), and the same four-bar ride was rendered and compared as
+loudness over time —
+
+- shared voices vs one voice per note, for piano, bells, pluck, organ, smooth
+  and brass: envelopes match; the differences are single onsets landing 40–60 ms
+  apart between two runs, not shortened notes;
+- fresh voices vs recycled ones (after a loop, two live edits and a stop): same;
+- a voice-notes lane on one shared `Tone.Sampler` vs one sampler per note, with
+  the same pitch struck back to back: RMS per second identical to three places.
+
+So sharing and recycling do not shorten notes in a render. The cause is still
+unknown. What no counter could see was the AUDIO THREAD: `getAudioDiag().output`
+and the recorder's `dropouts` / `dropoutMs` now read Chrome's
+`AudioContext.playbackStats` (through standardized-audio-context's
+`_nativeContext` — the wrapper hides it). A report with dropouts above zero
+while Eric hears it means the output device is starving; zero means the notes
+really are being scheduled short, and the search goes back into the scheduler.
+Harnesses: `note-cutoff-ab.mjs`, `note-cutoff-recycle.mjs`,
+`note-cutoff-sampler.mjs` in the agent folder.
+
 ## Verification
 
 - `npm run typecheck`: passed.
-- `npm test`: 711 tests in 47 files passed; none skipped.
+- `npm test`: 712 tests in 47 files passed; none skipped.
 - `npm run lint`: passed.
 - `npm run build`: both root and Pages artifacts passed, including notices,
   editor exclusion and PWA precache checks.

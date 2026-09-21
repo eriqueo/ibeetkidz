@@ -57,6 +57,18 @@ export const DRUM_SOUNDS: readonly BuiltinSound[] = BUILTIN_SOUNDS.filter(
   (s) => s.recipe.kind === "drum",
 );
 
+/** The drums a kid is OFFERED. Eric cut the shelf from ten to six on
+ *  2026-09-21 ("I don't know if we need all of the drum choices"): ten unnamed
+ *  keys was a wall, and these six are the ones that sound unlike each other.
+ *  The other four stay in `BUILTIN_SOUNDS` — songs already using them must
+ *  still load, play and show their lane. */
+const OFFERED_DRUM_IDS = new Set(["kick", "snare", "hihat", "clap", "tom", "cowbell"]);
+export const OFFERED_DRUMS: readonly BuiltinSound[] = DRUM_SOUNDS.filter((s) =>
+  OFFERED_DRUM_IDS.has(s.assetId),
+);
+export const isOffered = (s: BuiltinSound): boolean =>
+  s.recipe.kind !== "drum" || OFFERED_DRUM_IDS.has(s.assetId);
+
 const byId = new Map(BUILTIN_SOUNDS.map((s) => [s.assetId, s]));
 export const getBuiltin = (assetId: string): BuiltinSound | undefined =>
   byId.get(assetId);
