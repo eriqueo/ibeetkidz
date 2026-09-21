@@ -443,7 +443,7 @@ export const Track: FC = () => {
 
   useEffect(() => {
     let raf = 0;
-    const tick = () => {
+    const tick = (frameMs: number) => {
       const v3scene = v3Ref.current;
       if (v3scene) {
         const riding = engine.isPlaying && engine.playMode === "ride";
@@ -453,7 +453,7 @@ export const Track: FC = () => {
           // world out in bar order and never wraps its own position, so a
           // terrain scheduled at bar 37 is drawn at bar 37. ONE read, off the
           // smoothed clock: the raw audio clock stands still for most frames.
-          const pos = Math.max(0, engine.getTransportBars());
+          const pos = Math.max(0, engine.getTransportBars(frameMs));
           const bar = Math.floor(pos);
           v3scene.setSongPosition(pos);
           // Each LATCHED geometry mode re-arms its visual unit as the train
@@ -491,7 +491,7 @@ export const Track: FC = () => {
           // buffer-sized jumps.
           const totalBars = carsRef.current.length;
           if (totalBars > 0) {
-            const pos = Math.max(0, engine.getTransportBars());
+            const pos = Math.max(0, engine.getTransportBars(frameMs));
             scene.setProgress((pos % totalBars) / totalBars);
           }
         }

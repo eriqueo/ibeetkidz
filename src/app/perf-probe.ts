@@ -195,7 +195,10 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
     // A number only while the train rides; see TrackV3Scene.songPosition.
     const drawn = (scene as { songPosition?: unknown } | null)?.songPosition;
     if (typeof drawn === "number") {
-      if (drawnAt !== null) moves.push(Math.abs(drawn - drawnAt));
+      // Per millisecond of frame, so a dropped frame (already counted above)
+      // is not also reported as uneven motion.
+      const span = intervals[intervals.length - 1] ?? 0;
+      if (drawnAt !== null && span > 0) moves.push(Math.abs(drawn - drawnAt) / span);
       drawnAt = drawn;
     } else {
       drawnAt = null;

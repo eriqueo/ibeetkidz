@@ -214,8 +214,11 @@ export interface SoundPort {
   /** Absolute song position in bars, fractional, or -1 when stopped — FOR
    *  DRAWING. Unlike the two reads above it advances every frame: the audio
    *  clock itself moves a hardware buffer at a time, which a moving picture
-   *  shows as judder. Same average position, so sync is unchanged. */
-  getTransportBars(): number;
+   *  shows as judder. Same average position, so sync is unchanged.
+   *  `frameMs` is the frame's own timestamp (what `requestAnimationFrame`
+   *  passes): frames are evenly spaced, the moment a callback RUNS is not, and
+   *  reading the wall clock there measured up to 3.6× uneven motion. */
+  getTransportBars(frameMs?: number): number;
 }
 
 export class MicDeniedError extends Error {

@@ -235,6 +235,7 @@ export function hasUiFrame(scene: Phaser.Scene, frame: string | null | undefined
  *  browser cache makes later navigations free. Call from a scene's `preload`. */
 export function loadUiSprites(scene: Phaser.Scene): void {
   if (!scene.textures.exists(UI_ATLAS_KEY)) {
+    decodeAtlasPagesOffThread(scene);
     // Both arguments are `public/` paths and BOTH must carry the deploy base.
     // The 3rd argument is Phaser's `path`: the atlas JSON lists its pages as
     // bare filenames ("ui-atlas-0.png"), and the loader prepends this path to
@@ -247,6 +248,56 @@ export function loadUiSprites(scene: Phaser.Scene): void {
       publicAssetUrl("assets/spritesheets"),
     );
   }
+}
+
+/** `Phaser.Loader.FILE_PROCESSING`. A literal because this module imports
+ *  Phaser as a type only (unit tests load it without a browser). */
+const FILE_PROCESSING = 14;
+
+interface PageFile {
+  type: string;
+  state: number;
+  data: unknown;
+  multiFile?: { key: string };
+  xhrLoader?: { response: unknown };
+  onProcess: () => void;
+  onProcessComplete: () => void;
+}
+
+/** Hand the GPU atlas pages that are ALREADY decoded.
+ *
+ *  Phaser wraps each page in an `<img>`, and Chrome decodes an `<img>` lazily:
+ *  the PNG inflate of a 4096-px lossless page happens inside `texImage2D`, on
+ *  the main thread. Three pages froze Eric's laptop for 1.8 s on whichever
+ *  scene first needed them (field reports, 2026-09-20/21). `createImageBitmap`
+ *  decodes on a worker thread; the upload that is left measured 36 ms a page
+ *  against 250 ms, with identical texels over a 1,521-point grid including
+ *  1,399 semi-transparent samples. The options reproduce Phaser's unpack
+ *  flags (flip Y, premultiply), which WebGL ignores for a bitmap.
+ *
+ *  WebGL only: the Canvas renderer DRAWS its sources, and would draw a
+ *  flipped page upside down. Any refusal falls back to Phaser's own path. */
+function decodeAtlasPagesOffThread(scene: Phaser.Scene): void {
+  if (typeof createImageBitmap !== "function") return;
+  if (!("gl" in scene.game.renderer)) return;
+  const onAdd = (_key: string, _type: string, _loader: unknown, file: PageFile): void => {
+    if (file.type !== "image" || file.multiFile?.key !== UI_ATLAS_KEY) return;
+    const viaImage = file.onProcess.bind(file);
+    file.onProcess = () => {
+      const blob = file.xhrLoader?.response;
+      if (!(blob instanceof Blob)) return viaImage();
+      file.state = FILE_PROCESSING;
+      createImageBitmap(blob, { imageOrientation: "flipY", premultiplyAlpha: "premultiply" }).then(
+        (bitmap) => {
+          file.data = bitmap;
+          file.onProcessComplete();
+        },
+        viaImage,
+      );
+    };
+  };
+  scene.load.on("addfile", onAdd);
+  scene.load.once("complete", () => scene.load.off("addfile", onAdd));
 }
 
 /** A target rect (screen px, centre origin) the placement math resolves a spawn to. */

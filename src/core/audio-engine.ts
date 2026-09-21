@@ -251,8 +251,8 @@ export class AudioEngine {
   }
 
   /** Fractional song position in bars for drawing, or -1 when stopped. */
-  getTransportBars(): number {
-    return this.sound.getTransportBars();
+  getTransportBars(frameMs?: number): number {
+    return this.sound.getTransportBars(frameMs);
   }
 
   get playMode(): PlayMode {

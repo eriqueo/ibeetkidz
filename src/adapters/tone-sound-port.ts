@@ -1836,7 +1836,7 @@ export class ToneSoundPort implements SoundPort {
     return Math.floor(ticks / this.ticksPerBar);
   }
 
-  getTransportBars(): number {
+  getTransportBars(frameMs = performance.now()): number {
     const t = this.liveTransport;
     if (t.state !== "started") {
       this.drawClock.reset();
@@ -1844,7 +1844,7 @@ export class ToneSoundPort implements SoundPort {
     }
     // The raw audio clock moves one hardware buffer at a time (43 ms on Linux
     // Chrome), which is a standing train on most frames. See smooth-clock.ts.
-    const at = this.drawClock.read(this.liveCtx.immediate(), performance.now() / 1000);
+    const at = this.drawClock.read(this.liveCtx.immediate(), frameMs / 1000);
     return Math.max(0, t.getTicksAtTime(at)) / this.ticksPerBar;
   }
 

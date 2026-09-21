@@ -159,6 +159,29 @@ and `motionUneven`, because its first version could not see this at all.
 Not yet confirmed on Eric's laptop. Still open from this report: one 1.76 s
 long task on the Map (the atlas upload) and 232 ms on the first Ride.
 
+### Third report (2026-09-21): confirmed, and the atlas freeze explained
+
+On the smoothed-clock build the same laptop reported `stillFrames` 0 for every
+riding second, zero late audio, 165 fps. Two things were left in it.
+
+- `motionUneven` ran 1.2–3.6 although frames were exactly 6.1 ms apart. The
+  clock was fed `performance.now()` at the moment the callback RAN; frames are
+  even, callbacks are not. It is now fed the frame's own timestamp. Locally,
+  speed per frame-millisecond: within **0.97–1.03×** the mean over 299 frames.
+  The recorder's figure is now per frame-millisecond too.
+- The 1.8 s freeze still landed on Track entry: Eric left the Map in ~4 s, so
+  the warm-up was abandoned and the Track paid in full. The cost was never the
+  GPU copy. Chrome decodes an `<img>` lazily, inside `texImage2D`, on the main
+  thread. `createImageBitmap` decodes on a worker: upload per page **250 ms →
+  36 ms** (SwiftShader), texels identical to the `<img>` path over a
+  1,521-point grid with 1,399 semi-transparent samples. First Workshop entry
+  straight off the Map: long tasks over 100 ms went from ~1.3 s total to
+  **103 + 229 ms**. WebGL only; Canvas and any refusal use Phaser's own path.
+  The Map warm-up stays. Not yet re-measured on Eric's laptop.
+
+Still open: ~230–290 ms on the first Ride of a session (first build of every
+voice and player).
+
 ## Verification
 
 - `npm run typecheck`: passed.
