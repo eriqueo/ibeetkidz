@@ -65,7 +65,14 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
   if (typeof window === "undefined") return;
   if (!new URLSearchParams(window.location.search).has("perf")) return;
 
-  const startedAt = performance.now();
+  // Recording runs from page load, as it always did, so a report of "it was
+  // slow when it started" still works. STOP freezes the report; START clears
+  // it and begins a fresh window, so a report can cover exactly one moment
+  // (one ride, one panel) instead of five minutes of everything.
+  let startedAt = performance.now();
+  let recording = true;
+  let stoppedAt = 0;
+  let longTaskFloor = Number.NEGATIVE_INFINITY;
   const rows: SecondRow[] = [];
   const longTasks: { t: number; ms: number }[] = [];
   let scene: Phaser.Scene | null = null;
@@ -96,6 +103,9 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
   try {
     new PerformanceObserver((list) => {
       for (const entry of list.getEntries()) {
+        // The floor keeps a task from before START out of the new window. It
+        // starts open, because page-load tasks arrive buffered and belong.
+        if (!recording || entry.startTime < longTaskFloor) continue;
         longTasks.push({ t: round((entry.startTime - startedAt) / 1000), ms: round(entry.duration) });
         if (longTasks.length > LONG_TASK_CAP) longTasks.shift();
       }
@@ -158,7 +168,8 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       {
         kind: "ibeetkidz-perf-report",
         version: 1,
-        recordedSec: round((performance.now() - startedAt) / 1000),
+        recordedSec: round(((recording ? performance.now() : stoppedAt) - startedAt) / 1000),
+        recording,
         environment: environment(),
         song: deps.songShape(),
         audioNow: deps.audioDiag(),
@@ -182,7 +193,30 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       save, // clipboard refused (permissions, insecure context) → download instead
     );
   });
-  box.append(readout, copy, button("SAVE FILE", save));
+  const toggle = button("■ STOP", () => {
+    if (recording) {
+      recording = false;
+      stoppedAt = performance.now();
+    } else {
+      rows.length = 0;
+      longTasks.length = 0;
+      startedAt = performance.now();
+      longTaskFloor = startedAt;
+      lateBase = -1; // re-base the audio counters on the new window
+      // Start the first second here, so its row holds no frames from before.
+      secondStart = startedAt;
+      intervals = [];
+      updates = [];
+      renders = [];
+      moves = [];
+      recording = true;
+    }
+    toggle.textContent = recording ? "■ STOP" : "● START NEW";
+    toggle.style.background = recording ? "#7a1f2b" : "#1f6b35";
+  });
+  toggle.style.color = "#fff";
+  toggle.style.background = "#7a1f2b";
+  box.append(readout, toggle, copy, button("SAVE FILE", save));
   document.body.append(box);
 
   let last = performance.now();
@@ -242,9 +276,13 @@ export function attachPerfProbe(deps: PerfProbeDeps): void {
       };
       lateBase = late;
       eventsBase = events;
-      rows.push(row);
-      if (rows.length > HISTORY_SEC) rows.shift();
+      // The live readout keeps running while stopped; only the report freezes.
+      if (recording) {
+        rows.push(row);
+        if (rows.length > HISTORY_SEC) rows.shift();
+      }
       readout.textContent =
+        `${recording ? "● RECORDING" : "■ STOPPED — report frozen"}\n` +
         `${row.frames} fps · frame ${row.meanMs}/${row.p95Ms}/${row.maxMs} ms (mean/p95/max)\n` +
         `update ${row.updateMeanMs} · render ${row.renderMeanMs} ms · slow frames ${row.over33}\n` +
         `audio late ${row.late20} · voices ${String(row.melodyVoices)}+${String(row.samplePlayers)} · ${rows.length}s kept\n` +
