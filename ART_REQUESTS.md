@@ -124,6 +124,33 @@ picture and room for one engine-drawn word on a cream strip:
 Canvas 512 × 192 each, true alpha, same brass and light as `btn-panel-done`.
 Until they land, engineering draws the word alone under each control.
 
+### ⚠ OPEN — AR-073 · The Workshop top bar's MAP plaque is from another family — P1
+
+Eric, 2026-09-20, on the Workshop top bar: "these buttons on top are wrong, all
+different sizes and styles." Engineering fixed what code can: the three plaques
+now share one height, one baseline and even spacing, and the redundant YARD
+plaque is gone. What is left is art. `btn-newcar` and `btn-send-to-yard` are
+wide brass-framed cream plaques with a painted car and a word; `btn-nav-map` is
+a **square** dark card with a map picture — a Track control reused here (it is
+one of the pinned AR-069 sources, so do **not** alter that file).
+
+Deliver a NEW sprite, `btn-workshop-map` (idle + pressed on one canvas), in the
+`btn-newcar` family: same 344 × 180 proportions, same brass frame and cream
+field, a small painted folded map on the left and the word **MAP** in the same
+lettering. Engineering swaps the Workshop's frame name; the Track keeps its own.
+
+### What engineering shipped on 2026-09-21, so the art lands on the right layout
+
+- Every effect tile and drum key carries its **word** in the bottom third of the
+  keycap (cream, dark edge, one size per rack). Icons now render in the upper
+  two-thirds at ~46 % of the key. The caption hides where a key is under ~50 px.
+- The editor deck draws **WOBBLE / CRUNCH / LOUD / TWICE** in the gap between
+  each control and its baked glyph. AR-072's plaques replace both the glyph and
+  that word; say where the word strip sits so the engine can stop drawing it.
+- Racks are six and six (AR-070). Empty sockets are visible today on both plates.
+- Sound Pads still draws system emoji on flat tiles (AR-071). On a machine
+  without an emoji font they render as empty boxes.
+
 ---
 
 ## PREVIOUS HANDOFF — 2026-09-01 (rev 11)
