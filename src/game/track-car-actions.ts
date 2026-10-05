@@ -65,9 +65,3 @@ export function trackCarActionSlots(
     ]),
   ) as Record<TrackCarActionKind, TrackCarActionSlot>;
 }
-
-/** The header TARP key is an arming latch. Staying in the chooser preserves
- *  that pending intent; committing either real action consumes it. */
-export function trackCarActionDisarmsTarp(kind: TrackCarActionKind): boolean {
-  return kind !== "close";
-}

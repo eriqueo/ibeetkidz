@@ -66,12 +66,14 @@ import {
   TRACK_TOOLBAR_TOGGLES,
   trackHeaderSlots,
   trackJobSlots,
+  trackSpeedSlider,
   type TrackJobId,
   type TrackToolbarId,
   type PlacedRect,
 } from "../scene-layout.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
-import type { CarType } from "../../core/types.ts";
+import { MAX_BPM, MIN_BPM, type CarType } from "../../core/types.ts";
+import { bpmAtX, xForBpm, type SliderRail } from "../speed-slider.ts";
 // The oval already owns this panel; the side-scroller mounts the SAME class
 // rather than growing a second SEND flow.
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
@@ -79,7 +81,6 @@ import { PanelButton, FONT, INK, PANEL_BG, PANEL_EDGE } from "../tool-panels.ts"
 import {
   TRACK_CAR_ACTION_LAYOUT,
   trackCarActionChoices,
-  trackCarActionDisarmsTarp,
   trackCarActionSlots,
   type TrackCarActionKind,
 } from "../track-car-actions.ts";
@@ -197,12 +198,6 @@ export interface V3TerrainRide {
 
 const W: number = GAME_DESIGN_SIZE.width;
 const H: number = GAME_DESIGN_SIZE.height;
-
-/** `pad-key`'s pale label face as fractions of its 512 canvas, measured by
- *  scanning the packed frame (2026-08-16). It is 64 % of the canvas wide and
- *  sits ~4 % LEFT of centre, which is why a caption centred on the cell and
- *  sized to the cell overhung the brass frame on both sides. */
-const PAD_KEY_FACE = { x0: 0.1543, x1: 0.7969 } as const;
 
 
 /** Beats to the bar, and how much of each beat the Beat Lantern spends in its
@@ -761,43 +756,115 @@ export class TrackV3Scene extends Phaser.Scene {
     this.placeButton("btn-send-song", s["send"]!,
       () => void EventBus.emit("track-send"), "SEND");
 
-    this.buildTransportRow(s);
+    this.buildTransportRow();
   }
 
   /**
-   * Row 2 of the header: the controls the oval had and the side-scroller did
-   * not. Every sprite here is already in the packed atlas — this deck needed no
-   * new art, which is why it could be built rather than queued.
+   * Row 2 of the header: how fast the train goes. The SPEED readout (AR-069's
+   * `track-speed-readout`) and one slider across the rest of the row.
    *
-   *   SLOW / FAST   `btn-transport-slow` / `-fast`, the Workshop's own keycaps
-   *   the readout   drawn text, because `lcd-transport` is a Tiled display
-   *                 anchor the oval mounts from its map and this scene has no
-   *                 map — same numbers, same job, no second sprite invented
-   *   TARP          arms tap-a-car-to-tarp without stealing tap-to-edit
-   *   SEND          AR-020's `btn-send-song` plaque
+   * It was SLOW · readout · FAST · TARP. Eric (2026-10-05) asked for one
+   * slider in place of the three speed controls, and called the TARP key
+   * "kinda pointless": tapping a car already offers TARP CAR / UNCOVER, so the
+   * key only armed a second route to the same choice.
    */
-  private buildTransportRow(s: Record<string, PlacedRect>): void {
-    this.placeButton("btn-transport-slow", s["slow"]!,
-      () => void EventBus.emit("tempo-changed", -10), "SLOW");
-    const tempo = s["tempo"]!;
-    this.placeSpeedReadout(tempo);
-    this.placeButton("btn-transport-fast", s["fast"]!,
-      () => void EventBus.emit("tempo-changed", 10), "FAST");
+  private buildTransportRow(): void {
+    const { readout, rail, hit } = trackSpeedSlider();
+    this.placeSpeedReadout(readout);
+    this.placeSpeedSlider(rail, hit);
+  }
 
-    // TARP arms the tarp gesture instead of replacing tap-to-edit. Tapping a
-    // car on this view opens THAT car in the Workshop — a deliberate choice
-    // (edit on the fly, 2026-08-13) that muting must not quietly take back. So
-    // muting gets its own latch: arm it, and the next car you tap gets covered.
-    //
-    // It wore `btn-transport-loop` until 2026-08-16, which paints the word LOOP
-    // into the keycap — so the deck showed TWO buttons both reading LOOP and
-    // nothing anywhere reading TARP. There is no authored tarp keycap, so this
-    // borrows AR-054's blank `pad-key`: the face the sound pads label at run
-    // time, which is exactly this job.
-    this.tarpLatch = this.placeTarpKey(
-      s["tarp"]!,
-      () => void EventBus.emit("track-tarp-armed"),
-    );
+  /** Where the speed handle is, and whether a finger is on it. React writes
+   *  the committed speed through `setTempo`; a drag never fights it. */
+  private speedRail?: SliderRail;
+  private speedHandle?: Phaser.GameObjects.Image;
+  private speedDragging = false;
+  private committedTempo = 120;
+
+  /**
+   * The rail and its brass handle.
+   *
+   * The handle is AR-016's `fader-handle` — the Workshop editor's LEVEL fader
+   * cap — turned upright, which is lossless for pixel art. The rail is DRAWN:
+   * the editor's fader slot is baked into its panel art, so there is no rail
+   * sprite to borrow. That is an interim, filed as AR-077.
+   *
+   * The speed is committed once, on release. A tempo change while riding
+   * reschedules the song (~55 ms each, `design/IMPROVEMENT_ROADMAP.md`), so a
+   * drag that committed on every step would stutter the music it is setting;
+   * it also keeps a whole drag to ONE undo step. While dragging, only the
+   * readout and the handle move.
+   */
+  private placeSpeedSlider(rail: SliderRail, hitRect: PlacedRect): void {
+    this.speedRail = rail;
+    const groove = this.add.graphics().setDepth(DEPTH.hud + 1);
+    const length = rail.x1 - rail.x0;
+    // A recessed brass slot in the house palette: brass lip, dark well, and a
+    // tick under every 20 bpm so the travel reads as a scale, not a bar.
+    groove.fillStyle(0x1a1526, 1).fillRect(rail.x0 - 18, rail.y - 17, length + 36, 34);
+    groove.fillStyle(0xb8862b, 1).fillRect(rail.x0 - 15, rail.y - 14, length + 30, 28);
+    groove.fillStyle(0x2a1d24, 1).fillRect(rail.x0 - 9, rail.y - 8, length + 18, 16);
+    groove.fillStyle(0x4a3326, 1).fillRect(rail.x0 - 9, rail.y + 5, length + 18, 3);
+    for (let bpm = MIN_BPM; bpm <= MAX_BPM; bpm += 20) {
+      const x = Math.round(xForBpm(bpm, rail));
+      groove.fillStyle(0x4a2f1c, 1).fillRect(x - 2, rail.y + 24, 4, 14);
+    }
+
+    const def = UI_SPRITES["fader-handle"];
+    if (def && this.textures.exists(UI_ATLAS_KEY) && this.textures.get(UI_ATLAS_KEY).has(def.base)) {
+      const handle = this.add
+        .image(xForBpm(this.committedTempo, rail), rail.y, UI_ATLAS_KEY, def.base)
+        .setName("track-control:speed-handle")
+        .setAngle(90)
+        .setDepth(DEPTH.hud + 2);
+      // Size the PAINTED cap, not its 512 canvas: across the rail it is as
+      // tall as the row allows; the art's own aspect sets its width.
+      const [cx0, , cx1] = def.content;
+      handle.setScale(110 / ((cx1 - cx0) * handle.width));
+      const [, cy0, , cy1] = def.content;
+      handle.setOrigin(0.5, (cy0 + cy1) / 2);
+      this.speedHandle = handle;
+    }
+
+    const hit = this.add
+      .rectangle(hitRect.x, hitRect.y, hitRect.width, hitRect.height, 0x000000, 0)
+      .setName("track-control:speed")
+      .setDepth(DEPTH.hud + 3)
+      .setInteractive({ useHandCursor: true });
+    let pending = this.committedTempo;
+    const show = (bpm: number): void => {
+      this.speedHandle?.setX(xForBpm(bpm, rail));
+      this.tempoText?.setText(String(Math.round(bpm)));
+    };
+    // `pointer.x` is in DRAWING-BUFFER pixels: `installSceneProjection` zooms
+    // the camera to fit the 2560-wide design onto the canvas. The rail is in
+    // design pixels, so every reading goes through the camera.
+    const designX = (p: Phaser.Input.Pointer): number =>
+      this.cameras.main.getWorldPoint(p.x, p.y).x;
+    hit.on("pointerdown", (p: Phaser.Input.Pointer) => {
+      this.speedDragging = true;
+      pending = bpmAtX(designX(p), rail);
+      show(pending);
+    });
+    const move = (p: Phaser.Input.Pointer): void => {
+      if (!this.speedDragging) return;
+      pending = bpmAtX(designX(p), rail);
+      show(pending);
+    };
+    const release = (): void => {
+      if (!this.speedDragging) return;
+      this.speedDragging = false;
+      if (pending !== this.committedTempo) EventBus.emit("tempo-set", pending);
+    };
+    this.input.on("pointermove", move);
+    this.input.on("pointerup", release);
+    this.input.on("pointerupoutside", release);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.input.off("pointermove", move);
+      this.input.off("pointerup", release);
+      this.input.off("pointerupoutside", release);
+      this.speedDragging = false;
+    });
   }
 
   /** Keep the live label/value inside the accepted source's empty display. */
@@ -848,97 +915,6 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0.5)
       .setFontSize(valueSize)
       .setDepth(DEPTH.hud + 2);
-  }
-
-  /** A blank `pad-key` slab wearing a run-time caption, for a control the atlas
-   *  has no authored keycap for. */
-  private placeTarpKey(
-    rect: { x: number; y: number; width: number; height: number },
-    fire: () => void,
-  ): (on: boolean) => void {
-    const authored = UI_SPRITES["btn-track-tarp"];
-    const hasAuthored = Boolean(
-      authored && this.textures.exists(UI_ATLAS_KEY) && this.textures.get(UI_ATLAS_KEY).has(authored.base),
-    );
-    const def = hasAuthored ? authored : UI_SPRITES["pad-key"];
-    // `pad-key` is a two-state sprite, not an idle/pressed animation: `seated` is
-    // the slab dropped into its socket. That makes it the right art for an
-    // ARMING LATCH — the key visibly stays down while TARP is armed, which is a
-    // state a four-year-old can read. The gold wash the other latch uses is a
-    // hint; a key that is physically down is not.
-    const idle = def?.states["idle"] ?? def?.base ?? "";
-    const seated = def?.states["seated"] ?? idle;
-    let latched = false;
-    let img: Phaser.GameObjects.Image | undefined;
-    const restFrame = (): string => (latched ? seated : idle);
-
-    if (def && this.textures.exists(UI_ATLAS_KEY)) {
-      // UNTINTED. The first attempt washed this slab with the tarp's own blue,
-      // and a tint multiplies: it crushed the painted shading into one flat
-      // rectangle — precisely what `plate()` refuses to draw, and what the rest
-      // of this deck exists to have stopped being. The slab's own grey stone and
-      // brass corners already belong to the header's material language.
-      const key = this.add
-        .image(0, 0, UI_ATLAS_KEY, def.base)
-        .setName("track-control:tarp")
-        .setOrigin(0.5)
-        .setDepth(DEPTH.hud + 1);
-      placeUiSprite(key, def, rect);
-      let armed = false;
-      key.setInteractive({ useHandCursor: true });
-      key.on("pointerdown", () => { armed = true; key.setFrame(seated); });
-      key.on("pointerout", () => { armed = false; key.setFrame(restFrame()); });
-      key.on("pointerup", () => {
-        key.setFrame(restFrame());
-        if (!armed) return;
-        armed = false;
-        fire();
-      });
-      img = key;
-    } else {
-      this.pressable(
-        this.add
-          .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x8d8878, 1)
-          .setName("track-control:tarp")
-          .setDepth(DEPTH.hud + 1),
-        fire,
-      );
-    }
-    // DARK ink on the SLAB — not on the cell, and not the cream the stone keys
-    // use. Three separate things had to be measured rather than guessed:
-    //
-    //  - the slab's pale face is `PAD_KEY_FACE` of the canvas, only 64 % of its
-    //    width, so a caption sized to the cell runs out under the brass frame;
-    //  - that face is NOT centred on the sprite — it sits ~4 % left — so a
-    //    caption centred on the cell overhangs the right side even when it fits;
-    //  - Press Start 2P advances exactly 1 em per glyph (measured: "TARP" at
-    //    100 px is 400 px), so the width IS `chars x fontSize`. Arithmetic over
-    //    the string, never a measurement off the Text object: a scene lays out
-    //    before the webfont resolves, so measuring sizes to the fallback face
-    //    and then Press Start 2P arrives and overflows anyway.
-    if (!hasAuthored) {
-      const caption = "TARP";
-      const faceW = (PAD_KEY_FACE.x1 - PAD_KEY_FACE.x0) * (img?.displayWidth ?? rect.width);
-      const faceCx = (img?.x ?? rect.x)
-        + ((PAD_KEY_FACE.x0 + PAD_KEY_FACE.x1) / 2 - 0.5) * (img?.displayWidth ?? rect.width);
-      this.add
-        .text(faceCx, rect.y, caption, {
-          fontFamily: "'Press Start 2P', monospace",
-          color: "#33302b",
-        })
-        .setOrigin(0.5)
-        .setFontSize(Math.floor((faceW * 0.86) / caption.length))
-        .setDepth(DEPTH.hud + 2);
-    }
-    const glow = this.add
-      .rectangle(rect.x, rect.y, rect.width * 1.12, rect.height * 1.12, 0xffd166, 0.32)
-      .setDepth(DEPTH.hud)
-      .setVisible(false);
-    return (on: boolean) => {
-      latched = on;
-      glow.setVisible(on);
-      img?.setFrame(restFrame());
-    };
   }
 
   /** Capture one deck immediately after it is built. The stored alpha keeps
@@ -1110,7 +1086,6 @@ export class TrackV3Scene extends Phaser.Scene {
    *  visibly hold its gold wash whatever art it currently wears. */
   /** Row-2 transport deck state, written by React and never read by the scene. */
   private tempoText?: Phaser.GameObjects.Text;
-  private tarpLatch: (on: boolean) => void = () => {};
   private toolbarObjects: Record<TrackToolbarId, TrackChromeObject[]> = {
     header: [],
     jobs: [],
@@ -1124,8 +1099,6 @@ export class TrackV3Scene extends Phaser.Scene {
     jobs: true,
   };
   private toolbarToggleText: Partial<Record<TrackToolbarId, Phaser.GameObjects.Text>> = {};
-  /** Mirrors the TARP latch, read on a car tap. React owns the truth. */
-  private tarpArmed = false;
   /** The SEND flow's panel + the state React drives it with. */
   private sendPanel?: SendSongPanel;
   private sendState: SendUiState = { kind: "idle" };
@@ -1277,7 +1250,11 @@ export class TrackV3Scene extends Phaser.Scene {
 
   /** React → scene: the tempo readout between SLOW and FAST. */
   setTempo(bpm: number): void {
+    this.committedTempo = bpm;
+    // A finger on the slider owns what it shows until it lets go.
+    if (this.speedDragging) return;
     this.tempoText?.setText(String(Math.round(bpm)));
+    if (this.speedRail) this.speedHandle?.setX(xForBpm(bpm, this.speedRail));
   }
 
   /** React → scene: independently project one deck's visibility and input.
@@ -1294,12 +1271,6 @@ export class TrackV3Scene extends Phaser.Scene {
       }
     }
     this.toolbarToggleText[toolbar]?.setText(visible ? "HIDE" : "SHOW");
-  }
-
-  /** React → scene: is the tarp gesture armed? */
-  setTarpArmed(on: boolean): void {
-    this.tarpArmed = on;
-    this.tarpLatch(on);
   }
 
   /** React → scene: the SEND flow's state (drives the result panel). */
@@ -2084,7 +2055,8 @@ export class TrackV3Scene extends Phaser.Scene {
     pos: number;
     playheadX: number;
     wheelAngle: number;
-    tarpArmed: boolean;
+    /** The slider as drawn: the speed it shows and where its handle stands. */
+    speed: { shown: string | null; handleX: number | null; dragging: boolean };
     soundingCarX: number | null;
     soundingCarY: number | null;
     soundingCarAngle: number;
@@ -2143,7 +2115,11 @@ export class TrackV3Scene extends Phaser.Scene {
       pos: this.pos,
       playheadX: playheadX(this.view),
       wheelAngle: wheelAngle(dist, WHEEL_R),
-      tarpArmed: this.tarpArmed,
+      speed: {
+        shown: this.tempoText?.text ?? null,
+        handleX: this.speedHandle?.x ?? null,
+        dragging: this.speedDragging,
+      },
       soundingCarX: now ? now.centreX : null,
       soundingCarY: now ? RAIL_Y - pose.lift : null,
       soundingCarAngle: pose.angle,
@@ -2489,13 +2465,11 @@ export class TrackV3Scene extends Phaser.Scene {
     const choices = trackCarActionChoices(car.muted);
     const slots = trackCarActionSlots(W);
     choices.forEach((choice) => {
-      const highlighted = choice.kind === "toggle-mute" && this.tarpArmed;
       const slot = slots[choice.kind];
       const button = new PanelButton(
         this,
         choice.label,
         () => this.chooseCarAction(choice.kind, car.id),
-        highlighted ? 0x2c6bc7 : undefined,
       );
       button.container.setName(choice.objectName);
       button.place(
@@ -2515,12 +2489,6 @@ export class TrackV3Scene extends Phaser.Scene {
 
   private chooseCarAction(kind: TrackCarActionKind, instanceId: string): void {
     this.dismissCarAction();
-    // React owns the latch truth. Consume it before an action can navigate
-    // away and unmount this scene; otherwise EDIT appears to preserve state
-    // only on the discarded scene object while a returning Track starts fresh.
-    if (this.tarpArmed && trackCarActionDisarmsTarp(kind)) {
-      EventBus.emit("track-tarp-armed");
-    }
     if (kind === "edit") EventBus.emit("track-car-edit", instanceId);
     if (kind === "toggle-mute") EventBus.emit("track-car-mute-toggled", instanceId);
   }

@@ -228,7 +228,10 @@ test("a kid can drive the default Track through its real canvas controls", async
   const muted = () =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted);
   expect(await muted()).toBe(false);
-  await tapNamedPhaserObject(page, "track-control:tarp");
+  // There is no TARP key on the header any more: a car tap is the one route.
+  expect(await page.evaluate(() =>
+    Boolean((window as any).__ibeetkidz_test__.getScene().children.getByName("track-control:tarp")),
+  )).toBe(false);
   const car = await state(page);
   const canvasPoint = await page.evaluate(({ x, y }) => {
     const scene = (window as any).__ibeetkidz_test__.getScene();
@@ -243,8 +246,8 @@ test("a kid can drive the default Track through its real canvas controls", async
   // downbeat; keep the real canvas tap safely inside every car body instead.
   }, { x: car.soundingCarX, y: car.soundingCarY - 80 });
   await page.mouse.click(canvasPoint.x, canvasPoint.y);
-  // TARP makes the intended choice prominent, but the car tap itself remains
-  // non-mutating; confirm the action through the same real canvas path.
+  // The car tap itself is non-mutating; confirm the action through the same
+  // real canvas path.
   await tapNamedPhaserObject(page, "track-car-action:tarp");
   await expect.poll(muted).toBe(true);
 
@@ -400,7 +403,6 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   // This is a real canvas tap safely outside the centred chooser panel.
   await tapScenePoint(100, 100);
   await expect.poll(menuVisible).toBe(false);
-  expect((await state(page)).tarpArmed).toBe(false);
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activePartId))
     .toBe(projectBefore.activePartId);
 
@@ -409,14 +411,6 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   await tapCar();
   await tapNamedPhaserObject(page, "track-car-action:close");
   await expect.poll(menuVisible).toBe(false);
-  expect((await state(page)).tarpArmed).toBe(false);
-
-  await tapNamedPhaserObject(page, "track-control:tarp");
-  await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
-  await tapCar();
-  await tapScenePoint(100, 100);
-  await expect.poll(menuVisible).toBe(false);
-  expect((await state(page)).tarpArmed).toBe(true);
 
   await tapCar();
   await tapNamedPhaserObject(page, "track-car-action:tarp");
@@ -424,7 +418,6 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train[0]?.muted),
   ).toBe(!projectBefore.muted);
   await expect.poll(async () => (await state(page)).tarpedCars).toBe(1);
-  await expect.poll(async () => (await state(page)).tarpArmed).toBe(false);
   expect(await page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView))
     .toBe("track");
 
@@ -437,21 +430,12 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   ).toBe(projectBefore.muted);
   await expect.poll(async () => (await state(page)).tarpedCars).toBe(0);
 
-  await tapNamedPhaserObject(page, "track-control:tarp");
-  await expect.poll(async () => (await state(page)).tarpArmed).toBe(true);
   await tapCar();
-  await page.evaluate(() => {
-    (window as any).__track_car_scene_before_edit =
-      (window as any).__ibeetkidz_test__.getScene();
-  });
   await tapNamedPhaserObject(page, "track-car-action:edit");
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().activeView),
   ).toBe("workshop");
   await waitForScene(page, "WorkshopScene");
-  expect(await page.evaluate(() =>
-    (window as any).__track_car_scene_before_edit.debugState().tarpArmed,
-  )).toBe(false);
 
   const beforeLayers = await page.evaluate(() => {
     const project = (window as any).__ibeetkidz_test__.getProject();
@@ -473,8 +457,8 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
     return lane.notes[2]?.some((note: any) => note.row === 4) ?? false;
   })).toBe(true);
 
-  // Returning through the real Map destination starts Track with no invisible
-  // pending action left over from the abandoned tarp choice.
+  // Returning through the real Map destination starts Track with no chooser
+  // left open from before the edit.
   await emit(page, "nav-map");
   await page.waitForFunction(
     () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "MapScene",
@@ -483,7 +467,61 @@ test("a car tap waits for an explicit edit, tarp, or close choice", async ({ pag
   await page.waitForFunction(
     () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
   );
-  expect((await state(page)).tarpArmed).toBe(false);
+  expect(await menuVisible()).toBe(false);
+});
+
+test("the speed slider sets the speed once, where it is let go", async ({ page }) => {
+  page.on("pageerror", (e) => console.log("[page-crash]", e.message));
+  await page.goto("/");
+  await page.getByRole("button", { name: /tap to start/i }).click({ force: true });
+  await page.waitForFunction(() => !!(window as any).__ibeetkidz_test__);
+  await page.evaluate(() => {
+    const t = (window as any).__ibeetkidz_test__;
+    const partId = t.getProject().activePartId;
+    if (t.getProject().train.length === 0) t.dispatch({ type: "addToTrain", instanceId: "speed-a", partId });
+    t.dispatch({ type: "setTempo", bpm: 100 });
+    t.dispatch({ type: "setActiveView", view: "track" });
+  });
+  await page.waitForFunction(
+    () => (window as any).__ibeetkidz_test__?.getScene()?.scene?.key === "TrackV3Scene",
+  );
+  const bpm = () => page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().tempoBpm);
+  const speed = async () => (await state(page)).speed;
+  // The three speed controls are gone; one slider stands in their place.
+  for (const gone of ["btn-transport-slow", "btn-transport-fast"]) {
+    expect(await page.evaluate((name) =>
+      Boolean((window as any).__ibeetkidz_test__.getScene().children.getByName(`track-control:${name}`)),
+    gone)).toBe(false);
+  }
+  expect((await speed()).shown).toBe("100");
+
+  // Real mouse input, through the canvas: grab the handle, drag to the far
+  // right, and check that nothing commits until release.
+  const toClient = (x: number, y: number) => page.evaluate(({ x, y }) => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+    const game = scene.scale.gameSize;
+    return {
+      x: canvas.left + x * (canvas.width / game.width),
+      y: canvas.top + y * (canvas.height / game.height),
+    };
+  }, { x, y });
+  const from = await toClient((await speed()).handleX!, 294);
+  const to = await toClient(2400, 294);
+  await page.mouse.move(from.x, from.y);
+  await page.mouse.down();
+  await page.mouse.move(to.x, to.y, { steps: 12 });
+  expect((await speed()).dragging).toBe(true);
+  expect((await speed()).shown).toBe("220");
+  expect(await bpm(), "a drag commits nothing until release").toBe(100);
+  await page.mouse.up();
+  await expect.poll(bpm).toBe(220);
+  expect((await speed()).dragging).toBe(false);
+
+  // One drag is one undo step, not one per notch it passed.
+  await emit(page, "undo-requested");
+  await expect.poll(bpm).toBe(100);
+  await expect.poll(async () => (await speed()).shown).toBe("100");
 });
 
 test("?oval opts back into the ring", async ({ page }) => {

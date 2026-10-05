@@ -15,6 +15,8 @@ export interface EventMap {
   "transport-play": [mode: "loop" | "ride"];
   "transport-stop": [];
   "tempo-changed": [delta: number]; // e.g., +10 or -10
+  // Phaser -> React (Track v3): the speed slider was let go at this bpm.
+  "tempo-set": [bpm: number];
   // Tiled hit -> React (Track): ride through a terrain. Lands on the NEXT bar,
   // holds a couple of bars, then the world goes back to normal — the Lemmings
   // move, applied to the song. Ephemeral: it never enters project state.
@@ -80,10 +82,6 @@ export interface EventMap {
   // ── Track SEND flow (share/save the rendered song) ─────────────────────────
   // The scene owns the UI (plaque + result panel); React owns the audio render
   // and the share/download side effects, and pushes state back into the scene.
-  // Phaser -> React (Track): the TARP keycap was tapped — arm/disarm the
-  // cover-a-car gesture. Armed, the next car tapped is tarped instead of opened
-  // in the Workshop; tap-to-edit stays the default it was designed to be.
-  "track-tarp-armed": [];
   "track-send": [];        // SEND plaque (or Try Again) tapped → render the song
   "track-send-share": [];  // result panel: open the OS share sheet
   "track-send-save": [];   // result panel: download the WAV

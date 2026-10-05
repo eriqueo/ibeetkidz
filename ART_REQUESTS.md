@@ -189,6 +189,21 @@ Deliver, in the stone `btn-yard-*` family and on the same canvas as
 Engineering swaps three frame names in `yard.json` and the scene's two-face
 lookup; the layout already has the six slots.
 
+### ⚠ OPEN — AR-077 · A painted rail for the Track speed slider — P2
+
+Eric, 2026-10-05: "instead of a slow fast and speed button, we just have a
+slider?" The Track header's second row is now the SPEED readout and one
+slider (SLOW, FAST and the TARP key are gone). The handle is AR-016's
+`fader-handle`, turned upright. The **rail is drawn by code** — a brass lip
+around a dark slot with a tick every 20 bpm — because the only fader slot in
+the art is baked into `panel-editor`.
+
+Deliver `track-speed-rail`: a horizontal brass-and-wood slot in the header's
+material family, about 1100 × 60 px on a transparent canvas, with small tick
+marks below it and, if it fits the style, a tortoise-ish slow mark at the left
+end and a hare-ish fast mark at the right (pictures, not words). Engineering
+swaps the drawn rail for the sprite; the handle stays.
+
 ### Note for the Track car bodies (no action needed)
 
 Each `track3/car-*.png` carries a full-width strip of rail across the bottom of

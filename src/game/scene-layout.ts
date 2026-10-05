@@ -5,6 +5,7 @@
 // one-file edit shared by both the Phaser scene and the React overlay.
 import type { NormRegion } from "../app/use-overlay-rect.ts";
 import { MAX_LAYERS } from "../core/types.ts";
+import type { SliderRail } from "./speed-slider.ts";
 
 // ── v2 redesign layouts (clean backgrounds) ─────────────────────────────────
 // Fractions of the 16:9 scene-v2 art, eyeballed from the renders. STARTING
@@ -148,17 +149,15 @@ export const TRACK_HEADER = {
         { id: "send", width: 235, height: 134 },
       ],
     },
-    // HOW it plays: the tempo trio, then TARP. Ride already loops forever;
-    // the former finite-count LOOP key duplicated that default and added noise.
+    // HOW fast it plays: one slider with its readout (Eric, 2026-10-05: "instead
+    // of a slow fast and speed button, we just have a slider?"). The TARP key
+    // that also lived here is gone — tapping a car already offers TARP CAR /
+    // UNCOVER, so the key only repeated it ("kinda pointless"). See
+    // `trackSpeedSlider` for how the cell divides.
     {
       cy: 294,
       cells: [
-        { id: "slow", width: 134, height: 134 },
-        // Drawn text, not a sprite: `lcd-transport` is a Tiled display anchor
-        // the oval mounts from its map, and this scene has no map.
-        { id: "tempo", width: 134, height: 134 },
-        { id: "fast", width: 134, height: 134 },
-        { id: "tarp", width: 134, height: 134 },
+        { id: "speed", width: 1300, height: 134 },
       ],
     },
   ],
@@ -175,6 +174,34 @@ export function trackHeaderSlots(): Record<string, PlacedRect> {
     });
   }
   return out;
+}
+
+/** Width of the SPEED readout at the left of the speed cell, and the clear
+ *  space between it and the rail, and at the rail's far end (where the
+ *  handle's half-width must still land inside the cell). */
+const SPEED_READOUT_W = 134;
+const SPEED_RAIL_GAP = 70;
+const SPEED_RAIL_END = 50;
+
+/** The speed cell, divided: the readout at its left, the rail across the rest. */
+export function trackSpeedSlider(): {
+  readonly readout: PlacedRect;
+  readonly rail: SliderRail;
+  /** The touch target: the whole rail plus room for the handle at each end. */
+  readonly hit: PlacedRect;
+} {
+  const cell = trackHeaderSlots()["speed"]!;
+  const left = cell.x - cell.width / 2;
+  const right = cell.x + cell.width / 2;
+  const readout = { x: left + SPEED_READOUT_W / 2, y: cell.y, width: SPEED_READOUT_W, height: cell.height };
+  const rail = { x0: left + SPEED_READOUT_W + SPEED_RAIL_GAP, x1: right - SPEED_RAIL_END, y: cell.y };
+  const hit = {
+    x: (rail.x0 + rail.x1) / 2,
+    y: cell.y,
+    width: rail.x1 - rail.x0 + SPEED_RAIL_END * 2,
+    height: cell.height,
+  };
+  return { readout, rail, hit };
 }
 
 /**

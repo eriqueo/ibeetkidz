@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   TRACK_CAR_ACTION_LAYOUT,
   trackCarActionChoices,
-  trackCarActionDisarmsTarp,
   trackCarActionSlots,
 } from "../../src/game/track-car-actions.ts";
 
@@ -22,12 +21,6 @@ describe("Track car action choices", () => {
     expect(
       TRACK_CAR_ACTION_LAYOUT.buttonWidth * 3 + TRACK_CAR_ACTION_LAYOUT.buttonGap * 2,
     ).toBeLessThanOrEqual(TRACK_CAR_ACTION_LAYOUT.panelWidth);
-  });
-
-  it("keeps an armed tarp only while the kid stays in the chooser", () => {
-    expect(trackCarActionDisarmsTarp("toggle-mute")).toBe(true);
-    expect(trackCarActionDisarmsTarp("close")).toBe(false);
-    expect(trackCarActionDisarmsTarp("edit")).toBe(true);
   });
 
   it("lays out three equal, centered, non-overlapping action targets", () => {

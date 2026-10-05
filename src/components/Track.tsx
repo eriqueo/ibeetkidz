@@ -176,7 +176,6 @@ export const Track: FC = () => {
   // View preferences and performance gestures are refs because EventBus
   // listeners are registered once and neither drives a React render.
   const toolbarPreferencesRef = useRef(readTrackToolbarPreferences());
-  const tarpArmedRef = useRef(false);
   const modeIntentsRef = useRef<TrackModeIntentCoordinator | null>(null);
 
   // One visual projection of AudioEngine's latched ride modes. Manual STOP is
@@ -205,7 +204,6 @@ export const Track: FC = () => {
       v3Ref.current = scene;
       scene.setCars(v3CarsRef.current);
       scene.setTempo(projectRef.current.tempoBpm);
-      scene.setTarpArmed(tarpArmedRef.current);
       for (const toolbar of TRACK_TOOLBAR_IDS) {
         const key = `${toolbar}Visible` as const;
         scene.setToolbarVisible(toolbar, toolbarPreferencesRef.current[key]);
@@ -276,6 +274,8 @@ export const Track: FC = () => {
       reconcileStoppedRideVisuals();
     };
     const onTempo = (delta: number) => setTempo(projectRef.current.tempoBpm + delta);
+    // The side-scroller's slider sends where it was let go, not a step.
+    const onTempoSet = (bpm: number) => setTempo(bpm);
     const onNav = (view: AppView) => dispatch({ type: "setActiveView", view });
     // Tap a car on the oval → toggle its tarp (mute). The tarp visual follows
     // from the state change (setCars rebuild).
@@ -341,14 +341,10 @@ export const Track: FC = () => {
       writeTrackToolbarPreferences(next);
       v3Ref.current?.setToolbarVisible(toolbar, visible);
     };
-    // TARP: arm/disarm cover-a-car. Tap-to-edit stays the default gesture.
-    const onTarpArmed = () => {
-      tarpArmedRef.current = !tarpArmedRef.current;
-      v3Ref.current?.setTarpArmed(tarpArmedRef.current);
-    };
     EventBus.on("transport-play", onPlay);
     EventBus.on("transport-stop", onStop);
     EventBus.on("tempo-changed", onTempo);
+    EventBus.on("tempo-set", onTempoSet);
     EventBus.on("track-nav", onNav);
     EventBus.on("track-car-mute-toggled", onMuteToggle);
     EventBus.on("track-car-edit", onCarEdit);
@@ -357,13 +353,13 @@ export const Track: FC = () => {
     EventBus.on("track-mode-toggled", onMode);
     EventBus.on("track-backwards-toggled", onBackwards);
     EventBus.on("track-toolbar-toggled", onToolbarToggled);
-    EventBus.on("track-tarp-armed", onTarpArmed);
     return () => {
       modeIntents.dispose();
       if (modeIntentsRef.current === modeIntents) modeIntentsRef.current = null;
       EventBus.off("transport-play", onPlay);
       EventBus.off("transport-stop", onStop);
       EventBus.off("tempo-changed", onTempo);
+      EventBus.off("tempo-set", onTempoSet);
       EventBus.off("track-nav", onNav);
       EventBus.off("track-car-mute-toggled", onMuteToggle);
       EventBus.off("track-car-edit", onCarEdit);
@@ -372,7 +368,6 @@ export const Track: FC = () => {
       EventBus.off("track-mode-toggled", onMode);
       EventBus.off("track-backwards-toggled", onBackwards);
       EventBus.off("track-toolbar-toggled", onToolbarToggled);
-      EventBus.off("track-tarp-armed", onTarpArmed);
     };
   }, [dispatch, dispatchAll, engine, pushModesToScene, reconcileStoppedRideVisuals]);
 

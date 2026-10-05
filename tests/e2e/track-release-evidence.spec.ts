@@ -336,10 +336,10 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await tapDesignPoint(page, slots.ride!.x, slots.ride!.y);
   await page.waitForTimeout(1_200);
   await capture(page, testInfo, "track-02-riding");
-  const tempo = slots.tempo!;
+  const speed = slots.speed!;
   await captureDesignCrop(
-    page, testInfo, "track-02b-speed-readout",
-    tempo.x - 170, tempo.y - 170, 340, 340,
+    page, testInfo, "track-02b-speed-slider",
+    speed.x - speed.width / 2 - 20, speed.y - 100, speed.width + 40, 200,
   );
 
   const jobSlots = trackJobSlots();
@@ -397,17 +397,10 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await capture(page, testInfo, "track-05c-tunnel-cleared");
 
   // One seeded car has a stable, generous body target around the middle-left
-  // of the consist. Arm the authored TARP key, select the car, then confirm the
-  // explicit action: this proves both key state and the registered cover in the
-  // production canvas before EDIT takes the same two-step path.
-  const tarpKeyBefore = await patchSignature(page, slots.tarp!.x, slots.tarp!.y);
-  await tapDesignPoint(page, slots.tarp!.x, slots.tarp!.y);
-  await expect
-    .poll(() => patchSignature(page, slots.tarp!.x, slots.tarp!.y), {
-      timeout: 12_000,
-      message: "TARP must visibly seat after a real canvas tap",
-    })
-    .not.toBe(tarpKeyBefore);
+  // of the consist. Select the car, then confirm the explicit action: this
+  // proves the registered cover in the production canvas before EDIT takes
+  // the same two-step path. (The header TARP key that used to arm this was
+  // removed on 2026-10-05; the car tap is the one route.)
   const carBefore = await patchSignature(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
   await tapDesignPoint(page, SEEDED_CAR_TAP.x, SEEDED_CAR_TAP.y);
   await capture(page, testInfo, "track-06-car-actions");

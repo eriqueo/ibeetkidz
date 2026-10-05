@@ -21,6 +21,7 @@ import {
   headerColumnCentres,
   headerPlateField,
   trackHeaderSlots,
+  trackSpeedSlider,
 } from "../../src/game/scene-layout.ts";
 import * as sceneLayout from "../../src/game/scene-layout.ts";
 
@@ -75,7 +76,7 @@ describe("every header control lands on the parchment", () => {
 
   it("covers every cell the scene binds", () => {
     expect([...ids].sort()).toEqual(
-      ["clear", "fast", "map", "ride", "send", "slow", "stop", "tarp", "tempo"],
+      ["clear", "map", "ride", "send", "speed", "stop"],
     );
   });
 
@@ -121,6 +122,21 @@ describe("every header control lands on the parchment", () => {
         expect(gap).toBeGreaterThan(0);
       }
     }
+  });
+
+  it("divides the speed cell into a readout and a rail that stay inside it", () => {
+    const cell = slots["speed"]!;
+    const { readout, rail, hit } = trackSpeedSlider();
+    const left = cell.x - cell.width / 2;
+    const right = cell.x + cell.width / 2;
+    expect(readout.x - readout.width / 2).toBeCloseTo(left, 6);
+    // The rail starts clear of the readout and leaves room for half a handle.
+    expect(rail.x0).toBeGreaterThan(readout.x + readout.width / 2);
+    expect(rail.x1).toBeLessThan(right);
+    expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(readout.x + readout.width / 2);
+    expect(hit.x + hit.width / 2).toBeLessThanOrEqual(right + 1e-6);
+    // Long enough that one step of speed is a deliberate finger movement.
+    expect((rail.x1 - rail.x0) / ((220 - 40) / 5)).toBeGreaterThan(20);
   });
 
   it("keeps the rows clear of each other", () => {
