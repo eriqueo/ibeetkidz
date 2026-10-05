@@ -199,12 +199,12 @@ describe("yard.json wiring", () => {
     expect(p.action).toBeUndefined();
   });
 
-  it("wires all five bottom-bar actions to real keycap sprites with pressed art", () => {
+  it("wires the bottom-bar actions to real keycap sprites with pressed art", () => {
     for (const [id, sprite, action] of [
       ["btn-edit-car", "btn-yard-edit", "yard-edit-car"],
       ["btn-add-to-train", "btn-yard-hitch", "yard-add"],
       ["btn-remove-from-train", "btn-yard-unhitch", "yard-remove-from-train"],
-      ["btn-send-to-track", "btn-yard-totrack", "yard-depart"],
+      ["btn-play-car", "btn-transport-play", "yard-play-car"],
       ["btn-delete-car", "btn-yard-delete", "yard-remove-car"],
     ] as const) {
       const s = need(yard, id);
@@ -214,9 +214,25 @@ describe("yard.json wiring", () => {
     }
   });
 
-  it("keeps the action keycaps inside the plate's span", () => {
+  it("gives the tarp ONE button with an open face and a covered face", () => {
+    const s = need(yard, "btn-tarp-car");
+    expect(s.action).toBe("yard-toggle-tarp");
+    expect(Object.keys(UI_SPRITES[s.sprite!]!.states).sort()).toEqual(["idle", "seated"]);
+  });
+
+  it("has one way to the Track: the header plaque, not a second bar button", () => {
+    const toTrack = yard.filter((s) => s.action === "yard-depart" || s.sprite === "btn-yard-totrack");
+    expect(toTrack).toEqual([]);
+    expect(need(yard, "btn-yard-track").action).toBe("yard-nav");
+  });
+
+  it("keeps the action keycaps inside the plate's span, without overlap", () => {
     const p = need(yard, "panel-yard-actions");
-    const ids = ["btn-edit-car", "btn-add-to-train", "btn-remove-from-train", "btn-send-to-track", "btn-delete-car"];
+    const ids = ["btn-edit-car", "btn-add-to-train", "btn-remove-from-train", "btn-tarp-car", "btn-play-car", "btn-delete-car"];
+    const xs = ids.map((id) => need(yard, id)).sort((a, b) => a.cx - b.cx);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i]!.cx - xs[i - 1]!.cx, `${xs[i]!.id} spacing`).toBeGreaterThanOrEqual(xs[i]!.w);
+    }
     for (const id of ids) {
       const s = need(yard, id);
       expect(Math.abs(s.cx - p.cx), `${id} x`).toBeLessThan(p.w / 2);

@@ -90,18 +90,44 @@ export const Yard: FC = () => {
     // confirmation gesture. ONCE through, then silence: the Yard has no STOP,
     // so a loop started here (or carried in from the Workshop) had no way to
     // end. It no-ops until the boot gesture has started the AudioContext.
-    const onSelect = (partId: string) => {
-      dispatch({ type: "setActivePart", partId });
+    const playOnce = (partId: string) => {
       void engine.playCarOnce(partId, projectRef.current).catch((err: unknown) => {
         console.warn("audio playback failed", err);
       });
     };
+    const say = (text: string) => {
+      setToast(text);
+      window.setTimeout(() => setToast(null), 2200);
+    };
+    const onSelect = (partId: string) => {
+      dispatch({ type: "setActivePart", partId });
+      playOnce(partId);
+    };
     const onAdd = (partId: string) =>
       dispatch({ type: "addToTrain", instanceId: newInstanceId(), partId });
     const onSend = () => dispatch({ type: "setActiveView", view: "track" });
+    // A car on the train is picked the same way as one on a siding: it becomes
+    // the active car (so EDIT and PLAY mean it) and is heard once. What it adds
+    // is the SLOT — the thing UNHITCH and TARP act on.
     const onTrainSelect = (instanceId: string | null) => {
       selectedTrainRef.current = instanceId;
+      const slot = liveTrain(projectRef.current).find((car) => car.instanceId === instanceId);
+      if (!slot) return;
+      dispatch({ type: "setActivePart", partId: slot.partId });
+      playOnce(slot.partId);
     };
+    // One button, two faces: it tarps an open car and uncovers a tarped one. A
+    // tarp belongs to a place on the train, so a siding car has nothing to cover.
+    const onToggleTarp = () => {
+      const slot = liveTrain(projectRef.current)
+        .find((car) => car.instanceId === selectedTrainRef.current);
+      if (!slot) {
+        say("Tap a car on the train first.");
+        return;
+      }
+      dispatch({ type: "muteCar", instanceId: slot.instanceId, muted: !slot.muted });
+    };
+    const onPlayCar = () => playOnce(projectRef.current.activePartId);
     const onRemoveFromTrain = () => {
       const train = liveTrain(projectRef.current);
       const selected = train.find((car) => car.instanceId === selectedTrainRef.current);
@@ -117,14 +143,21 @@ export const Yard: FC = () => {
     const onEditCar = () => dispatch({ type: "setActiveView", view: "workshop" });
     const onRemoveCar = () =>
       dispatch({ type: "removeCar", partId: projectRef.current.activePartId });
-    // The TRACK plaque needs an assembled train (same guard as the Map's hit).
+    // The TRACK plaque is the ONE way to the Track from here. It needs an
+    // assembled train (same guard as the Map's hit), and it sends that train
+    // off down the line first: the scene answers `yard-depart` with the
+    // departure, then `yard-send-to-track`. The action bar used to carry a
+    // second TO TRACK button doing the same thing.
     const onNav = (view: AppView) => {
-      if (view === "track" && liveTrain(projectRef.current).length === 0) {
-        setToast("Build a train first! HITCH some cars.");
-        window.setTimeout(() => setToast(null), 2200);
+      if (view !== "track") {
+        dispatch({ type: "setActiveView", view });
         return;
       }
-      dispatch({ type: "setActiveView", view });
+      if (liveTrain(projectRef.current).length === 0) {
+        say("Build a train first! HITCH some cars.");
+        return;
+      }
+      EventBus.emit("yard-depart");
     };
     EventBus.on("yard-car-selected", onSelect);
     EventBus.on("yard-train-selected", onTrainSelect);
@@ -135,7 +168,11 @@ export const Yard: FC = () => {
     EventBus.on("yard-edit-car", onEditCar);
     EventBus.on("yard-remove-car", onRemoveCar);
     EventBus.on("yard-nav", onNav);
+    EventBus.on("yard-toggle-tarp", onToggleTarp);
+    EventBus.on("yard-play-car", onPlayCar);
     return () => {
+      EventBus.off("yard-toggle-tarp", onToggleTarp);
+      EventBus.off("yard-play-car", onPlayCar);
       EventBus.off("yard-car-selected", onSelect);
       EventBus.off("yard-train-selected", onTrainSelect);
       EventBus.off("yard-add-to-train", onAdd);

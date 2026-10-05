@@ -80,6 +80,9 @@ interface CarToken {
   readonly plate: CarNamePlate;
 }
 
+/** The action bar's tarp button, by its name in `yard.json`. */
+const YARD_TARP_BUTTON = "btn-tarp-car";
+
 function samePalette(a: readonly YardCar[], b: readonly YardCar[]): boolean {
   return a.length === b.length && a.every((car, index) => {
     const next = b[index];
@@ -503,6 +506,12 @@ export class YardScene extends BackgroundScene {
   /** Deselect the previous car, highlight + store the new one, tell React. */
   private selectPaletteCar(partId: string): void {
     if (this.busy) return;
+    // One car is "the one I tapped". Leaving a train slot ringed while a siding
+    // car is picked would aim UNHITCH and TARP at a car the kid has moved on from.
+    if (this.selectedTrainId !== null) {
+      this.setSelectedTrain(null);
+      EventBus.emit("yard-train-selected", null);
+    }
     this.setSelectedPalette(partId);
     EventBus.emit("yard-car-selected", partId);
   }
@@ -519,6 +528,25 @@ export class YardScene extends BackgroundScene {
       (token.car.getData("ring") as Phaser.GameObjects.Graphics)
         .setVisible(slot?.instanceId === instanceId);
     });
+    this.syncTarpButton();
+  }
+
+  /** The TARP button shows what the selected slot IS: the covered car when it is
+   *  tarped (press to uncover), the open one otherwise (press to cover). The
+   *  button has no `pressed` frame, so nothing else writes its face. */
+  private syncTarpButton(): void {
+    const button = this.chrome.find((el) => el.spawn.id === YARD_TARP_BUTTON);
+    const covered = button?.def?.states["seated"];
+    const open = button?.def?.states["idle"];
+    if (!button?.image || !covered || !open) return;
+    const slot = this.train.find((car) => car.instanceId === this.selectedTrainId);
+    button.image.setFrame(slot?.muted ? covered : open);
+  }
+
+  /** e2e seam: which face the TARP button is showing. */
+  get tarpButtonFrame(): string | null {
+    const button = this.chrome.find((el) => el.spawn.id === YARD_TARP_BUTTON);
+    return button?.image?.frame.name ?? null;
   }
 
   private layout(): void {

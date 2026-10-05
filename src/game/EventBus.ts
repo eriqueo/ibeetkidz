@@ -44,6 +44,11 @@ export interface EventMap {
   "yard-edit-car": [];
   // Tiled hit -> React (Yard): delete the active (selected) car from the library.
   "yard-remove-car": [];
+  // Tiled hit -> React (Yard): cover or uncover the selected assembled slot.
+  // One button: it tarps an open car and uncovers a tarped one.
+  "yard-toggle-tarp": [];
+  // Tiled hit -> React (Yard): hear the selected car once through.
+  "yard-play-car": [];
   // Phaser -> React (Yard): a car was DRAGGED to a new place in the train.
   // Carries the whole new order rather than a (from, to) pair, so the reducer
   // stays the pure `reorderTrain` it already was and there is no second way to

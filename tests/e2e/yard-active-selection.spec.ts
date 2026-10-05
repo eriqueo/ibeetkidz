@@ -23,6 +23,8 @@ type YardTarget =
   | "delete"
   | "edit"
   | "unhitch"
+  | "tarp"
+  | "track"
   | { readonly paletteId: string }
   | { readonly trainId: string };
 
@@ -40,7 +42,11 @@ async function liveObjectPoint(
               ? "btn-delete-car"
               : target === "edit"
                 ? "btn-edit-car"
-                : "btn-remove-from-train";
+                : target === "tarp"
+                  ? "btn-tarp-car"
+                  : target === "track"
+                    ? "btn-yard-track"
+                    : "btn-remove-from-train";
           const element = scene.chrome.find((candidate: any) => candidate.spawn.id === spawnId);
           return element?.image ?? element?.hit;
         })()
@@ -315,5 +321,70 @@ test("Yard UNHITCH removes the selected assembled instance and preserves drag re
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
     .toEqual([ids[1], ids[2]]);
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
+
+test("Yard TARP is one button: it covers the tapped train car, then uncovers it", async ({ page }) => {
+  const crashes = await boot(page);
+  const ids = ["yard-tarp-a", "yard-tarp-b"];
+  await page.evaluate((instanceIds) => {
+    const testApi = (window as any).__ibeetkidz_test__;
+    const partId = testApi.getProject().activePartId as string;
+    for (const slot of testApi.getProject().train) {
+      testApi.dispatch({ type: "removeFromTrain", instanceId: slot.instanceId });
+    }
+    for (const instanceId of instanceIds) {
+      testApi.dispatch({ type: "addToTrain", instanceId, partId });
+    }
+    testApi.dispatch({ type: "setActiveView", view: "yard" });
+  }, ids);
+  await waitForScene(page, "YardScene");
+  const face = () => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().tarpButtonFrame);
+  const muted = async () => (await project(page)).train.map((slot: any) => slot.muted);
+
+  // Nothing on the train is picked: the button has no car to cover.
+  await tapLiveObject(page, "tarp");
+  expect(await muted()).toEqual([false, false]);
+  expect(await face()).toBe("btn-track-tarp-idle");
+
+  await tapLiveObject(page, { trainId: ids[1]! });
+  await tapLiveObject(page, "tarp");
+  await expect.poll(muted).toEqual([false, true]);
+  await expect.poll(face).toBe("btn-track-tarp-seated");
+  expect((await yardModel(page)).selectedTrainId).toBe(ids[1]);
+
+  // The same button, now showing the covered car, uncovers it.
+  await tapLiveObject(page, "tarp");
+  await expect.poll(muted).toEqual([false, false]);
+  await expect.poll(face).toBe("btn-track-tarp-idle");
+
+  // The face follows the SELECTED car, not the last press.
+  await tapLiveObject(page, "tarp");
+  await expect.poll(muted).toEqual([false, true]);
+  await tapLiveObject(page, { trainId: ids[0]! });
+  await expect.poll(face).toBe("btn-track-tarp-idle");
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
+
+test("the header TRACK plaque is the one way to the Track, and the train departs first", async ({ page }) => {
+  const crashes = await boot(page);
+  await page.evaluate(() => {
+    const testApi = (window as any).__ibeetkidz_test__;
+    const partId = testApi.getProject().activePartId as string;
+    if (testApi.getProject().train.length === 0) {
+      testApi.dispatch({ type: "addToTrain", instanceId: "yard-depart-a", partId });
+    }
+    testApi.dispatch({ type: "setActiveView", view: "yard" });
+  });
+  await waitForScene(page, "YardScene");
+  const chromeIds: string[] = await page.evaluate(() =>
+    (window as any).__ibeetkidz_test__.getScene().chrome.map((el: any) => el.spawn.id));
+  expect(chromeIds).not.toContain("btn-send-to-track");
+
+  await tapLiveObject(page, "track");
+  // The departure is in flight before the view changes.
+  expect((await yardModel(page)).busy).toBe(true);
+  expect((await project(page)).activeView).toBe("yard");
+  await expect.poll(async () => (await project(page)).activeView).toBe("track");
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
