@@ -139,6 +139,65 @@ Deliver a NEW sprite, `btn-workshop-map` (idle + pressed on one canvas), in the
 field, a small painted folded map on the left and the word **MAP** in the same
 lettering. Engineering swaps the Workshop's frame name; the Track keeps its own.
 
+### ⚠ OPEN — AR-074 · The alien rider looks sad — P1
+
+Eric, 2026-10-05, on the Track: "the alien looks like hes sad for some reason."
+The three-eyed alien's rider poses read as unhappy next to the grinning frog
+beside it. Files: every `src/assets/sprites/track3/ride-keys-*.png` and the
+alien's shelf sprite. Redraw the face (mouth and brows) so it is plainly
+enjoying the ride, in each of its four per-car poses. Same 120 × 120 canvas,
+same bottom edge on the car's peek line; engineering changes nothing.
+
+### ⚠ OPEN — AR-075 · Riders that barely show above their car — P1
+
+Eric, 2026-10-05: "we need to make sure we can see all characters in each
+iteration of the cars." Engineering fixed the layout (every rider now gets its
+own place along the roof, and all of a car's players ride, not the first three).
+What is left is art: some poses are cropped so low that almost nothing of the
+character clears the car. Painted size inside the 120 × 120 canvas, measured:
+
+| File | Painted w × h | Compare |
+|---|---|---|
+| `ride-keys-tanker.png` | 54 × 38 | `ride-keys-boxcar` is 102 × 72 |
+| `ride-magic-tanker.png` | 81 × 52 | `ride-magic-boxcar` is 100 × 92 |
+| `ride-mic-tanker.png` | 108 × 52 | `ride-mic-boxcar` is 112 × 112 |
+| `ride-violin-tanker.png` | 104 × 67 | `ride-violin-boxcar` is 112 × 97 |
+
+Redraw the tanker poses so each shows at least head, shoulders and instrument:
+aim for a painted height of 80 px or more. The bottom edge stays the peek line.
+Engineering does not upscale pixel art to compensate.
+
+### ⚠ OPEN — AR-076 · The Yard action bar needs TARP, UNTARP and PLAY in its own family — P1
+
+The Yard bar is now EDIT · HITCH · UNHITCH · TARP · PLAY · DELETE (Eric,
+2026-10-05; the duplicate TO TRACK button is gone, so `btn-yard-totrack` is
+retired). Two of the six borrow art from other screens, which is the honest
+interim, not the finish:
+
+- **TARP** wears the Track's wood-and-brass `btn-track-tarp` (idle = open car,
+  `seated` = covered car). It is one button with two meanings and both faces say
+  **TARP**. Eric asked that it "switches to untarp if the car is tarped already."
+- **PLAY** wears the Workshop's `btn-transport-play`.
+
+Deliver, in the stone `btn-yard-*` family and on the same canvas as
+`btn-yard-hitch` (idle + pressed each):
+
+1. `btn-yard-tarp` — a car with a blue tarp going on, the word **TARP**.
+2. `btn-yard-untarp` — the tarp coming off, the word **UNTARP**.
+3. `btn-yard-play` — the play triangle, the word **PLAY**.
+
+Engineering swaps three frame names in `yard.json` and the scene's two-face
+lookup; the layout already has the six slots.
+
+### Note for the Track car bodies (no action needed)
+
+Each `track3/car-*.png` carries a full-width strip of rail across the bottom of
+its canvas. Drawn, it made every car ride its own piece of track ("the cars
+being on their own track still looks like shit" — Eric). Engineering now crops
+that strip at draw time and `tests/unit/track-car-art.test.ts` pins the rows.
+The files are untouched. A future redraw can leave the strip out; if it does,
+update `CAR_BODY_RAIL_TOP` in `src/game/track-car-art.ts`.
+
 ### What engineering shipped on 2026-09-21, so the art lands on the right layout
 
 - Every effect tile and drum key carries its **word** in the bottom third of the

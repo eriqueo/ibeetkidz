@@ -83,6 +83,7 @@ import {
   trackCarActionSlots,
   type TrackCarActionKind,
 } from "../track-car-actions.ts";
+import { CAR_BODY_RAIL_TOP, crewLayout } from "../track-car-art.ts";
 
 /**
  * Real art, if any has been delivered. Vite resolves this at build time, so an
@@ -131,6 +132,11 @@ const CAR_BODY_KEY: Readonly<Record<CarType, string>> = {
   hopper: "trk-car-hopper",
   flatcar: "trk-car-flatcar",
 };
+
+/** Show a body-shaped image without the rail strip its canvas carries. */
+function cropBodyRail(img: Phaser.GameObjects.Image, carType: CarType): void {
+  img.setCrop(0, 0, img.width, CAR_BODY_RAIL_TOP[carType]);
+}
 
 const TARP_COVER_KEY: Readonly<Record<CarType, string>> = {
   boxcar: "trk-tarp-cover-boxcar",
@@ -1692,6 +1698,8 @@ export class TrackV3Scene extends Phaser.Scene {
         s.body.setTexture(tex);
         setLiveryTexture(s.coat, tex);
         s.lift.setTexture(tex);
+        // A crop is in the texture's own pixels, so it follows every swap.
+        for (const img of [s.body, s.coat.fill, s.lift]) cropBodyRail(img, car.carType);
       }
       const tarp = TARP_COVER_KEY[car.carType] ?? TARP_COVER_KEY.boxcar;
       if (s.tarp.texture.key !== tarp) s.tarp.setTexture(tarp);
@@ -2226,6 +2234,44 @@ export class TrackV3Scene extends Phaser.Scene {
     flatcar: 10,
   };
 
+  /** The opaque bounds of a rider texture, in its own pixels. Read once per
+   *  texture (at most one entry per delivered `ride-*` file) off a scratch
+   *  canvas — the files are 120 px, so this is a few thousand samples, on a
+   *  crew change and never per frame. */
+  private readonly paintedBoxes = new Map<string, Phaser.Geom.Rectangle>();
+
+  private paintedBox(key: string): Phaser.Geom.Rectangle {
+    const known = this.paintedBoxes.get(key);
+    if (known) return known;
+    const source = this.textures.get(key).getSourceImage() as CanvasImageSource & {
+      width: number;
+      height: number;
+    };
+    const { width, height } = source;
+    let box = new Phaser.Geom.Rectangle(0, 0, width, height);
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d", { willReadFrequently: true });
+    if (ctx) {
+      ctx.drawImage(source, 0, 0);
+      const alpha = ctx.getImageData(0, 0, width, height).data;
+      let x0 = width, y0 = height, x1 = -1, y1 = -1;
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          if ((alpha[(y * width + x) * 4 + 3] ?? 0) <= 20) continue;
+          if (x < x0) x0 = x;
+          if (x > x1) x1 = x;
+          if (y < y0) y0 = y;
+          if (y > y1) y1 = y;
+        }
+      }
+      if (x1 >= x0) box = new Phaser.Geom.Rectangle(x0, y0, x1 - x0 + 1, y1 - y0 + 1);
+    }
+    this.paintedBoxes.set(key, box);
+    return box;
+  }
+
   private drawCrew(s: SlotView, car: V3Car): void {
     const key = `${car.crew.join("|")}@${s.body.texture.key}`;
     if (key === s.crewDrawn) return;
@@ -2235,13 +2281,17 @@ export class TrackV3Scene extends Phaser.Scene {
     const peekLineY = -(s.body.height - (TrackV3Scene.PEEK_Y[car.carType] ?? 10));
     // One world size for every rider on every car — the crew are the same
     // creatures wherever they ride; only how much the wall hides varies.
-    const SLOT_W = 100;
     const SLOT_H = 116;
     const n = car.crew.length;
+    // Every rider gets its own share of the roof. The pitch was a fixed 72 px
+    // with ~93 px characters, so two fitted and a fourth stood in front of the
+    // third — a car with four instruments showed two and a half creatures.
+    const { pitch, slotW } = crewLayout(n, CAR_W);
+    const SLOT_W = slotW;
     car.crew.forEach((spriteKey, i) => {
       // "inst-drums" → dropped art keys "ride-drums-boxcar" / "ride-drums".
       const station = spriteKey.replace(/^inst-/, "");
-      const x = (i - (n - 1) / 2) * CAR_W * 0.24;
+      const x = (i - (n - 1) / 2) * pitch;
 
       // AR-046 per-car INTEGRATED pose: the file carries its own crop (its
       // bottom edge IS the car's peek line — nothing below the wall is in the
@@ -2249,8 +2299,13 @@ export class TrackV3Scene extends Phaser.Scene {
       // hands over the rim, elbows on the roof, native to that car's art.
       const perCar = `trk-ride-${station}-${car.carType}`;
       if (this.textures.exists(perCar)) {
-        const img = this.add.image(x, peekLineY, perCar).setOrigin(0.5, 1);
-        const fit = Math.min(SLOT_W / img.width, SLOT_H / img.height, 1);
+        // Fit and centre the PAINTED creature, not its 120 px canvas: the
+        // canvases carry up to 33 px of empty margin a side, which shrank and
+        // off-centred a narrow character for nothing.
+        const box = this.paintedBox(perCar);
+        const img = this.add.image(x, peekLineY, perCar);
+        img.setOrigin((box.x + box.width / 2) / img.width, 1);
+        const fit = Math.min(SLOT_W / box.width, SLOT_H / box.height, 1);
         img.setScale(fit);
         s.root.add(img); // in front — the art brings its own occlusion
         s.riderImgs.push(img);
@@ -2333,6 +2388,7 @@ export class TrackV3Scene extends Phaser.Scene {
       })
       .setOrigin(0.5)
       .setFontSize(NAMEPLATE.fontPx);
+    for (const img of [body, coat.fill, lift]) cropBodyRail(img, "boxcar");
     root.add([body, coat.fill, lift, tarp, wheelA, wheelB, label]);
     const view: SlotView = {
       root, body, coat, lift, tarp, wheelA, wheelB, label, shadow,

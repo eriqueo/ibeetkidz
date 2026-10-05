@@ -152,7 +152,9 @@ export const Track: FC = () => {
         livery: id?.liveryIndex ?? 0,
         carType: id?.carType ?? "boxcar",
         muted: c.muted,
-        crew: crew.slice(0, 3), // roof space — three read clearly at car scale
+        // Everyone who plays on this car rides it. A cap of three used to hide
+        // the rest; the scene now shares the roof out by head count instead.
+        crew,
       };
     });
   }, [project]);
