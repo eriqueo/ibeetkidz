@@ -58,6 +58,18 @@ const audioBufferBytes = (b: { length: number; numberOfChannels: number }): numb
  *  Derived from the terrain clamp, the one producer of that ceiling. */
 const MAX_TEMPO_SQUEEZE = clampTempoScale(Number.MAX_VALUE);
 
+/** The loudest sum the master limiter shapes (×full scale); see
+ *  `installMasterLimiter`. Past it the curve is flat at its own ceiling. */
+const MASTER_LIMIT_RANGE = 4;
+/** Where the master limiter's curve tops out. `limit` approaches 1.0 itself,
+ *  which a 16-bit export rounds to full scale, and the oversampling filter
+ *  rings past a flattened top (0.97 still left samples at full scale; a square
+ *  edge rings about 9%). This keeps both under the device's ceiling at a cost
+ *  of 0.9 dB of level. */
+const MASTER_CEILING = 0.9;
+/** Points in the master limiter's curve: 0.002 of level per step. */
+const MASTER_LIMIT_CURVE_POINTS = 4096;
+
 /** Envelope-settle margin added to a voice's release before it may be reused. */
 const VOICE_TAIL_MARGIN_SEC = 0.05;
 
@@ -553,6 +565,7 @@ export class ToneSoundPort implements SoundPort {
     this.analyser.fftSize = 2048;
     this.liveDestination.connect(this.analyser);
     this.installKeepAlive();
+    this.installMasterLimiter();
     // Build the terrain insert now, while we are already in the boot await:
     // `Tone.Reverb` renders an impulse response asynchronously, and the Track
     // must never wait on that when a kid taps a terrain mid-ride.
@@ -1680,6 +1693,43 @@ export class ToneSoundPort implements SoundPort {
     this.liveTransport.bpm.value = bpm * this.tempoScale;
   }
 
+  /** The last stage before the speakers. Every lane is levelled on its own, but
+   *  nothing bounded their SUM: a busy car peaked at 1.87× full scale, and the
+   *  output device flattens whatever passes 1.0 — Eric's own export had 1.8% of
+   *  its samples pinned there, heard as notes breaking up on the loud hits.
+   *
+   *  This is `limit`, the curve every recording already passes through, applied
+   *  to the sum: untouched below the knee, rounded off above it, and never past
+   *  full scale. NOT `Tone.Limiter`: that is a compressor with a 3 ms attack and
+   *  automatic make-up gain, and measured on the same car it RAISED the peak to
+   *  2.54×. A waveshaper only reads inputs in ±1, so the sum is scaled into that
+   *  window first and the curve undoes the scale. It sits after the terrain
+   *  insert (see `ensureTerrainChain`), so a reverb or echo tail is bounded too;
+   *  the export tap reads the destination's output, so a saved song is shaped
+   *  exactly as the speakers are. */
+  private masterLimiter?: readonly [Tone.Gain, Tone.WaveShaper] | undefined;
+
+  private installMasterLimiter(): void {
+    if (this.masterLimiter) return;
+    try {
+      const window = new Tone.Gain({ gain: 1 / MASTER_LIMIT_RANGE, context: this.liveCtx });
+      const shaper = new Tone.WaveShaper({
+        mapping: (u) => MASTER_CEILING * limit(u * MASTER_LIMIT_RANGE),
+        length: MASTER_LIMIT_CURVE_POINTS,
+        context: this.liveCtx,
+      });
+      // The curve bends, so it makes overtones; oversampling keeps them from
+      // folding back as the crackle the terrain's grit stage once had.
+      shaper.oversample = "4x";
+      this.liveDestination.chain(window, shaper);
+      this.masterLimiter = [window, shaper];
+    } catch (err) {
+      // The app must still play where a compressor cannot be built; it is then
+      // exactly as loud, and as unbounded, as it was before this stage existed.
+      console.warn("audio: master limiter unavailable", err);
+    }
+  }
+
   /** Build the master-bus terrain insert. Called once, at boot, because
    *  `Tone.Reverb` has to render an impulse response and exposes `.ready` — the
    *  await belongs here and not on the hot path. `Destination.chain` splices
@@ -1720,7 +1770,11 @@ export class ToneSoundPort implements SoundPort {
           wet: 0,
           context: this.liveCtx,
         });
-        this.liveDestination.chain(muffle, echo, grit, reverb);
+        // `chain` REPLACES the destination's insert, so the limiter is named
+        // again here, last.
+        this.liveDestination.chain(
+          muffle, echo, grit, reverb, ...(this.masterLimiter ?? []),
+        );
         this.terrainFx = { reverb, grit, muffle, echo };
       } catch {
         // Terrain is a garnish; booting the app is not. If this environment

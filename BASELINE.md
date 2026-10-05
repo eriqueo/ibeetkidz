@@ -237,6 +237,31 @@ So the scheduler is cleared as far as a machine without speakers can clear it.
 What remains is the output path (underruns), which needs the `dropouts` reading
 from Eric's laptop during an audible glitch.
 
+### The mix was louder than the speakers (2026-10-05)
+
+Eric sent an export of his song (`my-train-song.wav`, 5.7 s). It holds no gap
+and no shortened note, but **1.82% of its samples sit at full scale**, in
+flat-topped runs up to 41 samples long, on every loud hit. Each lane and each
+recording is levelled on its own; nothing bounded their sum. The dense test car
+at lane volume 0.9 reproduces it: peak 1.87× full scale, 1.84% of samples at or
+past it. An output device flattens whatever passes 1.0, so the loud hits broke
+up. Whether this is everything Eric calls "cut off" is not confirmed; it is a
+real fault in the sound he sent.
+
+The fix is a last stage on the master bus (`installMasterLimiter`): the same
+soft-knee curve recordings already pass through (`limit`), applied to the sum.
+It is untouched below 0.7 and tops out at 0.9, so a normal song loses 0.9 dB and
+a loud one is rounded instead of flattened. Same car after: peak 0.9 or under,
+0 samples at full scale, still no loop-to-loop difference.
+
+`Tone.Limiter` was tried first and made it worse: peak 2.54×, 2.39% past full
+scale. It is a compressor with a 3 ms attack and automatic make-up gain, not a
+ceiling. The oversampling filter also rings past a flattened top, which is why
+the curve stops at 0.9 and not 0.97 (0.97 left samples at full scale).
+
+`tests/e2e/master-level.spec.ts` pins it: a five-lane car at volume 0.75 had
+3,531 samples at full scale without the stage and has none with it.
+
 ## Verification
 
 - `npm run typecheck`: passed.
@@ -254,7 +279,7 @@ from Eric's laptop during an audible glitch.
 - Actual Workshop and three-car Track screenshots inspected at 1920×1080 density
   1 and 1024×768 density 2 (2048×1152 drawing buffer). Rich controls and original
   character/panel detail are present.
-- Full local browser suite: 73 passed, one opt-in audio stress check skipped.
+- Full local browser suite: 74 passed, one opt-in audio stress check skipped.
   This includes production screenshots, real controls, recording, export,
   offline boot, staged updates and restored-art display-density checks.
 - The hosted run exposed a timing assumption in the oval coupling test. It read
