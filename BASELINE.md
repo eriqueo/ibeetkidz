@@ -214,6 +214,29 @@ really are being scheduled short, and the search goes back into the scheduler.
 Harnesses: `note-cutoff-ab.mjs`, `note-cutoff-recycle.mjs`,
 `note-cutoff-sampler.mjs` in the agent folder.
 
+**The loop wrap (2026-10-05).** `renderSongWav()` is a live capture of ONE pass:
+`captureBars` stops a tick before the loop wraps, so the tests above never heard
+a second loop — the place Eric hears the fault. `loop-wrap-capture.mjs` taps the
+live master bus (no app change) for 5–9 loops of a dense car: drums, a raw and an
+echo-baked recording, piano chords through a lane echo, bells, a bend, a roll, two
+held organ notes and a voice-notes lane. It compares each loop with the next, and
+loop 4 with loop 1 (a cut that repeats every loop would hide from the first test).
+One car at 100, 160 (3.2 s recording in a 1.5 s bar) and 180 bpm, and three cars
+at 140: no note is shortened. The only differences are single 10 ms windows on
+transients where the bar is not a whole number of windows. Workshop loop play is
+the same scheduler call as a one-car ride (`cycleBars` 1), so it is covered.
+
+Two facts read from the installed Tone 15 while doing it. A `Tone.Player` started
+again while still sounding stops its newest source dead, with no fade; one player
+serves one hit, so this happens only when a clip outlasts its own cycle (or inside
+a roll), and the clip then restarts — it is not heard as a missing note. And every
+source node carries a silent gain wired to the speakers (standardized-audio-context's
+`addSilentConnection`); it disconnects on `ended` and is not a leak.
+
+So the scheduler is cleared as far as a machine without speakers can clear it.
+What remains is the output path (underruns), which needs the `dropouts` reading
+from Eric's laptop during an audible glitch.
+
 ## Verification
 
 - `npm run typecheck`: passed.
