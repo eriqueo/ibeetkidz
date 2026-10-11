@@ -15,10 +15,18 @@ import { LocalStoragePort } from "../adapters/local-storage-port.ts";
 import { QuotaExceededError, StorageError } from "../ports/storage-port.ts";
 import { AudioEngine } from "../core/audio-engine.ts";
 import { createRng, type RngPort } from "../core/rng.ts";
-import { generateBeat, type MelodyVoice } from "../core/generative.ts";
 import {
+  generateBeat,
+  hasUntouchedStarter,
+  startEmpty,
+  starterBeat,
+  type MelodyVoice,
+} from "../core/generative.ts";
+import {
+  activeLayers,
   emptyProject,
   initHistory,
+  reduce,
 } from "../core/project-state.ts";
 import type { Command, Project } from "../core/types.ts";
 import { lostBy, offersUndo } from "../core/undoable.ts";
@@ -48,7 +56,13 @@ const rng: RngPort = createRng(Date.now() & 0xffffffff);
 const MELODY_VOICES: MelodyVoice[] = Object.entries(STATION_VOICE)
   .filter(([, instrument]) => instrument !== undefined)
   .map(([station, instrument]) => ({ station, instrument: instrument! }));
-const store: Store = createStore(initHistory(emptyProject(`proj-${Date.now()}`)));
+// A brand-new song opens with the starter beat in car 1 (card C5): its first
+// Ride plays something. A saved song replaces this in `loadLast`, untouched.
+// It is the starting state, not a history entry, so it cannot be "undone" into
+// silence by accident; START EMPTY in the Workshop is the deliberate way out.
+const store: Store = createStore(initHistory(
+  starterBeat().reduce(reduce, emptyProject(`proj-${Date.now()}`)),
+));
 
 const getProject = (): Project => store.getSnapshot().present;
 
@@ -76,8 +90,44 @@ function publishUndoOffer(lost: string): void {
 
 // Scenes attach their presentation adapter before announcing readiness. Replay
 // the authoritative current value so navigation cannot make the offer vanish.
-EventBus.on("current-scene-ready", () => {
+EventBus.on("current-scene-ready", (scene) => {
   if (currentUndoOffer) EventBus.emit("undo-offered", currentUndoOffer);
+  maybeOfferStarterEmpty(scene.scene.key);
+});
+
+// START EMPTY (card C5). Offered ONCE per visit to the app, the first time the
+// Workshop shows car 1 still carrying the untouched starter beat; it withdraws
+// on its own, like the undo offer. A saved song never has it offered, because
+// its lanes are not the untouched starter.
+//
+// It also withdraws the moment the kid does anything else — an edit, or
+// opening a tool panel. The chip is camera-anchored above every panel, and
+// left standing it sat across the open My Voice panel's effect row and status
+// line (seen on the preview, 2026-10-10). The rule is the undo offer's: an
+// offer is for the moment it was made.
+const STARTER_OFFER_MS = 9000;
+let starterOffered = false;
+let starterOfferTimer: ReturnType<typeof setTimeout> | undefined;
+function withdrawStarterOffer(): void {
+  if (!starterOfferTimer) return;
+  clearTimeout(starterOfferTimer);
+  starterOfferTimer = undefined;
+  EventBus.emit("starter-withdrawn");
+}
+function maybeOfferStarterEmpty(sceneKey: string): void {
+  if (starterOffered || sceneKey !== "WorkshopScene") return;
+  if (!hasUntouchedStarter(activeLayers(getProject()))) return;
+  starterOffered = true;
+  EventBus.emit("starter-offered");
+  starterOfferTimer = setTimeout(withdrawStarterOffer, STARTER_OFFER_MS);
+}
+EventBus.on("starter-clear", () => {
+  withdrawStarterOffer();
+  if (!hasUntouchedStarter(activeLayers(getProject()))) return;
+  dispatchAll(startEmpty(), "Starter beat");
+});
+EventBus.on("workshop-open-tool", (toolId) => {
+  if (toolId !== null) withdrawStarterOffer();
 });
 
 // ── Test bridge (dev-server only) ───────────────────────────────────────────

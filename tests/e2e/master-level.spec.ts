@@ -16,6 +16,9 @@ test("a car louder than the speakers is rounded off, never flattened", async ({ 
   await expect(start).toBeVisible();
   await start.click({ force: true });
   await page.waitForFunction(() => !!(window as any).__ibeetkidz_test__?.engineStarted());
+  // The fixture is exactly five loud lanes; START EMPTY removes the starter
+  // beat a new song opens with (card C5) so the car has room and no extras.
+  await page.evaluate(() => (window as any).__ibeetkidz_test__.emit("starter-clear"));
 
   const bytes: number[] = await page.evaluate(async () => {
     const t = (window as any).__ibeetkidz_test__;

@@ -188,6 +188,7 @@ test("Workshop: a character rides the car, and tapping it opens ITS editor", asy
   // content-box hit area in three different places, and any one of them coming
   // loose leaves a car full of characters that do nothing.
   await boot(page);
+  await emit(page, "starter-clear"); // from an empty car (card C5)
   await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
 
@@ -479,6 +480,8 @@ test("an empty car offers a surprise, and the surprise makes a real beat", async
   // React subscribes to it — and no map object ever emitted it. The affordance
   // lives in the empty-car prompt now, so this drives the whole path.
   await boot(page);
+  // A new song is not empty any more (card C5); START EMPTY makes it so.
+  await emit(page, "starter-clear");
   await gotoFromMap(page, "workshop");
   await waitForScene(page, "WorkshopScene");
 

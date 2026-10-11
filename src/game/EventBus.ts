@@ -168,6 +168,13 @@ export interface EventMap {
   "undo-withdrawn": [];
   // Scene -> React: the kid tapped "put it back".
   "undo-requested": [];
+  // React -> Workshop: offer / withdraw START EMPTY for the starter beat a
+  // brand-new song opens with (card C5).
+  "starter-offered": [];
+  "starter-withdrawn": [];
+  // Scene -> React: START EMPTY tapped. Takes the untouched starter beat out,
+  // as one step the undo offer can put back.
+  "starter-clear": [];
 
   // ── Satellite tool panels (Phaser) -> React (audio/state) ──────────────────
   // The kid closed the open tool panel.

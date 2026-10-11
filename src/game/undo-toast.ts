@@ -34,7 +34,13 @@ export class UndoToast {
   private readonly hit: Phaser.GameObjects.Rectangle;
   private shown = false;
 
-  constructor(scene: Phaser.Scene, onUndo: () => void) {
+  /** `action` / `name`: the same chip can make a different one-tap offer —
+   *  the starter beat's START EMPTY uses it (see `attachStarterOffer`). */
+  constructor(
+    scene: Phaser.Scene,
+    onUndo: () => void,
+    opts: { readonly action?: string; readonly name?: string } = {},
+  ) {
     this.scene = scene;
     this.onUndo = onUndo;
     this.chip = scene.add.graphics();
@@ -42,9 +48,9 @@ export class UndoToast {
       .text(0, 0, "", { fontFamily: "'Press Start 2P', monospace", color: "#5b5470" })
       .setOrigin(0.5);
     this.actionText = scene.add
-      .text(0, 0, "PUT IT BACK", { fontFamily: "'Press Start 2P', monospace", color: "#2b2440" })
+      .text(0, 0, opts.action ?? "PUT IT BACK", { fontFamily: "'Press Start 2P', monospace", color: "#2b2440" })
       .setOrigin(0.5);
-    this.hit = scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setName("undo-action");
+    this.hit = scene.add.rectangle(0, 0, 10, 10, 0xffffff, 0).setName(opts.name ?? "undo-action");
     this.container = scene.add
       .container(0, 0, [this.chip, this.lostText, this.actionText, this.hit])
       .setDepth(DEPTH)
@@ -167,4 +173,26 @@ export function attachUndoToast(scene: Phaser.Scene): UndoToast {
     EventBus.off("undo-withdrawn", onWithdraw);
   });
   return toast;
+}
+
+/**
+ * The starter beat's one-tap way out (card C5). A brand-new song opens with
+ * kick, snare and hi-hat in car 1; the first time the Workshop shows that
+ * untouched beat, this chip offers START EMPTY. The composition root owns when
+ * it is offered and what the tap does (`starter-clear`), like the undo offer.
+ */
+export function attachStarterOffer(scene: Phaser.Scene): UndoToast {
+  const chip = new UndoToast(scene, () => EventBus.emit("starter-clear"), {
+    action: "START EMPTY",
+    name: "starter-action",
+  });
+  const onOffer = (): void => chip.show("We made you a beat!");
+  const onWithdraw = (): void => chip.hide();
+  EventBus.on("starter-offered", onOffer);
+  EventBus.on("starter-withdrawn", onWithdraw);
+  scene.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    EventBus.off("starter-offered", onOffer);
+    EventBus.off("starter-withdrawn", onWithdraw);
+  });
+  return chip;
 }

@@ -40,6 +40,9 @@ test("a five-car song survives the complete create → ride → undo → reload 
   });
 
   await boot(page);
+  // A new song opens with the starter beat (card C5); this journey builds its
+  // own five cars from empty, so it takes the real START EMPTY first.
+  await page.evaluate(() => (window as any).__ibeetkidz_test__.emit("starter-clear"));
   await dispatch(page, { type: "setActiveView", view: "workshop" });
   await waitForScene(page, "WorkshopScene");
   await dispatch(page, { type: "setTempo", bpm: 200 });

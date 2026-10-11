@@ -28,7 +28,7 @@
 import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
-import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
+import { attachStarterOffer, attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
@@ -371,7 +371,16 @@ export class WorkshopScene extends BackgroundScene {
     // one dispatch funnel and emits over the bus, so this scene needs no
     // knowledge of WHICH commands destroy anything.
     this.undoToast = attachUndoToast(this);
+    this.starterOffer = attachStarterOffer(this);
     this.announceReady();
+  }
+
+  /** START EMPTY for a brand-new song's starter beat (card C5). */
+  private starterOffer?: UndoToast;
+
+  /** e2e seam: is START EMPTY on screen? */
+  get starterOffering(): boolean {
+    return this.starterOffer?.offering ?? false;
   }
 
   /** Exposed for the e2e bridge: is the empty-car prompt (and with it the only

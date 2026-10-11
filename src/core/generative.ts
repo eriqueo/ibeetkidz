@@ -182,6 +182,50 @@ function bassFor(rng: RngPort): StepNote[][] {
   return notes;
 }
 
+/**
+ * The beat a brand-new song starts with (card C5, approved 2026-10-05): kick,
+ * snare and hi-hat in car 1, so a kid's first Ride plays something instead of
+ * an unexplained silence. Fixed, not seeded — every first song is the same
+ * friendly groove. Same lane ids as the Beat Maker, so its rows ARE these lanes.
+ */
+const STARTER: readonly { assetId: string; steps: readonly number[] }[] = [
+  { assetId: "kick", steps: [0, 8] },
+  { assetId: "snare", steps: [4, 12] },
+  { assetId: "hihat", steps: [0, 2, 4, 6, 8, 10, 12, 14] },
+];
+
+export function starterBeat(): Command[] {
+  return STARTER.flatMap(({ assetId, steps }) => {
+    const drum = DRUM_SOUNDS.find((d) => d.assetId === assetId);
+    if (!drum) return [];
+    const id = LAYER_ID(assetId);
+    const on = new Array<boolean>(STEP_COUNT).fill(false);
+    for (const i of steps) on[i] = true;
+    return [
+      { type: "addClip", clip: { id, source: { kind: "builtin", assetId }, effects: [], color: drum.color, label: drum.label } },
+      { type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", steps: on }) },
+    ] satisfies Command[];
+  });
+}
+
+/** Is the active car still carrying the starter beat exactly as it was given?
+ *  Only then is "start empty" offered — once the kid has changed it, it is
+ *  theirs. */
+export function hasUntouchedStarter(layers: readonly { id: string; kind: string; steps: readonly unknown[] }[]): boolean {
+  if (layers.length !== STARTER.length) return false;
+  return STARTER.every(({ assetId, steps }) => {
+    const lane = layers.find((l) => l.id === LAYER_ID(assetId));
+    if (!lane || lane.kind !== "drum") return false;
+    const onAt = lane.steps.flatMap((s, i) => (s ? [i] : []));
+    return onAt.length === steps.length && onAt.every((i, k) => i === steps[k]);
+  });
+}
+
+/** START EMPTY: take the starter lanes out, as one step a kid can put back. */
+export function startEmpty(): Command[] {
+  return STARTER.map(({ assetId }) => ({ type: "removeLayer", layerId: LAYER_ID(assetId) }) as const);
+}
+
 /** Role-aware 16-step pattern with a little seeded jitter. */
 function patternFor(assetId: string, rng: RngPort): boolean[] {
   const steps = new Array<boolean>(STEP_COUNT).fill(false);

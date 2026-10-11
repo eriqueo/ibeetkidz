@@ -68,6 +68,9 @@ test("Percussion editor: the frog's grid works the car's REAL drum lanes", async
   // whole contract is that the grid IS the car: its shelf adds real lanes and
   // its cells write through the same event the chalkboard uses.
   const crashes = await openWorkshop(page);
+  // From an empty car (START EMPTY on the new song's starter beat, card C5),
+  // so every lane this test counts is one its own taps made.
+  await emit(page, "starter-clear");
   await emit(page, "workshop-open-tool", "beat-grid");
   await expect.poll(() => activeTool(page)).toBe("beat-grid");
 
@@ -330,6 +333,7 @@ test("Sound Pads: a pad tap puts that sound in the car, as ONE undo step", async
   // This direct event test pins the handler's one-undo-step guarantee. The
   // production conductor -> board -> SOUNDS route is exercised above.
   const crashes = await openWorkshop(page);
+  await emit(page, "starter-clear"); // from an empty car (card C5)
 
   const laneIds = async (): Promise<string[]> => (await layers(page)).map((l) => l.id);
 
