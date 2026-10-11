@@ -44,6 +44,10 @@ export interface EventMap {
   "yard-remove-from-train": [];
   // Tiled hit -> React (Yard): UNHITCH uncouples the car at the end of the train.
   "yard-unhitch": [];
+  // Tiled hit -> React (Yard): CLEAR empties the whole train as one undo step.
+  // It lived on the Track header until Eric's 2026-10-05 grouping; the Yard is
+  // where the train is built, so it is where the train is taken apart.
+  "yard-clear-train": [];
   // Tiled hit -> React (Yard): open the Workshop on the active (selected) car.
   "yard-edit-car": [];
   // Phaser -> React (Yard): a car was DRAGGED to a new place in the train.

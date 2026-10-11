@@ -207,6 +207,10 @@ describe("yard.json wiring", () => {
       // REMOVE takes the tapped train car out (Eric, 2026-10-05). It wears the
       // painted DELETE plaque until a REMOVE one lands (AR-078).
       ["btn-remove-selected", "btn-yard-delete", "yard-remove-from-train"],
+      // CLEAR empties the whole train. It left the Track header with Eric's
+      // 2026-10-05 grouping and wears that header's plaque until a stone one
+      // lands (AR-079).
+      ["btn-clear-train", "btn-track-clear", "yard-clear-train"],
     ] as const) {
       const s = need(yard, id);
       expect(s.sprite).toBe(sprite);
@@ -223,7 +227,7 @@ describe("yard.json wiring", () => {
 
   it("keeps the action keycaps inside the plate's span, without overlap", () => {
     const p = need(yard, "panel-yard-actions");
-    const ids = ["btn-edit-car", "btn-add-to-train", "btn-unhitch", "btn-remove-selected"];
+    const ids = ["btn-edit-car", "btn-add-to-train", "btn-unhitch", "btn-remove-selected", "btn-clear-train"];
     const xs = ids.map((id) => need(yard, id)).sort((a, b) => a.cx - b.cx);
     for (let i = 1; i < xs.length; i++) {
       expect(xs[i]!.cx - xs[i - 1]!.cx, `${xs[i]!.id} spacing`).toBeGreaterThanOrEqual(xs[i]!.w);

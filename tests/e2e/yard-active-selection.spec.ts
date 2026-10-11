@@ -23,6 +23,7 @@ type YardTarget =
   | "remove"
   | "edit"
   | "unhitch"
+  | "clear"
   | "track"
   | { readonly paletteId: string }
   | { readonly trainId: string };
@@ -43,7 +44,9 @@ async function liveObjectPoint(
                 ? "btn-edit-car"
                 : target === "track"
                   ? "btn-yard-track"
-                  : "btn-unhitch";
+                  : target === "clear"
+                    ? "btn-clear-train"
+                    : "btn-unhitch";
           const element = scene.chrome.find((candidate: any) => candidate.spawn.id === spawnId);
           return element?.image ?? element?.hit;
         })()
@@ -321,6 +324,15 @@ test("Yard REMOVE takes out the tapped car, UNHITCH the end car, and drag reorde
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
     .toEqual([ids[1], ids[2]]);
+
+  // CLEAR empties the whole train as ONE step, and the chip puts it all back.
+  await tapLiveObject(page, "clear");
+  await expect.poll(async () => (await project(page)).train).toEqual([]);
+  await expect.poll(async () => (await yardModel(page)).trainIds).toEqual([]);
+  const clearOffer = await page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().undoOffer);
+  expect(clearOffer).toEqual({ offering: true, lost: "THE WHOLE TRAIN" });
+  await emit(page, "undo-requested");
+  await expect.poll(async () => (await yardModel(page)).trainIds).toEqual([ids[1], ids[2]]);
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 

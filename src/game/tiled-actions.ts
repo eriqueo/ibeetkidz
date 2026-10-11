@@ -27,6 +27,7 @@ export const TILED_ACTION_ARGS = {
   ]),
   "workshop-send-to-yard": noArg,
   "yard-add": noArg,
+  "yard-clear-train": noArg,
   "yard-depart": noArg,
   "yard-edit-car": noArg,
   "yard-nav": view,

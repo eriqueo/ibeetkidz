@@ -11,7 +11,7 @@ let instSeq = 0;
 const newInstanceId = (): string => `inst-${Date.now().toString(36)}-${instSeq++}`;
 
 export const Yard: FC = () => {
-  const { dispatch, engine } = useApp();
+  const { dispatch, dispatchAll, engine } = useApp();
   const project = useProject();
   const sceneRef = useRef<YardScene | null>(null);
   const selectedTrainRef = useRef<string | null>(null);
@@ -134,6 +134,20 @@ export const Yard: FC = () => {
       const last = liveTrain(projectRef.current).at(-1);
       if (last) dispatch({ type: "removeFromTrain", instanceId: last.instanceId });
     };
+    // CLEAR empties the whole train as ONE undo step, with the "put it back"
+    // chip: taking apart the kid's whole build is exactly what the chip is
+    // for. (The Track did this until its header lost the key, 2026-10-05.)
+    const onClearTrain = () => {
+      const cmds = liveTrain(projectRef.current).map(
+        (c) => ({ type: "removeFromTrain", instanceId: c.instanceId }) as const,
+      );
+      if (cmds.length === 0) {
+        say("The train is already empty.");
+        return;
+      }
+      selectedTrainRef.current = null;
+      dispatchAll(cmds, "The whole train");
+    };
     // A car was dragged to a new place on the assembly line. The scene sends
     // the whole new order and the reducer takes the whole new order, so there
     // is nothing here to translate — which is why `reorderTrain` needed no
@@ -164,10 +178,12 @@ export const Yard: FC = () => {
     EventBus.on("yard-remove-from-train", onRemoveFromTrain);
     EventBus.on("yard-reorder-train", onReorder);
     EventBus.on("yard-unhitch", onUnhitch);
+    EventBus.on("yard-clear-train", onClearTrain);
     EventBus.on("yard-edit-car", onEditCar);
     EventBus.on("yard-nav", onNav);
     return () => {
       EventBus.off("yard-unhitch", onUnhitch);
+      EventBus.off("yard-clear-train", onClearTrain);
       EventBus.off("yard-car-selected", onSelect);
       EventBus.off("yard-train-selected", onTrainSelect);
       EventBus.off("yard-add-to-train", onAdd);
@@ -177,7 +193,7 @@ export const Yard: FC = () => {
       EventBus.off("yard-edit-car", onEditCar);
       EventBus.off("yard-nav", onNav);
     };
-  }, [dispatch, engine]);
+  }, [dispatch, dispatchAll, engine]);
 
   return (
     <div style={VIEW_OVERLAY}>

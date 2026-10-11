@@ -184,6 +184,16 @@ Deliver `btn-yard-remove` (idle + pressed) in the stone `btn-yard-*` family, on
 the same canvas as `btn-yard-hitch`: one car lifted off the train, the word
 **REMOVE**. Engineering swaps the sprite name in `yard.json`.
 
+### ⚠ OPEN — AR-079 · A CLEAR button for the Yard bar — P2
+
+CLEAR (empty the whole train, one undo step) left the Track header with Eric's
+2026-10-05 grouping and now sits fifth on the Yard bar (2026-10-10), wearing the
+Track's wood-and-brass `btn-track-clear` plaque among four stone keys.
+
+Deliver `btn-yard-clear` (idle + pressed) in the stone `btn-yard-*` family, on
+the same canvas as `btn-yard-hitch`: an empty stretch of track, the word
+**CLEAR**. Engineering swaps the sprite name in `yard.json`.
+
 ### ⚠ OPEN — AR-077 · A painted rail for the Track speed slider — P2
 
 Eric, 2026-10-05: "instead of a slow fast and speed button, we just have a

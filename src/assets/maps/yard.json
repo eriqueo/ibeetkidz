@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 12,
+  "nextobjectid": 13,
   "layers": [
     {
       "id": 2,
@@ -131,6 +131,29 @@
           ]
         },
         {
+          "id": 12,
+          "name": "btn-clear-train",
+          "type": "ui-button",
+          "x": 1753,
+          "y": 1190,
+          "width": 180,
+          "height": 180,
+          "rotation": 0,
+          "visible": true,
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-track-clear"
+            },
+            {
+              "name": "action",
+              "type": "string",
+              "value": "yard-clear-train"
+            }
+          ]
+        },
+        {
           "id": 5,
           "name": "btn-edit-car",
           "type": "ui-button",
@@ -157,7 +180,7 @@
           "id": 6,
           "name": "btn-add-to-train",
           "type": "ui-button",
-          "x": 1003,
+          "x": 909,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -180,7 +203,7 @@
           "id": 7,
           "name": "btn-unhitch",
           "type": "ui-button",
-          "x": 1378,
+          "x": 1190,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -203,7 +226,7 @@
           "id": 9,
           "name": "btn-remove-selected",
           "type": "ui-button",
-          "x": 1753,
+          "x": 1472,
           "y": 1190,
           "width": 180,
           "height": 180,
