@@ -1829,7 +1829,10 @@ export class ToneSoundPort implements SoundPort {
    *  rate would let baked loops drift against the grid for the length of the
    *  glide. Landing the change squarely on the bar line is both phase-exact and
    *  the clearer read for a kid: you hit the hill, the song leans back. */
-  private applyTerrainNow(effect: TerrainEffect, sendRamp: number): void {
+  /** `at`: the transport callback's own time when called from one. Tone warns
+   *  (and lands the ramp a lookahead early) when a ramp started inside a
+   *  scheduled callback takes "now" instead of the time it was handed. */
+  private applyTerrainNow(effect: TerrainEffect, sendRamp: number, at?: number): void {
     const scale = clampTempoScale(effect.tempoScale);
     this.tempoScale = scale;
     this.liveTransport.bpm.value = this.tempoBpm * scale;
@@ -1839,13 +1842,13 @@ export class ToneSoundPort implements SoundPort {
     for (const p of this.scheduledVoices) p.playbackRate = scale;
     const fx = this.terrainFx;
     if (!fx) return;
-    fx.reverb.wet.rampTo(clampSend(effect.reverb), sendRamp);
-    fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp);
+    fx.reverb.wet.rampTo(clampSend(effect.reverb), sendRamp, at);
+    fx.grit.wet.rampTo(clampSend(effect.grit), sendRamp, at);
     // Muffle maps 0..1 onto an open→shut low-pass sweep (quadratic, so the
     // first half of the knob is gentle and the tunnel end really closes down).
     const open = 1 - clampSend(effect.muffle);
-    fx.muffle.frequency.rampTo(MUFFLE_SHUT_HZ + open * open * (MUFFLE_OPEN_HZ - MUFFLE_SHUT_HZ), sendRamp);
-    fx.echo.wet.rampTo(clampSend(effect.echo) * 0.5, sendRamp);
+    fx.muffle.frequency.rampTo(MUFFLE_SHUT_HZ + open * open * (MUFFLE_OPEN_HZ - MUFFLE_SHUT_HZ), sendRamp, at);
+    fx.echo.wet.rampTo(clampSend(effect.echo) * 0.5, sendRamp, at);
   }
 
   /** Ticks → seconds on the PINNED transport. `Tone.Ticks(...).toSeconds()`
@@ -1875,13 +1878,13 @@ export class ToneSoundPort implements SoundPort {
     // Ticks → seconds here, seconds → ticks inside Tone, both at the tempo in
     // force right now: an identity round-trip. The events therefore land on the
     // intended BAR however the tempo moves in between.
-    transport.scheduleOnce(() => {
+    transport.scheduleOnce((time) => {
       if (gen !== this.terrainGen) return;
-      this.applyTerrainNow(effect, sendRamp);
+      this.applyTerrainNow(effect, sendRamp, time);
     }, this.ticksToSec(startTicks));
-    transport.scheduleOnce(() => {
+    transport.scheduleOnce((time) => {
       if (gen !== this.terrainGen) return;
-      this.applyTerrainNow(NEUTRAL_TERRAIN, sendRamp);
+      this.applyTerrainNow(NEUTRAL_TERRAIN, sendRamp, time);
     }, this.ticksToSec(endTicks));
     return { startBar: startTicks / tpb, endBar: endTicks / tpb };
   }
