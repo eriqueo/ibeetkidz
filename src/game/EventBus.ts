@@ -39,18 +39,13 @@ export interface EventMap {
   "yard-add-to-train": [partId: string];
   // Phaser -> React (Yard): the assembled train has departed; navigate to Track.
   "yard-send-to-track": [];
-  // Tiled hit -> React (Yard): remove the selected assembled slot, falling
-  // back to the tail when this visit has no train selection.
+  // Tiled hit -> React (Yard): REMOVE takes the tapped train car out, from
+  // wherever it sits in the train.
   "yard-remove-from-train": [];
+  // Tiled hit -> React (Yard): UNHITCH uncouples the car at the end of the train.
+  "yard-unhitch": [];
   // Tiled hit -> React (Yard): open the Workshop on the active (selected) car.
   "yard-edit-car": [];
-  // Tiled hit -> React (Yard): delete the active (selected) car from the library.
-  "yard-remove-car": [];
-  // Tiled hit -> React (Yard): cover or uncover the selected assembled slot.
-  // One button: it tarps an open car and uncovers a tarped one.
-  "yard-toggle-tarp": [];
-  // Tiled hit -> React (Yard): hear the selected car once through.
-  "yard-play-car": [];
   // Phaser -> React (Yard): a car was DRAGGED to a new place in the train.
   // Carries the whole new order rather than a (from, to) pair, so the reducer
   // stays the pure `reorderTrain` it already was and there is no second way to

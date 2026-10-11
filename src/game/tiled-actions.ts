@@ -30,10 +30,8 @@ export const TILED_ACTION_ARGS = {
   "yard-depart": noArg,
   "yard-edit-car": noArg,
   "yard-nav": view,
-  "yard-play-car": noArg,
-  "yard-remove-car": noArg,
   "yard-remove-from-train": noArg,
-  "yard-toggle-tarp": noArg,
+  "yard-unhitch": noArg,
 } as const satisfies Partial<Record<keyof EventMap, z.ZodTypeAny>>;
 
 export type TiledActionName = keyof typeof TILED_ACTION_ARGS;

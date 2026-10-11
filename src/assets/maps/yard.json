@@ -134,7 +134,7 @@
           "id": 5,
           "name": "btn-edit-car",
           "type": "ui-button",
-          "x": 590,
+          "x": 628,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -157,7 +157,7 @@
           "id": 6,
           "name": "btn-add-to-train",
           "type": "ui-button",
-          "x": 824,
+          "x": 1003,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -178,9 +178,9 @@
         },
         {
           "id": 7,
-          "name": "btn-remove-from-train",
+          "name": "btn-unhitch",
           "type": "ui-button",
-          "x": 1058,
+          "x": 1378,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -195,61 +195,15 @@
             {
               "name": "action",
               "type": "string",
-              "value": "yard-remove-from-train"
-            }
-          ]
-        },
-        {
-          "id": 8,
-          "name": "btn-tarp-car",
-          "type": "ui-button",
-          "x": 1292,
-          "y": 1190,
-          "width": 180,
-          "height": 180,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "btn-track-tarp"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-toggle-tarp"
-            }
-          ]
-        },
-        {
-          "id": 11,
-          "name": "btn-play-car",
-          "type": "ui-button",
-          "x": 1526,
-          "y": 1190,
-          "width": 180,
-          "height": 180,
-          "rotation": 0,
-          "visible": true,
-          "properties": [
-            {
-              "name": "sprite",
-              "type": "string",
-              "value": "btn-transport-play"
-            },
-            {
-              "name": "action",
-              "type": "string",
-              "value": "yard-play-car"
+              "value": "yard-unhitch"
             }
           ]
         },
         {
           "id": 9,
-          "name": "btn-delete-car",
+          "name": "btn-remove-selected",
           "type": "ui-button",
-          "x": 1760,
+          "x": 1753,
           "y": 1190,
           "width": 180,
           "height": 180,
@@ -264,7 +218,7 @@
             {
               "name": "action",
               "type": "string",
-              "value": "yard-remove-car"
+              "value": "yard-remove-from-train"
             }
           ]
         }

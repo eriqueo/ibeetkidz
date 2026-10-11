@@ -167,27 +167,22 @@ Redraw the tanker poses so each shows at least head, shoulders and instrument:
 aim for a painted height of 80 px or more. The bottom edge stays the peek line.
 Engineering does not upscale pixel art to compensate.
 
-### ⚠ OPEN — AR-076 · The Yard action bar needs TARP, UNTARP and PLAY in its own family — P1
+### ✗ WITHDRAWN — AR-076 · Yard TARP, UNTARP, PLAY and CLEAR buttons
 
-The Yard bar is now EDIT · HITCH · UNHITCH · TARP · PLAY · DELETE (Eric,
-2026-10-05; the duplicate TO TRACK button is gone, so `btn-yard-totrack` is
-retired). Two of the six borrow art from other screens, which is the honest
-interim, not the finish:
+Withdrawn 2026-10-05: Eric took TARP, PLAY and CLEAR off the Yard bar. A tap
+selects a car and plays it once; tarping stays on the Track. See AR-078.
 
-- **TARP** wears the Track's wood-and-brass `btn-track-tarp` (idle = open car,
-  `seated` = covered car). It is one button with two meanings and both faces say
-  **TARP**. Eric asked that it "switches to untarp if the car is tarped already."
-- **PLAY** wears the Workshop's `btn-transport-play`.
+### ⚠ OPEN — AR-078 · A REMOVE button for the Yard bar — P1
 
-Deliver, in the stone `btn-yard-*` family and on the same canvas as
-`btn-yard-hitch` (idle + pressed each):
+The Yard bar is now EDIT · HITCH · UNHITCH · REMOVE (Eric, 2026-10-05).
+UNHITCH uncouples the car at the end of the train; REMOVE takes out the car the
+kid tapped, from anywhere in the train. REMOVE wears `btn-yard-delete` for now,
+whose word is **DELETE**. That word is wrong: the car is not deleted, it goes
+back to its siding.
 
-1. `btn-yard-tarp` — a car with a blue tarp going on, the word **TARP**.
-2. `btn-yard-untarp` — the tarp coming off, the word **UNTARP**.
-3. `btn-yard-play` — the play triangle, the word **PLAY**.
-
-Engineering swaps three frame names in `yard.json` and the scene's two-face
-lookup; the layout already has the six slots.
+Deliver `btn-yard-remove` (idle + pressed) in the stone `btn-yard-*` family, on
+the same canvas as `btn-yard-hitch`: one car lifted off the train, the word
+**REMOVE**. Engineering swaps the sprite name in `yard.json`.
 
 ### ⚠ OPEN — AR-077 · A painted rail for the Track speed slider — P2
 

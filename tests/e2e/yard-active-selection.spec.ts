@@ -20,10 +20,9 @@ async function waitForScene(page: Page, key: string): Promise<void> {
 
 type YardTarget =
   | "hitch"
-  | "delete"
+  | "remove"
   | "edit"
   | "unhitch"
-  | "tarp"
   | "track"
   | { readonly paletteId: string }
   | { readonly trainId: string };
@@ -38,15 +37,13 @@ async function liveObjectPoint(
       ? (() => {
           const spawnId = target === "hitch"
             ? "btn-add-to-train"
-            : target === "delete"
-              ? "btn-delete-car"
+            : target === "remove"
+              ? "btn-remove-selected"
               : target === "edit"
                 ? "btn-edit-car"
-                : target === "tarp"
-                  ? "btn-tarp-car"
-                  : target === "track"
-                    ? "btn-yard-track"
-                    : "btn-remove-from-train";
+                : target === "track"
+                  ? "btn-yard-track"
+                  : "btn-unhitch";
           const element = scene.chrome.find((candidate: any) => candidate.spawn.id === spawnId);
           return element?.image ?? element?.hit;
         })()
@@ -235,6 +232,7 @@ test("Yard carries the active car into a visible, immediately hitchable selectio
   const rebuildsBeforeSelection = (await yardModel(page)).rebuildCount;
   await tapLiveObject(page, { paletteId: ids.firstId });
   await expect.poll(async () => (await project(page)).activePartId).toBe(ids.firstId);
+  // The tap selects the car and plays it once; no pop-up.
   await expect
     .poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.audioDiag().transportState))
     .toBe("started");
@@ -242,15 +240,16 @@ test("Yard carries the active car into a visible, immediately hitchable selectio
   expect((await yardModel(page)).selectedRingIds).toEqual([ids.firstId]);
   expect((await yardModel(page)).rebuildCount).toBe(rebuildsBeforeSelection);
 
-  await tapLiveObject(page, "delete");
-  await expect.poll(async () => (await project(page)).activePartId).toBe(ids.secondId);
-  await expect.poll(async () => (await yardModel(page)).selectedId).toBe(ids.secondId);
-  expect((await project(page)).parts.map((part: any) => part.id)).not.toContain(ids.firstId);
-  expect((await yardModel(page)).selectedRingIds).toEqual([ids.secondId]);
+  // REMOVE needs a train car picked: with a siding car picked it changes nothing.
+  const trainBeforeRemove = (await project(page)).train.length;
+  expect(trainBeforeRemove).toBeGreaterThan(0);
+  await tapLiveObject(page, "remove");
+  await page.waitForTimeout(300);
+  expect((await project(page)).train).toHaveLength(trainBeforeRemove);
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 
-test("Yard UNHITCH removes the selected assembled instance and preserves drag reorder", async ({ page }) => {
+test("Yard REMOVE takes out the tapped car, UNHITCH the end car, and drag reorders", async ({ page }) => {
   const crashes = await boot(page);
   const ids = ["yard-train-a", "yard-train-b", "yard-train-c"];
   await page.evaluate((instanceIds) => {
@@ -271,7 +270,7 @@ test("Yard UNHITCH removes the selected assembled instance and preserves drag re
   expect((await yardModel(page)).selectedTrainId).toBe(ids[1]);
   expect((await yardModel(page)).selectedTrainRingIds).toEqual([ids[1]]);
 
-  await tapLiveObject(page, "unhitch");
+  await tapLiveObject(page, "remove");
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
     .toEqual([ids[0], ids[2]]);
@@ -287,8 +286,8 @@ test("Yard UNHITCH removes the selected assembled instance and preserves drag re
   expect((await yardModel(page)).selectedTrainId).toBeNull();
   expect((await yardModel(page)).selectedTrainRingIds).toEqual([]);
 
-  // Undo restores the slot, not an invisible stale selection. With no visible
-  // green ring, UNHITCH must use its documented tail fallback.
+  // UNHITCH uncouples the end car, whatever is picked.
+  await tapLiveObject(page, { trainId: ids[0]! });
   await tapLiveObject(page, "unhitch");
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
@@ -305,7 +304,8 @@ test("Yard UNHITCH removes the selected assembled instance and preserves drag re
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
     .toEqual([ids[1], ids[2], ids[0]]);
-  expect((await yardModel(page)).selectedTrainId).toBeNull();
+  // The car picked before UNHITCH is still picked after it is dragged.
+  expect((await yardModel(page)).selectedTrainId).toBe(ids[0]);
 
   await page.evaluate(() => {
     (window as any).__ibeetkidz_test__.dispatch({ type: "setActiveView", view: "map" });
@@ -321,48 +321,6 @@ test("Yard UNHITCH removes the selected assembled instance and preserves drag re
   await expect
     .poll(async () => (await project(page)).train.map((slot: any) => slot.instanceId))
     .toEqual([ids[1], ids[2]]);
-  expect(crashes, crashes.join(" | ")).toEqual([]);
-});
-
-test("Yard TARP is one button: it covers the tapped train car, then uncovers it", async ({ page }) => {
-  const crashes = await boot(page);
-  const ids = ["yard-tarp-a", "yard-tarp-b"];
-  await page.evaluate((instanceIds) => {
-    const testApi = (window as any).__ibeetkidz_test__;
-    const partId = testApi.getProject().activePartId as string;
-    for (const slot of testApi.getProject().train) {
-      testApi.dispatch({ type: "removeFromTrain", instanceId: slot.instanceId });
-    }
-    for (const instanceId of instanceIds) {
-      testApi.dispatch({ type: "addToTrain", instanceId, partId });
-    }
-    testApi.dispatch({ type: "setActiveView", view: "yard" });
-  }, ids);
-  await waitForScene(page, "YardScene");
-  const face = () => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().tarpButtonFrame);
-  const muted = async () => (await project(page)).train.map((slot: any) => slot.muted);
-
-  // Nothing on the train is picked: the button has no car to cover.
-  await tapLiveObject(page, "tarp");
-  expect(await muted()).toEqual([false, false]);
-  expect(await face()).toBe("btn-track-tarp-idle");
-
-  await tapLiveObject(page, { trainId: ids[1]! });
-  await tapLiveObject(page, "tarp");
-  await expect.poll(muted).toEqual([false, true]);
-  await expect.poll(face).toBe("btn-track-tarp-seated");
-  expect((await yardModel(page)).selectedTrainId).toBe(ids[1]);
-
-  // The same button, now showing the covered car, uncovers it.
-  await tapLiveObject(page, "tarp");
-  await expect.poll(muted).toEqual([false, false]);
-  await expect.poll(face).toBe("btn-track-tarp-idle");
-
-  // The face follows the SELECTED car, not the last press.
-  await tapLiveObject(page, "tarp");
-  await expect.poll(muted).toEqual([false, true]);
-  await tapLiveObject(page, { trainId: ids[0]! });
-  await expect.poll(face).toBe("btn-track-tarp-idle");
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 

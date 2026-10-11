@@ -99,6 +99,8 @@ export const Yard: FC = () => {
       setToast(text);
       window.setTimeout(() => setToast(null), 2200);
     };
+    // A tap selects the car and plays it once, so the kid hears which one
+    // the bar below will act on.
     const onSelect = (partId: string) => {
       dispatch({ type: "setActivePart", partId });
       playOnce(partId);
@@ -107,8 +109,8 @@ export const Yard: FC = () => {
       dispatch({ type: "addToTrain", instanceId: newInstanceId(), partId });
     const onSend = () => dispatch({ type: "setActiveView", view: "track" });
     // A car on the train is picked the same way as one on a siding: it becomes
-    // the active car (so EDIT and PLAY mean it) and is heard once. What it adds
-    // is the SLOT — the thing UNHITCH and TARP act on.
+    // the active car (so EDIT means it) and plays once. What it adds is the
+    // SLOT — the thing REMOVE acts on.
     const onTrainSelect = (instanceId: string | null) => {
       selectedTrainRef.current = instanceId;
       const slot = liveTrain(projectRef.current).find((car) => car.instanceId === instanceId);
@@ -116,23 +118,21 @@ export const Yard: FC = () => {
       dispatch({ type: "setActivePart", partId: slot.partId });
       playOnce(slot.partId);
     };
-    // One button, two faces: it tarps an open car and uncovers a tarped one. A
-    // tarp belongs to a place on the train, so a siding car has nothing to cover.
-    const onToggleTarp = () => {
-      const slot = liveTrain(projectRef.current)
+    // REMOVE takes the tapped train car out, wherever it sits.
+    const onRemoveFromTrain = () => {
+      const target = liveTrain(projectRef.current)
         .find((car) => car.instanceId === selectedTrainRef.current);
-      if (!slot) {
+      if (!target) {
         say("Tap a car on the train first.");
         return;
       }
-      dispatch({ type: "muteCar", instanceId: slot.instanceId, muted: !slot.muted });
+      selectedTrainRef.current = null;
+      dispatch({ type: "removeFromTrain", instanceId: target.instanceId });
     };
-    const onPlayCar = () => playOnce(projectRef.current.activePartId);
-    const onRemoveFromTrain = () => {
-      const train = liveTrain(projectRef.current);
-      const selected = train.find((car) => car.instanceId === selectedTrainRef.current);
-      const target = selected ?? train.at(-1);
-      if (target) dispatch({ type: "removeFromTrain", instanceId: target.instanceId });
+    // UNHITCH uncouples the car at the end of the train, as a real one would.
+    const onUnhitch = () => {
+      const last = liveTrain(projectRef.current).at(-1);
+      if (last) dispatch({ type: "removeFromTrain", instanceId: last.instanceId });
     };
     // A car was dragged to a new place on the assembly line. The scene sends
     // the whole new order and the reducer takes the whole new order, so there
@@ -141,8 +141,6 @@ export const Yard: FC = () => {
     const onReorder = (instanceIds: readonly string[]) =>
       dispatch({ type: "reorderTrain", instanceIds });
     const onEditCar = () => dispatch({ type: "setActiveView", view: "workshop" });
-    const onRemoveCar = () =>
-      dispatch({ type: "removeCar", partId: projectRef.current.activePartId });
     // The TRACK plaque is the ONE way to the Track from here. It needs an
     // assembled train (same guard as the Map's hit), and it sends that train
     // off down the line first: the scene answers `yard-depart` with the
@@ -165,14 +163,11 @@ export const Yard: FC = () => {
     EventBus.on("yard-send-to-track", onSend);
     EventBus.on("yard-remove-from-train", onRemoveFromTrain);
     EventBus.on("yard-reorder-train", onReorder);
+    EventBus.on("yard-unhitch", onUnhitch);
     EventBus.on("yard-edit-car", onEditCar);
-    EventBus.on("yard-remove-car", onRemoveCar);
     EventBus.on("yard-nav", onNav);
-    EventBus.on("yard-toggle-tarp", onToggleTarp);
-    EventBus.on("yard-play-car", onPlayCar);
     return () => {
-      EventBus.off("yard-toggle-tarp", onToggleTarp);
-      EventBus.off("yard-play-car", onPlayCar);
+      EventBus.off("yard-unhitch", onUnhitch);
       EventBus.off("yard-car-selected", onSelect);
       EventBus.off("yard-train-selected", onTrainSelect);
       EventBus.off("yard-add-to-train", onAdd);
@@ -180,7 +175,6 @@ export const Yard: FC = () => {
       EventBus.off("yard-remove-from-train", onRemoveFromTrain);
       EventBus.off("yard-reorder-train", onReorder);
       EventBus.off("yard-edit-car", onEditCar);
-      EventBus.off("yard-remove-car", onRemoveCar);
       EventBus.off("yard-nav", onNav);
     };
   }, [dispatch, engine]);
