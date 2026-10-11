@@ -25,6 +25,13 @@ export interface PwaUpdatePort {
   onControllerChange(listener: () => void): () => void;
   onTimeout(timeoutMs: number, listener: () => void): () => void;
   reload(): void;
+  /** Did a previous load of THIS release already reload because the
+   *  controlling worker reported a different one? A reload that does not
+   *  change what the controller serves (a stale HTTP-cached document, a
+   *  worker that cannot take over this client) would otherwise reload again
+   *  on every load — the once-a-second loop Eric saw on 2026-10-05. */
+  reloadedForMismatch(loadedReleaseId: string): boolean;
+  rememberMismatchReload(loadedReleaseId: string): void;
 }
 
 export type PwaUpdateDisposition = "boot-current" | "reload-requested";
@@ -115,6 +122,14 @@ export async function prepareWaitingPwaUpdate(
       && releaseResult.releaseId !== null
       && releaseResult.releaseId !== loadedReleaseId
     ) {
+      // One reload per loaded release. If the document that comes back is
+      // still this release, the controller is not going to serve a newer one
+      // by reloading again; boot what we have rather than loop.
+      if (port.reloadedForMismatch(loadedReleaseId)) {
+        stopControllerChange();
+        return "boot-current";
+      }
+      port.rememberMismatchReload(loadedReleaseId);
       reloadOnce();
       return "reload-requested";
     }
@@ -201,8 +216,27 @@ export function createBrowserPwaUpdatePort(baseUrl: string): PwaUpdatePort | nul
       return () => window.clearTimeout(timeout);
     },
     reload: () => window.location.reload(),
+    // sessionStorage: scoped to this tab, gone when it closes, so the next
+    // visit gets its one honest reload again. A storage that refuses (private
+    // mode, quota) reads as "not yet", which is the pre-guard behaviour.
+    reloadedForMismatch: (loadedReleaseId) => {
+      try {
+        return window.sessionStorage.getItem(MISMATCH_RELOAD_KEY) === loadedReleaseId;
+      } catch {
+        return false;
+      }
+    },
+    rememberMismatchReload: (loadedReleaseId) => {
+      try {
+        window.sessionStorage.setItem(MISMATCH_RELOAD_KEY, loadedReleaseId);
+      } catch {
+        // Nothing to do: the guard degrades to the pre-guard behaviour.
+      }
+    },
   };
 }
+
+const MISMATCH_RELOAD_KEY = "ibeetkidz.pwa.mismatch-reload";
 
 export function prepareBrowserPwaUpdate(
   baseUrl: string,

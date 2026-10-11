@@ -10,7 +10,7 @@ const LOADED_RELEASE = "https://example.test/assets/index-current.js";
 
 function harness(
   waiting: WaitingWorker | null = null,
-  options: { activeReleaseId?: string | null; controlledAtLoad?: boolean } = {},
+  options: { activeReleaseId?: string | null; controlledAtLoad?: boolean; alreadyReloadedFor?: string } = {},
 ): {
   port: PwaUpdatePort;
   fireControllerChange: () => void;
@@ -39,11 +39,14 @@ function harness(
   const reload = vi.fn();
   const scheduledTimeouts: number[] = [];
   const stopped = { controller: 0, timeout: 0 };
+  let reloadedFor: string | undefined = options.alreadyReloadedFor;
   return {
     port: {
       controlledAtLoad: options.controlledAtLoad ?? true,
       register,
       probeControllingRelease,
+      reloadedForMismatch: (id) => reloadedFor === id,
+      rememberMismatchReload: (id) => { reloadedFor = id; },
       onControllerChange: (listener) => {
         controllerChange = listener;
         return () => { stopped.controller += 1; };
@@ -117,6 +120,26 @@ describe("safe PWA update preparation", () => {
     await expect(prepareWaitingPwaUpdate(h.port, 5_000, LOADED_RELEASE)).resolves.toBe("reload-requested");
     expect(h.reload).toHaveBeenCalledOnce();
     expect(h.stopped).toEqual({ controller: 1, timeout: 1 });
+  });
+
+  it("reloads for a release mismatch once, then boots rather than looping", async () => {
+    // The 2026-10-05 reload loop: a controller that keeps reporting a release
+    // other than the loaded one, load after load. One reload is the honest
+    // try; a second identical load must boot what it has.
+    const next = "https://example.test/assets/index-next.js";
+    const first = harness(null, { activeReleaseId: next });
+    await expect(prepareWaitingPwaUpdate(first.port, 5_000, LOADED_RELEASE)).resolves.toBe("reload-requested");
+    expect(first.reload).toHaveBeenCalledOnce();
+
+    const again = harness(null, { activeReleaseId: next, alreadyReloadedFor: LOADED_RELEASE });
+    await expect(prepareWaitingPwaUpdate(again.port, 5_000, LOADED_RELEASE)).resolves.toBe("boot-current");
+    expect(again.reload).not.toHaveBeenCalled();
+    expect(again.stopped).toEqual({ controller: 1, timeout: 1 });
+
+    // A different loaded release is a new situation and gets its own reload.
+    const newer = harness(null, { activeReleaseId: next, alreadyReloadedFor: LOADED_RELEASE });
+    await expect(prepareWaitingPwaUpdate(newer.port, 5_000, "https://example.test/assets/index-other.js")).resolves.toBe("reload-requested");
+    expect(newer.reload).toHaveBeenCalledOnce();
   });
 
   it("trusts the old controlling worker while registration active is newer", async () => {
