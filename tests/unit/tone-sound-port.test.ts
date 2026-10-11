@@ -73,9 +73,14 @@ const h = vi.hoisted(() => {
   const played: FakeBuffer[] = [];
 
   const built = { players: 0 };
+  /** Every scheduled start: which player, and when. */
+  const starts: { player: unknown; time: number }[] = [];
 
   class FakePlayer {
     onstop: (() => void) | undefined;
+    fadeOut = 0;
+    playbackRate = 1;
+    readonly volume = { setValueAtTime: () => {} };
     // Like the real Player's ToneAudioBuffer: a holder whose audio can be
     // swapped, which is how a recycled player takes its next sound.
     readonly buffer = {
@@ -102,7 +107,8 @@ const h = vi.hoisted(() => {
     connect(): this {
       return this;
     }
-    start(): this {
+    start(time = 0): this {
+      starts.push({ player: this, time });
       return this;
     }
     dispose(): void {}
@@ -116,7 +122,7 @@ const h = vi.hoisted(() => {
     return { get: () => baked };
   };
 
-  return { SR, ctx, transport, destination, played, built, repeats, FakePlayer, Offline, makeBuffer };
+  return { SR, ctx, transport, destination, played, built, starts, repeats, FakePlayer, Offline, makeBuffer };
 });
 
 vi.mock("tone", async (importOriginal) => {
@@ -229,6 +235,56 @@ describe("ToneSoundPort reschedule cost", () => {
     port.scheduleStep(clip, 0, 16, opts);
     port.scheduleStep(clip, 4, 16, opts);
     expect(h.built.players).toBe(afterOne + 1);
+  });
+});
+
+describe("ToneSoundPort: a recording longer than its loop rings on (card C2)", () => {
+  // One Tone.Player per hit stops its own previous sound dead when it is
+  // started again. A take twice as long as its one-bar loop was cut in half
+  // at the top of every cycle. Approved fix: players take turns.
+  const opts = { volume: 1, swing: 0, echo: 0, tone: 1 };
+  const runCycles = (n: number): void => {
+    const callback = h.repeats.at(-1)?.[0] as (time: number) => void;
+    for (let i = 0; i < n; i++) callback(i * 2);
+  };
+
+  it("alternates players when the sound outlasts its cycle, with a fade for a steal", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = { ...snappedClip(), loopBeats: 8 }; // 4 s in a 2 s bar
+    await port.prepareClip(clip);
+    h.starts.length = 0;
+    port.scheduleStep(clip, 0, 16, opts);
+    runCycles(4);
+    const players = h.starts.map((s) => s.player);
+    expect(new Set(players).size).toBe(2);
+    expect(players[0]).not.toBe(players[1]);
+    expect(players[0]).toBe(players[2]);
+    for (const p of new Set(players)) expect((p as { fadeOut: number }).fadeOut).toBeGreaterThan(0);
+  });
+
+  it("keeps one player, with no fade, when the sound fits its cycle", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = snappedClip(); // 4 beats = exactly one bar
+    await port.prepareClip(clip);
+    h.starts.length = 0;
+    port.scheduleStep(clip, 0, 16, opts);
+    runCycles(3);
+    const players = new Set(h.starts.map((s) => s.player));
+    expect(players.size).toBe(1);
+    expect(([...players][0] as { fadeOut: number }).fadeOut).toBe(0);
+  });
+
+  it("never takes more than three players, however long the take", async () => {
+    const port = new ToneSoundPort();
+    await port.resume();
+    const clip = { ...snappedClip(), loopBeats: 32 }; // 16 s in a 2 s bar
+    await port.prepareClip(clip);
+    h.starts.length = 0;
+    port.scheduleStep(clip, 0, 16, opts);
+    runCycles(9);
+    expect(new Set(h.starts.map((s) => s.player)).size).toBe(3);
   });
 });
 

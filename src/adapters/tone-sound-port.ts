@@ -70,6 +70,11 @@ const MASTER_CEILING = 0.9;
 /** Points in the master limiter's curve: 0.002 of level per step. */
 const MASTER_LIMIT_CURVE_POINTS = 4096;
 
+/** Most players one scheduled hit may take turns with (see `ringPlayers`). */
+const MAX_RING_VOICES = 3;
+/** The fade a ringing hit's oldest player gets when a fourth turn needs it. */
+const RING_STEAL_FADE_SEC = 0.012;
+
 /** Envelope-settle margin added to a voice's release before it may be reused. */
 const VOICE_TAIL_MARGIN_SEC = 0.05;
 
@@ -416,14 +421,45 @@ export class ToneSoundPort implements SoundPort {
   private readonly voiceKinds = new Map<MelodyVoice, string>();
 
   /** A scheduled sample player on `buf` feeding `destination`. */
-  private scheduledPlayer(buf: AudioBuffer, destination: Tone.ToneAudioNode): Tone.Player {
+  private scheduledPlayer(
+    buf: AudioBuffer,
+    destination: Tone.ToneAudioNode,
+    fadeOutSec = 0,
+  ): Tone.Player {
     let player = this.sparePlayers.pop();
     if (player) player.buffer.set(buf);
     else player = new Tone.Player({ url: buf, context: this.liveCtx });
     player.connect(destination);
     player.playbackRate = this.tempoScale; // join a terrain already underway
+    // Set every time: a recycled player keeps whatever its last job set.
+    player.fadeOut = fadeOutSec;
     this.scheduledVoices.push(player);
     return player;
+  }
+
+  /**
+   * The players that take turns sounding one scheduled hit, cycle after cycle.
+   *
+   * A `Tone.Player` started again while it is still sounding stops its newest
+   * source dead (`Source.start` → `restart`). One player per hit is right for
+   * a drum, but a recording LONGER than its loop was cut off at the top of
+   * every cycle. Approved 2026-10-05 (card C2, "let it ring"): such a hit gets
+   * as many players as it takes for each cycle's sound to finish, taking turns,
+   * capped at `MAX_RING_VOICES`. Past the cap the oldest is cut — with a short
+   * fade (`RING_STEAL_FADE_SEC`), never dead. Player count is the bound.
+   *
+   * Terrain needs no allowance: it scales the transport and every player's
+   * playback rate together, so a sound's length in cycles never changes.
+   */
+  private ringPlayers(
+    buf: AudioBuffer,
+    destination: Tone.ToneAudioNode,
+    cycleSec: number,
+  ): Tone.Player[] {
+    const need = cycleSec > 0 ? Math.ceil(buf.duration / cycleSec - 1e-6) : 1;
+    const count = Math.min(MAX_RING_VOICES, Math.max(1, need));
+    const fade = count > 1 ? RING_STEAL_FADE_SEC : 0;
+    return Array.from({ length: count }, () => this.scheduledPlayer(buf, destination, fade));
   }
 
   /** A melody voice for `instrument`. `sampled` separates a Voice Keys sampler
@@ -1268,6 +1304,7 @@ export class ToneSoundPort implements SoundPort {
     barOffset = 0,
   ): void {
     const interval = `${Math.max(1, cycleBars)}m`;
+    const cycleSec = this.barSec() * Math.max(1, cycleBars);
     const offset =
       this.barSec() * barOffset + this.stepOffset(stepIndex, totalSteps, opts.swing);
     const stepDur = this.stepDurationSec(totalSteps);
@@ -1288,6 +1325,19 @@ export class ToneSoundPort implements SoundPort {
     // longer (stretch now audible) and `pitch` tunes them. Effected clips and
     // recordings (a "funny" voice sent to Home) still go through resolveClip so
     // they loop with their baked effects.
+    // Each cycle's hit goes to the next player in the ring (one player for
+    // anything that finishes inside its cycle, which is every drum).
+    const register = (buf: AudioBuffer): void => {
+      const ring = this.ringPlayers(this.playable(buf), this.scheduledDestination(opts), cycleSec);
+      let turn = 0;
+      this.liveTransport.scheduleRepeat((time) => {
+        this.recordSchedTiming(time);
+        const player = ring[turn % ring.length] as Tone.Player;
+        turn++;
+        startAll(player, time);
+      }, interval, offset);
+    };
+
     const kind = builtinDrumKind(clip);
     if (kind) {
       // A rolled drum stays its natural length (crisp sub-hits); otherwise length
@@ -1297,24 +1347,9 @@ export class ToneSoundPort implements SoundPort {
         roll > 1
           ? defDur
           : Math.max(defDur, Math.min(lengthSteps, totalSteps) * stepDur);
-      const player = this.scheduledPlayer(
-        this.playable(this.drumBuffer(kind, durationSec, pitch)),
-        this.scheduledDestination(opts),
-      );
-      this.liveTransport.scheduleRepeat((time) => {
-        this.recordSchedTiming(time);
-        startAll(player, time);
-      }, interval, offset);
+      register(this.drumBuffer(kind, durationSec, pitch));
       return;
     }
-
-    const register = (buf: AudioBuffer): void => {
-      const player = this.scheduledPlayer(this.playable(buf), this.scheduledDestination(opts));
-      this.liveTransport.scheduleRepeat((time) => {
-        this.recordSchedTiming(time);
-        startAll(player, time);
-      }, interval, offset);
-    };
     const key = preparedClipKey(clip, this.tempoBpm);
     const prepared = this.preparedClips.get(key);
     if (prepared) {
