@@ -264,6 +264,16 @@ the curve stops at 0.9 and not 0.97 (0.97 left samples at full scale).
 
 ## Verification
 
+Re-measured 2026-10-10 at the P8 controls batch (`8b0532e`: ring players for
+long recordings, My Voice on/off switches, the starter beat, the Yard bar, the
+one-row Track header): typecheck and lint passed; `npm test` 734 tests in 50
+files, none skipped; the full local browser suite with the nix Chromium on
+hwc-home was 76 passed, 1 opt-in skipped, 2 failed, of which `terrain.spec`
+("a hill bends the live transport") passed when re-run alone (the documented
+load flake) and `track-release-evidence.spec` failed on a stale STOP slot
+reference, fixed in the same commit and green on re-run. The 2026-09-19
+figures below are the previous measurement.
+
 - `npm run typecheck`: passed.
 - `npm test`: 712 tests in 47 files passed; none skipped.
 - `npm run lint`: passed.
