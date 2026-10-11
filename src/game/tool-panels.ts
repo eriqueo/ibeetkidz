@@ -78,7 +78,8 @@ const WAVES: { wave: ThereminWave; label: string; emoji: string }[] = [
 
 /** What every tool panel needs to render, pushed from React on each change. */
 export interface ToolModel {
-  readonly voice: { hasClip: boolean; status: string; appliedFx: number; onHome: boolean };
+  /** `effects`: the effects the take is wearing, so their switches show ON. */
+  readonly voice: { hasClip: boolean; status: string; effects: readonly EffectId[]; onHome: boolean };
   readonly keys: { hasClip: boolean; status: string; keyLabels: readonly string[]; onHome: boolean };
   readonly pads: readonly {
     id: string;
@@ -225,8 +226,39 @@ export class PanelButton {
     this.container.setScale(1);
     // Restore the button's OWN fill — resetting to the dark default turned
     // every coloured tile (pads / FX) permanently dark after its first tap.
-    if (this.face && this.faceDef) this.face.setFrame(this.faceDef.base);
+    // A latched switch rests DOWN: that is what ON looks like.
+    if (this.face && this.faceDef) this.face.setFrame(this.latched ? this.pressedFrame() : this.faceDef.base);
     else this.bg.setFillStyle(this.fill, 1);
+    this.latchRing?.setVisible(this.latched);
+  }
+
+  /** ON/OFF switches (the My Voice effects): the key stays seated in its
+   *  socket and wears a gold ring while it is ON. */
+  private latched = false;
+  private latchRing?: Phaser.GameObjects.Rectangle;
+
+  setLatched(on: boolean): void {
+    if (on === this.latched) return;
+    this.latched = on;
+    if (!this.latchRing) {
+      this.latchRing = this.container.scene.add
+        .rectangle(0, 0, 10, 10)
+        .setStrokeStyle(5, 0xffd166, 1)
+        .setFillStyle(0xffd166, 0.12);
+      this.container.addAt(this.latchRing, 0);
+    }
+    this.syncLatchRing();
+    this.rest();
+  }
+
+  /** e2e seam: is this switch showing ON? */
+  get isLatched(): boolean { return this.latched; }
+
+  private syncLatchRing(): void {
+    if (!this.latchRing) return;
+    const w = this.face ? this.face.displayWidth : this.hit.width;
+    const h = this.face ? this.face.displayHeight : this.hit.height;
+    this.latchRing.setSize(w * 1.04, h * 1.04).setDisplayOrigin(w * 0.52, h * 0.52);
   }
 
   place(b: Box, fontPx = 12): void {
@@ -282,6 +314,7 @@ export class PanelButton {
       const d = Math.min(b.w, b.h) * (showCaption ? 0.46 : 0.62);
       this.icon.setDisplaySize(d, d).setPosition(0, showCaption ? -faceH * 0.13 : 0);
     }
+    this.syncLatchRing();
   }
 
   setText(t: string): void { this.label.setText(t); }
@@ -555,8 +588,8 @@ export class VoiceToolPanel extends BaseToolPanel {
   private fxBtns: { id: EffectId; btn: PanelButton }[] = [];
   /** Which of the plate's eight sockets each of the six tiles sits in. */
   private static readonly FX_SOCKETS = [0, 1, 2, 3, 5, 6] as const;
-  private sendBeat!: PanelButton;
-  private sendNotes!: PanelButton;
+  private playBtn!: PanelButton;
+  private sendBtn!: PanelButton;
 
   constructor(scene: Phaser.Scene) { super(scene, "record-voicefx", "🎤 My Voice"); }
 
@@ -578,13 +611,14 @@ export class VoiceToolPanel extends BaseToolPanel {
       id: t.id,
       btn: new PanelButton(this.scene, `${t.emoji}\n${t.label}`, () => EventBus.emit("tool-voice-fx", t.id), t.color, { face: "pad-key", tintFace: true, icon: fxIconFrame(t.id), caption: t.label, captionCols: FX_CAPTION_COLS }),
     }));
-    // NOT two "done" buttons — a CHOICE of what the recording becomes, which is
-    // the one thing DONE cannot decide for the kid. Labelled as a pick ("make
-    // it a…") rather than as two rival ways to finish, so the single DONE below
-    // stays the only way out of every machine.
-    this.sendBeat = new PanelButton(this.scene, "🥁 MAKE A BEAT", () => EventBus.emit("tool-voice-send", "beat"), 0x2a5c2a);
-    this.sendNotes = new PanelButton(this.scene, "🎹 MAKE NOTES", () => EventBus.emit("tool-voice-send", "notes"), 0x2a5c2a);
-    this.add([this.recordBtn.container, this.status, ...this.fxBtns.map((f) => f.btn.container), this.sendBeat.container, this.sendNotes.container]);
+    // The two bays: hear it, and put it in the car. They used to be a CHOICE —
+    // MAKE A BEAT or MAKE NOTES — and Eric (2026-10-05) did not see the
+    // difference: "i dont think there should be an option to treat a recording
+    // as different". A recording goes in the car as itself; singing notes is
+    // what Voice Keys is for.
+    this.playBtn = new PanelButton(this.scene, "▶ PLAY IT", () => EventBus.emit("tool-voice-play"), 0x2a4a6c);
+    this.sendBtn = new PanelButton(this.scene, "🚂 PUT IN CAR", () => EventBus.emit("tool-voice-send"), 0x2a5c2a);
+    this.add([this.recordBtn.container, this.status, ...this.fxBtns.map((f) => f.btn.container), this.playBtn.container, this.sendBtn.container]);
   }
 
   protected layoutContent(): void {
@@ -610,19 +644,26 @@ export class VoiceToolPanel extends BaseToolPanel {
       const b = sockets[socket];
       if (b) this.fxBtns[k]?.btn.place(b, Math.max(9, b.h * 0.18));
     });
-    this.sendBeat.place(sendA, Math.max(10, sendA.h * 0.3));
-    this.sendNotes.place(sendB, Math.max(10, sendB.h * 0.3));
+    this.playBtn.place(sendA, Math.max(10, sendA.h * 0.3));
+    this.sendBtn.place(sendB, Math.max(10, sendB.h * 0.3));
   }
 
   apply(model: ToolModel): void {
     const v = model.voice;
     this.recordBtn.setText(v.hasClip ? "🎤 RECORD AGAIN" : "🎤 HOLD TO RECORD");
     this.status.setText(v.status);
-    this.fxBtns.forEach(({ btn }) => btn.setVisible(v.hasClip));
-    this.sendBeat.setVisible(v.hasClip);
-    this.sendNotes.setVisible(v.hasClip);
-    this.sendBeat.setEnabled(!v.onHome);
-    this.sendNotes.setEnabled(!v.onHome);
+    this.fxBtns.forEach(({ id, btn }) => {
+      btn.setVisible(v.hasClip);
+      btn.setLatched(v.effects.includes(id));
+    });
+    this.playBtn.setVisible(v.hasClip);
+    this.sendBtn.setVisible(v.hasClip);
+    this.sendBtn.setEnabled(!v.onHome);
+  }
+
+  /** e2e seam: which effect switches show ON. */
+  get effectsShownOn(): EffectId[] {
+    return this.fxBtns.filter(({ btn }) => btn.isLatched).map(({ id }) => id);
   }
 }
 

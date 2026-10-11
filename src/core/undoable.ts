@@ -37,7 +37,7 @@ export const UNDO_POLICY = {
   addClip: silent,
   removeClip: offer("Sound gone"),
   applyEffect: silent,
-  chooseEffect: silent,
+  toggleEffect: silent,
   removeEffect: offer("Effect gone"),
   renameClip: silent,
   setClipLoop: silent,

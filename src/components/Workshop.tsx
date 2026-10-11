@@ -3,6 +3,7 @@ import { useApp, useProject } from "../app/context.tsx";
 import { activeLayers, activePart, makeLayer, nextRecordingLabel } from "../core/project-state.ts";
 import {
   STEP_COUNT,
+  MAX_CLIP_EFFECTS,
   type CarType,
   type LaneKind,
   type EffectId,
@@ -229,7 +230,7 @@ export const Workshop: FC = () => {
     const melodyCells = Array.from({ length: MELODY_ROWS }, (_, degree) =>
       Array.from({ length: STEP_COUNT }, (_, step) => editLayer?.notes[step]?.some((n) => n.row === degree) ?? false));
     return {
-      voice: { hasClip: has(voiceClipId), status: voiceStatus, appliedFx: voiceClipId ? (project.clips[voiceClipId]?.effects.length ?? 0) : 0, onHome: onHome(voiceClipId) },
+      voice: { hasClip: has(voiceClipId), status: voiceStatus, effects: voiceClipId ? (project.clips[voiceClipId]?.effects.map((e) => e.id) ?? []) : [], onHome: onHome(voiceClipId) },
       keys: { hasClip: has(keysClipId), status: keysStatus, keyLabels, onHome: onHome(keysClipId) },
       pads,
       padsFull: layers.length >= VISIBLE_LANE_CAP,
@@ -517,19 +518,29 @@ export const Workshop: FC = () => {
         dispatch({ type: "addClip", clip });
         setVoiceClipId(clip.id);
         sound.play(clip);
-        setVoiceStatus("Make it funny with an effect, then send it! 🎉");
+        setVoiceStatus("Tap an effect to turn it on — then PUT IN CAR! 🎉");
       },
     );
+    // Each tap switches one effect ON or OFF and plays the take once, so the
+    // kid hears exactly what that switch did (Eric, 2026-10-05). Two at most.
     const onVoiceFx = (effectId: EffectId): void => {
       const id = voiceClipRef.current;
       if (!id) return;
       const amount = effectId === "crazy" ? rng.next() : 0.6;
-      // A PICK: each tile replaces the last, so a kid can compare them. They
-      // used to stack, and the fourth tap was mush with no way back.
-      dispatch({ type: "chooseEffect", clipId: id, effect: { id: effectId, amount } });
+      dispatch({ type: "toggleEffect", clipId: id, effect: { id: effectId, amount } });
       const updated = getProject().clips[id];
       if (updated) sound.play(updated);
-      setVoiceStatus("✨ Try another, or put it in your car!");
+      const on = updated?.effects.length ?? 0;
+      setVoiceStatus(
+        on === 0 ? "Plain voice! Tap an effect to turn it on."
+          : on < MAX_CLIP_EFFECTS ? "✨ Add one more, or PUT IN CAR!"
+            : "✨ Two on! Tap one to turn it off.",
+      );
+    };
+    const onVoicePlay = (): void => {
+      const id = voiceClipRef.current;
+      const clip = id ? getProject().clips[id] : undefined;
+      if (clip) sound.play(clip);
     };
     // The voice was just put in the car: let the kid HEAR it there. Recording
     // stopped the loop (the mic would hear the speakers), and until this the
@@ -539,21 +550,19 @@ export const Workshop: FC = () => {
         console.warn("audio playback failed", err);
       });
     };
-    const onVoiceSend = (as: "beat" | "notes"): void => {
+    // One way in: the take plays once at the top of every loop, as itself with
+    // its effects on. (The former MAKE NOTES route made it a pitched melody,
+    // which ignored the effects — the C4 card — and was the "different
+    // treatment" Eric did not want. Voice Keys still makes notes.)
+    const onVoiceSend = (): void => {
       const id = voiceClipRef.current;
       const p = getProject();
       const clip = id ? p.clips[id] : undefined;
       if (!id || !clip) return;
       if (!activeLayers(p).some((l) => l.id === id)) {
-        if (as === "beat") {
-          const steps = new Array<boolean>(STEP_COUNT).fill(false);
-          steps[0] = true;
-          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "mic", steps }) });
-        } else if (clip.source.kind === "recording") {
-          const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
-          ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
-          dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "melody", instrument: voiceInstrumentId(clip.source.bufferId), station: "mic", notes }) });
-        }
+        const steps = new Array<boolean>(STEP_COUNT).fill(false);
+        steps[0] = true;
+        dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "mic", steps }) });
       }
       // A full car refuses the lane. Keep the take and say why, rather than
       // closing on a recording that silently went nowhere.
@@ -709,7 +718,7 @@ export const Workshop: FC = () => {
       ["tool-melody-twice-mode", onTwiceMode],
       ["tool-lane-wobble", onLaneWobble], ["tool-lane-crunch", onLaneCrunch],
       ["tool-lane-volume", onLaneVolume], ["tool-lane-volume-done", onLaneVolumeDone],
-      ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-send", onVoiceSend],
+      ["tool-voice-record", onVoiceRecord], ["tool-voice-fx", onVoiceFx], ["tool-voice-play", onVoicePlay], ["tool-voice-send", onVoiceSend],
       ["tool-keys-record", onKeysRecord], ["tool-keys-audition", onKeysAudition], ["tool-keys-send", onKeysSend],
       ["tool-pads-play", onPadsPlay],
       ["tool-magic-pointer", onMagicPointer], ["tool-magic-wave", onMagicWave],

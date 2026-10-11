@@ -174,10 +174,14 @@ export interface EventMap {
   "tool-closed": [];
   // My Voice: hold-to-record (down = true, release = false).
   "tool-voice-record": [start: boolean];
-  // My Voice: a funny-effect tile was tapped.
+  // My Voice: a funny-effect switch was tapped (on → off, off → on).
   "tool-voice-fx": [effectId: EffectId];
-  // My Voice: send the take to the car as a beat lane or a melody (notes) lane.
-  "tool-voice-send": [as: "beat" | "notes"];
+  // My Voice: hear the take once, wearing whichever effects are on.
+  "tool-voice-play": [];
+  // My Voice: put the take in the car. ONE way (Eric, 2026-10-05: "i dont
+  // think there should be an option to treat a recording as different"); it
+  // used to offer MAKE A BEAT or MAKE NOTES. Singing notes is Voice Keys' job.
+  "tool-voice-send": [];
   // Voice Keys: hold-to-sing (down = true, release = false).
   "tool-keys-record": [start: boolean];
   // Voice Keys: an in-scale key was tapped (scale degree / row).

@@ -70,14 +70,25 @@ describe("reduce", () => {
     expect(s.clips["c1"]?.effects.map((e) => e.id)).toEqual(["reverse", "echo"]);
   });
 
-  it("chooseEffect is a pick: the clip wears exactly the last one chosen", () => {
+  it("toggleEffect switches an effect on, and the same press switches it off", () => {
+    let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
+    const toggle = (id: "reverse" | "pitchUp" | "pitchDown" | "robot") =>
+      (s = reduce(s, { type: "toggleEffect", clipId: "c1", effect: { id, amount: 0.6 } }));
+    const ids = () => s.clips["c1"]?.effects.map((e) => e.id);
+    toggle("robot");
+    expect(ids()).toEqual(["robot"]);
+    toggle("robot");
+    expect(ids()).toEqual([]);
+  });
+
+  it("toggleEffect keeps at most two on, the oldest giving way", () => {
     let s = reduce(emptyProject("p"), { type: "addClip", clip: clip("c1") });
     for (const id of ["reverse", "pitchUp", "pitchDown", "robot"] as const) {
-      s = reduce(s, { type: "chooseEffect", clipId: "c1", effect: { id, amount: 0.6 } });
+      s = reduce(s, { type: "toggleEffect", clipId: "c1", effect: { id, amount: 0.6 } });
     }
-    expect(s.clips["c1"]?.effects.map((e) => e.id)).toEqual(["robot"]);
+    expect(s.clips["c1"]?.effects.map((e) => e.id)).toEqual(["pitchDown", "robot"]);
     const same = emptyProject("p");
-    expect(reduce(same, { type: "chooseEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(same);
+    expect(reduce(same, { type: "toggleEffect", clipId: "nope", effect: { id: "robot", amount: 1 } })).toBe(same);
   });
 
   it("ignores applyEffect for unknown clip (returns same reference)", () => {

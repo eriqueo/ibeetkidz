@@ -19,6 +19,7 @@ import {
   CAR_TYPES,
   MAX_BPM,
   MAX_CARS,
+  MAX_CLIP_EFFECTS,
   MAX_LAYERS,
   MAX_PATTERNS,
   MIN_BPM,
@@ -522,10 +523,14 @@ export function reduce(state: Project, cmd: Command): Project {
       return { ...state, clips: { ...state.clips, [clip.id]: updated } };
     }
 
-    case "chooseEffect": {
+    case "toggleEffect": {
       const clip = state.clips[cmd.clipId];
       if (!clip) return state;
-      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, effects: [cmd.effect] } } };
+      const on = clip.effects.some((e) => e.id === cmd.effect.id);
+      const effects = on
+        ? clip.effects.filter((e) => e.id !== cmd.effect.id)
+        : [...clip.effects, cmd.effect].slice(-MAX_CLIP_EFFECTS);
+      return { ...state, clips: { ...state.clips, [clip.id]: { ...clip, effects } } };
     }
 
     case "removeEffect": {

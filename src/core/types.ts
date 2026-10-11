@@ -251,10 +251,12 @@ export type Command =
   | { readonly type: "addClip"; readonly clip: Clip }
   | { readonly type: "removeClip"; readonly clipId: string }
   | { readonly type: "applyEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
-  /** A PICK, not a stack: the clip wears exactly this effect. The My Voice rack
-   *  is eight tiles a kid taps to compare; stacking them turned the fourth tap
-   *  into reverse+chipmunk+monster+robot mush with no way back. */
-  | { readonly type: "chooseEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
+  /** An ON/OFF switch: an effect the clip wears comes off, one it does not
+   *  goes on — and at most `MAX_CLIP_EFFECTS` at once, the oldest giving way
+   *  (Eric, 2026-10-05: "toggle on or off the effects … fine if you can only
+   *  pick one or two"). Unlimited stacking turned the fourth tap into
+   *  reverse+chipmunk+monster+robot mush. */
+  | { readonly type: "toggleEffect"; readonly clipId: string; readonly effect: EffectDescriptor }
   // Remove one effect from a clip's chain by position (full FX editing: a kid can
   // re-open a recording later and peel an effect back off). No-op out of range.
   | { readonly type: "removeEffect"; readonly clipId: string; readonly index: number }
@@ -337,6 +339,9 @@ export type Command =
       readonly targetPartId: string;
       readonly newLayerId: string;
     };
+
+/** The most effects one recording wears at once (see `toggleEffect`). */
+export const MAX_CLIP_EFFECTS = 2;
 
 export const MIN_BPM = 40;
 export const MAX_BPM = 220;
