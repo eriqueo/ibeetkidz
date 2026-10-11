@@ -692,11 +692,21 @@ export const Workshop: FC = () => {
     const onMagicSend = (): void => {
       const id = magicClipRef.current;
       const p = getProject();
-      if (!id || !p.clips[id] || activeLayers(p).some((l) => l.id === id)) return;
-      const steps = new Array<boolean>(STEP_COUNT).fill(false);
-      steps[0] = true;
-      dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "magic", steps }) });
+      if (!id || !p.clips[id]) return;
+      if (!activeLayers(p).some((l) => l.id === id)) {
+        const steps = new Array<boolean>(STEP_COUNT).fill(false);
+        steps[0] = true;
+        dispatch({ type: "addLayer", layer: makeLayer({ id, clipId: id, kind: "drum", station: "magic", steps }) });
+      }
+      // Same rule as My Voice and Voice Keys: a full car refuses the lane, so
+      // keep the take and say why instead of closing on a recording that went
+      // nowhere (roadmap "Full-car feedback", the Magic Pad was the one left).
+      if (!activeLayers(getProject()).some((l) => l.id === id)) {
+        setMagicStatus("This car is full! Take a sound out, or make a new car.");
+        return;
+      }
       setOpenTool(null);
+      hearTheCar();
     };
 
     const subs = [
