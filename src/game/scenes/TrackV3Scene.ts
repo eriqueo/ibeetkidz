@@ -67,6 +67,7 @@ import {
   trackHeaderSlots,
   trackJobSlots,
   trackSpeedSlider,
+  HEADER_PLATE_SLICE,
   type TrackJobId,
   type TrackToolbarId,
   type PlacedRect,
@@ -77,14 +78,9 @@ import { bpmAtX, xForBpm, type SliderRail } from "../speed-slider.ts";
 // The oval already owns this panel; the side-scroller mounts the SAME class
 // rather than growing a second SEND flow.
 import { SendSongPanel, type SendUiState } from "../send-panel.ts";
-import { PanelButton, FONT, INK, PANEL_BG, PANEL_EDGE } from "../tool-panels.ts";
-import {
-  TRACK_CAR_ACTION_LAYOUT,
-  trackCarActionChoices,
-  trackCarActionSlots,
-  type TrackCarActionKind,
-} from "../track-car-actions.ts";
-import { CAR_BODY_RAIL_TOP, crewLayout } from "../track-car-art.ts";
+import { trackCarActionChoices, type TrackCarActionKind } from "../track-car-actions.ts";
+import { openCarChooser } from "../car-chooser.ts";
+import { CAR_BODY_RAIL_TOP, GROUND_RAIL_TOP, LOCO_RAIL_TOP, crewLayout } from "../track-car-art.ts";
 
 /**
  * Real art, if any has been delivered. Vite resolves this at build time, so an
@@ -228,6 +224,14 @@ const HILLS_Y = 470;
 const TREES_Y = 650;
 const GROUND_Y = 870; // top of the ground slab
 const RAIL_Y = 900; // where wheels touch on FLAT ground
+
+/** Contact shadows under the engine and cars (GAME_FEEL Law 2: nothing should
+ *  float). Off since 2026-10-05: in this side view the shadow lay on the
+ *  ballast below the rail as a dark smear Eric called "a weird shadow", and
+ *  with the ground now drawn from the rail down the wheels visibly stand on
+ *  the rail, which is the contact Law 2 asks for. Permanent by design until a
+ *  side-view shadow is painted; the shadow objects stay so it can return. */
+const TRAIN_CONTACT_SHADOWS = false;
 const FORE_Y = 865;
 const FORE_H = 130;
 const TUNNEL_TOP_Y = RAIL_Y - TUNNEL_CAP.height - TUNNEL_ROCK.height - 200;
@@ -440,10 +444,14 @@ export class TrackV3Scene extends Phaser.Scene {
       .tileSprite(0, TREES_Y, W, GROUND_Y - TREES_Y + 40, "trk-trees")
       .setOrigin(0, 0)
       .setDepth(DEPTH.trees);
+    // From the rail down: the art's top rows are a flat dark band that read
+    // as a road under the train (see `GROUND_RAIL_TOP`). The trees layer
+    // already runs 40 px past GROUND_Y, so it fills the strip above the rail.
     this.ground = this.add
-      .tileSprite(0, GROUND_Y, W, H - GROUND_Y, "trk-ground")
+      .tileSprite(0, GROUND_Y + GROUND_RAIL_TOP, W, H - GROUND_Y - GROUND_RAIL_TOP, "trk-ground")
       .setOrigin(0, 0)
       .setDepth(DEPTH.ground);
+    this.ground.tilePositionY = GROUND_RAIL_TOP;
     // Law 3: the actor must be able to pass BEHIND something, or the scene is a
     // decal on a photograph. A strip, not a slab — a slab hides the rails.
     this.fore = this.add
@@ -586,6 +594,8 @@ export class TrackV3Scene extends Phaser.Scene {
 
     // The engine, with wheels in the arches its own art draws for them.
     const locoBody = this.add.image(0, 0, "trk-loco").setOrigin(0.5, 1);
+    // Its own strip of rail, like the cars' (see `cropBodyRail`).
+    locoBody.setCrop(0, 0, locoBody.width, LOCO_RAIL_TOP);
     this.locoWheels = LOCO_WHEELS.map((w) =>
       this.add.image(w.dx, -w.r, "trk-wheel").setDisplaySize(w.r * 2, w.r * 2),
     );
@@ -729,34 +739,91 @@ export class TrackV3Scene extends Phaser.Scene {
     // feature-loss against the oval (tempo and SEND lived only on the oval),
     // and squeezing the controls into one row would
     // give each the ~200 px slot that made the job-bar pictures unreadable.
-    // Row 1 is WHERE you are and WHETHER it is playing; row 2 is HOW it plays.
-    this.plate("panel-header-v2", TRACK_HEADER.plate);
+    //
+    // Since 2026-10-05 it is ONE row again, but of four bigger controls rather
+    // than nine small ones — see `TRACK_HEADER` for Eric's grouping.
+    this.slicedPlate("panel-header-v2", TRACK_HEADER.plate);
 
-    // A 5-column GRID, solved in `scene-layout.ts` against the plate's MEASURED
-    // parchment field. The x's this replaces were picked by hand against a
-    // GUESSED field ("~400..2064"); it is really 509..2028.
+    // Packed left to right in `scene-layout.ts` against the plate's MEASURED
+    // parchment field.
     const s = trackHeaderSlots();
     this.placeButton("btn-nav-map", s["map"]!,
       () => void EventBus.emit("track-nav", "map"), "MAP");
-    this.placeButton("btn-track-ride", s["ride"]!,
+    // RIDE and STOP share one place: the key shows what pressing it will do.
+    // Both are built and `setMoving` shows one; an invisible object takes no
+    // input in Phaser, so the hidden face can never be pressed by mistake.
+    this.rideKey = this.placeButton("btn-track-ride", s["ride"]!,
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
-    this.placeButton("btn-transport-stop", s["stop"]!,
+    this.stopKey = this.placeButton("btn-transport-stop", s["ride"]!,
       () => void EventBus.emit("transport-stop"), "STOP");
-    // Empty the train and start the build over. AR-043's painted plaque is a
-    // near-square 512 canvas, so it takes a square slot like RIDE and STOP
-    // rather than the landscape one the keycap fallback wanted.
-    this.placeButton("btn-track-clear", s["clear"]!,
-      () => void EventBus.emit("track-clear-train"), "CLEAR");
-    // Render the song to a WAV and offer share/save. On row 1, bookending MAP:
-    // both are wide painted plaques and both are ways OUT of this view, and
-    // putting it here leaves row 2 as five even cells instead of six crammed
-    // ones. The oval has had SEND since AR-020; without it the side-scroller
-    // could not have become the default without losing the one feature that
-    // gets a song off the device.
+    this.showRideOrStop();
+    // CLEAR (empty the whole train) is not on the header since 2026-10-05:
+    // Eric's grouping named MAP, RIDE/STOP, the slider and SEND. Where it
+    // goes instead is an open question to him; `track-clear-train` and its
+    // undo are untouched.
+    //
+    // Render the song to a WAV and offer share/save. Bookending MAP: both are
+    // wide painted plaques and both are ways OUT of this view. The oval has
+    // had SEND since AR-020; without it the side-scroller could not have
+    // become the default without losing the one feature that gets a song off
+    // the device.
     this.placeButton("btn-send-song", s["send"]!,
       () => void EventBus.emit("track-send"), "SEND");
 
     this.buildTransportRow();
+  }
+
+  /** The two faces of the RIDE/STOP key (see `buildTopBar`). */
+  private rideKey: readonly Phaser.GameObjects.GameObject[] = [];
+  private stopKey: readonly Phaser.GameObjects.GameObject[] = [];
+
+  private showRideOrStop(): void {
+    const setShown = (objects: readonly Phaser.GameObjects.GameObject[], shown: boolean): void => {
+      for (const o of objects) (o as unknown as Phaser.GameObjects.Components.Visible).setVisible(shown);
+    };
+    setShown(this.rideKey, !this.moving);
+    setShown(this.stopKey, this.moving);
+  }
+
+  /**
+   * `panel-header-v2` at any width without stretching its pixel art: both
+   * ends at one uniform scale (set by the height), and the middle repeated
+   * between them, cut where `HEADER_PLATE_SLICE` says the rivet row continues.
+   * Nothing at all if the atlas is still in flight (see `plate`).
+   */
+  private slicedPlate(sprite: string, rect: PlacedRect): void {
+    const def = UI_SPRITES[sprite];
+    if (!def || !this.textures.exists(UI_ATLAS_KEY)) return;
+    const s = rect.height / HEADER_PLATE_SLICE.texH;
+    const texW = HEADER_PLATE_SLICE.texW;
+    const texH = HEADER_PLATE_SLICE.texH;
+    const leftX = HEADER_PLATE_SLICE.left * texW;
+    const rightX = HEADER_PLATE_SLICE.right * texW;
+    const top = rect.y - rect.height / 2;
+    const left = rect.x - rect.width / 2;
+    const right = rect.x + rect.width / 2;
+    // One piece: a crop of the frame from native x `from` for `width` native
+    // px, with that crop's left edge drawn at screen x `at`, `sx` wide per px.
+    const piece = (from: number, width: number, at: number, sx: number): void => {
+      this.add
+        .image(at - from * sx, top, UI_ATLAS_KEY, def.base)
+        .setOrigin(0, 0)
+        .setScale(sx, s)
+        .setCrop(from, 0, width, texH)
+        .setDepth(DEPTH.hud);
+    };
+    piece(0, leftX, left, s);
+    piece(rightX, texW - rightX, right - (texW - rightX) * s, s);
+    // The middle as WHOLE repeats only, eased to fit: a repeat cut short
+    // breaks the rivet row against the right-hand end. `TRACK_HEADER` sizes
+    // the plate to exactly two, so the easing is 1 there.
+    const middleStart = left + leftX * s;
+    const middleW = right - (texW - rightX) * s - middleStart;
+    const repeats = Math.max(1, Math.round(middleW / ((rightX - leftX) * s)));
+    const sx = middleW / (repeats * (rightX - leftX));
+    for (let i = 0; i < repeats; i++) {
+      piece(leftX, rightX - leftX, middleStart + i * (rightX - leftX) * sx, sx);
+    }
   }
 
   /**
@@ -817,10 +884,11 @@ export class TrackV3Scene extends Phaser.Scene {
         .setName("track-control:speed-handle")
         .setAngle(90)
         .setDepth(DEPTH.hud + 2);
-      // Size the PAINTED cap, not its 512 canvas: across the rail it is as
-      // tall as the row allows; the art's own aspect sets its width.
+      // Size the PAINTED cap, not its 512 canvas: 84 px across the rail, small
+      // enough to leave the short rail visible on both sides; the art's own
+      // aspect sets its width.
       const [cx0, , cx1] = def.content;
-      handle.setScale(110 / ((cx1 - cx0) * handle.width));
+      handle.setScale(84 / ((cx1 - cx0) * handle.width));
       const [, cy0, , cy1] = def.content;
       handle.setOrigin(0.5, (cy0 + cy1) / 2);
       this.speedHandle = handle;
@@ -977,7 +1045,7 @@ export class TrackV3Scene extends Phaser.Scene {
     rect: { x: number; y: number; width: number; height: number },
     fire: () => void,
     caption: string,
-  ): void {
+  ): readonly Phaser.GameObjects.GameObject[] {
     const def = UI_SPRITES[sprite];
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
       const img = this.add
@@ -989,16 +1057,14 @@ export class TrackV3Scene extends Phaser.Scene {
       // optical size as the identical buttons in every other scene.
       placeUiSprite(img, def, rect);
       this.pressableAtlas(img, def, fire);
-      return;
+      return [img];
     }
-    this.pressable(
-      this.add
-        .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x3a3350, 1)
-        .setName(`track-control:${sprite}`)
-        .setDepth(DEPTH.hud + 1),
-      fire,
-    );
-    this.add
+    const key = this.add
+      .rectangle(rect.x, rect.y, rect.width, rect.height * 0.7, 0x3a3350, 1)
+      .setName(`track-control:${sprite}`)
+      .setDepth(DEPTH.hud + 1);
+    this.pressable(key, fire);
+    const label = this.add
       .text(rect.x, rect.y, caption, {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
@@ -1006,6 +1072,7 @@ export class TrackV3Scene extends Phaser.Scene {
       .setOrigin(0.5)
       .setFontSize(28)
       .setDepth(DEPTH.hud + 2);
+    return [key, label];
   }
 
   /** Armed press on an atlas button, swapping to its `-pressed` frame when the
@@ -1110,10 +1177,6 @@ export class TrackV3Scene extends Phaser.Scene {
   private pendingModeKinds = new Set<string>();
   /** The BACKWARDS switch's latched look — picture or keycap alike. */
   private backwardsLatch: (on: boolean) => void = () => {};
-  /** Temporary in-scene chooser for one car. It deliberately uses the existing
-   *  panel chrome so Manus can replace the faces later without changing what
-   *  the choices emit. */
-  private carActionPanel: Phaser.GameObjects.Container | null = null;
 
   /** The Lemmings job bar — on the shared transport plate, docked to the
    *  bottom edge. EIGHT switches (geometry trio + night/tunnel/tiny/giant +
@@ -1346,8 +1409,10 @@ export class TrackV3Scene extends Phaser.Scene {
   }
 
   setMoving(moving: boolean): void {
+    const changed = moving !== this.moving;
     this.moving = moving;
     if (!moving) this.speedBars = 0;
+    if (changed) this.showRideOrStop();
   }
 
   /** The transport committed these geometry spans; build them there. One per
@@ -1640,7 +1705,7 @@ export class TrackV3Scene extends Phaser.Scene {
       const y = Math.round(RAIL_Y - pose.lift + bob);
       body.setPosition(Math.round(x), y).setRotation(pose.angle).setScale(S);
       shadow
-        .setVisible(true)
+        .setVisible(TRAIN_CONTACT_SHADOWS)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
         .setRotation(pose.angle)
         .setScale(S * (1 - Math.abs(bob) / 60), S);
@@ -1689,7 +1754,7 @@ export class TrackV3Scene extends Phaser.Scene {
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
       s.shadow
-        .setVisible(true)
+        .setVisible(TRAIN_CONTACT_SHADOWS)
         .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
         .setRotation(pose.angle)
         .setScale(S * (1 - Math.abs(bob) / 60), S);
@@ -2056,7 +2121,7 @@ export class TrackV3Scene extends Phaser.Scene {
     playheadX: number;
     wheelAngle: number;
     /** The slider as drawn: the speed it shows and where its handle stands. */
-    speed: { shown: string | null; handleX: number | null; dragging: boolean };
+    speed: { shown: string | null; handleX: number | null; handleY: number | null; dragging: boolean };
     soundingCarX: number | null;
     soundingCarY: number | null;
     soundingCarAngle: number;
@@ -2118,6 +2183,7 @@ export class TrackV3Scene extends Phaser.Scene {
       speed: {
         shown: this.tempoText?.text ?? null,
         handleX: this.speedHandle?.x ?? null,
+        handleY: this.speedHandle?.y ?? null,
         dragging: this.speedDragging,
       },
       soundingCarX: now ? now.centreX : null,
@@ -2374,7 +2440,7 @@ export class TrackV3Scene extends Phaser.Scene {
       soundingDrawn: false,
       show: () => {
         root.setVisible(true);
-        shadow.setVisible(true);
+        shadow.setVisible(TRAIN_CONTACT_SHADOWS);
       },
       hide: () => {
         root.setVisible(false);
@@ -2417,85 +2483,29 @@ export class TrackV3Scene extends Phaser.Scene {
    *  surface; the named choices are stable integration points for painted art. */
   private showCarAction(car: V3Car): void {
     this.dismissCarAction();
-
-    const layout = TRACK_CAR_ACTION_LAYOUT;
-    const panelX = (W - layout.panelWidth) / 2;
-    const panelY = layout.panelY;
-    const drop = 10;
-    const root = this.add.container(0, 0).setDepth(DEPTH.hud + 20);
-    const backdrop = this.add
-      .rectangle(0, 0, W, H, 0x000000, 0.48)
-      .setOrigin(0)
-      .setInteractive();
-    // The dimmed world is the forgiving way out, matching the Workshop's
-    // sequencer popup. Dismissal is selection-only: it neither mutates the car
-    // nor consumes a TARP arm meant for a different car.
-    backdrop.on("pointerup", () => this.dismissCarAction());
-    const shadow = this.add
-      .rectangle(
-        panelX + drop,
-        panelY + drop,
-        layout.panelWidth,
-        layout.panelHeight,
-        PANEL_EDGE,
-        0.55,
-      )
-      .setOrigin(0);
-    const frame = this.add
-      .rectangle(
-        panelX,
-        panelY,
-        layout.panelWidth,
-        layout.panelHeight,
-        PANEL_BG,
-        1,
-      )
-      .setStrokeStyle(6, PANEL_EDGE)
-      .setOrigin(0);
-    const title = this.add
-      .text(W / 2, panelY + layout.titleOffsetY, `CAR ${car.number} — WHAT NEXT?`, {
-        fontFamily: FONT,
-        color: INK,
-        align: "center",
-      })
-      .setOrigin(0.5)
-      .setFontSize(28);
-    root.add([backdrop, shadow, frame, title]);
-
-    const choices = trackCarActionChoices(car.muted);
-    const slots = trackCarActionSlots(W);
-    choices.forEach((choice) => {
-      const slot = slots[choice.kind];
-      const button = new PanelButton(
-        this,
-        choice.label,
-        () => this.chooseCarAction(choice.kind, car.id),
-      );
-      button.container.setName(choice.objectName);
-      button.place(
-        {
-          x: slot.x - slot.width / 2,
-          y: slot.y - slot.height / 2,
-          w: slot.width,
-          h: slot.height,
-        },
-        24,
-      );
-      root.add(button.container);
-    });
-
-    this.carActionPanel = root;
+    // The shared pop-up (`car-chooser.ts`), which the Yard uses too.
+    this.closeCarAction = openCarChooser(
+      this,
+      `CAR ${car.number} — WHAT NEXT?`,
+      trackCarActionChoices(car.muted).map((choice) => ({
+        objectName: choice.objectName,
+        label: choice.label,
+        choose: () => this.chooseCarAction(choice.kind, car.id),
+      })),
+      DEPTH.hud + 20,
+    );
   }
 
   private chooseCarAction(kind: TrackCarActionKind, instanceId: string): void {
-    this.dismissCarAction();
     if (kind === "edit") EventBus.emit("track-car-edit", instanceId);
     if (kind === "toggle-mute") EventBus.emit("track-car-mute-toggled", instanceId);
   }
 
+  private closeCarAction: (() => void) | null = null;
+
   private dismissCarAction(): void {
-    this.carActionPanel?.destroy(true);
-    this.carActionPanel = null;
+    this.closeCarAction?.();
+    this.closeCarAction = null;
   }
 }
 

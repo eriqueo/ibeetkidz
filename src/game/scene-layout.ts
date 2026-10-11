@@ -106,82 +106,106 @@ export function headerColumnCentres(field: { x0: number; x1: number }, n: number
 }
 
 /**
- * The side-scroller's header deck: a 5-column, 2-row GRID.
- *
- * Both rows hang off the same five column centres, which is what makes it read
- * as one control panel rather than as two independent piles of hand-picked x's.
- * (An earlier pass spread each row flush end-to-end with equal gaps. Equal gaps
- * are not the same thing as a grid: with four controls in one row and six in the
- * other, nothing lined up vertically and the deck read as scattered.)
- *
- * Every cell is the box its art is contain-fitted into, so the cell is an upper
- * bound on the ink and containment can be checked against boxes instead of
- * pixels. `TrackV3Scene` binds a sprite, an event and a caption to each id; the
- * geometry lives here because that is what makes it testable without Phaser.
- *
- * EVERYTHING STAYS INSIDE THE PARCHMENT, on both axes. A previous pass gave the
- * rows licence to stand proud of the top and bottom rails on the theory that a
- * keycap overlapping the frame reads as mounted hardware. It does not — it reads
- * as a control falling off the panel, most obviously on the one key whose art
- * fills its cell edge to edge. The field is 306 px tall, so two rows of 134 with
- * a gap is what actually fits, and the controls are sized to that rather than
- * the plate being asked to hide the overflow.
+ * Where `panel-header-v2` (2687 × 687) may be cut so the plate can be any width
+ * WITHOUT stretching its pixel art: the two ends (brass corners and gear
+ * medallions) are drawn at one uniform scale, and the plain middle — wood rail,
+ * rivets and parchment — repeats between them. Each cut sits midway between
+ * two rivets of the top rail, and the middle is exactly twelve rivet pitches
+ * (139 px), so a repeat continues the rivet row instead of breaking it.
+ * Measured off the PNG, 2026-10-05: rivet centres 430, 564, 704 … 2240.
  */
+export const HEADER_PLATE_SLICE = {
+  texW: 2687,
+  texH: 687,
+  left: 498 / 2687,
+  right: 2168 / 2687,
+} as const;
+
+/** The parchment field of a SLICED `panel-header-v2` (see
+ *  `HEADER_PLATE_SLICE`). Its ends are at uniform scale, so the field's side
+ *  margins are fixed pixels, not fractions of the plate's width. */
+export function slicedHeaderField(plate: PlacedRect): { x0: number; x1: number; y0: number; y1: number } {
+  const s = plate.height / HEADER_PLATE_SLICE.texH;
+  const left = plate.x - plate.width / 2;
+  const top = plate.y - plate.height / 2;
+  return {
+    x0: left + HEADER_PLATE_FIELD.x0 * HEADER_PLATE_SLICE.texW * s,
+    x1: left + plate.width - (1 - HEADER_PLATE_FIELD.x1) * HEADER_PLATE_SLICE.texW * s,
+    y0: top + HEADER_PLATE_FIELD.y0 * plate.height,
+    y1: top + HEADER_PLATE_FIELD.y1 * plate.height,
+  };
+}
+
+/**
+ * The side-scroller's header: ONE row, grouped by what each control is for
+ * (Eric, 2026-10-05): "ride/stop, tempo slider, and then maybe just send on
+ * the right, and map on the left … that way we can also make the header not so
+ * tall, its huge."
+ *
+ *   MAP · SPEED readout + short slider · RIDE/STOP (centre, biggest) · SEND
+ *
+ * It was two rows of nine small keys on a 480-tall plate. One row of four
+ * lets every key grow from 134 to at least 160 and the plate drop to 340 (its
+ * visible bottom from 460 to 320). The plate keeps its art's shape at the new
+ * height because it is SLICED (`HEADER_PLATE_SLICE`), not squashed.
+ *
+ * Every cell is the box its art is contain-fitted into. Everything stays
+ * inside the parchment on both axes (the unit test checks).
+ */
+/** The header plate's height, and its width: exactly two repeats of the
+ *  sliced middle between the ends, so no repeat is cut short (a cut-short
+ *  repeat broke the rivet row where it met the right-hand end). */
+const HEADER_PLATE_H = 340;
+const HEADER_PLATE_W = Math.round(
+  HEADER_PLATE_SLICE.texW
+    * (1 + (HEADER_PLATE_SLICE.right - HEADER_PLATE_SLICE.left))
+    * (HEADER_PLATE_H / HEADER_PLATE_SLICE.texH),
+);
+
 export const TRACK_HEADER = {
   // 2560x1440 design space; the plate overhangs the TOP screen edge on purpose
-  // (chrome that runs off the frame is the frame). Its bottom stops at 460,
-  // clear of the hills band at 470.
-  plate: { x: 1280, y: 220, width: 1980, height: 480 },
-  columns: 5,
-  rows: [
-    // WHERE you are, WHETHER it is playing, and what leaves with the song. The
-    // two wide plaques (MAP, SEND) bookend the three transport keycaps.
-    {
-      cy: 142,
-      cells: [
-        // MAP and SEND are landscape plaques; their widths are their art's
-        // aspect at this row height, so the contain-fit does not leave dead
-        // space inside the cell that the grid then spaces around.
-        { id: "map", width: 256, height: 134 },
-        { id: "ride", width: 134, height: 134 },
-        { id: "stop", width: 134, height: 134 },
-        { id: "clear", width: 134, height: 134 },
-        { id: "send", width: 235, height: 134 },
-      ],
-    },
-    // HOW fast it plays: one slider with its readout (Eric, 2026-10-05: "instead
-    // of a slow fast and speed button, we just have a slider?"). The TARP key
-    // that also lived here is gone — tapping a car already offers TARP CAR /
-    // UNCOVER, so the key only repeated it ("kinda pointless"). See
-    // `trackSpeedSlider` for how the cell divides.
-    {
-      cy: 294,
-      cells: [
-        { id: "speed", width: 1300, height: 134 },
-      ],
-    },
-  ],
+  // (chrome that runs off the frame is the frame).
+  plate: { x: 1280, y: 150, width: HEADER_PLATE_W, height: HEADER_PLATE_H },
+  gap: 44,
+  // Eric, 2026-10-05: "the ride/stop button should be the biggest/most
+  // central", and the slider "smaller not as wide". So RIDE/STOP stands on
+  // the parchment's centre at nearly the parchment's full height; MAP and SEND
+  // hold the two ends; the SPEED readout and its short rail sit between MAP
+  // and RIDE. All the keys are square 512 canvases (AR-069), so square cells.
+  ride: 210,
+  key: 160,
+  speedMaxWidth: 480,
+  // In left-to-right order, for the tests and the scene.
+  order: ["map", "speed", "ride", "send"],
 } as const;
 
 /** Every header control's placed rect, keyed by cell id. */
 export function trackHeaderSlots(): Record<string, PlacedRect> {
-  const field = headerPlateField(TRACK_HEADER.plate);
-  const out: Record<string, PlacedRect> = {};
-  for (const row of TRACK_HEADER.rows) {
-    const xs = headerColumnCentres(field, row.cells.length);
-    row.cells.forEach((c, i) => {
-      out[c.id] = { x: xs[i] ?? 0, y: row.cy, width: c.width, height: c.height };
-    });
-  }
-  return out;
+  const field = slicedHeaderField(TRACK_HEADER.plate);
+  const cy = (field.y0 + field.y1) / 2;
+  const { gap, ride, key, speedMaxWidth } = TRACK_HEADER;
+  const rideX = (field.x0 + field.x1) / 2;
+  const mapX = field.x0 + gap + key / 2;
+  const sendX = field.x1 - gap - key / 2;
+  // The speed control takes the space between MAP and RIDE, up to its cap,
+  // centred in that space.
+  const spanL = mapX + key / 2 + gap;
+  const spanR = rideX - ride / 2 - gap;
+  const speedW = Math.min(speedMaxWidth, spanR - spanL);
+  return {
+    map: { x: mapX, y: cy, width: key, height: key },
+    speed: { x: (spanL + spanR) / 2, y: cy, width: speedW, height: key },
+    ride: { x: rideX, y: cy, width: ride, height: ride },
+    send: { x: sendX, y: cy, width: key, height: key },
+  };
 }
 
 /** Width of the SPEED readout at the left of the speed cell, and the clear
  *  space between it and the rail, and at the rail's far end (where the
  *  handle's half-width must still land inside the cell). */
-const SPEED_READOUT_W = 134;
-const SPEED_RAIL_GAP = 70;
-const SPEED_RAIL_END = 50;
+const SPEED_READOUT_W = 160;
+const SPEED_RAIL_GAP = 36;
+const SPEED_RAIL_END = 40;
 
 /** The speed cell, divided: the readout at its left, the rail across the rest. */
 export function trackSpeedSlider(): {
@@ -195,12 +219,11 @@ export function trackSpeedSlider(): {
   const right = cell.x + cell.width / 2;
   const readout = { x: left + SPEED_READOUT_W / 2, y: cell.y, width: SPEED_READOUT_W, height: cell.height };
   const rail = { x0: left + SPEED_READOUT_W + SPEED_RAIL_GAP, x1: right - SPEED_RAIL_END, y: cell.y };
-  const hit = {
-    x: (rail.x0 + rail.x1) / 2,
-    y: cell.y,
-    width: rail.x1 - rail.x0 + SPEED_RAIL_END * 2,
-    height: cell.height,
-  };
+  // From the readout's edge to the cell's end: all of the rail, and room for
+  // a finger on the handle at either stop.
+  const hitX0 = rail.x0 - SPEED_RAIL_GAP;
+  const hitX1 = rail.x1 + SPEED_RAIL_END;
+  const hit = { x: (hitX0 + hitX1) / 2, y: cell.y, width: hitX1 - hitX0, height: cell.height };
   return { readout, rail, hit };
 }
 
@@ -248,8 +271,10 @@ export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
  *  the deck rectangles makes the hide/show targets share one coordinate
  *  producer with the controls they govern. */
 export const TRACK_TOOLBAR_TOGGLES = {
-  header: { x: 2390, y: 220, width: 120, height: 100 },
-  jobs: { x: 2390, y: 1275, width: 120, height: 100 },
+  // Level with the header plate's centre (`TRACK_HEADER.plate.y`), and clear
+  // of its right end (the plate is 2156 wide since it is sliced).
+  header: { x: 2440, y: 150, width: 120, height: 100 },
+  jobs: { x: 2440, y: 1275, width: 120, height: 100 },
 } as const satisfies Record<string, PlacedRect>;
 
 export const TRACK_TOOLBAR_IDS = ["header", "jobs"] as const;

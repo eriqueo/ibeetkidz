@@ -42,26 +42,41 @@ export function trackCarActionChoices(muted: boolean): readonly TrackCarActionCh
   ];
 }
 
+/** Side margin of the chooser panel around its row of buttons. */
+const PANEL_SIDE = 64;
+
+/** The car chooser's panel and its `count` buttons, centred in the design
+ *  width — for the Track's three choices and the Yard's three or four alike
+ *  (`car-chooser.ts` draws it). Three buttons give exactly the original
+ *  1160-wide panel; more widen it. */
+export function carChooserLayout(count: number, designWidth: number): {
+  readonly panelX: number;
+  readonly panelWidth: number;
+  readonly slots: readonly TrackCarActionSlot[];
+} {
+  const L = TRACK_CAR_ACTION_LAYOUT;
+  const n = Math.max(1, count);
+  const rowWidth = n * L.buttonWidth + (n - 1) * L.buttonGap;
+  const panelWidth = Math.max(L.panelWidth, rowWidth + PANEL_SIDE * 2);
+  const rowX = (designWidth - rowWidth) / 2;
+  const slots = Array.from({ length: n }, (_, i) => ({
+    x: rowX + i * (L.buttonWidth + L.buttonGap) + L.buttonWidth / 2,
+    y: L.panelY + L.buttonOffsetY + L.buttonHeight / 2,
+    width: L.buttonWidth,
+    height: L.buttonHeight,
+  }));
+  return { panelX: (designWidth - panelWidth) / 2, panelWidth, slots };
+}
+
 /** Fixed-HUD button rectangles, keyed by the same action vocabulary the scene
  *  emits. Production-shaped canvas tests use this producer too, so moving the
  *  chooser cannot silently strand its real kid-facing targets. */
 export function trackCarActionSlots(
   designWidth: number,
 ): Record<TrackCarActionKind, TrackCarActionSlot> {
-  const layout = TRACK_CAR_ACTION_LAYOUT;
   const choices = trackCarActionChoices(false);
-  const rowWidth =
-    choices.length * layout.buttonWidth + (choices.length - 1) * layout.buttonGap;
-  const rowX = (designWidth - rowWidth) / 2;
+  const { slots } = carChooserLayout(choices.length, designWidth);
   return Object.fromEntries(
-    choices.map(({ kind }, index) => [
-      kind,
-      {
-        x: rowX + index * (layout.buttonWidth + layout.buttonGap) + layout.buttonWidth / 2,
-        y: layout.panelY + layout.buttonOffsetY + layout.buttonHeight / 2,
-        width: layout.buttonWidth,
-        height: layout.buttonHeight,
-      },
-    ]),
+    choices.map(({ kind }, index) => [kind, slots[index]!]),
   ) as Record<TrackCarActionKind, TrackCarActionSlot>;
 }

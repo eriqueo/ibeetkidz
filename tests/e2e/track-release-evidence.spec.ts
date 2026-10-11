@@ -387,7 +387,8 @@ test("the Pages Track produces reviewable release evidence", async ({ page }, te
   await capture(page, testInfo, "track-05-tunnel-entry-partial");
   await page.waitForTimeout(1_400);
   await capture(page, testInfo, "track-05b-tunnel-inside");
-  await tapDesignPoint(page, slots.stop!.x, slots.stop!.y);
+  // RIDE and STOP share one key since 2026-10-05; while riding it is STOP.
+  await tapDesignPoint(page, slots.ride!.x, slots.ride!.y);
   await expect
     .poll(async () => (await canvasMetrics(page)).worldLuma, {
       timeout: 5_000,
@@ -572,7 +573,8 @@ test("Pages toolbars hide independently and Ride stays endless until STOP", {
   expect(await transportState()).toBe("started");
   await capture(page, testInfo, "track-focus-03-endless-night");
 
-  await tapDesignPoint(page, header.stop!.x, header.stop!.y);
+  // RIDE and STOP share one key since 2026-10-05; while riding it is STOP.
+  await tapDesignPoint(page, header.ride!.x, header.ride!.y);
   await expect.poll(transportState, { timeout: 5_000 }).toBe("stopped");
 
   const nightDelta = idleWorld.worldLuma - nightWorld.worldLuma;

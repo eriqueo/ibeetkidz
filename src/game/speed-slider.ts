@@ -9,10 +9,10 @@ export interface SliderRail {
   readonly y: number;
 }
 
-/** The slider lands on whole multiples of this. The SLOW / FAST keys it
- *  replaces moved in tens; a drag can be finer than that without turning into
- *  a hunt for one exact number. */
-export const SPEED_STEP = 5;
+/** The slider lands on whole multiples of this — the same tens the SLOW /
+ *  FAST keys it replaced moved in. Eric asked for a short slider, and a short
+ *  rail in fives left a notch narrower than a fingertip. */
+export const SPEED_STEP = 10;
 
 const clamp = (v: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, v));
 

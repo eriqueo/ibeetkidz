@@ -28,6 +28,15 @@ export function crewLayout(
   return { pitch, slotW: Math.min(RIDER_MAX_W, pitch * RIDER_OVERLAP) };
 }
 
+/** The same strip on the engine (`track3/loco.png`, 380 × 220): rail from row
+ *  201 down, a clear gap above it. */
+export const LOCO_RAIL_TOP = 201;
+
+/** Rows of `track3/ground.png` above its rail: a flat dark band. Drawn above
+ *  the rail, it read as a road the train rolled along with the track's top
+ *  "cut off" (Eric, 2026-10-05). The ground is drawn from the rail down. */
+export const GROUND_RAIL_TOP = 30;
+
 export const CAR_BODY_RAIL_TOP: Readonly<Record<CarType, number>> = {
   boxcar: 170,
   tanker: 153,

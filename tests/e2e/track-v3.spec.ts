@@ -160,8 +160,23 @@ test("a kid can drive the default Track through its real canvas controls", async
   );
 
   const before = await state(page);
+  const shownKey = () => page.evaluate(() => {
+    const scene = (window as any).__ibeetkidz_test__.getScene();
+    return {
+      ride: scene.children.getByName("track-control:btn-track-ride")?.visible ?? null,
+      stop: scene.children.getByName("track-control:btn-transport-stop")?.visible ?? null,
+    };
+  });
+  // RIDE and STOP are one key: it offers what pressing it will do.
+  expect(await shownKey()).toEqual({ ride: true, stop: false });
   await tapNamedPhaserObject(page, "track-control:btn-track-ride");
   await expect.poll(async () => (await state(page)).pos).toBeGreaterThan(before.pos);
+  await expect.poll(shownKey).toEqual({ ride: false, stop: true });
+  // CLEAR left the header on 2026-10-05 (Eric's grouping is MAP, RIDE/STOP,
+  // SPEED, SEND); nothing named CLEAR should still be drawn there.
+  expect(await page.evaluate(() =>
+    Boolean((window as any).__ibeetkidz_test__.getScene().children.getByName("track-control:btn-track-clear")),
+  )).toBe(false);
 
   expect(await page.evaluate(() => {
     const scene = (window as any).__ibeetkidz_test__.getScene();
@@ -251,7 +266,9 @@ test("a kid can drive the default Track through its real canvas controls", async
   await tapNamedPhaserObject(page, "track-car-action:tarp");
   await expect.poll(muted).toBe(true);
 
-  await tapNamedPhaserObject(page, "track-control:btn-track-clear");
+  // Emptying the train still has its one undo step; only its header key moved
+  // out while Eric decides where CLEAR belongs.
+  await emit(page, "track-clear-train");
   await expect.poll(() =>
     page.evaluate(() => (window as any).__ibeetkidz_test__.getProject().train.length),
   ).toBe(0);
@@ -506,8 +523,9 @@ test("the speed slider sets the speed once, where it is let go", async ({ page }
       y: canvas.top + y * (canvas.height / game.height),
     };
   }, { x, y });
-  const from = await toClient((await speed()).handleX!, 294);
-  const to = await toClient(2400, 294);
+  const handle = await speed();
+  const from = await toClient(handle.handleX!, handle.handleY!);
+  const to = await toClient(2400, handle.handleY!);
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
   await page.mouse.move(to.x, to.y, { steps: 12 });

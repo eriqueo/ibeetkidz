@@ -4,7 +4,33 @@
 import { readFileSync } from "node:fs";
 import { PNG } from "pngjs";
 import { describe, expect, it } from "vitest";
-import { CAR_BODY_RAIL_TOP, crewLayout } from "../../src/game/track-car-art.ts";
+import {
+  CAR_BODY_RAIL_TOP,
+  GROUND_RAIL_TOP,
+  LOCO_RAIL_TOP,
+  crewLayout,
+} from "../../src/game/track-car-art.ts";
+
+describe("the engine and the ground: rows the scene leaves out", () => {
+  it("crops the engine where its own strip of rail begins", () => {
+    const { width, rows } = opaquePerRow("src/assets/sprites/track3/loco.png");
+    expect(rows[LOCO_RAIL_TOP], "first rail row").toBe(width);
+    expect(rows[LOCO_RAIL_TOP - 1], "gap above the strip").toBe(0);
+  });
+
+  it("starts the ground at its rail, below a band of one flat colour", () => {
+    const png = PNG.sync.read(readFileSync("src/assets/sprites/track3/ground.png"));
+    const at = (x: number, y: number) => {
+      const i = (y * png.width + x) * 4;
+      return `${png.data[i]},${png.data[i + 1]},${png.data[i + 2]}`;
+    };
+    const band = at(0, 0);
+    for (let y = 0; y < GROUND_RAIL_TOP; y++) {
+      for (let x = 0; x < png.width; x += 37) expect(at(x, y), `band ${x},${y}`).toBe(band);
+    }
+    expect(at(0, GROUND_RAIL_TOP)).not.toBe(band);
+  });
+});
 
 describe("crewLayout: everyone who plays on a car can be seen on it", () => {
   const CAR = 300;

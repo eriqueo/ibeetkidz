@@ -4,7 +4,7 @@
 // This is a REGRESSION GUARD for a shipped bug that only a human eye caught.
 // `TrackV3Scene.buildTopBar` placed nine controls by arithmetic against a field
 // it had GUESSED as "~400..2064" and documented as such in a comment. Measured
-// off the packed `panel-header-v2` frame, the parchment is really 509..2028 —
+// off the packed `panel-header-v2` frame, the parchment was really 509..2028 —
 // so SLOW stood on the left gear medallion, SEND SONG ran onto the right-hand
 // wooden rail, and the loop counter hung 92 px below the row, clean off the
 // bottom of the plate and into the sky.
@@ -13,33 +13,39 @@
 // clickable, and passed every e2e assertion the deck has; the only thing wrong
 // was WHERE, and nothing in the suite could see where. These tests fail on the
 // numbers instead.
+//
+// Since 2026-10-05 the header is one row of four (MAP · RIDE/STOP · SPEED ·
+// SEND) on a SLICED plate: its ends keep their drawn shape and its middle
+// repeats, so the field's side margins are fixed pixels.
 
 import { describe, expect, it } from "vitest";
 import {
   HEADER_PLATE_FIELD,
+  HEADER_PLATE_SLICE,
   TRACK_HEADER,
   headerColumnCentres,
-  headerPlateField,
+  slicedHeaderField,
   trackHeaderSlots,
   trackSpeedSlider,
 } from "../../src/game/scene-layout.ts";
 import * as sceneLayout from "../../src/game/scene-layout.ts";
+import { SPEED_STEP } from "../../src/game/speed-slider.ts";
 
-const field = headerPlateField(TRACK_HEADER.plate);
+const field = slicedHeaderField(TRACK_HEADER.plate);
 const slots = trackHeaderSlots();
 const plateTop = TRACK_HEADER.plate.y - TRACK_HEADER.plate.height / 2;
 const plateBottom = TRACK_HEADER.plate.y + TRACK_HEADER.plate.height / 2;
 
 describe("track header field", () => {
-  it("resolves the measured parchment box for the plate as mounted", () => {
-    // The numbers the layout was rebuilt around, pinned so a change to the
-    // plate rect or the fractions has to restate them deliberately.
-    expect(field.x0).toBeCloseTo(508.8, 1);
-    expect(field.x1).toBeCloseTo(2028.2, 1);
-    expect(field.y0).toBeCloseTo(65.2, 1);
-    expect(field.y1).toBeCloseTo(371.2, 1);
-    // 306 px of usable height is the whole reason the controls are 134 tall.
-    expect(field.y1 - field.y0).toBeCloseTo(306, 0);
+  it("resolves the parchment of the sliced plate as mounted", () => {
+    // Uniform scale 340/687 on the ends: the margins are the measured
+    // fractions of the ART's width, not of the plate's.
+    // The plate is 2156 wide: its two ends plus exactly two middle repeats.
+    expect(TRACK_HEADER.plate.width).toBe(2156);
+    expect(field.x0).toBeCloseTo(348.9, 1);
+    expect(field.x1).toBeCloseTo(2195.6, 1);
+    expect(field.y0).toBeCloseTo(40.4, 1);
+    expect(field.y1).toBeCloseTo(257.1, 1);
   });
 
   it("is a strictly smaller box than the plate it belongs to", () => {
@@ -48,6 +54,24 @@ describe("track header field", () => {
     expect(HEADER_PLATE_FIELD.y0).toBeGreaterThan(0);
     expect(HEADER_PLATE_FIELD.y1).toBeLessThan(1);
   });
+
+  it("is less than a quarter of the screen tall, down from a third", () => {
+    // Eric, 2026-10-05: "make the header not so tall, its huge". It ended at 460.
+    expect(plateBottom).toBeLessThanOrEqual(1440 / 4);
+  });
+});
+
+describe("the sliced plate", () => {
+  it("cuts inside the parchment's side margins, so the ends carry the frame", () => {
+    expect(HEADER_PLATE_SLICE.left).toBeGreaterThan(HEADER_PLATE_FIELD.x0);
+    expect(HEADER_PLATE_SLICE.right).toBeLessThan(HEADER_PLATE_FIELD.x1);
+  });
+
+  it("repeats a whole number of rivet pitches, so the rivet row continues", () => {
+    const pitch = 139.2;
+    const middle = (HEADER_PLATE_SLICE.right - HEADER_PLATE_SLICE.left) * HEADER_PLATE_SLICE.texW;
+    expect(middle / pitch).toBeCloseTo(12, 1);
+  });
 });
 
 describe("headerColumnCentres", () => {
@@ -55,40 +79,49 @@ describe("headerColumnCentres", () => {
     const xs = headerColumnCentres({ x0: 0, x1: 1000 }, 5);
     expect(xs).toEqual([100, 300, 500, 700, 900]);
   });
-
-  it("keeps the outer columns symmetric about the field", () => {
-    const xs = headerColumnCentres({ x0: 200, x1: 800 }, 4);
-    expect(xs[0]! - 200).toBeCloseTo(800 - xs[3]!, 6);
-  });
 });
 
 describe("Track toolbar toggles", () => {
   it("gives each deck its own reachable edge key", () => {
     expect((sceneLayout as Record<string, unknown>).TRACK_TOOLBAR_TOGGLES).toEqual({
-      header: { x: 2390, y: 220, width: 120, height: 100 },
-      jobs: { x: 2390, y: 1275, width: 120, height: 100 },
+      header: { x: 2440, y: 150, width: 120, height: 100 },
+      jobs: { x: 2440, y: 1275, width: 120, height: 100 },
     });
+  });
+
+  it("keeps the header's key clear of the plate", () => {
+    const key = sceneLayout.TRACK_TOOLBAR_TOGGLES.header;
+    const plateRight = TRACK_HEADER.plate.x + TRACK_HEADER.plate.width / 2;
+    expect(key.x - key.width / 2).toBeGreaterThan(plateRight);
   });
 });
 
 describe("every header control lands on the parchment", () => {
-  const ids = TRACK_HEADER.rows.flatMap((r) => r.cells.map((c) => c.id));
+  const ids = TRACK_HEADER.order;
 
-  it("covers every cell the scene binds", () => {
-    expect([...ids].sort()).toEqual(
-      ["clear", "map", "ride", "send", "speed", "stop"],
-    );
+  it("is MAP, SPEED, RIDE/STOP and SEND, in that order", () => {
+    expect([...ids]).toEqual(["map", "speed", "ride", "send"]);
+    expect(Object.keys(slots).sort()).toEqual([...ids].sort());
+    const xs = ids.map((id) => slots[id]!.x);
+    expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   });
 
-  // BOTH axes now. An earlier pass checked only the plate vertically, on the
-  // theory that a keycap standing proud of the top or bottom rail read as
-  // mounted hardware. It did not: on the live site the row hung visibly off the
-  // bottom rail, worst on TARP, whose `pad-key` art fills its cell edge to edge
-  // where the stone keycaps contain-fit narrower. The rule is the parchment.
+  it("puts RIDE/STOP in the middle, as the biggest key", () => {
+    // Eric, 2026-10-05: "the ride/stop button should be the biggest/most central".
+    expect(slots["ride"]!.x).toBeCloseTo((field.x0 + field.x1) / 2, 6);
+    for (const id of ["map", "send"]) {
+      expect(slots["ride"]!.height).toBeGreaterThan(slots[id]!.height);
+    }
+  });
+
+  it("keeps MAP at the left end and SEND at the right", () => {
+    expect(slots["map"]!.x - field.x0).toBeCloseTo(field.x1 - slots["send"]!.x, 6);
+  });
+
   it.each(ids)("%s sits inside the parchment on both axes", (id) => {
     const r = slots[id]!;
     expect(r.x - r.width / 2).toBeGreaterThanOrEqual(field.x0);
-    expect(r.x + r.width / 2).toBeLessThanOrEqual(field.x1);
+    expect(r.x + r.width / 2).toBeLessThanOrEqual(field.x1 + 1e-6);
     expect(r.y - r.height / 2).toBeGreaterThanOrEqual(field.y0);
     expect(r.y + r.height / 2).toBeLessThanOrEqual(field.y1);
   });
@@ -101,26 +134,15 @@ describe("every header control lands on the parchment", () => {
     }
   });
 
-  // THE grid assertion: a cell in column i of row 1 shares its centre with the
-  // cell in column i of row 2. This is what the deck was missing — the two rows
-  // Each row is a complete grid in the same measured field. The transport row
-  // now has four controls after the redundant finite-loop key was retired; it
-  // must spread as four intentional columns rather than leaving a LOOP-shaped
-  // hole in the old five-column grid.
-  it("centres every row in its own equal-column grid", () => {
-    for (const row of TRACK_HEADER.rows) {
-      const xs = headerColumnCentres(field, row.cells.length);
-      row.cells.forEach((c, i) => expect(slots[c.id]!.x).toBeCloseTo(xs[i]!, 6));
-    }
+  it("makes every key bigger than the two-row deck's 134", () => {
+    for (const id of ids) expect(slots[id]!.height).toBeGreaterThan(134);
   });
 
-  it("never overlaps two controls in the same row", () => {
-    for (const row of TRACK_HEADER.rows) {
-      const rects = row.cells.map((c) => slots[c.id]!);
-      for (let i = 1; i < rects.length; i++) {
-        const gap = (rects[i]!.x - rects[i]!.width / 2) - (rects[i - 1]!.x + rects[i - 1]!.width / 2);
-        expect(gap).toBeGreaterThan(0);
-      }
+  it("never overlaps two controls", () => {
+    const rects = ids.map((id) => slots[id]!);
+    for (let i = 1; i < rects.length; i++) {
+      const gap = (rects[i]!.x - rects[i]!.width / 2) - (rects[i - 1]!.x + rects[i - 1]!.width / 2);
+      expect(gap).toBeGreaterThan(0);
     }
   });
 
@@ -135,14 +157,9 @@ describe("every header control lands on the parchment", () => {
     expect(rail.x1).toBeLessThan(right);
     expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(readout.x + readout.width / 2);
     expect(hit.x + hit.width / 2).toBeLessThanOrEqual(right + 1e-6);
-    // Long enough that one step of speed is a deliberate finger movement.
-    expect((rail.x1 - rail.x0) / ((220 - 40) / 5)).toBeGreaterThan(20);
-  });
-
-  it("keeps the rows clear of each other", () => {
-    const [top, bottom] = TRACK_HEADER.rows;
-    const lowest = Math.max(...top!.cells.map((c) => top!.cy + c.height / 2));
-    const highest = Math.min(...bottom!.cells.map((c) => bottom!.cy - c.height / 2));
-    expect(highest).toBeGreaterThan(lowest);
+    // Long enough that one step of speed is a deliberate finger movement…
+    expect((rail.x1 - rail.x0) / ((220 - 40) / SPEED_STEP)).toBeGreaterThan(12);
+    // …and short: "make the slider smaller, not as wide" (Eric, 2026-10-05).
+    expect(rail.x1 - rail.x0).toBeLessThan((field.x1 - field.x0) / 5);
   });
 });
