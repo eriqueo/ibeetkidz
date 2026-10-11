@@ -281,6 +281,14 @@ export const Workshop: FC = () => {
     return () => { sound.thereminOff(); };
   }, [openTool, sound]);
 
+  // Build this car's voices while the kid is still looking at it, so the
+  // first PLAY does not freeze on them — the same rehearsal the Track runs
+  // before Ride (roadmap "Full-car feedback and first-play polish"). A failed
+  // rehearsal costs nothing: PLAY builds whatever is missing, as it always did.
+  useEffect(() => {
+    engine.rehearse(projectRef.current, "loop").catch(() => undefined);
+  }, [engine]);
+
   // Sweep the sequencer playhead — one getTransportStep read/frame.
   useEffect(() => {
     let raf = 0;
