@@ -72,6 +72,19 @@ export class SceneSwitch {
     this.apply();
   }
 
+  /**
+   * Tear the running scene down and bring up a FRESH instance of it: the
+   * `stop → remove → add` path every navigation already takes (rule 3), not
+   * `SceneManager.restart`, which would hand the new visit the old fields.
+   * The dev-only `?tune` panel uses this so an edited `game-config` value is
+   * read by a clean `create()`. A no-op before boot or with nothing running.
+   */
+  reload(): void {
+    if (!this.ready || !this.desired || this.desired.KEY !== this.running) return;
+    this.running = null;
+    this.apply();
+  }
+
   private apply(): void {
     const next = this.desired;
     if (!this.ready || !next || next.KEY === this.running) return;

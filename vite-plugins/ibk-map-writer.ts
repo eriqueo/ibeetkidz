@@ -1,8 +1,10 @@
-// Dev-only: write an edited Tiled map back to `src/assets/maps/<name>.json`.
+// Dev-only: write an edited Tiled map back to `src/assets/maps/<name>.json`,
+// or an edited game config back to `src/game/game-config.json`.
 //
-// The client half is `src/editor/save-sink.ts`. They talk over Vite's HMR
-// WebSocket rather than HTTP, because `tests/unit/architecture.test.ts` rule 4
-// bans `fetch(` across `src/**` — and because the HMR channel needs no port, no
+// The client halves are `src/editor/save-sink.ts` (maps) and
+// `src/editor/tune-panel.ts` (config). They talk over Vite's HMR WebSocket
+// rather than HTTP, because `tests/unit/architecture.test.ts` rule 4 bans
+// `fetch(` across `src/**` — and because the HMR channel needs no port, no
 // CORS, and vanishes entirely from a production build.
 //
 // Three things make this safe enough to exist:
@@ -11,22 +13,25 @@
 //  2. `IBK_EDIT=1` is REQUIRED. `vite.config.ts` sets `allowedHosts: true`, so
 //     without the gate any peer that can reach the dev server on the LAN could
 //     rewrite the repo's map files. Do not soften this for convenience.
-//  3. Map NAMES only, matched against an allowlist. No path is ever taken from
-//     the client, so there is no traversal surface to get wrong.
+//  3. Targets are NAMES matched against a closed table. No path is ever taken
+//     from the client, so there is no traversal surface to get wrong.
 //
 // Writes are atomic (tmp + rename) and guarded by a base hash, so a stale editor
-// tab cannot clobber an edit made in Tiled while it was open.
+// tab cannot clobber an edit made in Tiled (or by hand) while it was open.
 import { readFile, writeFile, rename } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import path from "node:path";
 import process from "node:process";
 import type { Plugin } from "vite";
+import { validateGameConfig } from "../src/game/game-config-schema.ts";
 
-const SAVE_EVENT = "ibk:save-map";
-const SAVED_EVENT = "ibk:map-saved";
+const SAVE_MAP = "ibk:save-map";
+const MAP_SAVED = "ibk:map-saved";
+const SAVE_CONFIG = "ibk:save-config";
+const CONFIG_SAVED = "ibk:config-saved";
 
-/** The only files this plugin will ever write. */
-const ALLOWED = ["map", "workshop", "yard", "track"] as const;
+/** The only map files this plugin will ever write. */
+const ALLOWED_MAPS = ["map", "workshop", "yard", "track"] as const;
 
 interface SavePayload {
   name?: unknown;
@@ -58,12 +63,71 @@ function looksLikeTiledMap(value: unknown): boolean {
   return Array.isArray(m["layers"]) && m["layers"].length > 0;
 }
 
+/** What one save target is: where it lives and what a valid payload is. */
+interface Target {
+  readonly file: string;
+  readonly label: string;
+  /** Problems with the parsed payload; empty means write it. */
+  validate(parsed: unknown): string[];
+}
+
 export function ibkMapWriter(): Plugin {
-  const mapsDir = path.resolve(process.cwd(), "src/assets/maps");
+  const root = process.cwd();
+  const mapsDir = path.resolve(root, "src/assets/maps");
+  const configFile = path.resolve(root, "src/game/game-config.json");
   /** Files this plugin just wrote, so `handleHotUpdate` can swallow the reload
-   *  its own write would otherwise trigger — a full reload mid-drag would throw
-   *  away the editing session. */
+   *  its own write would otherwise trigger — a full reload mid-drag (or
+   *  mid-slider) would throw away the editing session. */
   const selfWritten = new Set<string>();
+
+  const mapTarget = (name: unknown): Target | string => {
+    if (typeof name !== "string" || !(ALLOWED_MAPS as readonly string[]).includes(name)) {
+      return `refusing unknown map "${String(name)}"`;
+    }
+    return {
+      file: path.join(mapsDir, `${name}.json`),
+      label: `${name}.json`,
+      validate: (parsed) => (looksLikeTiledMap(parsed) ? [] : ["payload is not a Tiled map"]),
+    };
+  };
+  const configTarget: Target = {
+    file: configFile,
+    label: "game-config.json",
+    validate: validateGameConfig,
+  };
+
+  /** The guarded write every target shares. Returns [ok, detail]. */
+  async function write(target: Target, data: SavePayload): Promise<[boolean, string]> {
+    if (typeof data.json !== "string" || typeof data.baseHash !== "string") {
+      return [false, "malformed save payload"];
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(data.json);
+    } catch {
+      return [false, "payload is not valid JSON"];
+    }
+    const problems = target.validate(parsed);
+    if (problems.length > 0) return [false, `${target.label}: ${problems.join("; ")}`];
+    if (!existsSync(target.file)) return [false, `${target.label} does not exist`];
+
+    try {
+      const current = await readFile(target.file, "utf8");
+      if (hashText(current) !== data.baseHash) {
+        return [false, `${target.label} changed on disk — reload before saving`];
+      }
+      if (current === data.json) return [true, `${target.label} unchanged`];
+      // Atomic: a crash mid-write must not leave a half-written file.
+      const tmp = `${target.file}.tmp`;
+      selfWritten.add(target.file);
+      await writeFile(tmp, data.json, "utf8");
+      await rename(tmp, target.file);
+      return [true, `${target.label} saved`];
+    } catch (err) {
+      selfWritten.delete(target.file);
+      return [false, `write failed: ${err instanceof Error ? err.message : String(err)}`];
+    }
+  }
 
   return {
     name: "ibk-map-writer",
@@ -71,67 +135,25 @@ export function ibkMapWriter(): Plugin {
 
     configureServer(server) {
       const enabled = process.env["IBK_EDIT"] === "1";
-      server.ws.on(SAVE_EVENT, async (data: SavePayload, client) => {
-        const reply = (ok: boolean, detail: string): void =>
-          client.send(SAVED_EVENT, { ok, detail });
+      const off = "writing is off — restart the dev server with IBK_EDIT=1";
 
-        if (!enabled) {
-          reply(false, "map writing is off — restart the dev server with IBK_EDIT=1");
-          return;
-        }
-        const name = data?.name;
-        if (typeof name !== "string" || !(ALLOWED as readonly string[]).includes(name)) {
-          reply(false, `refusing unknown map "${String(name)}"`);
-          return;
-        }
-        if (typeof data.json !== "string" || typeof data.baseHash !== "string") {
-          reply(false, "malformed save payload");
-          return;
-        }
+      server.ws.on(SAVE_MAP, async (data: SavePayload, client) => {
+        const reply = (ok: boolean, detail: string): void => client.send(MAP_SAVED, { ok, detail });
+        if (!enabled) return reply(false, `map ${off}`);
+        const target = mapTarget(data?.name);
+        if (typeof target === "string") return reply(false, target);
+        reply(...(await write(target, data)));
+      });
 
-        let parsed: unknown;
-        try {
-          parsed = JSON.parse(data.json);
-        } catch {
-          reply(false, "payload is not valid JSON");
-          return;
-        }
-        if (!looksLikeTiledMap(parsed)) {
-          reply(false, "payload is not a Tiled map");
-          return;
-        }
-
-        const file = path.join(mapsDir, `${name}.json`);
-        if (!existsSync(file)) {
-          reply(false, `${name}.json does not exist`);
-          return;
-        }
-
-        try {
-          const current = await readFile(file, "utf8");
-          if (hashText(current) !== data.baseHash) {
-            reply(false, `${name}.json changed on disk — reload before saving`);
-            return;
-          }
-          if (current === data.json) {
-            reply(true, `${name}.json unchanged`);
-            return;
-          }
-          // Atomic: a crash mid-write must not leave a half-written map.
-          const tmp = `${file}.tmp`;
-          selfWritten.add(file);
-          await writeFile(tmp, data.json, "utf8");
-          await rename(tmp, file);
-          reply(true, `${name}.json saved`);
-        } catch (err) {
-          selfWritten.delete(file);
-          reply(false, `write failed: ${err instanceof Error ? err.message : String(err)}`);
-        }
+      server.ws.on(SAVE_CONFIG, async (data: SavePayload, client) => {
+        const reply = (ok: boolean, detail: string): void => client.send(CONFIG_SAVED, { ok, detail });
+        if (!enabled) return reply(false, `config ${off}`);
+        reply(...(await write(configTarget, data)));
       });
 
       if (enabled) {
         server.config.logger.info(
-          "  [35m➜[0m  [1mibk editor[0m: map writing ON — open /?edit",
+          "  \u001b[35m➜\u001b[0m  \u001b[1mibk editor\u001b[0m: map + config writing ON — open /?edit or /?tune",
         );
       }
     },

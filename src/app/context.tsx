@@ -179,8 +179,14 @@ if (import.meta.env.DEV && typeof window !== "undefined") {
     // the production module graph names that chunk, so it cannot be bundled.
     // `tests/unit/architecture.test.ts` rule 6 asserts this stays the only one,
     // and `scripts/check-no-editor-in-dist.sh` fails the build if it leaks.
-    if (new URLSearchParams(window.location.search).has("edit")) {
-      void import("../editor/boot.ts").then((m) => m.attachEditor(scene));
+    // `?tune` (the game-config panel) rides the same import so the guard above
+    // stays one line, not two.
+    const params = new URLSearchParams(window.location.search);
+    if (params.has("edit") || params.has("tune")) {
+      void import("../editor/boot.ts").then((m) => {
+        if (params.has("edit")) void m.attachEditor(scene);
+        if (params.has("tune")) void m.attachTune();
+      });
     }
   });
   window.__ibeetkidz_test__ = {

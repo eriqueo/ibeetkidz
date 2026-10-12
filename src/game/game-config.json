@@ -1,0 +1,24 @@
+{
+  "track": {
+    "hillsY": 470,
+    "treesY": 650,
+    "groundY": 870,
+    "railY": 900,
+    "foreY": 865,
+    "foreH": 130,
+    "terrainLabelY": 500,
+    "noseXFrac": 0.82,
+    "coupling": 14,
+    "lanternClearance": 26,
+    "contactShadows": false,
+    "trainSurge": 30,
+    "beatFlick": 0.38,
+    "soundingLift": 0.16,
+    "rainTileScale": 3.5,
+    "bobAmplitudePx": 3,
+    "parallaxSky": 0.05,
+    "parallaxHills": 0.18,
+    "parallaxTrees": 0.42,
+    "parallaxFore": 1.45
+  }
+}

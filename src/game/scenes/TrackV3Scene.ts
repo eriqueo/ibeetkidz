@@ -34,6 +34,7 @@
 
 import Phaser from "phaser";
 import { GAME_DESIGN_SIZE } from "../game-dimensions.ts";
+import { gameConfig } from "../game-config.ts";
 import { installSceneProjection } from "../rendering.ts";
 import { EventBus } from "../EventBus.ts";
 import {
@@ -156,10 +157,10 @@ const TARP_COVER_KEY: Readonly<Record<CarType, string>> = {
 //           and not one pixel of new art is needed. `car-tint.ts` owns the
 //           technique, so the Workshop's car and this one cannot drift apart.
 //   NUMBER  small, on the blank nameplate all four bodies are drawn with.
-/** The sounding car is lifted toward cream rather than ringed. Same technique,
- *  same silhouette, one more overlay — the era's own trick (a palette change),
- *  and it cannot cover the art the way a stroked outline around a plate did. */
-const SOUNDING_LIFT = 0.16;
+/** The sounding car is lifted toward cream rather than ringed (`k.soundingLift`).
+ *  Same technique, same silhouette, one more overlay — the era's own trick (a
+ *  palette change), and it cannot cover the art the way a stroked outline
+ *  around a plate did. */
 /** The blank nameplate every body carries, measured off the delivered art: all
  *  four types put a ~104 x 45 panel a little over 100 px above the railhead. */
 const NAMEPLATE = { cy: -108, fontPx: 30 } as const;
@@ -174,16 +175,14 @@ const NAMEPLATE = { cy: -108, fontPx: 30 } as const;
 // marker walking back along the consist, car by car, and snapping to the front
 // when the song comes round. One train, one lap of the marker per cycle.
 const LOCO_W = 380;
-const COUPLING = 14;
-/** Where the locomotive's nose sits, as a fraction of the screen, when the
- *  whole consist fits. A long train anchors its nose here and lets its tail run
- *  off the left edge, which is what a long train should do. */
-const NOSE_X_FRAC = 0.82;
-/** Peak forward surge within each bar, px. Net zero over the bar — the train
- *  pulls ahead on the downbeat and the camera eases back onto it, so there IS
- *  real motion against the ground without the train ever leaving the frame.
- *  (Any *persistent* drift would walk it off screen within a few bars.) */
-const TRAIN_SURGE = 30;
+// The coupling gap (`k.coupling`), where the nose anchors as a fraction of the
+// screen when the whole consist fits (`k.noseXFrac` — a long train anchors its
+// nose there and lets its tail run off the left edge, which is what a long
+// train should do), and the peak forward surge within each bar in px
+// (`k.trainSurge` — net zero over the bar: the train pulls ahead on the
+// downbeat and the camera eases back onto it, so there IS real motion against
+// the ground without the train ever leaving the frame; any *persistent* drift
+// would walk it off screen within a few bars) all live in game-config.json.
 
 /** A terrain the transport has committed to, in absolute bars. */
 export interface V3TerrainRide {
@@ -195,16 +194,21 @@ export interface V3TerrainRide {
 const W: number = GAME_DESIGN_SIZE.width;
 const H: number = GAME_DESIGN_SIZE.height;
 
+/** The Track's tunables, held BY REFERENCE to the live config. `?tune` writes
+ *  into that object in place and re-mounts the scene, so every `k.` read below
+ *  sees the new value on the next `create()`. Measured-off-the-art numbers
+ *  (nameplate, wheel arches, tunnel insets) stay as constants here: they
+ *  describe the PNGs, not a choice. */
+const k = gameConfig.track;
 
-/** Beats to the bar, and how much of each beat the Beat Lantern spends in its
- *  raised frame — short, so the flick reads as a hit rather than a wobble. */
+/** Beats to the bar. How much of each beat the Beat Lantern spends in its
+ *  raised frame is `k.beatFlick` — short, so the flick reads as a hit rather
+ *  than a wobble. */
 const BEATS_PER_BAR = 4;
-const BEAT_FLICK = 0.38;
-/** The square canvas AR-059's two lantern frames share, and the gap it keeps
- *  above the tallest thing on the car so the lamp reads as hanging over the
- *  crew rather than resting on one. */
+/** The square canvas AR-059's two lantern frames share. The gap it keeps above
+ *  the tallest thing on the car (`k.lanternClearance`) makes the lamp read as
+ *  hanging over the crew rather than resting on one. */
 const LANTERN_CANVAS = 160;
-const LANTERN_CLEARANCE = 26;
 
 /** Opaque parts of the 640px tunnel-mouth canvases that can conceal the cave ↔
  *  daylight handoff. These are measured local-x insets, not timing values. */
@@ -212,38 +216,31 @@ const TUNNEL_ENTRY_BACKDROP_INSET = 320;
 const TUNNEL_ENTRY_GROUND_INSET = 560;
 const TUNNEL_EXIT_SEAM_INSET = 80;
 /** Rows of `tunnel-roof.png` used: the cap course + beam, and the hanging rock
- *  below the tall masonry band. Together with `TUNNEL_TOP_Y` they keep the
+ *  below the tall masonry band. Together with `tunnelTopY()` they keep the
  *  enclosure under the 640px mouth's mound (peak ≈ 490 above the rail) and the
  *  rock tips where they were (200 above the rail, clear of the crew). */
 const TUNNEL_CAP = { sourceY: 20, height: 70 } as const;
 const TUNNEL_ROCK = { sourceY: 340, height: 180 } as const;
 
-// Horizon bands, back to front.
+// Horizon bands, back to front: the sky is pinned at 0; hills, trees, the top
+// of the ground slab and the rail (where wheels touch on FLAT ground) are
+// `k.hillsY` / `k.treesY` / `k.groundY` / `k.railY`.
 const SKY_Y = 0;
-const HILLS_Y = 470;
-const TREES_Y = 650;
-const GROUND_Y = 870; // top of the ground slab
-const RAIL_Y = 900; // where wheels touch on FLAT ground
 
-/** Contact shadows under the engine and cars (GAME_FEEL Law 2: nothing should
- *  float). Off since 2026-10-05: in this side view the shadow lay on the
- *  ballast below the rail as a dark smear Eric called "a weird shadow", and
- *  with the ground now drawn from the rail down the wheels visibly stand on
- *  the rail, which is the contact Law 2 asks for. Permanent by design until a
- *  side-view shadow is painted; the shadow objects stay so it can return. */
-const TRAIN_CONTACT_SHADOWS = false;
-const FORE_Y = 865;
-const FORE_H = 130;
-const TUNNEL_TOP_Y = RAIL_Y - TUNNEL_CAP.height - TUNNEL_ROCK.height - 200;
+// Contact shadows under the engine and cars (GAME_FEEL Law 2: nothing should
+// float) are `k.contactShadows`. Off since 2026-10-05: in this side view the
+// shadow lay on the ballast below the rail as a dark smear Eric called "a
+// weird shadow", and with the ground now drawn from the rail down the wheels
+// visibly stand on the rail, which is the contact Law 2 asks for. The shadow
+// objects stay so it can return. The near fringe is `k.foreY` / `k.foreH`;
+// the terrain caption sits at `k.terrainLabelY`, clear of the top plate (which
+// hangs to y=370) so an approaching terrain's caption is never half-behind the
+// nav bar; `k.rainTileScale` is how much larger than 1:1 the rain sheet draws.
+
+/** Derived from the rail, so computed per read rather than frozen at import. */
+const tunnelTopY = (): number => k.railY - TUNNEL_CAP.height - TUNNEL_ROCK.height - 200;
 /** Lamps hang among the rock tips, above the tallest crew. */
-const TUNNEL_LAMP_Y = RAIL_Y - 300;
-/** Clear of the top plate (which hangs to y=370), so the caption for an
- *  approaching terrain is never half-behind the nav bar. */
-const TERRAIN_LABEL_Y = 500;
-/** The three control columns, shared by the nav bar and the job bar so a
- *  terrain button sits directly under the button above it. */
-/** How much larger than 1:1 the rain sheet is drawn. */
-const RAIN_TILE_SCALE = 3.5;
+const tunnelLampY = (): number => k.railY - 300;
 
 /** Reference width every terrain texture is drawn at before being stretched to
  *  its span. Height is NEVER scaled — the profile is normalized across the span
@@ -433,35 +430,35 @@ export class TrackV3Scene extends Phaser.Scene {
     this.cameras.main.setBackgroundColor("#87ceeb");
 
     this.sky = this.add
-      .tileSprite(0, SKY_Y, W, HILLS_Y, "trk-sky")
+      .tileSprite(0, SKY_Y, W, k.hillsY, "trk-sky")
       .setOrigin(0, 0)
       .setDepth(DEPTH.sky);
     this.hills = this.add
-      .tileSprite(0, HILLS_Y, W, TREES_Y - HILLS_Y + 40, "trk-hills")
+      .tileSprite(0, k.hillsY, W, k.treesY - k.hillsY + 40, "trk-hills")
       .setOrigin(0, 0)
       .setDepth(DEPTH.hills);
     this.trees = this.add
-      .tileSprite(0, TREES_Y, W, GROUND_Y - TREES_Y + 40, "trk-trees")
+      .tileSprite(0, k.treesY, W, k.groundY - k.treesY + 40, "trk-trees")
       .setOrigin(0, 0)
       .setDepth(DEPTH.trees);
     // From the rail down: the art's top rows are a flat dark band that read
     // as a road under the train (see `GROUND_RAIL_TOP`). The trees layer
-    // already runs 40 px past GROUND_Y, so it fills the strip above the rail.
+    // already runs 40 px past k.groundY, so it fills the strip above the rail.
     this.ground = this.add
-      .tileSprite(0, GROUND_Y + GROUND_RAIL_TOP, W, H - GROUND_Y - GROUND_RAIL_TOP, "trk-ground")
+      .tileSprite(0, k.groundY + GROUND_RAIL_TOP, W, H - k.groundY - GROUND_RAIL_TOP, "trk-ground")
       .setOrigin(0, 0)
       .setDepth(DEPTH.ground);
     this.ground.tilePositionY = GROUND_RAIL_TOP;
     // Law 3: the actor must be able to pass BEHIND something, or the scene is a
     // decal on a photograph. A strip, not a slab — a slab hides the rails.
     this.fore = this.add
-      .tileSprite(0, FORE_Y, W, FORE_H, "trk-fringe")
+      .tileSprite(0, k.foreY, W, k.foreH, "trk-fringe")
       .setOrigin(0, 0)
       .setDepth(DEPTH.foreground);
 
     // ── terrain bodies, all hidden until a ride commits one ─────────────────
     this.gap = this.add
-      .rectangle(0, GROUND_Y, 0, BRIDGE_GAP, 0x1d2b3a, 1)
+      .rectangle(0, k.groundY, 0, BRIDGE_GAP, 0x1d2b3a, 1)
       .setOrigin(0, 0)
       .setDepth(DEPTH.gap)
       .setVisible(false);
@@ -469,41 +466,41 @@ export class TrackV3Scene extends Phaser.Scene {
       // Anchored to the RAILHEAD, not the ground line. The profile measures lift
       // from where the wheels touch, so a mound based 30 px lower puts its crest
       // 30 px above the car that is supposed to be standing on it.
-      .image(0, RAIL_Y, "trk-mound")
+      .image(0, k.railY, "trk-mound")
       .setOrigin(0, 1)
       .setDepth(DEPTH.mound)
       .setVisible(false);
     this.moundTail = this.add
-      .image(0, RAIL_Y, "trk-mound")
+      .image(0, k.railY, "trk-mound")
       .setOrigin(0, 1)
       .setDepth(DEPTH.mound)
       .setVisible(false);
     this.bridgeWater = this.add
-      .tileSprite(0, RAIL_Y + 170, 10, 150, "trk-bridge-water")
+      .tileSprite(0, k.railY + 170, 10, 150, "trk-bridge-water")
       .setOrigin(0, 0)
       .setDepth(DEPTH.bridgeWater)
       .setVisible(false);
     this.bridgeDeck = this.add
-      .tileSprite(0, RAIL_Y, 10, 170, "trk-bridge-deck-tile")
+      .tileSprite(0, k.railY, 10, 170, "trk-bridge-deck-tile")
       .setOrigin(0, 0)
       .setDepth(DEPTH.deck)
       .setVisible(false);
     for (let i = 0; i < 14; i++) {
       this.bridgePiers.push(
         this.add
-          .image(0, RAIL_Y + 24, "trk-bridge-pier")
+          .image(0, k.railY + 24, "trk-bridge-pier")
           .setOrigin(0.5, 0)
           .setDepth(DEPTH.bridgePier)
           .setVisible(false),
       );
     }
     this.bridgeBankLeft = this.add
-      .image(0, RAIL_Y, "trk-bridge-far-bank-left")
+      .image(0, k.railY, "trk-bridge-far-bank-left")
       .setOrigin(1, 0)
       .setDepth(DEPTH.deck)
       .setVisible(false);
     this.bridgeBankRight = this.add
-      .image(0, RAIL_Y, "trk-bridge-far-bank-right")
+      .image(0, k.railY, "trk-bridge-far-bank-right")
       .setOrigin(0, 0)
       .setDepth(DEPTH.deck)
       .setVisible(false);
@@ -539,10 +536,10 @@ export class TrackV3Scene extends Phaser.Scene {
     // The sheet is 128 px drawn across a 1440 px scene: at 1:1 each streak is a
     // few pixels and the whole thing reads as film grain. Scaled up, the
     // streaks are actual streaks.
-    this.rainSheet.setTileScale(RAIN_TILE_SCALE, RAIN_TILE_SCALE);
+    this.rainSheet.setTileScale(k.rainTileScale, k.rainTileScale);
 
     this.terrainLabel = this.add
-      .text(0, TERRAIN_LABEL_Y, "", {
+      .text(0, k.terrainLabelY, "", {
         fontFamily: "'Press Start 2P', monospace",
         color: "#ffe9b0",
         stroke: "#1a1526",
@@ -576,7 +573,7 @@ export class TrackV3Scene extends Phaser.Scene {
         .setVisible(false);
     } else {
       this.nowPost = this.add
-        .image(0, RAIL_Y + 16, "trk-now-post")
+        .image(0, k.railY + 16, "trk-now-post")
         .setOrigin(0.5, 1)
         .setDepth(DEPTH.train - 0.2)
         .setVisible(false);
@@ -600,7 +597,7 @@ export class TrackV3Scene extends Phaser.Scene {
       this.add.image(w.dx, -w.r, "trk-wheel").setDisplaySize(w.r * 2, w.r * 2),
     );
     this.locoRoot = this.add
-      .container(0, RAIL_Y, [locoBody, ...this.locoWheels])
+      .container(0, k.railY, [locoBody, ...this.locoWheels])
       .setDepth(DEPTH.train)
       .setVisible(false);
     this.locoShadow = this.add
@@ -615,7 +612,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // the ground, hills and train, which no sky texture can do.
     if (this.textures.exists("trk-sky-night")) {
       this.nightSky = this.add
-        .tileSprite(0, SKY_Y, W, HILLS_Y, "trk-sky-night")
+        .tileSprite(0, SKY_Y, W, k.hillsY, "trk-sky-night")
         .setOrigin(0, 0)
         .setDepth(DEPTH.sky + 0.5)
         .setVisible(false);
@@ -629,12 +626,12 @@ export class TrackV3Scene extends Phaser.Scene {
       // the land: washing over the night band as well would put a blue film
       // over the moon and stars, which is the flat-rectangle look the painted
       // sky was drawn to replace.
-      .rectangle(0, this.nightSky ? HILLS_Y : 0, W, this.nightSky ? H - HILLS_Y : H, 0x141c4a, 0.45)
+      .rectangle(0, this.nightSky ? k.hillsY : 0, W, this.nightSky ? H - k.hillsY : H, 0x141c4a, 0.45)
       .setOrigin(0)
       .setDepth(DEPTH.hud - 1)
       .setVisible(false);
     this.tunnelShade = this.add
-      .rectangle(0, RAIL_Y, W, H - RAIL_Y, 0x08060f, 0.3)
+      .rectangle(0, k.railY, W, H - k.railY, 0x08060f, 0.3)
       .setOrigin(0)
       .setDepth(DEPTH.tunnelBack)
       .setVisible(false);
@@ -646,40 +643,40 @@ export class TrackV3Scene extends Phaser.Scene {
     // is its cap course plus its hanging rock, without the tall masonry band
     // between them.
     this.tunnelWall = this.add
-      .tileSprite(0, TUNNEL_TOP_Y, W, RAIL_Y - TUNNEL_TOP_Y, "trk-tunnel-wall")
+      .tileSprite(0, tunnelTopY(), W, k.railY - tunnelTopY(), "trk-tunnel-wall")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack)
       .setVisible(false);
-    this.tunnelWall.tilePositionY = 720 - (RAIL_Y - TUNNEL_TOP_Y);
+    this.tunnelWall.tilePositionY = 720 - (k.railY - tunnelTopY());
     this.tunnelFloor = this.add
       // Starts under the existing rail/ballast crown. It is behind the train
       // but in front of the day ground, so a tunnel is one dark railway room
       // instead of a stone wall hovering above a bright grass strip.
-      .tileSprite(0, RAIL_Y + 24, W, H - (RAIL_Y + 24), "trk-tunnel-floor")
+      .tileSprite(0, k.railY + 24, W, H - (k.railY + 24), "trk-tunnel-floor")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelBack + 0.05)
       .setVisible(false);
     this.tunnelCap = this.add
-      .tileSprite(0, TUNNEL_TOP_Y, W, TUNNEL_CAP.height, "trk-tunnel-roof")
+      .tileSprite(0, tunnelTopY(), W, TUNNEL_CAP.height, "trk-tunnel-roof")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelFront)
       .setVisible(false);
     this.tunnelCap.tilePositionY = TUNNEL_CAP.sourceY;
     this.tunnelRoof = this.add
-      .tileSprite(0, TUNNEL_TOP_Y + TUNNEL_CAP.height, W, TUNNEL_ROCK.height, "trk-tunnel-roof")
+      .tileSprite(0, tunnelTopY() + TUNNEL_CAP.height, W, TUNNEL_ROCK.height, "trk-tunnel-roof")
       .setOrigin(0, 0)
       .setDepth(DEPTH.tunnelFront)
       .setVisible(false);
     this.tunnelRoof.tilePositionY = TUNNEL_ROCK.sourceY;
     this.tunnelMouth = this.add
-      .image(W, RAIL_Y, "trk-tunnel-mouth-left")
+      .image(W, k.railY, "trk-tunnel-mouth-left")
       .setOrigin(0, 1)
       .setDepth(DEPTH.tunnelFront)
       .setVisible(false);
     for (let i = 0; i < 7; i++) {
       this.tunnelLamps.push(
         this.add
-          .image(0, TUNNEL_LAMP_Y, "trk-tunnel-lamp-0")
+          .image(0, tunnelLampY(), "trk-tunnel-lamp-0")
           .setOrigin(0.5)
           // In FRONT of the hanging rock: behind it, the rock covered the top
           // half of every lamp and the remainder read as a broken dial.
@@ -1192,7 +1189,7 @@ export class TrackV3Scene extends Phaser.Scene {
    * which is 2.7x the area it had.
    *
    * The plate grows upward to hold the second row (top rim 1090, was 1200) and
-   * stops well clear of RAIL_Y — the wheels still stand on visible ground.
+   * stops well clear of k.railY — the wheels still stand on visible ground.
    */
   private buildLegend(): void {
     // Runs off the bottom edge, for the reason `buildTopBar` gives.
@@ -1439,10 +1436,10 @@ export class TrackV3Scene extends Phaser.Scene {
 
     // Parallax. Every offset is floored to a whole pixel inside
     // `parallaxOffset` — a fractional tilePosition makes pixel art shimmer.
-    if (this.sky) this.sky.tilePositionX = parallaxOffset(this.pos, this.view, 0.05);
-    if (this.nightSky) this.nightSky.tilePositionX = parallaxOffset(this.pos, this.view, 0.05);
-    if (this.hills) this.hills.tilePositionX = parallaxOffset(this.pos, this.view, 0.18);
-    if (this.trees) this.trees.tilePositionX = parallaxOffset(this.pos, this.view, 0.42);
+    if (this.sky) this.sky.tilePositionX = parallaxOffset(this.pos, this.view, k.parallaxSky);
+    if (this.nightSky) this.nightSky.tilePositionX = parallaxOffset(this.pos, this.view, k.parallaxSky);
+    if (this.hills) this.hills.tilePositionX = parallaxOffset(this.pos, this.view, k.parallaxHills);
+    if (this.trees) this.trees.tilePositionX = parallaxOffset(this.pos, this.view, k.parallaxTrees);
     if (this.ground) this.ground.tilePositionX = parallaxOffset(this.pos, this.view, 1);
 
     const dist = travelPx(this.pos, this.view);
@@ -1450,7 +1447,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // After the tunnel has placed the fringe's crop: a cropped TileSprite keeps
     // its texture pinned to the world only if its own x is part of the phase.
     if (this.fore) {
-      this.fore.tilePositionX = parallaxOffset(this.pos, this.view, 1.45) + this.fore.x;
+      this.fore.tilePositionX = parallaxOffset(this.pos, this.view, k.parallaxFore) + this.fore.x;
     }
     this.layoutTerrain();
     this.layoutTrain(dist);
@@ -1519,7 +1516,7 @@ export class TrackV3Scene extends Phaser.Scene {
           && x >= lampLeft
           && x <= enclosureRight,
         )
-        .setPosition(x, TUNNEL_LAMP_Y);
+        .setPosition(x, tunnelLampY());
       const key = (beat + index) % 2 === 0 ? "trk-tunnel-lamp-0" : "trk-tunnel-lamp-1";
       if (lamp.texture.key !== key) lamp.setTexture(key);
     });
@@ -1528,7 +1525,7 @@ export class TrackV3Scene extends Phaser.Scene {
       this.tunnelMouth
         ?.setVisible(true)
         .setAlpha(1)
-        .setPosition(portalX, RAIL_Y);
+        .setPosition(portalX, k.railY);
       const { tailX } = this.consistBounds();
       // A portal is finished when it has crossed the train's tail. For a giant
       // or very long consist whose tail is already off-screen, the mouth's own
@@ -1602,8 +1599,8 @@ export class TrackV3Scene extends Phaser.Scene {
     const daylightGroundX = enclosureOnRight ? 0 : groundSeamX;
     const daylightGroundWidth = enclosureOnRight ? groundSeamX : W - groundSeamX;
     this.fore
-      ?.setPosition(daylightGroundX, FORE_Y)
-      .setSize(daylightGroundWidth, FORE_H)
+      ?.setPosition(daylightGroundX, k.foreY)
+      .setSize(daylightGroundWidth, k.foreH)
       .setVisible(daylightGroundWidth > 0)
       .setAlpha(1);
   }
@@ -1618,7 +1615,7 @@ export class TrackV3Scene extends Phaser.Scene {
       daylightX: 0,
       daylightWidth: W,
     };
-    this.fore?.setPosition(0, FORE_Y).setSize(W, FORE_H).setVisible(true).setAlpha(1);
+    this.fore?.setPosition(0, k.foreY).setSize(W, k.foreH).setVisible(true).setAlpha(1);
   }
 
   /** One physical support at one bar. Modes still stack musically, but a rigid
@@ -1644,24 +1641,24 @@ export class TrackV3Scene extends Phaser.Scene {
     // The tiny/giant switches scale the WHOLE consist — bodies and spacing
     // together, or a small train would ride with huge gaps between cars.
     const S = this.trainScale;
-    const trainLen = (LOCO_W + n * (CAR_W + COUPLING)) * S;
+    const trainLen = (LOCO_W + n * (CAR_W + k.coupling)) * S;
     // Centre a short train; anchor a long one by the nose and let its tail run
     // off the left, which is what a long train should look like.
     const noseX =
-      trainLen + 160 <= W ? (W + trainLen) / 2 : W * NOSE_X_FRAC;
+      trainLen + 160 <= W ? (W + trainLen) / 2 : W * k.noseXFrac;
     const carX: number[] = [];
     // Car 0 couples directly behind the locomotive; the rest trail leftward.
-    let right = noseX - (LOCO_W + COUPLING) * S;
+    let right = noseX - (LOCO_W + k.coupling) * S;
     for (let i = 0; i < n; i++) {
       carX.push(right - (CAR_W * S) / 2);
-      right -= (CAR_W + COUPLING) * S;
+      right -= (CAR_W + k.coupling) * S;
     }
     return { noseX: noseX + surge, carX: carX.map((x) => x + surge) };
   }
 
   private consistBounds(): { noseX: number; tailX: number } {
     const frac = this.pos - Math.floor(this.pos);
-    const surge = TRAIN_SURGE * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
+    const surge = k.trainSurge * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
     const { noseX, carX } = this.consistLayout(surge);
     const tailX = carX.length > 0
       ? Math.min(...carX) - (CAR_W * this.trainScale) / 2
@@ -1690,9 +1687,9 @@ export class TrackV3Scene extends Phaser.Scene {
     const frac = this.pos - Math.floor(this.pos);
     // One forward surge per bar, returning to zero: real motion against the
     // ground with no net drift, so the train never walks out of frame.
-    const surge = TRAIN_SURGE * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
+    const surge = k.trainSurge * Math.sin(Math.PI * frac) * (this.moving ? 1 : 0);
     const { noseX, carX } = this.consistLayout(surge);
-    const bob = bobOffset(dist, this.speedBars);
+    const bob = bobOffset(dist, this.speedBars, k.bobAmplitudePx);
     const angle = wheelAngle(dist, WHEEL_R);
     const S = this.trainScale;
     const place = (
@@ -1702,11 +1699,11 @@ export class TrackV3Scene extends Phaser.Scene {
       wheelbase: number,
     ): { lift: number; tilt: number } => {
       const pose = this.poseAtX(x, wheelbase);
-      const y = Math.round(RAIL_Y - pose.lift + bob);
+      const y = Math.round(k.railY - pose.lift + bob);
       body.setPosition(Math.round(x), y).setRotation(pose.angle).setScale(S);
       shadow
-        .setVisible(TRAIN_CONTACT_SHADOWS)
-        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
+        .setVisible(k.contactShadows)
+        .setPosition(Math.round(x), Math.round(k.railY - pose.lift + 10))
         .setRotation(pose.angle)
         .setScale(S * (1 - Math.abs(bob) / 60), S);
       return { lift: pose.lift, tilt: pose.angle };
@@ -1723,7 +1720,7 @@ export class TrackV3Scene extends Phaser.Scene {
       s.show();
       const pose = this.poseAtX(x, WHEELBASE_BARS);
       s.root
-        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + bob))
+        .setPosition(Math.round(x), Math.round(k.railY - pose.lift + bob))
         .setRotation(pose.angle)
         .setScale(S)
         .setAlpha(1);
@@ -1748,14 +1745,14 @@ export class TrackV3Scene extends Phaser.Scene {
       this.drawCrew(s, car);
       if (s.soundingDrawn !== isNow) {
         s.soundingDrawn = isNow;
-        s.lift.setAlpha(isNow ? SOUNDING_LIFT : 0);
+        s.lift.setAlpha(isNow ? k.soundingLift : 0);
       }
       // Law 4: the wheels turn because the world moved, not because time passed.
       s.wheelA.setRotation(angle);
       s.wheelB.setRotation(angle);
       s.shadow
-        .setVisible(TRAIN_CONTACT_SHADOWS)
-        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 10))
+        .setVisible(k.contactShadows)
+        .setPosition(Math.round(x), Math.round(k.railY - pose.lift + 10))
         .setRotation(pose.angle)
         .setScale(S * (1 - Math.abs(bob) / 60), S);
     });
@@ -1785,7 +1782,7 @@ export class TrackV3Scene extends Phaser.Scene {
       // proud of the roof, so the roof is not the top of the car. Asking the
       // drawn objects for their own tops means a taller rider pushes the
       // lantern up instead of wearing it.
-      let top = RAIL_Y - pose.lift + bob - (slot ? slot.body.height * S : 0);
+      let top = k.railY - pose.lift + bob - (slot ? slot.body.height * S : 0);
       for (const rider of slot?.riderImgs ?? []) {
         if (rider.visible) top = Math.min(top, rider.getBounds().top);
       }
@@ -1796,12 +1793,12 @@ export class TrackV3Scene extends Phaser.Scene {
       // lantern was drawn to fix in the NOW post. Measured, so a redelivered
       // lantern with different padding still lands where it should.
       const base = (1 - measureContentBox(this, "trk-beat-lantern-low")[3]) * LANTERN_CANVAS;
-      const roofY = top + base * S - LANTERN_CLEARANCE * S;
+      const roofY = top + base * S - k.lanternClearance * S;
       // The flick is on the BEAT, read off the transport position — four beats
       // to the bar — not off distance travelled like the bob. A beat lantern
       // that pulsed with the wheels would be a wheel lantern.
       const beat = this.pos * BEATS_PER_BAR;
-      const key = beat - Math.floor(beat) < BEAT_FLICK
+      const key = beat - Math.floor(beat) < k.beatFlick
         ? "trk-beat-lantern-high"
         : "trk-beat-lantern-low";
       if (this.beatLantern.texture.key !== key && this.textures.exists(key)) {
@@ -1816,7 +1813,7 @@ export class TrackV3Scene extends Phaser.Scene {
       const pose = this.poseAtX(x, WHEELBASE_BARS);
       this.nowPost
         .setVisible(true)
-        .setPosition(Math.round(x), Math.round(RAIL_Y - pose.lift + 16));
+        .setPosition(Math.round(x), Math.round(k.railY - pose.lift + 16));
     }
 
     this.puffSmoke(noseX, dist);
@@ -1854,7 +1851,7 @@ export class TrackV3Scene extends Phaser.Scene {
       this.splashSeed = (this.splashSeed * 1103515245 + 12345) & 0x7fffffff;
       const across = (this.splashSeed >>> 8) % Math.max(1, Math.round(spanW));
       sp.setVisible(true)
-        .setPosition(Math.round(spanX + across), RAIL_Y + 34)
+        .setPosition(Math.round(spanX + across), k.railY + 34)
         .setAlpha(0.9)
         .setScale(0.7);
       this.tweens.add({
@@ -1890,7 +1887,7 @@ export class TrackV3Scene extends Phaser.Scene {
       if (!puff) break;
       puff
         .setVisible(true)
-        .setPosition(noseX - LOCO_W * 0.34, RAIL_Y - 210)
+        .setPosition(noseX - LOCO_W * 0.34, k.railY - 210)
         .setScale(0.5)
         .setAlpha(0.85);
       this.tweens.add({
@@ -1928,7 +1925,7 @@ export class TrackV3Scene extends Phaser.Scene {
     const sourceRight = Math.round(u1 * TERRAIN_REF_W);
     image
       .setCrop(sourceX, 0, Math.max(1, sourceRight - sourceX), HILL_PEAK)
-      .setPosition(Math.round(segmentLeft), RAIL_Y)
+      .setPosition(Math.round(segmentLeft), k.railY)
       .setDisplaySize(Math.round(width), HILL_PEAK)
       .setVisible(true);
   }
@@ -1986,7 +1983,7 @@ export class TrackV3Scene extends Phaser.Scene {
         const hi = Math.min(W - halfText, span.x + span.width - halfText);
         label.setPosition(
           Math.round(hi >= lo ? Math.min(hi, Math.max(lo, wanted)) : wanted),
-          TERRAIN_LABEL_Y,
+          k.terrainLabelY,
         );
       } else {
         label.setVisible(false);
@@ -2049,14 +2046,14 @@ export class TrackV3Scene extends Phaser.Scene {
         groundDrop((bridge.ride.startBar + bridge.ride.endBar) / 2, bridge.ride),
         BRIDGE_GAP,
       );
-      this.gap.setPosition(x, RAIL_Y + 24);
+      this.gap.setPosition(x, k.railY + 24);
       this.gap.setSize(w, Math.max(1, drop));
 
       // Tile/crop the authored kit at native height. Stretching the former
       // single slab is what made the bridge look pasted onto the scene.
-      this.bridgeWater.setPosition(x, RAIL_Y + 140).setSize(w, 150);
+      this.bridgeWater.setPosition(x, k.railY + 140).setSize(w, 150);
       this.bridgeWater.tilePositionX = parallaxOffset(this.pos, this.view, 0.45);
-      this.bridgeDeck.setPosition(x, RAIL_Y).setSize(w, 170);
+      this.bridgeDeck.setPosition(x, k.railY).setSize(w, 170);
       // The deck is one rigid structure with its banks and piers. Its span
       // already moves with transport distance, so scrolling the texture too
       // makes planks and braces slide inside the bridge like a conveyor belt.
@@ -2065,8 +2062,8 @@ export class TrackV3Scene extends Phaser.Scene {
       const fullRight = fullX + Math.round(bridgeFull?.span.width ?? w);
       this.bridgeDeck.tilePositionX = x - fullX;
       // A bank belongs to a real end of the bridge, never to a portal cut.
-      this.bridgeBankLeft?.setPosition(x, RAIL_Y).setVisible(x === fullX);
-      this.bridgeBankRight?.setPosition(x + w, RAIL_Y).setVisible(x + w === fullRight);
+      this.bridgeBankLeft?.setPosition(x, k.railY).setVisible(x === fullX);
+      this.bridgeBankRight?.setPosition(x + w, k.railY).setVisible(x + w === fullRight);
 
       const pierPitch = 420;
       const firstPier = fullX + pierPitch * 0.72;
@@ -2074,7 +2071,7 @@ export class TrackV3Scene extends Phaser.Scene {
         const px = firstPier + index * pierPitch;
         pier
           .setVisible(px < fullRight - pierPitch * 0.35 && px >= x && px <= x + w)
-          .setPosition(Math.round(px), RAIL_Y + 24);
+          .setPosition(Math.round(px), k.railY + 24);
       });
     }
 
@@ -2187,7 +2184,7 @@ export class TrackV3Scene extends Phaser.Scene {
         dragging: this.speedDragging,
       },
       soundingCarX: now ? now.centreX : null,
-      soundingCarY: now ? RAIL_Y - pose.lift : null,
+      soundingCarY: now ? k.railY - pose.lift : null,
       soundingCarAngle: pose.angle,
       terrain: span && newest ? { ...span, kind: newest.kind } : null,
       tarpedCars: this.slots.filter((slot) => slot.tarp.visible).length,
@@ -2201,7 +2198,7 @@ export class TrackV3Scene extends Phaser.Scene {
         firstVisiblePierX: this.bridgePiers.find((pier) => pier.visible)?.x ?? null,
         visibleStructureAboveJobBar: Math.max(
           0,
-          TRACK_JOB_BAR.plate.y - TRACK_JOB_BAR.plate.height / 2 - RAIL_Y,
+          TRACK_JOB_BAR.plate.y - TRACK_JOB_BAR.plate.height / 2 - k.railY,
         ),
       },
       tunnel: {
@@ -2440,7 +2437,7 @@ export class TrackV3Scene extends Phaser.Scene {
       soundingDrawn: false,
       show: () => {
         root.setVisible(true);
-        shadow.setVisible(TRAIN_CONTACT_SHADOWS);
+        shadow.setVisible(k.contactShadows);
       },
       hide: () => {
         root.setVisible(false);
@@ -2452,7 +2449,7 @@ export class TrackV3Scene extends Phaser.Scene {
     // so no new art channel is invented. Slots are pooled by INDEX and cars are
     // laid out by index, so `this.cars[index]` is always the car this slot is
     // currently wearing.
-    const restLift = (): number => (view.soundingDrawn ? SOUNDING_LIFT : 0);
+    const restLift = (): number => (view.soundingDrawn ? k.soundingLift : 0);
     let armed = false;
     body.setInteractive({ useHandCursor: true });
     body.on("pointerdown", () => {
@@ -2585,8 +2582,8 @@ function makeGreyboxTextures(scene: Phaser.Scene, delivered: ReadonlySet<string>
     g.fillStyle(0x5f8438, 1).fillRect(0, 96, 320, 364);
   });
 
-  tex("trk-fringe", 360, FORE_H, () => {
-    g.fillStyle(0x24421f, 1).fillRect(0, 70, 360, FORE_H - 70);
+  tex("trk-fringe", 360, k.foreH, () => {
+    g.fillStyle(0x24421f, 1).fillRect(0, 70, 360, k.foreH - 70);
     g.fillStyle(0x2f5230, 1);
     for (let i = 0; i < 18; i++) {
       const x = i * 20 + 8;

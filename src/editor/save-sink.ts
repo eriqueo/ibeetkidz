@@ -85,6 +85,28 @@ function viaDownload(edit: EditableMap): SaveResult {
   return { ok: true, detail: `${edit.name}.json downloaded` };
 }
 
+/** The config half of the channel. Same plugin, same guards, its own event
+ *  pair so a map reply can never be mistaken for a config reply. */
+export const SAVE_CONFIG_EVENT = "ibk:save-config";
+export const CONFIG_SAVED_EVENT = "ibk:config-saved";
+
+/** Write `json` over `src/game/game-config.json`. `baseline` is the text the
+ *  panel believed the file held when it opened. */
+export async function saveConfig(json: string, baseline: string): Promise<SaveResult> {
+  const hot = import.meta.hot;
+  if (!hot) return { ok: false, detail: "no dev server (HMR channel absent)" };
+  const payload: SavePayload = { name: "game-config", json, baseHash: hashText(baseline) };
+  return new Promise<SaveResult>((resolve) => {
+    const done = (data: SaveResult): void => {
+      hot.off(CONFIG_SAVED_EVENT, done);
+      resolve(data);
+    };
+    hot.on(CONFIG_SAVED_EVENT, done);
+    hot.send(SAVE_CONFIG_EVENT, payload);
+    setTimeout(() => done({ ok: false, detail: "dev server did not answer" }), 4000);
+  });
+}
+
 export async function save(edit: EditableMap, sink: SinkKind = "hmr"): Promise<SaveResult> {
   if (sink === "clipboard") return viaClipboard(edit);
   if (sink === "download") return viaDownload(edit);

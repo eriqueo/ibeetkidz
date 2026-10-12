@@ -59,3 +59,20 @@ export function detachEditor(): void {
   active?.destroy();
   active = null;
 }
+
+/** Is `?tune` on the URL? */
+export function tuneRequested(): boolean {
+  if (typeof window === "undefined") return false;
+  return new URLSearchParams(window.location.search).has("tune");
+}
+
+let tune: { destroy(): void } | null = null;
+
+/** Open the game-config tune panel, once per page. It is DOM, not Phaser, so
+ *  it outlives every scene it re-mounts; calling this on each scene-ready is
+ *  harmless. */
+export async function attachTune(): Promise<void> {
+  if (tune) return;
+  const { TunePanel } = await import("./tune-panel.ts");
+  tune = new TunePanel();
+}

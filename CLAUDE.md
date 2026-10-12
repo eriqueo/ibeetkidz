@@ -65,6 +65,29 @@ npm run deploy     # separately authorized manual Cloudflare deployment
 
 **The gate is `npm run typecheck && npm run test && npm run lint`.**
 
+### Editing without code: `?edit` and `?tune`
+
+Two dev-only surfaces exist so that layout and feel changes are a file edit
+Eric makes himself, not an agent round-trip. Both need the dev server started
+with writing enabled, `IBK_EDIT=1 npx vite --port 5180 --strictPort --host 0.0.0.0`
+(that is how the hwc-home preview runs), and both save over Vite's HMR
+channel through `vite-plugins/ibk-map-writer.ts`. Neither can reach a build:
+`scripts/check-no-editor-in-dist.sh` fails it if they do.
+
+| URL | Edits | How |
+|---|---|---|
+| `/?edit` | Tiled chrome in Map, Workshop, Yard, and the oval Track (`src/assets/maps/*.json`) | drag a box, arrows nudge (shift = 10), Tab cycles, ctrl+S saves |
+| `/?tune` | The side-scroller's numbers in `src/game/game-config.json` | sliders apply live by re-mounting the scene, ctrl+S saves, reset returns to the file |
+
+**Adding a tunable** is three edits: an entry in `src/game/game-config-schema.ts`
+(the one description of path, range, label), a value in `game-config.json`, and a
+`k.<name>` read in `TrackV3Scene.ts`. `tests/unit/game-config.test.ts` fails if
+any of the three is missing. Numbers measured off the art (wheel arches,
+nameplate, tunnel insets) stay as constants in the scene; they describe PNGs,
+not choices. Live apply goes through `SceneSwitch.reload()`, the same
+stop → remove → add path a navigation takes, never `scene.restart()`
+(scene-switch.ts rule 3).
+
 ### Deploying
 
 GitHub Pages is the canonical release target. Cloudflare Pages is a separately

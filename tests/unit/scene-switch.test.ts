@@ -84,6 +84,29 @@ describe("SceneSwitch", () => {
     expect(log).toEqual(["stop:YardScene", "remove:YardScene", "add:WorkshopScene"]);
   });
 
+  it("reloads the running scene through stop → remove → add, never restart", () => {
+    // `?tune` edits a game-config value and needs a clean `create()` to read
+    // it. The only safe way to get one is the same fresh-instance path a
+    // navigation takes; `SceneManager.restart` would reuse the instance.
+    const { log, hub } = harness();
+    hub.markReady();
+    hub.show(Workshop);
+    log.length = 0;
+    hub.reload();
+    expect(log).toEqual(["stop:WorkshopScene", "remove:WorkshopScene", "add:WorkshopScene"]);
+    expect(hub.runningKey).toBe("WorkshopScene");
+  });
+
+  it("reload is a no-op before boot and with nothing running", () => {
+    const { log, hub } = harness();
+    hub.reload();
+    hub.show(Workshop); // queued: not ready yet
+    hub.reload();
+    expect(log).toEqual([]);
+    hub.markReady();
+    expect(log).toEqual(["add:WorkshopScene"]);
+  });
+
   it("ignores a repeat request for the scene already running", () => {
     // React StrictMode double-invokes effects in dev; without this the second
     // invocation would tear the just-created scene down and rebuild it.

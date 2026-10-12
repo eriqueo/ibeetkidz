@@ -59,6 +59,12 @@ export function showScene(scene: SceneClass): void {
   hub.show(scene);
 }
 
+/** Re-mount the running scene as a fresh instance. Dev-only in practice (the
+ *  `?tune` panel is the only caller); see `SceneSwitch.reload`. */
+export function reloadScene(): void {
+  hub?.reload();
+}
+
 /** Re-measure the canvas against its parent. See `GameCanvas` for the why. */
 export function refreshScale(): void {
   if (!game?.isBooted) return;
