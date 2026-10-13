@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
+  MELODY_STATIONS,
   STATIONS,
-  STATION_VOICE,
   isMelodyStation,
   laneSprite,
+  melodyVoices,
+  stationLabel,
   stationSprite,
+  stationVoice,
 } from "../../src/game/instrument-station.ts";
+import { applyGameConfig, snapshotGameConfig } from "../../src/game/game-config.ts";
 import { UI_SPRITES } from "../../src/game/ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "../../src/game/livery-style.ts";
 import { parseTiledLayer } from "../../src/game/TiledParser.ts";
@@ -48,14 +52,39 @@ describe("instrument stations", () => {
 
   it("voices every melody station with a real synth, and only those", () => {
     const synths = new Set(INSTRUMENTS.map((i) => i.id as string));
-    for (const [station, voice] of Object.entries(STATION_VOICE)) {
+    for (const { station, instrument } of melodyVoices()) {
       expect(isMelodyStation(station)).toBe(true);
-      expect(synths.has(String(voice)), `${station} → ${String(voice)}`).toBe(true);
+      expect(synths.has(instrument), `${station} → ${instrument}`).toBe(true);
+      expect(stationVoice(station)).toBe(instrument);
     }
+    expect(melodyVoices().map((v) => v.station)).toEqual([...MELODY_STATIONS]);
     // The tool stations add their lanes through a panel, not by naming a synth.
-    for (const id of ["drums", "mic", "keys", "pads", "magic"]) {
+    for (const id of ["drums", "mic", "keys", "pads", "magic", "conductor"]) {
       expect(isMelodyStation(id), `${id} is not a melody station`).toBe(false);
+      expect(stationVoice(id)).toBeNull();
     }
+    expect(stationVoice("theremin-wolf")).toBeNull();
+    expect(stationVoice(undefined)).toBeNull();
+  });
+
+  it("names every station from its sheet, and nothing from off the shelf", () => {
+    for (const id of STATIONS) expect(stationLabel(id), id).toBeTruthy();
+    expect(stationLabel("mic")).toBe("My Voice");
+    expect(stationLabel("theremin-wolf")).toBeNull();
+    expect(stationLabel(undefined)).toBeNull();
+  });
+
+  it("reads the sheet LIVE, so a tuned voice reaches the next lane", () => {
+    const before = snapshotGameConfig();
+    const tuned = snapshotGameConfig();
+    tuned.stations.violin.voice = "pluck";
+    tuned.stations.violin.label = "Fiddle";
+    expect(applyGameConfig(tuned)).toEqual([]);
+    expect(stationVoice("violin")).toBe("pluck");
+    expect(stationLabel("violin")).toBe("Fiddle");
+    expect(melodyVoices().find((v) => v.station === "violin")?.instrument).toBe("pluck");
+    applyGameConfig(before);
+    expect(stationVoice("violin")).toBe("violin");
   });
 
   it("keeps the violin's IDENTITY separate from its VOICE", () => {
@@ -72,8 +101,8 @@ describe("instrument stations", () => {
     // all, so the violin borrowed the nearest family member (pizzicato). A
     // borrowed voice is exactly the kind of thing that silently becomes
     // permanent, so this pins that the violin now voices ITSELF.
-    expect(STATION_VOICE.violin).toBe("violin");
-    expect(STATION_VOICE.violin).not.toBe("pluck");
+    expect(stationVoice("violin")).toBe("violin");
+    expect(stationVoice("violin")).not.toBe("pluck");
     // …and that the id it names is a real registered instrument, not a string
     // that falls through to the default synth (the original failure mode: the
     // map emitted "violin", which was not a SynthInstrumentId at all).

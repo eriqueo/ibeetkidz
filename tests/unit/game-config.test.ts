@@ -7,6 +7,9 @@
 import { describe, expect, it } from "vitest";
 import raw from "../../src/game/game-config.json";
 import trackSource from "../../src/game/scenes/TrackV3Scene.ts?raw";
+import workshopSource from "../../src/game/scenes/WorkshopScene.ts?raw";
+import sceneLayoutSource from "../../src/game/scene-layout.ts?raw";
+import stationSource from "../../src/game/instrument-station.ts?raw";
 import {
   TUNABLES,
   readPath,
@@ -59,10 +62,40 @@ describe("game-config.json", () => {
   it("every tunable is READ by exactly the code it is meant for", () => {
     // The whole point of the layer is that a value in the JSON changes what
     // the scene draws. A tunable nobody reads is a slider that does nothing.
+    // Each section has one alias for its live sub-object (`k`, `kw`, `ky`)
+    // and the files allowed to read through it.
+    const READ_SITES: Record<string, { alias: string; sources: string[] }> = {
+      track: { alias: "k", sources: [trackSource] },
+      workshop: { alias: "kw", sources: [sceneLayoutSource, workshopSource] },
+      yard: { alias: "ky", sources: [sceneLayoutSource] },
+    };
     for (const t of TUNABLES) {
-      const [, leaf] = t.path.split(".");
-      expect(trackSource.includes(`k.${leaf}`), `${t.path} is never read by TrackV3Scene`).toBe(true);
+      const [section, ...rest] = t.path.split(".");
+      const leaf = rest[rest.length - 1]!;
+      if (section === "stations") {
+        // Sheets are read generically: `gameConfig.stations[<id>].<leaf>`.
+        expect(stationSource.includes("gameConfig.stations["), `${t.path} read site`).toBe(true);
+        expect(stationSource.includes(`.${leaf}`), `${t.path} is never read`).toBe(true);
+        continue;
+      }
+      const site = READ_SITES[section!];
+      expect(site, `${t.path}: no read-site rule for section "${section}"`).toBeDefined();
+      const read = site!.sources.some((src) => src.includes(`${site!.alias}.${leaf}`));
+      expect(read, `${t.path} is never read as ${site!.alias}.${leaf}`).toBe(true);
     }
+  });
+
+  it("validates text and choice sheets", () => {
+    const blank = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+    writePath(blank, "stations.drums.label", "  ");
+    expect(validateGameConfig(blank)).toEqual(["stations.drums.label: must not be empty"]);
+    const wrong = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+    writePath(wrong, "stations.violin.voice", "kazoo");
+    expect(validateGameConfig(wrong)[0]).toMatch(/^stations\.violin\.voice: "kazoo" is not one of /);
+    // A tool station has no voice to set; the sheet is closed.
+    const extra = JSON.parse(JSON.stringify(raw)) as Record<string, unknown>;
+    writePath(extra, "stations.drums.voice", "soft");
+    expect(validateGameConfig(extra)).toEqual(["stations.drums.voice: not a known tunable"]);
   });
 
   it("reads and writes dotted paths", () => {

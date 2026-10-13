@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { EventMap } from "./EventBus.ts";
+import { MELODY_STATIONS } from "./station-ids.ts";
 
 const noArg = z.undefined();
 const view = z.enum(["map", "workshop", "yard", "track"]);
@@ -15,7 +16,9 @@ export const TILED_ACTION_ARGS = {
   "track-nav": view,
   "transport-play": z.enum(["loop", "ride"]),
   "transport-stop": noArg,
-  "workshop-add-melody": z.enum(["guitar", "violin", "piano"]),
+  // The station list is the one producer of which characters add a melody
+  // lane; restating it here was a second copy that could drift.
+  "workshop-add-melody": z.enum(MELODY_STATIONS),
   "workshop-loop-car": noArg,
   "workshop-open-board": noArg,
   "workshop-open-tool": z.enum([

@@ -30,8 +30,12 @@ framework-free). Tone.js ^15. Vitest + Playwright. npm (the committed
   chrome in Map, Workshop, Yard, and the optional oval Track is authored in
   Tiled and interpreted generically by `TiledParser` → `TiledSceneAdapter` /
   `ui-scene.ts`. Adding chrome there is a map edit plus an `EventBus` action,
-  not a plumbing edit. `TrackV3Scene` is the deliberate exception: the default
-  side-scroller builds its moving world and chrome programmatically.
+  not a plumbing edit. `TrackV3Scene` is the deliberate half-exception: the
+  default side-scroller builds its moving world programmatically, and its
+  chrome's PLACES come from `track-v3.json` (so `?edit` can drag them) while
+  the WIRING stays in the scene, by object name (`track-chrome-layout.ts`),
+  because a RIDE key with a STOP face, a slider and latching picture switches
+  have no generic `ui-scene` form.
   (This rule used to name the v1 `TOOLS` registry in `src/machines/tools.tsx`.
   Ticket M1 deleted `src/machines/` outright; the data-driven principle now lives
   in the Tiled maps. See `PROJECT_CHARTER.md` §2.2.)
@@ -76,8 +80,14 @@ channel through `vite-plugins/ibk-map-writer.ts`. Neither can reach a build:
 
 | URL | Edits | How |
 |---|---|---|
-| `/?edit` | Tiled chrome in Map, Workshop, Yard, and the oval Track (`src/assets/maps/*.json`) | drag a box, arrows nudge (shift = 10), Tab cycles, ctrl+S saves |
-| `/?tune` | The side-scroller's numbers in `src/game/game-config.json` | sliders apply live by re-mounting the scene, ctrl+S saves, reset returns to the file |
+| `/?edit` | Tiled chrome in Map, Workshop, Yard, the oval Track, and the side-scroller's decks (`src/assets/maps/*.json`; the side-scroller's is `track-v3.json`, positions only) | drag a box, arrows nudge (shift = 10), Tab cycles, ctrl+S saves |
+| `/?tune` | `src/game/game-config.json`: the side-scroller's numbers, the Workshop's rack / grid / tool-modal box, the Yard's siding and assembly-line numbers, and one SHEET per Workshop station (lane name, and the voice of a melody station) | sliders apply live by re-mounting the scene; sheets apply to the next lane without a re-mount; ctrl+S saves, reset returns to the file |
+
+Both surfaces also carry the **state dump** for bug reports: the `dump state`
+button on `?tune`, or ctrl+shift+D on either, downloads (and copies) a JSON of
+the project, the live config, the running scene's diagnostic getters, the audio
+diagnostics and the last window errors (`src/editor/state-dump.ts`). Attach
+that file to a bug instead of describing the screen.
 
 **Adding a tunable** is three edits: an entry in `src/game/game-config-schema.ts`
 (the one description of path, range, label), a value in `game-config.json`, and a

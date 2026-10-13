@@ -36,7 +36,7 @@ import type { SoundPort } from "../ports/sound-port.ts";
 import { createStore, type Store } from "../state/store.ts";
 import { EventBus } from "../game/EventBus.ts";
 import type { EventMap } from "../game/EventBus.ts";
-import { STATION_VOICE } from "../game/instrument-station.ts";
+import { melodyVoices } from "../game/instrument-station.ts";
 import type Phaser from "phaser";
 import { attachPerfProbe } from "./perf-probe.ts";
 
@@ -49,13 +49,11 @@ const rng: RngPort = createRng(Date.now() & 0xffffffff);
 
 /**
  * The characters a SURPRISE may hand its tune to, bound here at the composition
- * root because `STATION_VOICE` lives in `game/` and the core must not import
- * from it. Derived from that one table rather than restated, so a new melody
- * character joins the surprise the moment it joins the Workshop shelf.
+ * root because the station sheets live in `game/` and the core must not import
+ * from it. Read at surprise time rather than captured at load, so a voice tuned
+ * in `?tune` reaches the next surprise.
  */
-const MELODY_VOICES: MelodyVoice[] = Object.entries(STATION_VOICE)
-  .filter(([, instrument]) => instrument !== undefined)
-  .map(([station, instrument]) => ({ station, instrument: instrument! }));
+const surpriseVoices = (): MelodyVoice[] => melodyVoices();
 // A brand-new song opens with the starter beat in car 1 (card C5): its first
 // Ride plays something. A saved song replaces this in `loadLast`, untouched.
 // It is the starting state, not a history entry, so it cannot be "undone" into
@@ -543,7 +541,7 @@ const api: AppApi = {
   // (the rare additive batch that earns one: it rewrites the whole car).
   surprise: () => {
     dispatchAll(
-      [...generateBeat(rng, MELODY_VOICES), { type: "setActiveMachine", machineId: "looper-stage" }],
+      [...generateBeat(rng, surpriseVoices()), { type: "setActiveMachine", machineId: "looper-stage" }],
       "Surprise",
     );
   },

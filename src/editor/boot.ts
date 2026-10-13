@@ -36,6 +36,7 @@ export function editorRequested(): boolean {
  * every scene: a scene with no `editorHandle` is simply skipped.
  */
 export async function attachEditor(scene: Phaser.Scene): Promise<void> {
+  installDevHooks();
   const handle = readHandle(scene);
   if (!handle) return;
 
@@ -72,7 +73,30 @@ let tune: { destroy(): void } | null = null;
  *  it outlives every scene it re-mounts; calling this on each scene-ready is
  *  harmless. */
 export async function attachTune(): Promise<void> {
+  installDevHooks();
   if (tune) return;
   const { TunePanel } = await import("./tune-panel.ts");
   tune = new TunePanel();
+}
+
+let hooksInstalled = false;
+
+/**
+ * What every dev surface gets for free once this chunk is loaded: window
+ * errors are remembered for the state dump, and ctrl+shift+D writes the dump
+ * (`state-dump.ts`) from any view — `?edit` has no panel to put a button on,
+ * and a bug is usually seen while editing, not while tuning.
+ */
+export function installDevHooks(): void {
+  if (hooksInstalled || typeof window === "undefined") return;
+  hooksInstalled = true;
+  void import("./state-dump.ts").then((m) => {
+    m.captureErrors();
+    window.addEventListener("keydown", (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        void m.dumpState().then((detail) => console.info(`[${EDITOR_MARKER}] ${detail}`));
+      }
+    });
+  });
 }

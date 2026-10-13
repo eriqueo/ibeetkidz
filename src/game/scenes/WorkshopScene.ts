@@ -32,6 +32,7 @@ import { attachStarterOffer, attachUndoToast, type UndoToast } from "../undo-toa
 import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
+import { gameConfig } from "../game-config.ts";
 import { workshopBoardActionSlots, type WorkshopBoardActionSlot } from "../workshop-board-layout.ts";
 import { parseTiledLayer, type TiledSpawn } from "../TiledParser.ts";
 import { placeSpawn } from "../TiledSceneAdapter.ts";
@@ -168,8 +169,9 @@ const toInt = (hex: string): number => Phaser.Display.Color.HexStringToColor(hex
 // characters stand from y≈0.635 down, the car fills the middle, and the
 // transport plate takes the floor. Fractions of the background rect, not pixels,
 // so it tracks the contain-fit letterbox the same way the Tiled chrome does.
-const RACK = { x0: 0.027, y0: 0.278, x1: 0.16, y1: 0.611 } as const;
-const RACK_COLS = 2;
+// The rack's box and column count are `?tune`-able: `kw.rackX0..rackY1` and
+// `kw.rackCols`, read at layout time from the live config.
+const kw = gameConfig.workshop;
 
 /** Captions under the New Car tiles. Phrased as the ACTION the tile performs,
  *  not the noun it depicts — the menu starts a car, it does not describe one. */
@@ -933,16 +935,17 @@ export class WorkshopScene extends BackgroundScene {
   private layoutColorRack(): void {
     const r = this.backgroundRect;
     if (r.width === 0 || !this.rackPlate) return;
-    const x0 = r.x + r.width * RACK.x0;
-    const x1 = r.x + r.width * RACK.x1;
-    const y0 = r.y + r.height * RACK.y0;
-    const y1 = r.y + r.height * RACK.y1;
-    const rows = Math.ceil(CAR_COLORS.length / RACK_COLS);
-    const cw = (x1 - x0) / RACK_COLS;
+    const x0 = r.x + r.width * kw.rackX0;
+    const x1 = r.x + r.width * kw.rackX1;
+    const y0 = r.y + r.height * kw.rackY0;
+    const y1 = r.y + r.height * kw.rackY1;
+    const cols = Math.max(1, Math.round(kw.rackCols));
+    const rows = Math.ceil(CAR_COLORS.length / cols);
+    const cw = (x1 - x0) / cols;
     const ch = (y1 - y0) / rows;
     this.rackCells = CAR_COLORS.map((_, i) => ({
-      x: x0 + (i % RACK_COLS) * cw,
-      y: y0 + Math.floor(i / RACK_COLS) * ch,
+      x: x0 + (i % cols) * cw,
+      y: y0 + Math.floor(i / cols) * ch,
       w: cw,
       h: ch,
     }));

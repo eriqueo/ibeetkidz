@@ -19,7 +19,7 @@ import {
   INSTRUMENTS,
   type InstrumentId,
 } from "../core/instruments.ts";
-import { STATION_LABEL, STATION_VOICE, laneSprite, riderSprite } from "../game/instrument-station.ts";
+import { laneSprite, riderSprite, stationLabel, stationVoice } from "../game/instrument-station.ts";
 import { laneColor, laneGroup } from "../core/lane-color.ts";
 import { carLiveries } from "../core/car-identity.ts";
 import { BUILTIN_SOUNDS, getBuiltin, isOffered, type BuiltinSound } from "../core/sound-catalog.ts";
@@ -398,13 +398,13 @@ export const Workshop: FC = () => {
       // The payload is the CHARACTER, and its synth is looked up — the violin's
       // is `pluck`, so passing the synth through (as this used to) threw away
       // which of the three the kid tapped.
-      const instrument = STATION_VOICE[station as keyof typeof STATION_VOICE] ?? "soft";
+      const instrument = stationVoice(station) ?? "soft";
       const ts = Date.now();
       const clipId = `clip-melody-${station}-${ts}`;
       const layerId = `layer-melody-${station}-${ts}`;
       // Named after the CHARACTER, not the synth: a violin lane titled "Pluck"
       // names the voice the kid never picked.
-      const label = STATION_LABEL[station as keyof typeof STATION_LABEL] ?? "Melody";
+      const label = stationLabel(station) ?? "Melody";
       const notes: (number[] | null)[] = Array.from({ length: STEP_COUNT }, () => null);
       ([[0, 0], [4, 2], [8, 4], [12, 2]] as const).forEach(([i, row]) => { notes[i] = [row]; });
       dispatch({ type: "addClip", clip: { id: clipId, source: { kind: "builtin", assetId: "note-do" }, effects: [], color: "#06d6a0", label } });

@@ -5,7 +5,9 @@
 // `reloadScene()` (a fresh instance of the running scene, via the same
 // stop → remove → add path a navigation takes — see scene-switch.ts rule 3).
 // The scene's own `create()` reads the new numbers; this panel knows nothing
-// about what they mean.
+// about what they mean. Text and choice fields (the station sheets) apply
+// without a re-mount: they are read when the next lane is made, and tearing
+// the Workshop down on every keystroke would close whatever tool was open.
 //
 // This is plain DOM, not Phaser, on purpose: it must survive the scene it is
 // tuning being torn down under it, and sliders are a solved problem in HTML.
@@ -19,9 +21,12 @@
 import { TUNABLES, readPath, writePath, type GameConfig, type Tunable } from "../game/game-config-schema.ts";
 import { applyGameConfig, snapshotGameConfig } from "../game/game-config.ts";
 import { reloadScene } from "../game/game-host.ts";
+import { parseTiledLayer, type TiledSpawn } from "../game/TiledParser.ts";
 import { saveConfig } from "./save-sink.ts";
+import { dumpState } from "./state-dump.ts";
 import { EDITOR_MARKER } from "./boot.ts";
 import rawText from "../game/game-config.json?raw";
+import workshopMap from "../assets/maps/workshop.json";
 
 /** The text to write: stable key order from TUNABLES, two-space, newline. */
 function serialize(cfg: GameConfig): string {
@@ -31,16 +36,29 @@ function serialize(cfg: GameConfig): string {
 }
 
 const FONT = "13px ui-monospace, Menlo, Consolas, monospace";
+const STATION_GROUP = "Station · ";
+
+/** The Workshop map's facts about a station, for its sheet's read-only line:
+ *  where the character stands and what tapping it does. These live in
+ *  `workshop.json` (edit them with `?edit`), not in the config. */
+function stationMapFacts(id: string, spawns: readonly TiledSpawn[]): string {
+  const s = spawns.find((x) => x.sprite === `inst-${id}`);
+  if (!s) return "not on the Workshop floor";
+  const where = `at ${Math.round(s.cx * 100)}%, ${Math.round(s.cy * 100)}%`;
+  const does = s.action ? `${s.action}${s.arg !== undefined ? `(${String(s.arg)})` : ""}` : "no action";
+  return `${s.id} · ${where} · ${does}`;
+}
 
 export class TunePanel {
   private readonly root: HTMLDivElement;
   private readonly status: HTMLDivElement;
-  private readonly inputs = new Map<string, HTMLInputElement>();
+  private readonly inputs = new Map<string, HTMLInputElement | HTMLSelectElement>();
   private readonly readouts = new Map<string, HTMLSpanElement>();
   private working: GameConfig = snapshotGameConfig();
   /** What the file said when the panel opened (or last saved). */
   private baseline = rawText;
   private reloadTimer: ReturnType<typeof setTimeout> | null = null;
+  private readonly workshopSpawns: readonly TiledSpawn[];
   private readonly onKey = (e: KeyboardEvent): void => {
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
@@ -49,6 +67,7 @@ export class TunePanel {
   };
 
   constructor() {
+    this.workshopSpawns = parseTiledLayer(workshopMap, "ui-layer");
     this.root = document.createElement("div");
     this.root.dataset["ibkTune"] = "1";
     Object.assign(this.root.style, {
@@ -68,10 +87,15 @@ export class TunePanel {
     } satisfies Partial<CSSStyleDeclaration>);
 
     const head = document.createElement("div");
-    Object.assign(head.style, { display: "flex", gap: "6px", alignItems: "center", marginBottom: "6px" });
+    Object.assign(head.style, { display: "flex", gap: "6px", alignItems: "center", marginBottom: "6px", flexWrap: "wrap" });
     const title = document.createElement("strong");
     title.textContent = "tune";
-    head.append(title, this.button("save", () => void this.save()), this.button("reset", () => this.reset()));
+    head.append(
+      title,
+      this.button("save", () => void this.save()),
+      this.button("reset", () => this.reset()),
+      this.button("dump state", () => void this.dump()),
+    );
     this.root.append(head);
 
     this.status = document.createElement("div");
@@ -85,6 +109,15 @@ export class TunePanel {
       h.textContent = group;
       Object.assign(h.style, { margin: "8px 0 2px", color: "#ffd166", fontSize: "11px", textTransform: "uppercase" });
       this.root.append(h);
+      if (group.startsWith(STATION_GROUP)) {
+        // A sheet: the map's facts first (read-only), then the config's.
+        const id = list[0]?.path.split(".")[1] ?? "";
+        const facts = document.createElement("div");
+        facts.textContent = stationMapFacts(id, this.workshopSpawns);
+        Object.assign(facts.style, { fontSize: "11px", opacity: "0.7", margin: "0 0 4px" });
+        facts.title = "From workshop.json — move or rewire the character with ?edit";
+        this.root.append(facts);
+      }
       for (const t of list) this.root.append(this.row(t));
     }
 
@@ -131,24 +164,44 @@ export class TunePanel {
     line.append(name, readout);
     row.append(line);
 
-    const input = document.createElement("input");
     const value = readPath(this.working, t.path);
-    if (t.kind === "boolean") {
-      input.type = "checkbox";
-      input.checked = value === true;
+    let input: HTMLInputElement | HTMLSelectElement;
+    if (t.kind === "choice") {
+      const select = document.createElement("select");
+      for (const c of t.choices ?? []) {
+        const o = document.createElement("option");
+        o.value = c;
+        o.textContent = c;
+        select.append(o);
+      }
+      select.value = String(value);
+      Object.assign(select.style, { width: "100%", font: FONT, background: "#2a2118", color: "#e8dcc8" });
+      input = select;
     } else {
-      input.type = "range";
-      input.min = String(t.min);
-      input.max = String(t.max);
-      input.step = String(t.step);
-      input.value = String(value);
-      input.style.width = "100%";
+      const field = document.createElement("input");
+      if (t.kind === "boolean") {
+        field.type = "checkbox";
+        field.checked = value === true;
+      } else if (t.kind === "text") {
+        field.type = "text";
+        field.value = String(value);
+        Object.assign(field.style, { width: "100%", font: FONT, background: "#2a2118", color: "#e8dcc8", border: "1px solid #6b5a46" });
+      } else {
+        field.type = "range";
+        field.min = String(t.min);
+        field.max = String(t.max);
+        field.step = String(t.step);
+        field.value = String(value);
+        field.style.width = "100%";
+      }
+      input = field;
     }
     input.addEventListener("input", () => {
-      const next = t.kind === "boolean" ? input.checked : Number(input.value);
-      writePath(this.working as unknown as Record<string, unknown>, t.path, next);
+      writePath(this.working as unknown as Record<string, unknown>, t.path, this.valueOf(t, input));
       this.show(t);
-      this.applyLive();
+      // Numbers and switches draw something; a sheet is read when the next
+      // lane is made, so it needs no re-mount.
+      this.applyLive(t.kind === "number" || t.kind === "boolean");
     });
     this.inputs.set(t.path, input);
     this.readouts.set(t.path, readout);
@@ -157,24 +210,36 @@ export class TunePanel {
     return row;
   }
 
+  private valueOf(t: Tunable, input: HTMLInputElement | HTMLSelectElement): unknown {
+    if (input instanceof HTMLSelectElement) return input.value;
+    if (t.kind === "boolean") return input.checked;
+    if (t.kind === "text") return input.value;
+    return Number(input.value);
+  }
+
   private show(t: Tunable): void {
     const v = readPath(this.working, t.path);
     const r = this.readouts.get(t.path);
-    if (r) r.textContent = typeof v === "number" ? String(Math.round(v * 1000) / 1000) : v ? "on" : "off";
+    if (!r) return;
+    if (typeof v === "number") r.textContent = String(Math.round(v * 1000) / 1000);
+    else if (typeof v === "boolean") r.textContent = v ? "on" : "off";
+    else r.textContent = "";
   }
 
   /** Apply now; re-mount the scene a beat later so a drag is one rebuild. */
-  private applyLive(): void {
+  private applyLive(remount = true): void {
     const problems = applyGameConfig(this.working);
     if (problems.length > 0) {
       this.say(problems[0] ?? "invalid", true);
       return;
     }
-    if (this.reloadTimer) clearTimeout(this.reloadTimer);
-    this.reloadTimer = setTimeout(() => {
-      this.reloadTimer = null;
-      reloadScene();
-    }, 120);
+    if (remount) {
+      if (this.reloadTimer) clearTimeout(this.reloadTimer);
+      this.reloadTimer = setTimeout(() => {
+        this.reloadTimer = null;
+        reloadScene();
+      }, 120);
+    }
     this.say(this.dirty() ? "unsaved — ctrl+S" : "matches file");
   }
 
@@ -188,7 +253,8 @@ export class TunePanel {
       const input = this.inputs.get(t.path);
       const v = readPath(this.working, t.path);
       if (!input) continue;
-      if (t.kind === "boolean") input.checked = v === true;
+      if (input instanceof HTMLSelectElement) input.value = String(v);
+      else if (t.kind === "boolean") input.checked = v === true;
       else input.value = String(v);
       this.show(t);
     }
@@ -201,6 +267,14 @@ export class TunePanel {
     const res = await saveConfig(json, this.baseline);
     if (res.ok) this.baseline = json;
     this.say(res.detail, !res.ok);
+  }
+
+  private async dump(): Promise<void> {
+    try {
+      this.say(await dumpState());
+    } catch (err) {
+      this.say(`dump failed: ${err instanceof Error ? err.message : String(err)}`, true);
+    }
   }
 
   private say(text: string, bad = false): void {

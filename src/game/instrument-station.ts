@@ -16,30 +16,27 @@
 //     clip — identical again.
 //
 // So `Layer.station` records the id, and this module is the single producer of
-// what an id means. The Tiled map (`assets/maps/workshop.json`) is where a
-// character's position and action live; this is where its identity does.
+// what an id means. Three files share the job: `assets/maps/workshop.json` is
+// where a character's position, sprite and tap action live; `station-ids.ts`
+// is the closed list of ids and which of them are melody stations; and the
+// per-station SHEET in `game-config.json` (`stations.<id>`) holds the facts a
+// grown-up may change without code — the lane's name and, for a melody
+// station, its voice. This module reads those sheets live, so the `?tune`
+// panel's edits apply to the next lane made.
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import type { LaneGroup } from "../core/lane-color.ts";
 import type { SynthInstrumentId } from "../core/instruments.ts";
+import { gameConfig } from "./game-config.ts";
+import {
+  MELODY_STATIONS,
+  STATIONS,
+  isMelodyStation,
+  type MelodyStationId,
+  type StationId,
+} from "./station-ids.ts";
 
-/** Station ids, as authored. Same stems as the sprites, minus the `inst-` —
- *  the art is `inst-<id>-passive|hover|active`. */
-export const STATIONS = [
-  "drums",
-  "mic",
-  "keys",
-  "pads",
-  "magic",
-  "guitar",
-  "violin",
-  "piano",
-  // AR-045: the conductor holds the retired Sound Pads slot. Not an
-  // instrument — tapping him opens the whole-train chalkboard, and no lane
-  // ever records him — but he IS a character standing on the Workshop floor,
-  // which is what this registry is.
-  "conductor",
-] as const;
-export type StationId = typeof STATIONS[number];
+export { MELODY_STATIONS, STATIONS, isMelodyStation };
+export type { MelodyStationId, StationId };
 
 const KNOWN = new Set<string>(STATIONS);
 
@@ -87,50 +84,41 @@ export function riderSprite(
 }
 
 /**
- * The synth a melody station voices its lane with.
+ * The synth a melody station voices its lane with, from its sheet.
  *
- * This table exists separately from the station id because the CHARACTER is
- * the identity and the SYNTH is the sound, and they are not the same fact. The
- * Tiled map used to hand the synth id straight through as if they were, which
- * is how an alien with a violin arrived in the car as a bear with a toy
- * keyboard.
+ * The CHARACTER is the identity and the SYNTH is the sound, and they are not
+ * the same fact. The Tiled map used to hand the synth id straight through as
+ * if they were, which is how an alien with a violin arrived in the car as a
+ * bear with a toy keyboard. All three sheets happen to name their own id
+ * today; the next character (a cello on the violin's voice) splits them again.
  *
- * The violin used to be the standing proof of that: it voiced `pluck`, because
- * there was no bowed voice to give it. There is now (2026-08-16) — so all three
- * entries happen to be identity mappings today. **That coincidence is not a
- * licence to delete this table and use the station id as the synth id.** The
- * next character added to the shelf (a cello sharing the violin's voice, a
- * second drummer) reintroduces the split immediately, and `isMelodyStation`
- * reads this table to tell a melody station from a tool station.
- *
- * Anything not listed is not a melody station (its lane comes from a tool).
+ * Null for a tool station: its lane comes from a panel, not from naming a synth.
  */
-export const STATION_VOICE: Readonly<Partial<Record<StationId, SynthInstrumentId>>> = {
-  guitar: "guitar",
-  violin: "violin",
-  piano: "piano",
-};
-
-/** True when `id` names a melody station the shelf can add directly. */
-export function isMelodyStation(id: string): id is StationId {
-  return id in STATION_VOICE;
+export function stationVoice(station: string | undefined): SynthInstrumentId | null {
+  return station !== undefined && isMelodyStation(station)
+    ? gameConfig.stations[station].voice
+    : null;
 }
 
 /**
- * What to CALL a station's lane.
+ * What to CALL a station's lane, from its sheet.
  *
  * The name follows the character, not the synth, for the same reason the
  * picture does: the editor titled a violin lane "Pluck", which is the voice it
  * happens to use and not anything the kid chose or would recognise.
  */
-export const STATION_LABEL: Readonly<Record<StationId, string>> = {
-  drums: "Drums",
-  mic: "My Voice",
-  keys: "Voice Keys",
-  pads: "Sound Pads",
-  magic: "Magic Pad",
-  guitar: "Guitar",
-  violin: "Violin",
-  piano: "Piano",
-  conductor: "Conductor",
-};
+export function stationLabel(station: string | undefined): string | null {
+  return station !== undefined && KNOWN.has(station)
+    ? gameConfig.stations[station as StationId].label
+    : null;
+}
+
+/** Every melody station with its current voice — what a SURPRISE may hand a
+ *  tune to. Read at call time, not at import, so a tuned voice joins the next
+ *  surprise. */
+export function melodyVoices(): { station: MelodyStationId; instrument: SynthInstrumentId }[] {
+  return MELODY_STATIONS.map((station) => ({
+    station,
+    instrument: gameConfig.stations[station].voice,
+  }));
+}

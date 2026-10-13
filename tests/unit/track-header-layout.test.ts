@@ -17,24 +17,31 @@
 // Since 2026-10-05 the header is one row of four (MAP · RIDE/STOP · SPEED ·
 // SEND) on a SLICED plate: its ends keep their drawn shape and its middle
 // repeats, so the field's side margins are fixed pixels.
+//
+// Since 2026-10-12 the rects are DATA in `assets/maps/track-v3.json`, dragged
+// in `?edit` and rounded to whole pixels by the editor. So this file lints the
+// map: the invariants that keep a control on the parchment and legible are
+// exact; the ones about taste (centred, symmetric) allow a couple of pixels.
 
 import { describe, expect, it } from "vitest";
 import {
   HEADER_PLATE_FIELD,
   HEADER_PLATE_SLICE,
   TRACK_HEADER,
+  TRACK_TOOLBAR_TOGGLES,
   headerColumnCentres,
   slicedHeaderField,
   trackHeaderSlots,
   trackSpeedSlider,
 } from "../../src/game/scene-layout.ts";
-import * as sceneLayout from "../../src/game/scene-layout.ts";
 import { SPEED_STEP } from "../../src/game/speed-slider.ts";
 
 const field = slicedHeaderField(TRACK_HEADER.plate);
 const slots = trackHeaderSlots();
 const plateTop = TRACK_HEADER.plate.y - TRACK_HEADER.plate.height / 2;
 const plateBottom = TRACK_HEADER.plate.y + TRACK_HEADER.plate.height / 2;
+/** What a drag may move a taste decision by before it stops being the decision. */
+const SLACK = 2;
 
 describe("track header field", () => {
   it("resolves the parchment of the sliced plate as mounted", () => {
@@ -42,6 +49,7 @@ describe("track header field", () => {
     // fractions of the ART's width, not of the plate's.
     // The plate is 2156 wide: its two ends plus exactly two middle repeats.
     expect(TRACK_HEADER.plate.width).toBe(2156);
+    expect(TRACK_HEADER.plate.height).toBe(340);
     expect(field.x0).toBeCloseTo(348.9, 1);
     expect(field.x1).toBeCloseTo(2195.6, 1);
     expect(field.y0).toBeCloseTo(40.4, 1);
@@ -82,15 +90,18 @@ describe("headerColumnCentres", () => {
 });
 
 describe("Track toolbar toggles", () => {
-  it("gives each deck its own reachable edge key", () => {
-    expect((sceneLayout as Record<string, unknown>).TRACK_TOOLBAR_TOGGLES).toEqual({
-      header: { x: 2440, y: 150, width: 120, height: 100 },
-      jobs: { x: 2440, y: 1275, width: 120, height: 100 },
-    });
+  it("gives each deck its own reachable edge key, level with its plate", () => {
+    expect(Object.keys(TRACK_TOOLBAR_TOGGLES).sort()).toEqual(["header", "jobs"]);
+    expect(Math.abs(TRACK_TOOLBAR_TOGGLES.header.y - TRACK_HEADER.plate.y)).toBeLessThanOrEqual(SLACK);
+    for (const key of Object.values(TRACK_TOOLBAR_TOGGLES)) {
+      expect(key.width).toBeGreaterThanOrEqual(100);
+      expect(key.height).toBeGreaterThanOrEqual(90);
+      expect(key.x + key.width / 2).toBeLessThanOrEqual(2560);
+    }
   });
 
   it("keeps the header's key clear of the plate", () => {
-    const key = sceneLayout.TRACK_TOOLBAR_TOGGLES.header;
+    const key = TRACK_TOOLBAR_TOGGLES.header;
     const plateRight = TRACK_HEADER.plate.x + TRACK_HEADER.plate.width / 2;
     expect(key.x - key.width / 2).toBeGreaterThan(plateRight);
   });
@@ -102,24 +113,24 @@ describe("every header control lands on the parchment", () => {
   it("is MAP, SPEED, RIDE/STOP and SEND, in that order", () => {
     expect([...ids]).toEqual(["map", "speed", "ride", "send"]);
     expect(Object.keys(slots).sort()).toEqual([...ids].sort());
-    const xs = ids.map((id) => slots[id]!.x);
+    const xs = ids.map((id) => slots[id].x);
     expect([...xs].sort((a, b) => a - b)).toEqual(xs);
   });
 
   it("puts RIDE/STOP in the middle, as the biggest key", () => {
     // Eric, 2026-10-05: "the ride/stop button should be the biggest/most central".
-    expect(slots["ride"]!.x).toBeCloseTo((field.x0 + field.x1) / 2, 6);
-    for (const id of ["map", "send"]) {
-      expect(slots["ride"]!.height).toBeGreaterThan(slots[id]!.height);
+    expect(Math.abs(slots.ride.x - (field.x0 + field.x1) / 2)).toBeLessThanOrEqual(SLACK);
+    for (const id of ["map", "send"] as const) {
+      expect(slots.ride.height).toBeGreaterThan(slots[id].height);
     }
   });
 
   it("keeps MAP at the left end and SEND at the right", () => {
-    expect(slots["map"]!.x - field.x0).toBeCloseTo(field.x1 - slots["send"]!.x, 6);
+    expect(Math.abs((slots.map.x - field.x0) - (field.x1 - slots.send.x))).toBeLessThanOrEqual(SLACK);
   });
 
   it.each(ids)("%s sits inside the parchment on both axes", (id) => {
-    const r = slots[id]!;
+    const r = slots[id];
     expect(r.x - r.width / 2).toBeGreaterThanOrEqual(field.x0);
     expect(r.x + r.width / 2).toBeLessThanOrEqual(field.x1 + 1e-6);
     expect(r.y - r.height / 2).toBeGreaterThanOrEqual(field.y0);
@@ -128,18 +139,18 @@ describe("every header control lands on the parchment", () => {
 
   it("stays on the plate, which the parchment is inside of", () => {
     for (const id of ids) {
-      const r = slots[id]!;
+      const r = slots[id];
       expect(r.y - r.height / 2).toBeGreaterThanOrEqual(plateTop);
       expect(r.y + r.height / 2).toBeLessThanOrEqual(plateBottom);
     }
   });
 
   it("makes every key bigger than the two-row deck's 134", () => {
-    for (const id of ids) expect(slots[id]!.height).toBeGreaterThan(134);
+    for (const id of ids) expect(slots[id].height).toBeGreaterThan(134);
   });
 
   it("never overlaps two controls", () => {
-    const rects = ids.map((id) => slots[id]!);
+    const rects = ids.map((id) => slots[id]);
     for (let i = 1; i < rects.length; i++) {
       const gap = (rects[i]!.x - rects[i]!.width / 2) - (rects[i - 1]!.x + rects[i - 1]!.width / 2);
       expect(gap).toBeGreaterThan(0);
@@ -147,7 +158,7 @@ describe("every header control lands on the parchment", () => {
   });
 
   it("divides the speed cell into a readout and a rail that stay inside it", () => {
-    const cell = slots["speed"]!;
+    const cell = slots.speed;
     const { readout, rail, hit } = trackSpeedSlider();
     const left = cell.x - cell.width / 2;
     const right = cell.x + cell.width / 2;
@@ -155,11 +166,15 @@ describe("every header control lands on the parchment", () => {
     // The rail starts clear of the readout and leaves room for half a handle.
     expect(rail.x0).toBeGreaterThan(readout.x + readout.width / 2);
     expect(rail.x1).toBeLessThan(right);
-    expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(readout.x + readout.width / 2);
+    expect(hit.x - hit.width / 2).toBeGreaterThanOrEqual(readout.x + readout.width / 2 - 1e-6);
     expect(hit.x + hit.width / 2).toBeLessThanOrEqual(right + 1e-6);
     // Long enough that one step of speed is a deliberate finger movement…
     expect((rail.x1 - rail.x0) / ((220 - 40) / SPEED_STEP)).toBeGreaterThan(12);
     // …and short: "make the slider smaller, not as wide" (Eric, 2026-10-05).
     expect(rail.x1 - rail.x0).toBeLessThan((field.x1 - field.x0) / 5);
+  });
+
+  it("derives the same slider from an explicit cell as from the authored one", () => {
+    expect(trackSpeedSlider(slots.speed)).toEqual(trackSpeedSlider());
   });
 });

@@ -31,7 +31,7 @@ const SAVE_CONFIG = "ibk:save-config";
 const CONFIG_SAVED = "ibk:config-saved";
 
 /** The only map files this plugin will ever write. */
-const ALLOWED_MAPS = ["map", "workshop", "yard", "track"] as const;
+const ALLOWED_MAPS = ["map", "workshop", "yard", "track", "track-v3"] as const;
 
 interface SavePayload {
   name?: unknown;

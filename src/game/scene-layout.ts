@@ -5,7 +5,26 @@
 // one-file edit shared by both the Phaser scene and the React overlay.
 import type { NormRegion } from "../app/use-overlay-rect.ts";
 import { MAX_LAYERS } from "../core/types.ts";
+import { gameConfig } from "./game-config.ts";
 import type { SliderRail } from "./speed-slider.ts";
+import {
+  TRACK_JOB_IDS,
+  TRACK_TOOLBAR_IDS,
+  parseTrackChrome,
+  trackChromeRects,
+  type PlacedRect,
+  type TrackHeaderSlotId,
+  type TrackJobId,
+  type TrackToolbarId,
+} from "./track-chrome-layout.ts";
+
+// The Workshop's and Yard's TUNED numbers live in `game-config.json` and are
+// read here through getters, so every consumer of these objects keeps its
+// name while a `?tune` edit changes what it reads on the next layout pass.
+// Nothing below captures a value at import: a module-level copy would freeze
+// the number the file had when the page loaded.
+const kw = gameConfig.workshop;
+const ky = gameConfig.yard;
 
 // ── v2 redesign layouts (clean backgrounds) ─────────────────────────────────
 // Fractions of the 16:9 scene-v2 art, eyeballed from the renders. STARTING
@@ -32,12 +51,13 @@ export const WORKSHOP_GRID_V2 = {
   maxLanes: MAX_LAYERS,
   // Rows are sized as if at least this many lanes exist (lanes stack from the
   // top): without it a single lane's cells balloon to the full slate height.
-  minRows: 4,
+  get minRows(): number { return kw.gridMinRows; },
   // lane-label column (holds delete ✕, the instrument emoji, and a 🎹 edit
   // button on melody lanes), as a fraction of the grid width.
-  labelFrac: 0.26,
-  cellPad: 0.12, // gap between cells, as a fraction of the cell size
-} as const;
+  get labelFrac(): number { return kw.gridLabelFrac; },
+  // gap between cells, as a fraction of the cell size
+  get cellPad(): number { return kw.gridCellPad; },
+};
 
 // Satellite tool modal (My Voice / Voice Keys / Pads / Beat / Magic). Centred
 // over the VIEWPORT (not the image) so it's fully visible regardless of the
@@ -50,8 +70,11 @@ export const WORKSHOP_GRID_V2 = {
 // gives that strip back: it starts higher and ends well clear of the transport
 // bar, where DONE was landing on top of the PLAY button.
 export const WORKSHOP_TOOL_MODAL = {
-  x: 0.07, y: 0.07, w: 0.86, h: 0.6,
-} as const;
+  get x(): number { return kw.toolModalX; },
+  get y(): number { return kw.toolModalY; },
+  get w(): number { return kw.toolModalW; },
+  get h(): number { return kw.toolModalH; },
+};
 
 // Track SEND result panel: a compact centred card (viewport-relative, like the
 // tool modal) — big enough for a title + two rows of buttons, small enough
@@ -84,7 +107,8 @@ export const HEADER_PLATE_FIELD = {
   y1: 0.8151,
 } as const;
 
-export interface PlacedRect { x: number; y: number; width: number; height: number }
+export type { PlacedRect, TrackJobId, TrackToolbarId };
+export { TRACK_TOOLBAR_IDS };
 
 /** The parchment field of a `panel-header-v2` mounted at `plate`, in the same
  *  coordinates the plate was placed in. */
@@ -137,67 +161,39 @@ export function slicedHeaderField(plate: PlacedRect): { x0: number; x1: number; 
 }
 
 /**
- * The side-scroller's header: ONE row, grouped by what each control is for
- * (Eric, 2026-10-05): "ride/stop, tempo slider, and then maybe just send on
- * the right, and map on the left … that way we can also make the header not so
+ * The side-scroller's chrome, AS AUTHORED in `assets/maps/track-v3.json`.
+ *
+ * Since 2026-10-12 the rects below are read from that map rather than computed
+ * here, so `?edit` can drag them. This module exposes the FILE's layout — what
+ * the unit tests lint, what the e2e specs tap, what React asks about — and the
+ * scene reads the same map through its own live spawns. One producer: the map.
+ *
+ * The header: ONE row, grouped by what each control is for (Eric,
+ * 2026-10-05): "ride/stop, tempo slider, and then maybe just send on the
+ * right, and map on the left … that way we can also make the header not so
  * tall, its huge."
  *
  *   MAP · SPEED readout + short slider · RIDE/STOP (centre, biggest) · SEND
  *
- * It was two rows of nine small keys on a 480-tall plate. One row of four
- * lets every key grow from 134 to at least 160 and the plate drop to 340 (its
- * visible bottom from 460 to 320). The plate keeps its art's shape at the new
- * height because it is SLICED (`HEADER_PLATE_SLICE`), not squashed.
- *
- * Every cell is the box its art is contain-fitted into. Everything stays
- * inside the parchment on both axes (the unit test checks).
+ * The plate overhangs the TOP screen edge on purpose (chrome that runs off
+ * the frame is the frame), is 340 tall, and keeps its art's shape at that
+ * height because it is SLICED (`HEADER_PLATE_SLICE`), not squashed: its width
+ * is exactly two repeats of the sliced middle between the ends, so no repeat
+ * is cut short. Every cell is the box its art is contain-fitted into, and
+ * `tests/unit/track-header-layout.test.ts` lints that everything stays inside
+ * the parchment on both axes.
  */
-/** The header plate's height, and its width: exactly two repeats of the
- *  sliced middle between the ends, so no repeat is cut short (a cut-short
- *  repeat broke the rivet row where it met the right-hand end). */
-const HEADER_PLATE_H = 340;
-const HEADER_PLATE_W = Math.round(
-  HEADER_PLATE_SLICE.texW
-    * (1 + (HEADER_PLATE_SLICE.right - HEADER_PLATE_SLICE.left))
-    * (HEADER_PLATE_H / HEADER_PLATE_SLICE.texH),
-);
+const AUTHORED = trackChromeRects(parseTrackChrome());
 
 export const TRACK_HEADER = {
-  // 2560x1440 design space; the plate overhangs the TOP screen edge on purpose
-  // (chrome that runs off the frame is the frame).
-  plate: { x: 1280, y: 150, width: HEADER_PLATE_W, height: HEADER_PLATE_H },
-  gap: 44,
-  // Eric, 2026-10-05: "the ride/stop button should be the biggest/most
-  // central", and the slider "smaller not as wide". So RIDE/STOP stands on
-  // the parchment's centre at nearly the parchment's full height; MAP and SEND
-  // hold the two ends; the SPEED readout and its short rail sit between MAP
-  // and RIDE. All the keys are square 512 canvases (AR-069), so square cells.
-  ride: 210,
-  key: 160,
-  speedMaxWidth: 480,
+  plate: AUTHORED.plate,
   // In left-to-right order, for the tests and the scene.
-  order: ["map", "speed", "ride", "send"],
+  order: ["map", "speed", "ride", "send"] as readonly TrackHeaderSlotId[],
 } as const;
 
-/** Every header control's placed rect, keyed by cell id. */
-export function trackHeaderSlots(): Record<string, PlacedRect> {
-  const field = slicedHeaderField(TRACK_HEADER.plate);
-  const cy = (field.y0 + field.y1) / 2;
-  const { gap, ride, key, speedMaxWidth } = TRACK_HEADER;
-  const rideX = (field.x0 + field.x1) / 2;
-  const mapX = field.x0 + gap + key / 2;
-  const sendX = field.x1 - gap - key / 2;
-  // The speed control takes the space between MAP and RIDE, up to its cap,
-  // centred in that space.
-  const spanL = mapX + key / 2 + gap;
-  const spanR = rideX - ride / 2 - gap;
-  const speedW = Math.min(speedMaxWidth, spanR - spanL);
-  return {
-    map: { x: mapX, y: cy, width: key, height: key },
-    speed: { x: (spanL + spanR) / 2, y: cy, width: speedW, height: key },
-    ride: { x: rideX, y: cy, width: ride, height: ride },
-    send: { x: sendX, y: cy, width: key, height: key },
-  };
+/** Every header control's placed rect, keyed by cell id, as authored. */
+export function trackHeaderSlots(): Record<TrackHeaderSlotId, PlacedRect> {
+  return { ...AUTHORED.slots };
 }
 
 /** Width of the SPEED readout at the left of the speed cell, and the clear
@@ -207,14 +203,14 @@ const SPEED_READOUT_W = 160;
 const SPEED_RAIL_GAP = 36;
 const SPEED_RAIL_END = 40;
 
-/** The speed cell, divided: the readout at its left, the rail across the rest. */
-export function trackSpeedSlider(): {
+/** The speed cell, divided: the readout at its left, the rail across the rest.
+ *  `cell` defaults to the authored speed cell; the scene passes its live one. */
+export function trackSpeedSlider(cell: PlacedRect = AUTHORED.slots.speed): {
   readonly readout: PlacedRect;
   readonly rail: SliderRail;
   /** The touch target: the whole rail plus room for the handle at each end. */
   readonly hit: PlacedRect;
 } {
-  const cell = trackHeaderSlots()["speed"]!;
   const left = cell.x - cell.width / 2;
   const right = cell.x + cell.width / 2;
   const readout = { x: left + SPEED_READOUT_W / 2, y: cell.y, width: SPEED_READOUT_W, height: cell.height };
@@ -228,57 +224,38 @@ export function trackSpeedSlider(): {
 }
 
 /**
- * The side-scroller's bottom job bar. Kept beside the header grid so the scene,
- * canvas-input tests and visual-release evidence share one coordinate producer.
+ * The side-scroller's bottom job bar, as authored in `track-v3.json`: the
+ * shared transport plate docked to the bottom edge, and eight switches on it
+ * in two rows of four (eight across gave each picture a thumbnail's slot; the
+ * player cannot read the captions, so a picture too small to identify is a
+ * button with no label at all). The captions are for the adult, drawn only
+ * when a switch has no painted art yet.
  */
+const JOB_LABELS: Readonly<Record<TrackJobId, string>> = {
+  hill: "HILL",
+  bridge: "BRIDGE",
+  rain: "RAIN",
+  night: "🌙 NIGHT",
+  tunnel: "⛰ TUNNEL",
+  tiny: "🐭 TINY",
+  giant: "🦖 GIANT",
+  backwards: "⏪ BACK",
+};
+
 export const TRACK_JOB_BAR = {
-  plate: { x: 1280, y: 1275, width: 1980, height: 370 },
-  field: { x0: 400, x1: 2064 },
-  columns: 4,
-  rows: [1189, 1361],
-  switch: { width: 325, height: 150 },
-  switches: [
-    { id: "hill", label: "HILL" },
-    { id: "bridge", label: "BRIDGE" },
-    { id: "rain", label: "RAIN" },
-    { id: "night", label: "🌙 NIGHT" },
-    { id: "tunnel", label: "⛰ TUNNEL" },
-    { id: "tiny", label: "🐭 TINY" },
-    { id: "giant", label: "🦖 GIANT" },
-    { id: "backwards", label: "⏪ BACK" },
-  ],
+  plate: AUTHORED.jobsPlate,
+  switches: TRACK_JOB_IDS.map((id) => ({ id, label: JOB_LABELS[id] })) as readonly { id: TrackJobId; label: string }[],
 } as const;
 
-export type TrackJobId = (typeof TRACK_JOB_BAR.switches)[number]["id"];
-
-/** Every job-bar switch rect, keyed by its mode id. */
+/** Every job-bar switch rect, keyed by its mode id, as authored. */
 export function trackJobSlots(): Record<TrackJobId, PlacedRect> {
-  const pitch = (TRACK_JOB_BAR.field.x1 - TRACK_JOB_BAR.field.x0) / TRACK_JOB_BAR.columns;
-  return Object.fromEntries(
-    TRACK_JOB_BAR.switches.map(({ id }, i) => [
-      id,
-      {
-        x: Math.round(TRACK_JOB_BAR.field.x0 + ((i % TRACK_JOB_BAR.columns) + 0.5) * pitch),
-        y: TRACK_JOB_BAR.rows[Math.floor(i / TRACK_JOB_BAR.columns)] ?? TRACK_JOB_BAR.rows[0],
-        width: TRACK_JOB_BAR.switch.width,
-        height: TRACK_JOB_BAR.switch.height,
-      },
-    ]),
-  ) as Record<TrackJobId, PlacedRect>;
+  return { ...AUTHORED.jobs };
 }
 
-/** Each Track deck owns its own always-visible edge key. Keeping these beside
- *  the deck rectangles makes the hide/show targets share one coordinate
- *  producer with the controls they govern. */
-export const TRACK_TOOLBAR_TOGGLES = {
-  // Level with the header plate's centre (`TRACK_HEADER.plate.y`), and clear
-  // of its right end (the plate is 2156 wide since it is sliced).
-  header: { x: 2440, y: 150, width: 120, height: 100 },
-  jobs: { x: 2440, y: 1275, width: 120, height: 100 },
-} as const satisfies Record<string, PlacedRect>;
-
-export const TRACK_TOOLBAR_IDS = ["header", "jobs"] as const;
-export type TrackToolbarId = (typeof TRACK_TOOLBAR_IDS)[number];
+/** Each Track deck owns its own always-visible edge key, level with its plate
+ *  and clear of the plate's end — authored in the same map as the decks they
+ *  govern, so hide/show targets share one coordinate producer with them. */
+export const TRACK_TOOLBAR_TOGGLES: Readonly<Record<TrackToolbarId, PlacedRect>> = AUTHORED.toggles;
 
 // Yard v2: 4 parallel sidings hold the built-car palette; the straight track
 // inside the oval is the assembly line the crane drops cars onto. Measured
@@ -286,9 +263,11 @@ export type TrackToolbarId = (typeof TRACK_TOOLBAR_IDS)[number];
 // assembly straight 0.361, oval bottom 0.473, sidings from 0.517).
 export const YARD_LAYOUT_V2 = {
   palette: { x: 0.03, y: 0.47, w: 0.55, h: 0.40 } satisfies NormRegion,
-  assemblyLine: { x: 0.17, y: 0.316, w: 0.66, h: 0.09 } satisfies NormRegion,
+  get assemblyLine(): NormRegion {
+    return { x: ky.assemblyX, y: ky.assemblyY, w: ky.assemblyW, h: ky.assemblyH };
+  },
   crane: { x: 0.50, y: 0.35, w: 0.40, h: 0.40 } satisfies NormRegion,
-} as const;
+};
 
 /**
  * The painted gantry's beam line — the height a lifted car hangs at.
@@ -329,7 +308,8 @@ export const YARD_CRANE_BEAM_Y = 0.3007;
 // leg lands at ≈0.51, so the palette stops short of it.
 export const YARD_SIDINGS_V2 = {
   rows: 4,
-  x0: 0.085, // left edge of a siding (first car centre offset added per index)
+  /** Left edge of a siding (first car centre offset added per index). */
+  get x0(): number { return ky.sidingX0; },
   /**
    * The NEAR railhead of each siding, measured off `yard-scene-clean-v2.png`.
    *
@@ -349,13 +329,15 @@ export const YARD_SIDINGS_V2 = {
    * near column. Re-measure with the same method if the plate is repainted.
    */
   railY: [0.5278, 0.6215, 0.7118, 0.7993] as readonly number[],
-  carW: 0.052, // car CELL fit width (fraction of image width)
+  /** car CELL fit width (fraction of image width) */
+  get carW(): number { return ky.carW; },
   // car CELL fit height (fraction of image HEIGHT) — the binding axis.
   // 0.085 -> 0.082 with the railY move: the tightest real pitch is 0.0875
   // (sidings 3->4), where the old value made body+gap+chip exactly 0.0875 —
   // touching, not clearing. See the arithmetic below.
-  carH: 0.082,
-  dx: 0.053, // horizontal spacing between cars on a siding
+  get carH(): number { return ky.carH; },
+  /** horizontal spacing between cars on a siding */
+  get dx(): number { return ky.carDx; },
   /** Name chip: width + height as fractions of image WIDTH, and the gap below
    *  the car's wheels. Sized in SCREEN space (the chip is not a child of the
    *  car) so its legibility does not track the car's fit scale.
@@ -372,10 +354,10 @@ export const YARD_SIDINGS_V2 = {
    *  `tests/unit/yard-layout.test.ts` asserts that inequality, so tuning any of
    *  these five numbers back into an overlap fails the gate instead of
    *  quietly reintroducing the bug. */
-  plateW: 0.048,
-  plateH: 0.0105,
-  plateGap: 0.0025,
-} as const;
+  get plateW(): number { return ky.plateW; },
+  get plateH(): number { return ky.plateH; },
+  get plateGap(): number { return ky.plateGap; },
+};
 
 // Track v2: the oval the train rides, the crossing-signal point on the bottom
 // straight, and the bottom control panel band.

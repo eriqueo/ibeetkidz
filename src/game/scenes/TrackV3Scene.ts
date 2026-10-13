@@ -61,18 +61,23 @@ import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from 
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, TRACK_SPEED_WINDOW, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import {
-  TRACK_HEADER,
   TRACK_JOB_BAR,
   TRACK_TOOLBAR_IDS,
-  TRACK_TOOLBAR_TOGGLES,
-  trackHeaderSlots,
-  trackJobSlots,
   trackSpeedSlider,
   HEADER_PLATE_SLICE,
   type TrackJobId,
   type TrackToolbarId,
   type PlacedRect,
 } from "../scene-layout.ts";
+import {
+  DESIGN_RECT,
+  TRACK_V3_LAYER,
+  TRACK_V3_MAP,
+  parseTrackChrome,
+  trackChromeRects,
+  type TrackChromeRects,
+} from "../track-chrome-layout.ts";
+import type { TiledSpawn } from "../TiledParser.ts";
 import type { ModeKind, TerrainKind } from "../../core/terrain.ts";
 import { MAX_BPM, MIN_BPM, type CarType } from "../../core/types.ts";
 import { bpmAtX, xForBpm, type SliderRail } from "../speed-slider.ts";
@@ -396,6 +401,9 @@ export class TrackV3Scene extends Phaser.Scene {
     // not a second set that drifts. Idempotent; the atlas is already resident
     // whenever the kid arrives from another view.
     loadUiSprites(this);
+    // Where the chrome stands: `assets/maps/track-v3.json`, positions only.
+    // Held by reference so the dev editor's drags land in these objects.
+    this.chromeSpawns = parseTrackChrome();
     // Delivered art first, so the generator below knows what to skip.
     const delivered = new Set<string>();
     for (const [path, url] of Object.entries(DROPPED_ART)) {
@@ -685,13 +693,7 @@ export class TrackV3Scene extends Phaser.Scene {
       );
     }
 
-    const headerStart = this.children.list.length;
-    this.buildTopBar();
-    this.registerToolbarObjects("header", headerStart);
-    const jobsStart = this.children.list.length;
-    this.buildLegend();
-    this.registerToolbarObjects("jobs", jobsStart);
-    for (const toolbar of TRACK_TOOLBAR_IDS) this.buildToolbarToggle(toolbar);
+    this.buildChrome();
     this.rebuildSlots();
     // CLEAR empties the whole train, so this view must be able to show the
     // "put it back" chip the Workshop and Yard already carry.
@@ -701,9 +703,86 @@ export class TrackV3Scene extends Phaser.Scene {
     this.sendPanel = new SendSongPanel(this);
     this.sendPanel.setUiState(this.sendState);
     this.sendPanel.layout(this.scale.gameSize.width, this.scale.gameSize.height);
+    // Dev-only seam for the scene editor (`?edit`). `editorHandle` is typed
+    // `unknown`, so this scene still imports nothing from `src/editor/` — the
+    // dependency arrow points one way only, and the whole branch is
+    // compile-time dead in a production build. This scene lays out in a fixed
+    // design space, so its "background" is that space and a drag re-places
+    // the controls by rebuilding them from the mutated spawns.
+    if (import.meta.env.DEV) {
+      this.editorHandle = {
+        mapName: TRACK_V3_MAP,
+        layerName: TRACK_V3_LAYER,
+        spawns: this.chromeSpawns,
+        relayout: () => this.rebuildChrome(),
+        backgroundRect: () => ({ ...DESIGN_RECT }),
+        cameraSize: () => ({ width: W, height: H }),
+      };
+    }
     this.ready = true;
     installSceneProjection(this);
     EventBus.emit("current-scene-ready", this);
+  }
+
+  /** The chrome's spawns (live: `?edit` writes into these objects), the rects
+   *  last derived from them, and everything built from those rects — kept so
+   *  `rebuildChrome` can take it all down again. */
+  private chromeSpawns: TiledSpawn[] = [];
+  private chromeRects!: TrackChromeRects;
+  /** Dev-only editor attachment point. Typed `unknown` on purpose: the game
+   *  must never import from `src/editor/`. The editor casts this to its own
+   *  interface (`scene-handle.ts`). */
+  editorHandle?: unknown;
+  private chromeObjects: Phaser.GameObjects.GameObject[] = [];
+  /** Listeners the chrome hung on scene-level emitters (`this.input`), which
+   *  destroying a game object does not remove. */
+  private chromeTeardown: (() => void)[] = [];
+
+  /**
+   * Both decks and their edge keys, from the map. Each deck is captured right
+   * after it is built so the hide/show toggle knows exactly which objects are
+   * its deck; the edge keys are built after, and therefore outside, both.
+   */
+  private buildChrome(): void {
+    this.chromeRects = trackChromeRects(this.chromeSpawns);
+    const c = this.chromeRects;
+    const start = this.children.list.length;
+    this.buildTopBar(c);
+    this.registerToolbarObjects("header", start);
+    const jobsStart = this.children.list.length;
+    this.buildLegend(c);
+    this.registerToolbarObjects("jobs", jobsStart);
+    for (const toolbar of TRACK_TOOLBAR_IDS) this.buildToolbarToggle(toolbar, c.toggles[toolbar]);
+    this.chromeObjects = this.children.list.slice(start);
+  }
+
+  /**
+   * Tear the chrome down and build it again from the (mutated) spawns, then
+   * put every piece of control state back: which RIDE/STOP face shows, which
+   * switches are latched or pending, which decks are hidden, where the speed
+   * handle sits. Dev-only in practice — it is what a drag in `?edit` calls —
+   * but it must be complete, because the editor is looking at the real thing.
+   */
+  private rebuildChrome(): void {
+    for (const off of this.chromeTeardown) off();
+    this.chromeTeardown = [];
+    for (const object of this.chromeObjects) object.destroy();
+    this.chromeObjects = [];
+    this.modeBtns = {};
+    this.backwardsLatch = () => {};
+    this.rideKey = [];
+    this.stopKey = [];
+    this.speedHandle = undefined;
+    this.speedRail = undefined;
+    this.speedDragging = false;
+    this.tempoText = undefined;
+    this.toolbarToggleText = {};
+    this.buildChrome();
+    this.showRideOrStop();
+    this.setModeLatched(this.latchedModeKinds);
+    this.setModePending(this.pendingModeKinds);
+    for (const toolbar of TRACK_TOOLBAR_IDS) this.setToolbarVisible(toolbar, this.toolbarVisible[toolbar]);
+    this.setTempo(this.committedTempo);
   }
 
   /**
@@ -725,7 +804,7 @@ export class TrackV3Scene extends Phaser.Scene {
    * is what makes a bar read as the frame of the game instead of as an object
    * lying on the field.
    */
-  private buildTopBar(): void {
+  private buildTopBar(c: TrackChromeRects): void {
     // Overhangs the screen edge on purpose. A plate with sky visible all round
     // it is an object floating in the world; a plate running off the top of the
     // frame is the frame — that is the whole difference Eric is pointing at
@@ -738,20 +817,20 @@ export class TrackV3Scene extends Phaser.Scene {
     // give each the ~200 px slot that made the job-bar pictures unreadable.
     //
     // Since 2026-10-05 it is ONE row again, but of four bigger controls rather
-    // than nine small ones — see `TRACK_HEADER` for Eric's grouping.
-    this.slicedPlate("panel-header-v2", TRACK_HEADER.plate);
+    // than nine small ones — see `scene-layout.ts` for Eric's grouping.
+    this.slicedPlate("panel-header-v2", c.plate);
 
-    // Packed left to right in `scene-layout.ts` against the plate's MEASURED
-    // parchment field.
-    const s = trackHeaderSlots();
-    this.placeButton("btn-nav-map", s["map"]!,
+    // Authored in `track-v3.json` against the plate's MEASURED parchment
+    // field; `tests/unit/track-header-layout.test.ts` lints that they stay on it.
+    const s = c.slots;
+    this.placeButton("btn-nav-map", s.map,
       () => void EventBus.emit("track-nav", "map"), "MAP");
     // RIDE and STOP share one place: the key shows what pressing it will do.
     // Both are built and `setMoving` shows one; an invisible object takes no
     // input in Phaser, so the hidden face can never be pressed by mistake.
-    this.rideKey = this.placeButton("btn-track-ride", s["ride"]!,
+    this.rideKey = this.placeButton("btn-track-ride", s.ride,
       () => void EventBus.emit("transport-play", "ride"), "RIDE");
-    this.stopKey = this.placeButton("btn-transport-stop", s["ride"]!,
+    this.stopKey = this.placeButton("btn-transport-stop", s.ride,
       () => void EventBus.emit("transport-stop"), "STOP");
     this.showRideOrStop();
     // CLEAR (empty the whole train) is not on the header since 2026-10-05:
@@ -764,10 +843,10 @@ export class TrackV3Scene extends Phaser.Scene {
     // had SEND since AR-020; without it the side-scroller could not have
     // become the default without losing the one feature that gets a song off
     // the device.
-    this.placeButton("btn-send-song", s["send"]!,
+    this.placeButton("btn-send-song", s.send,
       () => void EventBus.emit("track-send"), "SEND");
 
-    this.buildTransportRow();
+    this.buildTransportRow(s.speed);
   }
 
   /** The two faces of the RIDE/STOP key (see `buildTopBar`). */
@@ -832,16 +911,16 @@ export class TrackV3Scene extends Phaser.Scene {
    * "kinda pointless": tapping a car already offers TARP CAR / UNCOVER, so the
    * key only armed a second route to the same choice.
    */
-  private buildTransportRow(): void {
-    const { readout, rail, hit } = trackSpeedSlider();
+  private buildTransportRow(cell: PlacedRect): void {
+    const { readout, rail, hit } = trackSpeedSlider(cell);
     this.placeSpeedReadout(readout);
     this.placeSpeedSlider(rail, hit);
   }
 
   /** Where the speed handle is, and whether a finger is on it. React writes
    *  the committed speed through `setTempo`; a drag never fights it. */
-  private speedRail?: SliderRail;
-  private speedHandle?: Phaser.GameObjects.Image;
+  private speedRail: SliderRail | undefined;
+  private speedHandle: Phaser.GameObjects.Image | undefined;
   private speedDragging = false;
   private committedTempo = 120;
 
@@ -924,12 +1003,16 @@ export class TrackV3Scene extends Phaser.Scene {
     this.input.on("pointermove", move);
     this.input.on("pointerup", release);
     this.input.on("pointerupoutside", release);
-    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+    const unhook = (): void => {
       this.input.off("pointermove", move);
       this.input.off("pointerup", release);
       this.input.off("pointerupoutside", release);
       this.speedDragging = false;
-    });
+    };
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, unhook);
+    // A rebuilt slider must not leave the old one's listeners moving a
+    // destroyed handle — destroying the hit rect does not touch `this.input`.
+    this.chromeTeardown.push(unhook);
   }
 
   /** Keep the live label/value inside the accepted source's empty display. */
@@ -973,7 +1056,7 @@ export class TrackV3Scene extends Phaser.Scene {
       .setFontSize(labelSize)
       .setDepth(DEPTH.hud + 2);
     this.tempoText = this.add
-      .text(cx, valueY, "120", {
+      .text(cx, valueY, String(Math.round(this.committedTempo)), {
         fontFamily: "'Press Start 2P', monospace",
         color: hasArt ? "#ffd166" : "#4a2f1c",
       })
@@ -992,8 +1075,7 @@ export class TrackV3Scene extends Phaser.Scene {
 
   /** Each deck's edge key is deliberately built after (and therefore outside)
    *  its hideable group. Either toolbar can always be brought back alone. */
-  private buildToolbarToggle(toolbar: TrackToolbarId): void {
-    const rect = TRACK_TOOLBAR_TOGGLES[toolbar];
+  private buildToolbarToggle(toolbar: TrackToolbarId, rect: PlacedRect): void {
     const def = UI_SPRITES["pad-key"];
     const name = `track-control:toolbar-${toolbar}`;
     if (def && this.textures.exists(UI_ATLAS_KEY)) {
@@ -1149,7 +1231,7 @@ export class TrackV3Scene extends Phaser.Scene {
   /** Every mode switch on the job bar, keyed by kind, so a LATCHED mode can
    *  visibly hold its gold wash whatever art it currently wears. */
   /** Row-2 transport deck state, written by React and never read by the scene. */
-  private tempoText?: Phaser.GameObjects.Text;
+  private tempoText: Phaser.GameObjects.Text | undefined;
   private toolbarObjects: Record<TrackToolbarId, TrackChromeObject[]> = {
     header: [],
     jobs: [],
@@ -1191,10 +1273,10 @@ export class TrackV3Scene extends Phaser.Scene {
    * The plate grows upward to hold the second row (top rim 1090, was 1200) and
    * stops well clear of k.railY — the wheels still stand on visible ground.
    */
-  private buildLegend(): void {
+  private buildLegend(c: TrackChromeRects): void {
     // Runs off the bottom edge, for the reason `buildTopBar` gives.
-    this.plate("panel-transport-v2", TRACK_JOB_BAR.plate);
-    const slots = trackJobSlots();
+    this.plate("panel-transport-v2", c.jobsPlate);
+    const slots = c.jobs;
 
     /** One switch in its shared slot: the painted pair when it exists, a labelled
      *  keycap when it does not. Returns its latched-look setter. Written once —
@@ -2198,7 +2280,7 @@ export class TrackV3Scene extends Phaser.Scene {
         firstVisiblePierX: this.bridgePiers.find((pier) => pier.visible)?.x ?? null,
         visibleStructureAboveJobBar: Math.max(
           0,
-          TRACK_JOB_BAR.plate.y - TRACK_JOB_BAR.plate.height / 2 - k.railY,
+          this.chromeRects.jobsPlate.y - this.chromeRects.jobsPlate.height / 2 - k.railY,
         ),
       },
       tunnel: {

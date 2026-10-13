@@ -6,7 +6,15 @@ import YARD from "../../src/assets/maps/yard.json";
 import TRACK from "../../src/assets/maps/track.json";
 import WORKSHOP from "../../src/assets/maps/workshop.json";
 import MAP from "../../src/assets/maps/map.json";
+import TRACK_V3 from "../../src/assets/maps/track-v3.json";
 import { isMelodyStation } from "../../src/game/instrument-station.ts";
+import {
+  TRACK_CHROME_NAMES,
+  TRACK_JOB_IDS,
+  TRACK_TOOLBAR_IDS,
+  chromeRect,
+  trackChromeRects,
+} from "../../src/game/track-chrome-layout.ts";
 
 // The Three-Zone maps (UI_REFACTOR_DELEGATION Phase 2). These are the contracts
 // the generic ui-scene engine relies on: every `sprite` key must resolve in the
@@ -24,6 +32,7 @@ const yard = parseTiledLayer(YARD, "ui-layer");
 const track = parseTiledLayer(TRACK, "ui-layer");
 const workshop = parseTiledLayer(WORKSHOP, "ui-layer");
 const mapNav = parseTiledLayer(MAP, "ui-layer");
+const trackV3 = parseTiledLayer(TRACK_V3, "ui-layer");
 
 function need(spawns: readonly TiledSpawn[], id: string): TiledSpawn {
   const s = spawns.find((x) => x.id === id);
@@ -36,6 +45,7 @@ describe.each([
   ["track.json", TRACK, track],
   ["workshop.json", WORKSHOP, workshop],
   ["map.json", MAP, mapNav],
+  ["track-v3.json", TRACK_V3, trackV3],
 ])("%s (Three-Zone v3)", (_name, map, spawns) => {
   it("validates against the Tiled schema", () => {
     expect(() => TiledMapSchema.parse(map)).not.toThrow();
@@ -159,8 +169,10 @@ describe("every map's base plate", () => {
       "../scenes-v2/workshop-interior-clean.png",
       "../scenes-v2/yard-scene-clean-v2.png",
       "../scenes-v2/track-scene-clean-v2.png",
+      "../scenes-v2/track-v3-world.png",
     ]);
     for (const [name, map] of [
+      ["track-v3", TRACK_V3],
       ["yard", YARD],
       ["track", TRACK],
       ["workshop", WORKSHOP],
@@ -280,6 +292,48 @@ describe("track.json wiring", () => {
     const lcd = need(track, "lcd-transport");
     expect(lcd.klass).toBe("display");
     expect(lcd.action).toBeUndefined();
+  });
+});
+
+describe("track-v3.json wiring", () => {
+  // The side-scroller's map carries POSITIONS ONLY: its controls (a RIDE key
+  // with a STOP face, a slider, latching picture switches, deck toggles) have
+  // no generic `ui-scene` form, so `TrackV3Scene` wires each by NAME. What
+  // this file can lint is that every name the scene will ask for is there.
+
+  it("names every control the scene wires", () => {
+    expect(() => trackChromeRects(trackV3)).not.toThrow();
+    const n = TRACK_CHROME_NAMES;
+    const expected = [
+      n.headerPlate, n.map, n.speed, n.ride, n.send, n.jobsPlate,
+      ...TRACK_JOB_IDS.map(n.job), ...TRACK_TOOLBAR_IDS.map(n.toggle),
+    ].sort();
+    expect(trackV3.map((s) => s.id).sort()).toEqual(expected);
+  });
+
+  it("authors no actions: the scene owns the wiring, the map owns the places", () => {
+    for (const s of trackV3) expect(s.action, `${s.id} carries an action`).toBeUndefined();
+  });
+
+  it("names the shared plates and the atlas art each key wears", () => {
+    expect(need(trackV3, "panel-header").sprite).toBe("panel-header-v2");
+    expect(need(trackV3, "panel-jobs").sprite).toBe("panel-transport-v2");
+    expect(need(trackV3, "btn-nav-map").sprite).toBe("btn-nav-map");
+    expect(need(trackV3, "btn-ride-stop").sprite).toBe("btn-track-ride");
+    expect(need(trackV3, "btn-send-song").sprite).toBe("btn-send-song");
+    for (const id of TRACK_TOOLBAR_IDS) expect(need(trackV3, `toggle-${id}`).sprite).toBe("pad-key");
+    // The job switches draw standalone `trk-btn-*` textures, not atlas frames.
+    for (const id of TRACK_JOB_IDS) expect(need(trackV3, `job-${id}`).sprite).toBeUndefined();
+  });
+
+  it("places in design pixels, so a drag of one map pixel is one screen pixel", () => {
+    const plate = chromeRect(trackV3, "panel-header");
+    expect(plate.width).toBeCloseTo(2156, 6);
+    expect(plate.x).toBeCloseTo(1280, 6);
+  });
+
+  it("throws loudly for a control that is not there", () => {
+    expect(() => chromeRect(trackV3, "btn-clear-train")).toThrow(/TRACK_CHROME_MISSING/);
   });
 });
 

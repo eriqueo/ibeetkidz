@@ -1,0 +1,265 @@
+{
+  "compressionlevel": -1,
+  "height": 45,
+  "infinite": false,
+  "layers": [
+    {
+      "id": 1,
+      "image": "../scenes-v2/track-v3-world.png",
+      "name": "base-plate",
+      "opacity": 1,
+      "type": "imagelayer",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    },
+    {
+      "draworder": "topdown",
+      "id": 2,
+      "name": "ui-layer",
+      "objects": [
+        {
+          "height": 340,
+          "id": 1,
+          "name": "panel-header",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-header-v2"
+            }
+          ],
+          "rotation": 0,
+          "type": "panel",
+          "visible": true,
+          "width": 2156,
+          "x": 202,
+          "y": -20
+        },
+        {
+          "height": 160,
+          "id": 2,
+          "name": "btn-nav-map",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-nav-map"
+            }
+          ],
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 160,
+          "x": 392.94,
+          "y": 68.76
+        },
+        {
+          "height": 160,
+          "id": 3,
+          "name": "speed",
+          "rotation": 0,
+          "type": "display",
+          "visible": true,
+          "width": 480,
+          "x": 620.12,
+          "y": 68.76
+        },
+        {
+          "height": 210,
+          "id": 4,
+          "name": "btn-ride-stop",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-track-ride"
+            }
+          ],
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 210,
+          "x": 1167.29,
+          "y": 43.76
+        },
+        {
+          "height": 160,
+          "id": 5,
+          "name": "btn-send-song",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "btn-send-song"
+            }
+          ],
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 160,
+          "x": 1991.63,
+          "y": 68.76
+        },
+        {
+          "height": 370,
+          "id": 6,
+          "name": "panel-jobs",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "panel-transport-v2"
+            }
+          ],
+          "rotation": 0,
+          "type": "panel",
+          "visible": true,
+          "width": 1980,
+          "x": 290,
+          "y": 1090
+        },
+        {
+          "height": 150,
+          "id": 7,
+          "name": "job-hill",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 445.5,
+          "y": 1114
+        },
+        {
+          "height": 150,
+          "id": 8,
+          "name": "job-bridge",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 861.5,
+          "y": 1114
+        },
+        {
+          "height": 150,
+          "id": 9,
+          "name": "job-rain",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 1277.5,
+          "y": 1114
+        },
+        {
+          "height": 150,
+          "id": 10,
+          "name": "job-night",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 1693.5,
+          "y": 1114
+        },
+        {
+          "height": 150,
+          "id": 11,
+          "name": "job-tunnel",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 445.5,
+          "y": 1286
+        },
+        {
+          "height": 150,
+          "id": 12,
+          "name": "job-tiny",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 861.5,
+          "y": 1286
+        },
+        {
+          "height": 150,
+          "id": 13,
+          "name": "job-giant",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 1277.5,
+          "y": 1286
+        },
+        {
+          "height": 150,
+          "id": 14,
+          "name": "job-backwards",
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 325,
+          "x": 1693.5,
+          "y": 1286
+        },
+        {
+          "height": 100,
+          "id": 15,
+          "name": "toggle-header",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "pad-key"
+            }
+          ],
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 120,
+          "x": 2380,
+          "y": 100
+        },
+        {
+          "height": 100,
+          "id": 16,
+          "name": "toggle-jobs",
+          "properties": [
+            {
+              "name": "sprite",
+              "type": "string",
+              "value": "pad-key"
+            }
+          ],
+          "rotation": 0,
+          "type": "ui-button",
+          "visible": true,
+          "width": 120,
+          "x": 2380,
+          "y": 1225
+        }
+      ],
+      "opacity": 1,
+      "type": "objectgroup",
+      "visible": true,
+      "x": 0,
+      "y": 0
+    }
+  ],
+  "nextlayerid": 3,
+  "nextobjectid": 17,
+  "orientation": "orthogonal",
+  "renderorder": "right-down",
+  "tiledversion": "1.10.2",
+  "tileheight": 32,
+  "tilesets": [],
+  "tilewidth": 32,
+  "type": "map",
+  "version": "1.10",
+  "width": 80
+}
