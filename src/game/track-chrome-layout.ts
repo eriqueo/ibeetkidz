@@ -15,7 +15,9 @@
 import { parseTiledLayer, type TiledSpawn } from "./TiledParser.ts";
 import { placeSpawn } from "./spawn-placement.ts";
 import { GAME_DESIGN_SIZE } from "./game-dimensions.ts";
-import trackV3Map from "../assets/maps/track-v3.json";
+// `with { type: "json" }` because the e2e specs reach this through
+// scene-layout under Node's loader, not Vite — see game-config.ts.
+import trackV3Map from "../assets/maps/track-v3.json" with { type: "json" };
 
 export interface PlacedRect { x: number; y: number; width: number; height: number }
 

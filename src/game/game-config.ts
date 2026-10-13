@@ -10,7 +10,10 @@
 // The JSON is validated at import. A bad committed file fails every unit test
 // and every boot, loudly, which is the point: silent fallbacks are how a
 // tunable drifts from the value a scene actually uses.
-import raw from "./game-config.json";
+// The attribute is load-bearing: `scene-layout.ts` reaches this module, and
+// the e2e specs import scene-layout under Node's own loader (Playwright does
+// not go through Vite), which refuses a JSON import without it.
+import raw from "./game-config.json" with { type: "json" };
 import {
   TUNABLES,
   readPath,
