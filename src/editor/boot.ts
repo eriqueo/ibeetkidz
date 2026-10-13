@@ -15,6 +15,7 @@ import { parseTiledLayer, type TiledSpawn } from "../game/TiledParser.ts";
 import { openMap } from "./tiled-mutate.ts";
 import { readHandle } from "./scene-handle.ts";
 import { EditorOverlay } from "./EditorOverlay.ts";
+import type { DevRail } from "./dev-rail.ts";
 
 /** The string `check-no-editor-in-dist.sh` looks for. Do not change it without
  *  changing the script; it is the only thing standing between the editor and a
@@ -37,11 +38,13 @@ export function editorRequested(): boolean {
  */
 export async function attachEditor(scene: Phaser.Scene): Promise<void> {
   installDevHooks();
-  const handle = readHandle(scene);
-  if (!handle) return;
-
+  // Torn down here, not only when the new scene has a handle: a scene without
+  // one must not keep a stale overlay (and its selection) alive.
   active?.destroy();
   active = null;
+  void ensureRail();
+  const handle = readHandle(scene);
+  if (!handle) return;
 
   const loader = MAPS[`../assets/maps/${handle.mapName}.json`];
   if (!loader) {
@@ -52,8 +55,46 @@ export async function attachEditor(scene: Phaser.Scene): Promise<void> {
   const edit = openMap(handle.mapName, mod.default);
 
   const reparse = (): TiledSpawn[] => parseTiledLayer(edit.raw, handle.layerName);
-  active = new EditorOverlay({ scene, handle, edit, reparse });
+  active = new EditorOverlay({ scene, handle, edit, reparse, active: dragging });
   console.info(`[${EDITOR_MARKER}] editing ${handle.mapName}.json / ${handle.layerName}`);
+}
+
+/** `?edit`'s drag/play switch. Held here, not on the overlay, because each
+ *  scene gets a fresh overlay and the choice must survive the trip. */
+let dragging = true;
+
+function setDragging(on: boolean): void {
+  dragging = on;
+  active?.setActive(on);
+  rail?.refresh();
+}
+
+let rail: DevRail | null = null;
+let railLoading: Promise<void> | null = null;
+
+/** Mount the dev rail once per page; afterwards just re-mark the current
+ *  screen. Called on every scene-ready from both surfaces. */
+async function ensureRail(): Promise<void> {
+  if (rail) {
+    rail.refresh();
+    return;
+  }
+  railLoading ??= import("./dev-rail.ts").then(({ DevRail: Rail }) => {
+    const hooks = editorRequested()
+      ? { drag: { get: () => dragging, set: setDragging }, selected: () => active?.selectedId }
+      : {};
+    rail = new Rail(hooks);
+    if (editorRequested()) {
+      window.addEventListener("keydown", (e: KeyboardEvent) => {
+        const typing = e.target instanceof HTMLElement && e.target.closest("input, textarea, select");
+        if (e.key === "`" && !typing && !e.ctrlKey && !e.metaKey && !e.altKey) {
+          e.preventDefault();
+          setDragging(!dragging);
+        }
+      });
+    }
+  });
+  await railLoading;
 }
 
 export function detachEditor(): void {
@@ -74,6 +115,7 @@ let tune: { destroy(): void } | null = null;
  *  harmless. */
 export async function attachTune(): Promise<void> {
   installDevHooks();
+  void ensureRail();
   if (tune) return;
   const { TunePanel } = await import("./tune-panel.ts");
   tune = new TunePanel();

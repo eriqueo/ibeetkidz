@@ -24,11 +24,23 @@ import path from "node:path";
 import process from "node:process";
 import type { Plugin } from "vite";
 import { validateGameConfig } from "../src/game/game-config-schema.ts";
+// Where the dev rail's notes go and what an entry looks like. An agent reads
+// the open ones at the start of ibeetkidz work (CLAUDE.md says so).
+import { NOTES_FILE, NOTES_HEADER, NOTE_MAX, formatNote, openNoteCount } from "../src/editor/note-format.ts";
 
 const SAVE_MAP = "ibk:save-map";
 const MAP_SAVED = "ibk:map-saved";
 const SAVE_CONFIG = "ibk:save-config";
 const CONFIG_SAVED = "ibk:config-saved";
+const SAVE_NOTE = "ibk:save-note";
+const NOTE_SAVED = "ibk:note-saved";
+const LOAD_NOTES = "ibk:load-notes";
+const NOTES = "ibk:notes";
+
+interface NotePayload {
+  text?: unknown;
+  where?: unknown;
+}
 
 /** The only map files this plugin will ever write. */
 const ALLOWED_MAPS = ["map", "workshop", "yard", "track", "track-v3"] as const;
@@ -75,6 +87,7 @@ export function ibkMapWriter(): Plugin {
   const root = process.cwd();
   const mapsDir = path.resolve(root, "src/assets/maps");
   const configFile = path.resolve(root, "src/game/game-config.json");
+  const notesFile = path.resolve(root, NOTES_FILE);
   /** Files this plugin just wrote, so `handleHotUpdate` can swallow the reload
    *  its own write would otherwise trigger — a full reload mid-drag (or
    *  mid-slider) would throw away the editing session. */
@@ -149,6 +162,36 @@ export function ibkMapWriter(): Plugin {
         const reply = (ok: boolean, detail: string): void => client.send(CONFIG_SAVED, { ok, detail });
         if (!enabled) return reply(false, `config ${off}`);
         reply(...(await write(configTarget, data)));
+      });
+
+      // Notes append, so there is no stale-write hash: two tabs adding notes
+      // both land, in order. The client sends text and a short "where"; the
+      // file name is fixed here.
+      server.ws.on(SAVE_NOTE, async (data: NotePayload, client) => {
+        const reply = (ok: boolean, detail: string, open = 0): void => client.send(NOTE_SAVED, { ok, detail, open });
+        if (!enabled) return reply(false, `note ${off}`);
+        const text = typeof data?.text === "string" ? data.text : "";
+        const where = typeof data?.where === "string" ? data.where : "?";
+        if (!text.trim()) return reply(false, "empty note");
+        if (text.length > NOTE_MAX) return reply(false, `note is over ${NOTE_MAX} characters`);
+        try {
+          const current = existsSync(notesFile) ? await readFile(notesFile, "utf8") : NOTES_HEADER;
+          const next = `${current.endsWith("\n") ? current : `${current}\n`}${formatNote(text, where, new Date())}`;
+          const tmp = `${notesFile}.tmp`;
+          selfWritten.add(notesFile);
+          await writeFile(tmp, next, "utf8");
+          await rename(tmp, notesFile);
+          reply(true, `note saved to ${NOTES_FILE}`, openNoteCount(next));
+        } catch (err) {
+          selfWritten.delete(notesFile);
+          reply(false, `write failed: ${err instanceof Error ? err.message : String(err)}`);
+        }
+      });
+
+      // Reading is allowed without IBK_EDIT: it changes nothing.
+      server.ws.on(LOAD_NOTES, async (_data: unknown, client) => {
+        const text = existsSync(notesFile) ? await readFile(notesFile, "utf8") : "";
+        client.send(NOTES, { open: openNoteCount(text) });
       });
 
       if (enabled) {

@@ -107,6 +107,43 @@ export async function saveConfig(json: string, baseline: string): Promise<SaveRe
   });
 }
 
+/** The notes half: append one note to `design/PREVIEW_NOTES.md` (the server
+ *  owns the file name and the format). `open` is how many notes are still
+ *  unticked after this one landed. */
+export const SAVE_NOTE_EVENT = "ibk:save-note";
+export const NOTE_SAVED_EVENT = "ibk:note-saved";
+export const LOAD_NOTES_EVENT = "ibk:load-notes";
+export const NOTES_EVENT = "ibk:notes";
+
+export async function saveNote(text: string, where: string): Promise<SaveResult & { open: number }> {
+  const hot = import.meta.hot;
+  if (!hot) return { ok: false, detail: "no dev server (HMR channel absent)", open: 0 };
+  return new Promise((resolve) => {
+    const done = (data: SaveResult & { open: number }): void => {
+      hot.off(NOTE_SAVED_EVENT, done);
+      resolve(data);
+    };
+    hot.on(NOTE_SAVED_EVENT, done);
+    hot.send(SAVE_NOTE_EVENT, { text, where });
+    setTimeout(() => done({ ok: false, detail: "dev server did not answer", open: 0 }), 4000);
+  });
+}
+
+/** How many notes are open, or null without a dev server to ask. */
+export async function openNotes(): Promise<number | null> {
+  const hot = import.meta.hot;
+  if (!hot) return null;
+  return new Promise((resolve) => {
+    const done = (data: { open: number } | null): void => {
+      hot.off(NOTES_EVENT, done);
+      resolve(data ? data.open : null);
+    };
+    hot.on(NOTES_EVENT, done);
+    hot.send(LOAD_NOTES_EVENT, {});
+    setTimeout(() => done(null), 4000);
+  });
+}
+
 export async function save(edit: EditableMap, sink: SinkKind = "hmr"): Promise<SaveResult> {
   if (sink === "clipboard") return viaClipboard(edit);
   if (sink === "download") return viaDownload(edit);

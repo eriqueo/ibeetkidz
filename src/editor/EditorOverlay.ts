@@ -29,6 +29,8 @@ export interface EditorDeps {
   readonly edit: EditableMap;
   /** Re-parse the mutated JSON into fresh spawns for the handle's layer. */
   readonly reparse: () => TiledSpawn[];
+  /** Start with the boxes live (drag) or parked (play). Defaults to live. */
+  readonly active?: boolean;
 }
 
 export class EditorOverlay {
@@ -37,11 +39,15 @@ export class EditorOverlay {
   private selected = -1;
   private sink: SinkKind = "hmr";
   private status = "";
+  /** Drag mode. Off, the boxes are hidden AND non-interactive, so a click
+   *  reaches the scene's own button (MAP, TRACK…) instead of selecting it. */
+  private active = true;
 
   constructor(private readonly deps: EditorDeps) {
     this.build();
     this.bindKeys();
     this.layout();
+    this.setActive(deps.active ?? true);
     // Paint the HUD immediately. `build()` creates it empty and every other
     // caller of `refreshHud` is a selection or a keypress, so arriving in the
     // editor used to show outlines and a blank chip — the one place that says
@@ -80,6 +86,7 @@ export class EditorOverlay {
     const kb = this.deps.scene.input.keyboard;
     if (!kb) return;
     kb.on("keydown", (e: KeyboardEvent) => {
+      if (!this.active) return;
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
         e.preventDefault();
         void this.save();
@@ -100,6 +107,17 @@ export class EditorOverlay {
         this.select((this.selected + 1) % this.boxes.length);
       }
     });
+  }
+
+  /** Switch between dragging the chrome and playing through it. */
+  setActive(on: boolean): void {
+    this.active = on;
+    for (const box of this.boxes) {
+      box.setVisible(on);
+      if (on) box.setInteractive({ useHandCursor: true, draggable: true });
+      else box.disableInteractive();
+    }
+    this.refreshHud();
   }
 
   private select(i: number): void {
@@ -156,11 +174,15 @@ export class EditorOverlay {
   private refreshHud(): void {
     const { handle, edit } = this.deps;
     const sel = this.selected >= 0 ? handle.spawns[this.selected]?.id : undefined;
+    if (!this.active) {
+      this.hud?.setText(`PLAY ${edit.name}.json${isDirty(edit) ? " * unsaved" : ""}   · \` to drag`);
+      return;
+    }
     this.hud?.setText(
       [
         `EDIT ${edit.name}.json${isDirty(edit) ? " *" : ""}   sink:${this.sink}`,
         sel ? `selected: ${sel}` : "click an outline to select · Tab cycles",
-        "drag to move · arrows nudge (shift=10) · ctrl+S save",
+        "drag to move · arrows nudge (shift=10) · ctrl+S save · ` to play",
         this.status,
       ]
         .filter(Boolean)
@@ -181,6 +203,11 @@ export class EditorOverlay {
       ).concat("\n");
     }
     this.refreshHud();
+  }
+
+  /** The selected outline's object name, for a note's "where". */
+  get selectedId(): string | undefined {
+    return this.selected >= 0 ? this.deps.handle.spawns[this.selected]?.id : undefined;
   }
 
   destroy(): void {

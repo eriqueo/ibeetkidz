@@ -83,8 +83,24 @@ channel through `vite-plugins/ibk-map-writer.ts`. Neither can reach a build:
 | `/?edit` | Tiled chrome in Map, Workshop, Yard, the oval Track, and the side-scroller's decks (`src/assets/maps/*.json`; the side-scroller's is `track-v3.json`, positions only) | drag a box, arrows nudge (shift = 10), Tab cycles, ctrl+S saves |
 | `/?tune` | `src/game/game-config.json`: the side-scroller's numbers, the Workshop's rack / grid / tool-modal box, the Yard's siding and assembly-line numbers, and one SHEET per Workshop station (lane name, and the voice of a melody station) | sliders apply live by re-mounting the scene; sheets apply to the next lane without a re-mount; ctrl+S saves, reset returns to the file |
 
+Both surfaces carry the **dev rail** on the left edge (`src/editor/dev-rail.ts`):
+one button per screen (it dispatches `setActiveView` directly, skipping the
+kid-facing "build a train first" guards), on `?edit` a **drag / play** switch
+(also the backquote key; play hides the outlines so the scene's own buttons
+work), and a **note box**.
+
+**Preview notes are Eric's inbox for you.** A note saved from the rail is
+appended to `design/PREVIEW_NOTES.md` as an open `- [ ]` entry tagged with the
+screen and the selected outline. At the start of ibeetkidz work, read the open
+entries, do or answer them, and tick them (`- [x]`, plus a few words on what was
+done) in the same change. Nothing pushes a note into a running agent session;
+this file is the hand-off.
+
+The dev server gzips its responses (`vite-plugins/dev-compression.ts`, serve
+only): the tailnet preview used to push 10.6 MB per load up the home line.
+
 Both surfaces also carry the **state dump** for bug reports: the `dump state`
-button on `?tune`, or ctrl+shift+D on either, downloads (and copies) a JSON of
+button on `?tune` or the rail, or ctrl+shift+D on either, downloads (and copies) a JSON of
 the project, the live config, the running scene's diagnostic getters, the audio
 diagnostics and the last window errors (`src/editor/state-dump.ts`). Attach
 that file to a bug instead of describing the screen.

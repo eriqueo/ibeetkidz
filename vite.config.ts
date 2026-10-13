@@ -3,6 +3,7 @@ import react from "@vitejs/plugin-react";
 import { VitePWA } from "vite-plugin-pwa";
 import { fileURLToPath, URL } from "node:url";
 import { ibkMapWriter } from "./vite-plugins/ibk-map-writer.ts";
+import { devCompression } from "./vite-plugins/dev-compression.ts";
 import { pwaRuntimeAssets } from "./vite-plugins/pwa-runtime-assets.ts";
 
 // Dual-base build, mirroring the kidpix pattern:
@@ -14,7 +15,10 @@ export default defineConfig(({ mode }) => {
     base: isGh ? "/ibeetkidz/" : "/",
     // `ibkMapWriter` is `apply: "serve"` and additionally gated on IBK_EDIT=1,
     // so it is absent from every build and inert in an ordinary `npm run dev`.
+    // `devCompression` (also serve-only) gzips the dev server's responses for
+    // the tailnet preview; see the file for why.
     plugins: [
+      devCompression(),
       react(),
       ibkMapWriter(),
       pwaRuntimeAssets(),
