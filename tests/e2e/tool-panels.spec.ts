@@ -441,12 +441,12 @@ const melodyPanel = (page: Page) =>
   page.evaluate(() => {
     const s: any = (window as any).__ibeetkidz_test__.getScene();
     const p: any = s.toolPanels["melody-editor"];
-    const def = { x0: 0.03, y0: 0.023, x1: 0.969, y1: 0.973 }; // panel-editor content box
-    const artW = p.panelImg.displayWidth * (def.x1 - def.x0);
-    const artH = p.panelImg.displayHeight * (def.y1 - def.y0);
+    // Since card C8 the machine fills the screen inside a frame cut from its
+    // plate; `machineBox` is that frame's outer edge.
+    const box = p.machineBox;
     return {
       game: { w: s.scale.gameSize.width, h: s.scale.gameSize.height },
-      art: { w: artW, h: artH, top: p.panelImg.y - artH / 2, bottom: p.panelImg.y + artH / 2 },
+      art: { w: box.w, h: box.h, top: box.y, bottom: box.y + box.h },
       // AR-026 delivered a real idle/on pair, so "the switch moved" is now the
       // frame being drawn — the mirrored-column ballY arithmetic retired with
       // the interim it measured.
@@ -558,6 +558,8 @@ test("Melody Editor: the panel fills the canvas it was given", async ({ page }) 
       }, { message: `panel too small at ${w}×${h}` })
       .toBeGreaterThan(80);
     const p = await melodyPanel(page);
+    // Card C8: it fills the width too, so sixteen steps are finger-sized.
+    expect(p.art.w / p.game.w, `panel too narrow at ${w}×${h}`).toBeGreaterThan(0.9);
     expect(p.art.top, "must not overflow the top").toBeGreaterThan(0);
     expect(p.art.bottom, "must not overflow the bottom").toBeLessThan(p.game.h);
   }

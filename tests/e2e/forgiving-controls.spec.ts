@@ -112,6 +112,38 @@ test("a long train scrolls in the Yard instead of piling up", async ({ page }) =
   expect(crashes, crashes.join(" | ")).toEqual([]);
 });
 
+test("the full-screen drum machine's lane keys and steps answer real taps", async ({ page }) => {
+  const crashes = await boot(page);
+  await go(page, "workshop", "WorkshopScene");
+  await page.evaluate(() => (window as any).__ibeetkidz_test__.emit("workshop-open-tool", "beat-grid"));
+  await expect.poll(() => page.evaluate(() => (window as any).__ibeetkidz_test__.getScene().activeToolId)).toBe("beat-grid");
+  const lane = (id: string) => page.evaluate((layerId) => {
+    const p = (window as any).__ibeetkidz_test__.getProject();
+    return p.parts.find((x: any) => x.id === p.activePartId).layers.find((l: any) => l.id === layerId) ?? null;
+  }, id);
+
+  // A step between two beats of the kick lane: off, then on by a tap in its
+  // padding (the tap area covers the whole step, gaps included).
+  expect((await lane("beat-kick")).steps[1]).toBeNull();
+  const cell = await page.evaluate(() => {
+    const s = (window as any).__ibeetkidz_test__.getScene();
+    const panel = s.toolPanels["beat-grid"];
+    const c = panel.rows[0].cells[1];
+    const canvas = document.querySelector("canvas")!.getBoundingClientRect();
+    const k = canvas.width / s.scale.gameSize.width;
+    // Just inside the step's right edge, past the drawn square.
+    return { x: canvas.left + (c.x + c.width / 2 + 4) * k, y: canvas.top + c.y * k };
+  });
+  await page.mouse.click(cell.x, cell.y);
+  await expect.poll(async () => (await lane("beat-kick")).steps[1]).not.toBeNull();
+
+  await tapNamedPhaserObject(page, "workshop-tool:beat-grid:mute:beat-snare");
+  await expect.poll(async () => (await lane("beat-snare")).muted).toBe(true);
+  await tapNamedPhaserObject(page, "workshop-tool:beat-grid:delete:beat-hihat");
+  await expect.poll(() => lane("beat-hihat")).toBeNull();
+  expect(crashes, crashes.join(" | ")).toEqual([]);
+});
+
 test.describe("touch targets on a landscape iPad", () => {
   test.use({ viewport: { width: 1024, height: 768 } });
 
@@ -139,6 +171,18 @@ test.describe("touch targets on a landscape iPad", () => {
     expect(await small()).toEqual([]);
     await go(page, "workshop", "WorkshopScene");
     expect(await small()).toEqual([]);
+    // Every tool panel, the drum machine with the starter beat's three lanes in
+    // it. Card C8 made the drum and melody steps finger-sized.
+    for (const tool of ["record-voicefx", "voice-keys", "sound-pads", "beat-grid", "theremin-xy", "melody-editor"]) {
+      await page.evaluate((t) => (window as any).__ibeetkidz_test__.emit("workshop-open-tool", t), tool);
+      await expect.poll(() => page.evaluate(() =>
+        (window as any).__ibeetkidz_test__.getScene().activeToolId)).toBe(tool);
+      await page.waitForTimeout(300);
+      expect(await small(), tool).toEqual([]);
+      await page.evaluate(() => (window as any).__ibeetkidz_test__.emit("workshop-open-tool", null));
+      await expect.poll(() => page.evaluate(() =>
+        (window as any).__ibeetkidz_test__.getScene().activeToolId)).toBeNull();
+    }
     await go(page, "yard", "YardScene");
     expect(await small()).toEqual([]);
     await go(page, "track", "TrackV3Scene");

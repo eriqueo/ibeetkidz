@@ -10,6 +10,7 @@ import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import { headerPlateField, WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
 import { MIN_TOUCH_PX } from "./game-dimensions.ts";
+import { buildPlateFrame, MELODY_FRAME, PERCUSSION_FRAME } from "./plate-frame.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, type UiSpriteDef } from "./ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { OFFERED_DRUMS } from "../core/sound-catalog.ts";
@@ -494,8 +495,11 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
    *  gesture as the conductor chalkboard's own DONE chip, so "finished" looks
    *  identical everywhere in the Workshop. */
   private placeDone(cx: number, bottomY: number, width: number): void {
-    const w = Math.max(190, width * 0.26);
-    const h = Math.max(66, width * 0.085);
+    // Sized off the machine's width, up to a half-screen machine's: a machine
+    // that fills the screen (card C8) keeps the same DONE as the others.
+    const basis = Math.min(width, 1650);
+    const w = Math.max(190, basis * 0.26);
+    const h = Math.max(66, basis * 0.085);
     // Landscape machines have room below their body; the portrait Melody body
     // reaches almost to the canvas floor. Clamp the shared exit into view there
     // instead of faithfully placing an unreachable control off-screen.
@@ -569,6 +573,21 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
 /** A rectangle on a plate, normalized to the plate's OWN canvas — the space the
  *  recesses were measured in, straight off the delivered PNG. */
 interface PlateRegion { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+
+/** Where the drum and melody machines stand while open (card C8): nearly the
+ *  whole screen, leaving the top for the title plaque and the bottom for
+ *  DONE, which hang over the frame's edges. */
+function fullToolBox(sw: number, sh: number): Box {
+  return { x: sw * 0.012, y: sh * 0.083, w: sw * 0.976, h: sh * 0.82 };
+}
+
+/** Scene px per plate px for those machines' frames: the band and brackets
+ *  at about the size the plates were drawn at in the old half-screen box. */
+const FULL_TOOL_FRAME_SCALE = 0.7;
+
+/** Round a machine that fills the screen, the Workshop is all but hidden: its
+ *  buttons peeking past the title plaque read as part of the machine. */
+const FULL_TOOL_BACKDROP_ALPHA = 0.9;
 
 /** Grow an image's tap area, centred on its art, to at least `minPx` scene px
  *  each way (card C6). The hit area is in the image's own unscaled frame. */
@@ -1060,21 +1079,6 @@ export class PadsToolPanel extends BaseToolPanel {
 // Everything routes through the SAME events the chalkboard already emits, so
 // this panel adds zero new reducers and cannot disagree with the board.
 export class PercussionToolPanel extends BaseToolPanel {
-  /** Recesses painted into the plate's drum shelf. */
-  private static readonly SHELF_RECESSES = 10;
-  /** AR-050's painted drum-machine plate. Regions MEASURED off the delivered
-   *  PNG (1536×1152): the recessed grid field inside the wooden frame, and
-   *  the ten-recess drum shelf strip — the engine controls mount INTO them.
-   *  The plate's own row rail sits at 16% of the field, matching `HEAD_FRAC`. */
-  // Re-measured for AR-058's redrawn machine face. `field` spans the row RAIL
-  // and the grid together, because `HEAD_FRAC` splits the heads off the front
-  // of it — and 0.16 of this span lands exactly on the rail the plate now
-  // draws, which is what makes the ✕/icon/mute column sit in its sockets.
-  private static readonly PLATE = {
-    field: { x0: 0.0605, y0: 0.0868, x1: 0.9408, y1: 0.7378 },
-    shelf: { x0: 0.0788, y0: 0.7934, x1: 0.9206, y1: 0.8733 },
-  } as const;
-
   /** Empty cells are pale chalk on the plate's dark field — the parchment
    *  era's dark-plum-on-dark cells were invisible the moment AR-050 landed. */
   private static readonly CELL_OFF = 0xf6efdc;
@@ -1085,8 +1089,8 @@ export class PercussionToolPanel extends BaseToolPanel {
     /** AR-054's painted sound icon, drawn INSTEAD of the emoji label when the
      *  atlas has one for this row's sound. */
     icon: Phaser.GameObjects.Image | null;
-    mute: Phaser.GameObjects.Text;
-    del: Phaser.GameObjects.Text;
+    mute: PanelButton;
+    del: PanelButton;
     cells: Phaser.GameObjects.Rectangle[];
     on: boolean[];
     muted: boolean;
@@ -1101,8 +1105,11 @@ export class PercussionToolPanel extends BaseToolPanel {
   constructor(scene: Phaser.Scene) { super(scene, "beat-grid", "🥁 Drums"); }
 
   protected buildContent(): void {
-    // 1.06: the plate carries its own header band above the grid field.
-    this.mountPlate("panel-percussion", 1.06);
+    // The machine fills the screen while it is open (card C8): its painted
+    // plate is rebuilt as a frame round the edge in `layoutContent`.
+    this.frame.setVisible(false);
+    this.shadow.setVisible(false);
+    this.backdrop.setFillStyle(0x000000, FULL_TOOL_BACKDROP_ALPHA);
     this.hint = this.scene.add
       .text(0, 0, "TAP A DRUM BELOW TO ADD IT", { fontFamily: FONT, fontSize: "12px", color: "#e8dcc8" })
       .setOrigin(0.5);
@@ -1132,8 +1139,8 @@ export class PercussionToolPanel extends BaseToolPanel {
     this.rows.forEach((r) => {
       r.label.destroy();
       r.icon?.destroy();
-      r.mute.destroy();
-      r.del.destroy();
+      r.mute.container.destroy();
+      r.del.container.destroy();
       r.cells.forEach((c) => c.destroy());
     });
     this.rows = model.percussion.rows.map((row) => {
@@ -1147,11 +1154,14 @@ export class PercussionToolPanel extends BaseToolPanel {
       // object for the layout to size against, and a recorded lane (no built-in
       // sound, so no painted icon) still shows its emoji here.
       const label = this.scene.add.text(0, 0, icon ? "" : row.emoji, { fontSize: "16px" }).setOrigin(0.5);
-      const mute = this.scene.add.text(0, 0, "🔊", { fontSize: "14px" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      const del = this.scene.add.text(0, 0, "✕", { fontFamily: FONT, fontSize: "14px", color: "#ff5d8f" }).setOrigin(0.5).setInteractive({ useHandCursor: true });
-      mute.on("pointerdown", () => EventBus.emit("workshop-layer-muted", row.id));
-      del.on("pointerdown", () => EventBus.emit("workshop-layer-delete", row.id));
-      this.add([label, mute, del]);
+      // Each a real key, as big as a finger (card C8): they were 12 px glyphs.
+      const mute = new PanelButton(this.scene, row.muted ? "🔇" : "🔊",
+        () => EventBus.emit("workshop-layer-muted", row.id), 0x3a3350, { face: "pad-key", tintFace: true });
+      const del = new PanelButton(this.scene, "✕",
+        () => EventBus.emit("workshop-layer-delete", row.id), 0x7a2540, { face: "pad-key", tintFace: true });
+      mute.container.setName(`workshop-tool:beat-grid:mute:${row.id}`);
+      del.container.setName(`workshop-tool:beat-grid:delete:${row.id}`);
+      this.add([label, mute.container, del.container]);
       const cells: Phaser.GameObjects.Rectangle[] = [];
       const on: boolean[] = [];
       const view = { id: row.id, label, icon, mute, del, cells, on, muted: row.muted, color };
@@ -1186,62 +1196,69 @@ export class PercussionToolPanel extends BaseToolPanel {
     this.layoutContent();
   }
 
+  /** The frame pieces from the last layout, rebuilt on every resize. */
+  private plateFrame: Phaser.GameObjects.GameObject[] = [];
+  private machineBox: Box = { x: 0, y: 0, w: 0, h: 0 };
+
+  protected override shellBodyBounds(): Box {
+    return this.machineBox;
+  }
+
   protected layoutContent(): void {
-    // With the painted plate: the grid mounts INTO its recessed field and the
-    // pads INTO its ten shelf recesses. Without it (atlas not yet loaded),
-    // the generic parchment's inner box carries the same proportions.
-    let grid: Box;
-    let shelf: Box;
-    const at = this.placePlate();
-    if (at) {
-      const P = PercussionToolPanel.PLATE;
-      grid = at(P.field);
-      shelf = at(P.shelf);
-    } else {
-      const i = this.inner;
-      const shelfH = i.h * 0.16;
-      grid = { x: i.x, y: i.y, w: i.w, h: i.h - shelfH };
-      shelf = { x: i.x, y: i.y + i.h - shelfH, w: i.w, h: shelfH };
-    }
+    // The whole screen, framed by the plate (card C8). At the size it was
+    // painted, sixteen steps came out 21 px wide on a 1024-wide iPad; across
+    // the screen each step is at least `MIN_TOUCH_PX`, the 48 px a finger needs.
+    const { width: sw, height: sh } = this.scene.scale.gameSize;
+    this.machineBox = fullToolBox(sw, sh);
+    this.plateFrame.forEach((o) => o.destroy());
+    const built = buildPlateFrame(this.scene, PERCUSSION_FRAME, this.machineBox, FULL_TOOL_FRAME_SCALE);
+    this.plateFrame = built.objects;
+    this.addAt(this.plateFrame, 1); // above the backdrop, under everything else
+    const field = built.inner;
+
+    const gap = Math.max(10, field.w * 0.006);
+    const shelfH = Math.max(MIN_TOUCH_PX, field.h * 0.15);
+    const grid = { x: field.x + gap, y: field.y + gap, w: field.w - gap * 2, h: field.h - shelfH - gap * 3 };
+    const shelf = { x: field.x + gap, y: grid.y + grid.h + gap, w: grid.w, h: shelfH };
 
     // One row per LANE the car can hold, so a full car fills the field exactly.
-    //
-    // Tried aligning to the plate's painted rail sockets instead, and it is the
-    // wrong trade: AR-058 draws NINE of them against a cap of six, so the pitch
-    // came out a third too small and the drum icon in each head shrank to about
-    // 45px of a 2560-wide stage — too small for the four-year-old who has to
-    // hit it. A tappable row that does not line up with a decorative socket
-    // beats a tidy row nobody can hit. (AR-058's follow-up asks for six.)
+    // Each row's head is three keys wide: ✕, the drum, and its speaker.
     const rowH = grid.h / MAX_LAYERS;
-    const headW = grid.w * 0.16; // the plate's row rail is drawn at this split
-    const cellW = (grid.w - headW) / STEP_COUNT;
+    const keyW = Math.max(MIN_TOUCH_PX, grid.w * 0.05);
+    const headW = keyW * 3 + gap * 2;
+    const cellW = (grid.w - headW - gap) / STEP_COUNT;
     const pad = Math.min(cellW, rowH) * 0.12;
+    const keyH = Math.min(rowH - pad, keyW);
     this.rows.forEach((row, r) => {
       const cy = grid.y + (r + 0.5) * rowH;
-      row.del.setPosition(grid.x + headW * 0.16, cy).setFontSize(Math.max(10, rowH * 0.34));
-      row.label.setPosition(grid.x + headW * 0.5, cy).setFontSize(Math.max(12, rowH * 0.5));
-      // Bounded by the RAIL as well as the row: the head carries ✕, icon and
-      // mute across `headW`, and an icon sized only off row height grows into
-      // its neighbours as soon as there are few enough rows to be chunky.
-      const iconD = Math.max(14, Math.min(rowH * 0.62, headW * 0.3));
-      row.icon?.setDisplaySize(iconD, iconD).setPosition(grid.x + headW * 0.5, cy);
-      row.mute.setPosition(grid.x + headW * 0.84, cy).setFontSize(Math.max(10, rowH * 0.38));
+      row.del.place({ x: grid.x, y: cy - keyH / 2, w: keyW, h: keyH }, Math.round(keyH * 0.4));
+      row.label.setPosition(grid.x + keyW * 1.5 + gap, cy).setFontSize(Math.max(12, rowH * 0.5));
+      const iconD = Math.min(rowH * 0.7, keyW);
+      row.icon?.setDisplaySize(iconD, iconD).setPosition(grid.x + keyW * 1.5 + gap, cy);
+      row.mute.place({ x: grid.x + (keyW + gap) * 2, y: cy - keyH / 2, w: keyW, h: keyH }, Math.round(keyH * 0.4));
       row.cells.forEach((cell, s) => {
-        cell.setPosition(grid.x + headW + (s + 0.5) * cellW, cy);
+        cell.setPosition(grid.x + headW + gap + (s + 0.5) * cellW, cy);
         cell.setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+        // Tapped across the whole step, gaps included, so a finger between two
+        // cells still lands on one and a drag paints without holes.
+        (cell.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(-pad / 2, -pad / 2, cellW, rowH);
       });
     });
-    // The drum shelf: one pad per recess. The plate paints TEN recesses and six
-    // drums are offered, so the six sit in the middle six and the outer four
-    // stay empty until AR-058's plate is redrawn for six (AR-070 count note).
-    const bw = shelf.w / PercussionToolPanel.SHELF_RECESSES;
-    const first = (PercussionToolPanel.SHELF_RECESSES - this.addButtons.length) / 2;
+    // The drum shelf along the bottom, one key per drum, centred and spaced
+    // clear of DONE, which hangs over the frame's bottom edge in the middle.
+    const shelfKey = Math.min(shelf.h, MIN_TOUCH_PX * 1.25);
+    const pitch = shelfKey * 1.25;
+    const rowW = pitch * this.addButtons.length;
     this.addButtons.forEach((btn, k) => {
-      // The tap area is the whole recess, not just the drawn key (card C6).
-      btn.setMinHit(Math.min(bw, shelf.h));
-      btn.place({ x: shelf.x + (first + k) * bw + bw * 0.1, y: shelf.y + shelf.h * 0.1, w: bw * 0.8, h: shelf.h * 0.8 }, Math.max(12, shelf.h * 0.3));
+      btn.setMinHit(pitch);
+      btn.place({
+        x: shelf.x + (shelf.w - rowW) / 2 + k * pitch + (pitch - shelfKey) / 2,
+        y: shelf.y + (shelf.h - shelfKey) / 2,
+        w: shelfKey,
+        h: shelfKey,
+      }, Math.max(12, shelfKey * 0.3));
     });
-    this.hint.setPosition(grid.x + grid.w / 2, grid.y + grid.h * 0.5).setFontSize(Math.max(11, grid.h * 0.05));
+    this.hint.setPosition(grid.x + grid.w / 2, grid.y + grid.h * 0.5).setFontSize(Math.max(14, grid.h * 0.04));
   }
 
   apply(model: ToolModel): void {
@@ -1258,6 +1275,7 @@ export class PercussionToolPanel extends BaseToolPanel {
         view.muted = row.muted;
         view.mute.setText(row.muted ? "🔇" : "🔊");
       }
+      view.mute.setLatched(row.muted);
       const rowAlpha = row.muted ? 0.35 : 1;
       for (let s = 0; s < STEP_COUNT; s++) {
         const isOn = row.cells[s] ?? false;
@@ -1321,6 +1339,8 @@ export class MagicToolPanel extends BaseToolPanel {
     });
     this.waveBtns = WAVES.map((w) => ({ wave: w.wave, btn: new PanelButton(this.scene, `${w.emoji}\n${w.label}`, () => EventBus.emit("tool-magic-wave", w.wave)) }));
     this.recordBtn = new PanelButton(this.scene, "🎙️ Record", () => EventBus.emit("tool-magic-record"), 0x7a2540);
+    // Painted a little short for a finger; its bay has room round it (card C6).
+    this.recordBtn.setMinHit(MIN_TOUCH_PX);
     this.add([this.zone, this.dot, this.hint, ...this.waveBtns.map((w) => w.btn.container), this.recordBtn.container]);
   }
 
@@ -1374,25 +1394,25 @@ export class MagicToolPanel extends BaseToolPanel {
 // A BeepBox-style grid: MELODY_ROWS pitch rows (high at top) × STEP_COUNT steps.
 // Tapping a cell toggles a note at that (degree, step); React updates the lane.
 
-/**
- * The instrument editor gets its OWN modal region rather than the shared
- * `WORKSHOP_TOOL_MODAL`. That constant is tuned for the five ENGINE-DRAWN
- * landscape parchment panels; this panel's art is PORTRAIT (1152×1536), and
- * `placeUiSprite` contain-fits it, so the region's 0.70 height was the only
- * binding axis and the panel used barely two-thirds of the canvas. Eric:
- * "i also think the whole thing should be a little bigger".
- *
- * Phaser runs a FIXED 2560×1440 design space under `Scale.FIT` (see
- * `game/main.ts`), so this is orientation-invariant: portrait and landscape get
- * the identical layout, letterboxed differently by the browser. The art is
- * height-bound at every viewport, so height is the number that matters.
- */
-const MELODY_MODAL = { x: 0.02, y: 0.03, w: 0.96, h: 0.94 } as const;
-
-/** Fraction of the region reserved ABOVE the art for the title + ✕. They hang
- *  off the art's top edge, so growing the art into the whole region pushed the
- *  close button off the top of the canvas. */
-const MELODY_HEADER_FRAC = 0.09;
+/** The four control tiles painted along the bottom of `panel-editor.png`
+ *  (WOBBLE, CRUNCH, LOUD, TWICE), in the PNG's own pixels, and where each
+ *  control and its word sit on them — measured off the plate. Since card C8
+ *  the slate fills the screen and these four tiles are cut out and stacked up
+ *  its right-hand side. */
+const MELODY_DECK = {
+  tiles: [
+    { x: 62, y: 1004, w: 266, h: 426 },
+    { x: 330, y: 1004, w: 260, h: 426 },
+    { x: 591, y: 1004, w: 231, h: 426 },
+    { x: 826, y: 1004, w: 254, h: 426 },
+  ],
+  knobWobble: { x: 215, y: 1144, d: 200 },
+  knobCrunch: { x: 466, y: 1144, d: 200 },
+  fader: { x: 688, y0: 1049, y1: 1258, w: 67, slotW: 26 },
+  toggle: { x: 935, y: 1166, w: 173 },
+  wordY: 1296,
+  wordX: [222, 463, 696, 935],
+} as const;
 
 // The ×2 switch is an ordinary two-frame control now. It spent a while as ONE
 // frame (lever down, "OFF" plaque) with a cropped, mirrored copy of its own
@@ -1409,8 +1429,11 @@ export class MelodyEditorPanel extends BaseToolPanel {
   private cellOn: boolean[][] = [];
 
   private cellDouble: boolean[][] = [];
-  // AR-016 instrument editor: the framed panel art + its control deck.
-  private panelImg!: Phaser.GameObjects.Image;
+  // AR-016 instrument editor: the plate's four control tiles, cut out of it
+  // (MELODY_DECK), and the frame rebuilt from it round the whole screen.
+  private deckTiles: Phaser.GameObjects.Image[] = [];
+  private plateFrame: Phaser.GameObjects.GameObject[] = [];
+  private machineBox: Box = { x: 0, y: 0, w: 0, h: 0 };
   private knobWobble!: Phaser.GameObjects.Image;
   private knobCrunch!: Phaser.GameObjects.Image;
   private fader!: Phaser.GameObjects.Image;
@@ -1436,45 +1459,22 @@ export class MelodyEditorPanel extends BaseToolPanel {
 
   constructor(scene: Phaser.Scene) { super(scene, "melody-editor", "🎹 Melody"); }
 
-  /** The panel-editor art's geometry, as fractions of its canvas (measured
-   *  from the PNG: slate bounds + the baked knob/fader/toggle recesses). */
-  private static readonly ART = {
-    slate: { x0: 0.117, y0: 0.095, x1: 0.885, y1: 0.624 },
-    // Control positions/sizes measured from the BAKED controls before they
-    // were erased from the plate (the sprites replace them 1:1).
-    knobWobble: { cx: 0.1665, cy: 0.76, w: 0.185 },
-    knobCrunch: { cx: 0.399, cy: 0.76, w: 0.185 },
-    // MEASURED off the plate, not eyeballed. The deck's four tiles are found by
-    // their gold corner rivets (centres 0.173 / 0.396 / 0.611 / 0.8325 of the
-    // art's width), and the LEVEL tile's baked slot by its dark column
-    // (centre 0.6042, width 0.0304). Two of these were out:
-    //   • the fader rode at 0.5985 with a handle 0.1 wide — over three times
-    //     the width of the slot it is supposed to sit IN, which is what makes
-    //     it read as a gold brick lying on the plate;
-    //   • the ×2 switch sat at 0.82 against a tile centred on 0.8325, i.e.
-    //     ~14 px left of its own recess.
-    fader: { x: 0.6042, y0: 0.695, y1: 0.838, w: 0.062, slotW: 0.024 },
-    toggle: { cx: 0.8325, cy: 0.775, w: 0.16 },
-  } as const;
-
-  /** One word per deck tile, at the tile centres measured above. */
-  private static readonly DECK_WORDS = [
-    { word: "WOBBLE", cx: 0.173 },
-    { word: "CRUNCH", cx: 0.396 },
-    { word: "LOUD", cx: 0.611 },
-    { word: "TWICE", cx: 0.8325 },
-  ] as const;
-  /** In the gap between each control and the glyph baked under it. */
-  private static readonly DECK_WORD_CY = 0.864;
+  /** One word per deck tile: the plate bakes only a glyph under each. */
+  private static readonly DECK_WORDS = ["WOBBLE", "CRUNCH", "LOUD", "TWICE"] as const;
   private deckWords: Phaser.GameObjects.Text[] = [];
 
   protected buildContent(): void {
-    // The framed art replaces the generic parchment body. The shared authored
+    // The plate replaces the generic parchment body. The shared authored
     // header remains independent, like it does for every other machine.
     this.frame.setVisible(false);
     this.shadow.setVisible(false);
-    this.panelImg = this.scene.add.image(0, 0, UI_ATLAS_KEY, UI_SPRITES["panel-editor"]!.base);
-    this.add(this.panelImg);
+    this.backdrop.setFillStyle(0x000000, FULL_TOOL_BACKDROP_ALPHA);
+    const plate = UI_SPRITES["panel-editor"]!;
+    if (hasUiFrame(this.scene, plate.base)) {
+      this.deckTiles = MELODY_DECK.tiles.map((t) =>
+        this.scene.add.image(0, 0, UI_ATLAS_KEY, plate.base).setOrigin(0, 0).setCrop(t.x, t.y, t.w, t.h));
+      this.add(this.deckTiles);
+    }
 
     for (let r = 0; r < MELODY_ROWS; r++) {
       const degree = MELODY_ROWS - 1 - r; // top row = highest degree
@@ -1550,7 +1550,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
     // A WORD per control. The plate bakes a glyph under each tile (waves, a
     // zig-zag, a speaker, two notes) and nothing else; Eric could not tell what
     // any of the four did. Interim until AR-072's painted name-plaques land.
-    this.deckWords = MelodyEditorPanel.DECK_WORDS.map(({ word }) =>
+    this.deckWords = MelodyEditorPanel.DECK_WORDS.map((word) =>
       this.scene.add.text(0, 0, word, { fontFamily: FONT, fontSize: "10px", color: TEXT }).setOrigin(0.5).setStroke("#1a1210", 4),
     );
     this.add(this.deckWords);
@@ -1655,18 +1655,8 @@ export class MelodyEditorPanel extends BaseToolPanel {
     });
   }
 
-  /** The art's placed content rect in screen px (contain-fit, centre origin). */
-  protected artRect(): Box {
-    const img = this.panelImg;
-    const def = UI_SPRITES["panel-editor"]!;
-    const [x0, y0, x1, y1] = def.content;
-    const w = (x1 - x0) * img.width * img.scaleX;
-    const h = (y1 - y0) * img.height * img.scaleY;
-    return { x: img.x - w / 2, y: img.y - h / 2, w, h };
-  }
-
   protected override shellBodyBounds(): Box {
-    return this.artRect();
+    return this.machineBox;
   }
 
   private placeFader(): void {
@@ -1678,29 +1668,38 @@ export class MelodyEditorPanel extends BaseToolPanel {
   }
 
   protected layoutContent(): void {
-    // Contain-fit the framed art into the modal region (it's portrait), with a
-    // band reserved at the top for the title + ✕, which hang off the art.
-    const m = MELODY_MODAL;
+    // The whole screen, framed by the plate (card C8). At the size it was
+    // painted, the melody steps came out 14 px wide on a 1024-wide iPad.
     const { width: sw, height: sh } = this.scene.scale.gameSize;
-    const region = { x: sw * m.x, y: sh * m.y, w: sw * m.w, h: sh * m.h };
-    const headerH = region.h * MELODY_HEADER_FRAC;
-    placeUiSprite(this.panelImg, UI_SPRITES["panel-editor"]!, {
-      x: region.x + region.w / 2,
-      y: region.y + headerH + (region.h - headerH) / 2,
-      width: region.w,
-      height: region.h - headerH,
-    });
-    const art = this.artRect();
-    const A = MelodyEditorPanel.ART;
+    this.machineBox = fullToolBox(sw, sh);
+    this.plateFrame.forEach((o) => o.destroy());
+    const built = buildPlateFrame(this.scene, MELODY_FRAME, this.machineBox, FULL_TOOL_FRAME_SCALE);
+    this.plateFrame = built.objects;
+    this.addAt(this.plateFrame, 1); // above the backdrop, under everything else
+    const field = built.inner;
+    const gap = Math.max(10, field.w * 0.006);
 
-    // Note canvas on the slate.
-    const i = {
-      x: art.x + art.w * A.slate.x0,
-      y: art.y + art.h * A.slate.y0,
-      w: art.w * (A.slate.x1 - A.slate.x0),
-      h: art.h * (A.slate.y1 - A.slate.y0),
+    // The four control tiles, cut from the plate, stacked up the right side at
+    // one scale so their painted glyphs and recesses stay round.
+    const D = MELODY_DECK;
+    const k = (field.h - gap * (D.tiles.length + 1)) / (D.tiles.length * D.tiles[0].h);
+    const colW = Math.max(...D.tiles.map((t) => t.w)) * k;
+    const colX = field.x + field.w - gap - colW;
+    const tileAt = D.tiles.map((t, n) => ({
+      x: colX + (colW - t.w * k) / 2,
+      y: field.y + gap + n * (t.h * k + gap),
+      t,
+    }));
+    tileAt.forEach(({ x, y, t }, n) => this.deckTiles[n]?.setScale(k).setPosition(x - t.x * k, y - t.y * k));
+    /** A point measured on the plate, on tile `n` where it now stands. */
+    const on = (n: number, px: number, py: number): { x: number; y: number } => {
+      const a = tileAt[n]!;
+      return { x: a.x + (px - a.t.x) * k, y: a.y + (py - a.t.y) * k };
     };
-    const labelW = i.w * 0.1;
+
+    // The notes: everything left of the tiles.
+    const i = { x: field.x + gap, y: field.y + gap, w: colX - gap * 2 - field.x, h: field.h - gap * 2 };
+    const labelW = Math.max(MIN_TOUCH_PX * 0.8, i.w * 0.05);
     const rowH = i.h / MELODY_ROWS;
     const cellW = (i.w - labelW) / STEP_COUNT;
     const pad = Math.min(cellW, rowH) * 0.12;
@@ -1709,41 +1708,47 @@ export class MelodyEditorPanel extends BaseToolPanel {
       this.rowLabels[r]?.setPosition(i.x + labelW / 2, cy).setFontSize(Math.max(8, rowH * 0.32));
       for (let s = 0; s < STEP_COUNT; s++) {
         const cx = i.x + labelW + (s + 0.5) * cellW;
-        this.cells[r]?.[s]?.setPosition(cx, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+        const cell = this.cells[r]?.[s];
+        cell?.setPosition(cx, cy).setSize(Math.max(2, cellW - pad), Math.max(2, rowH - pad));
+        // Tapped across the whole step, gaps included.
+        (cell?.input?.hitArea as Phaser.Geom.Rectangle | undefined)?.setTo(-pad / 2, -pad / 2, cellW, rowH);
         this.cellSplits[r]?.[s]?.setPosition(cx, cy).setSize(Math.max(2, cellW * 0.14), Math.max(2, rowH - pad));
       }
     }
 
-    // Control deck sprites over their baked recesses.
-    const knobW = art.w * A.knobWobble.w;
-    placeUiSprite(this.knobWobble, UI_SPRITES["knob-wobble"]!, { x: art.x + art.w * A.knobWobble.cx, y: art.y + art.h * A.knobWobble.cy, width: knobW, height: knobW });
-    placeUiSprite(this.knobCrunch, UI_SPRITES["knob-crunch"]!, { x: art.x + art.w * A.knobCrunch.cx, y: art.y + art.h * A.knobCrunch.cy, width: knobW, height: knobW });
+    // The controls, each on its own tile.
+    const knobD = D.knobWobble.d * k;
+    const wob = on(0, D.knobWobble.x, D.knobWobble.y);
+    const cru = on(1, D.knobCrunch.x, D.knobCrunch.y);
+    placeUiSprite(this.knobWobble, UI_SPRITES["knob-wobble"]!, { x: wob.x, y: wob.y, width: knobD, height: knobD });
+    placeUiSprite(this.knobCrunch, UI_SPRITES["knob-crunch"]!, { x: cru.x, y: cru.y, width: knobD, height: knobD });
+    padImageHit(this.knobWobble, MIN_TOUCH_PX);
+    padImageHit(this.knobCrunch, MIN_TOUCH_PX);
     this.knobWobble.setRotation((this.values.wobble - 0.5) * 4.2);
     this.knobCrunch.setRotation((this.values.crunch - 0.5) * 4.2);
-    const toggleW = art.w * A.toggle.w;
-    placeUiSprite(this.toggle, UI_SPRITES["toggle-double"]!, { x: art.x + art.w * A.toggle.cx, y: art.y + art.h * A.toggle.cy, width: toggleW, height: toggleW * 1.6 });
+    const toggleW = D.toggle.w * k;
+    const tog = on(3, D.toggle.x, D.toggle.y);
+    placeUiSprite(this.toggle, UI_SPRITES["toggle-double"]!, { x: tog.x, y: tog.y, width: toggleW, height: toggleW * 1.6 });
+    padImageHit(this.toggle, MIN_TOUCH_PX);
     // The throw animation re-derives its transform from this rest pose.
     this.toggleRest = { x: this.toggle.x, y: this.toggle.y, scale: this.toggle.scaleX };
     this.renderToggle();
-    const faderW = art.w * A.fader.w;
+    const faderW = D.fader.w * k;
     const fDef = UI_SPRITES["fader-handle"]!;
     const [fx0, fy0, fx1, fy1] = fDef.content;
     const fH = faderW * (((fy1 - fy0) * 512) / ((fx1 - fx0) * 512));
-    placeUiSprite(this.fader, fDef, { x: art.x + art.w * A.fader.x, y: art.y + art.h * A.fader.y1, width: faderW, height: fH });
+    const top = on(2, D.fader.x, D.fader.y0);
+    const bottom = on(2, D.fader.x, D.fader.y1);
+    placeUiSprite(this.fader, fDef, { x: bottom.x, y: bottom.y, width: faderW, height: fH });
     padImageHit(this.fader, MIN_TOUCH_PX);
-    this.faderTrack = {
-      x: this.fader.x,
-      y0: art.y + art.h * A.fader.y0,
-      y1: art.y + art.h * A.fader.y1,
-    };
+    this.faderTrack = { x: bottom.x, y0: top.y, y1: bottom.y };
     // Match the baked slot's width so the fill reads as the track filling up
     // rather than as a hairline drawn beside it.
-    this.levelFillW = Math.max(2, art.w * A.fader.slotW);
+    this.levelFillW = Math.max(2, D.fader.slotW * k);
     this.placeFader();
-    MelodyEditorPanel.DECK_WORDS.forEach(({ cx }, n) => {
-      this.deckWords[n]
-        ?.setFontSize(Math.max(7, Math.round(art.w * 0.019)))
-        .setPosition(art.x + art.w * cx, art.y + art.h * MelodyEditorPanel.DECK_WORD_CY);
+    this.deckWords.forEach((word, n) => {
+      const at = on(n, D.wordX[n] ?? 0, D.wordY);
+      word.setFontSize(Math.max(7, Math.round(colW * 0.11))).setPosition(at.x, at.y);
     });
   }
 

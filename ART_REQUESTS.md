@@ -213,6 +213,29 @@ frame that reads on both (the Workshop's MAP plaque is the closest family). A
 key with nothing to undo is shown dimmed by the engine; no separate state is
 needed. Engineering swaps the drawing for the frames in `chip-key.ts`.
 
+### ⚠ OPEN — AR-081 · Wide frames for the drum and melody machines — P2
+
+Card C8 (approved 2026-10-15): the drum grid and the melody editor fill the
+screen while open, so every step is finger-sized on an iPad. Their painted
+plates (`panel-percussion`, AR-058; `panel-editor`, AR-016) are drawn at a
+fixed 4:3 and 3:4. The engine now cuts each plate up and rebuilds it as a
+frame (`src/game/plate-frame.ts`): the top-right corner mirrored to the other
+three, and a one-rivet stretch of the top and right edges repeated along the
+sides. The drum machine's lane rail and ten-recess shelf, and the melody
+plate's lower half, are no longer shown; the melody's four control tiles are
+cut out and stacked up the right-hand side.
+
+Deliver, each about 2500 × 1180 px on a transparent canvas:
+
+1. `panel-percussion-wide` — the same steel band, brass corner brackets and
+   copper-edged dark field, one field across the whole plate (no rail, no
+   shelf: the engine draws keys for both).
+2. `panel-editor-wide` — the same steel band and wooden-framed green slate,
+   with a dark steel column down the right, about 190 px wide, holding the
+   four control tiles (WOBBLE, CRUNCH, LOUD, TWICE) one above the other.
+
+Engineering swaps the cut-up frame for the plate and re-measures the regions.
+
 ### ⚠ OPEN — AR-077 · A painted rail for the Track speed slider — P2
 
 Eric, 2026-10-05: "instead of a slow fast and speed button, we just have a
