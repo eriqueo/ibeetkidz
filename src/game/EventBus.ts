@@ -165,8 +165,14 @@ export interface EventMap {
   "undo-offered": [lost: string];
   // React -> every scene: withdraw the offer (the history moved on).
   "undo-withdrawn": [];
-  // Scene -> React: the kid tapped "put it back".
+  // Scene -> React: the kid tapped "put it back", or the UNDO key.
   "undo-requested": [];
+  // Scene -> React: the REDO key.
+  "redo-requested": [];
+  // React -> every scene: whether there is anything to undo or redo now. Sent
+  // on every history change and replayed when a scene becomes current, so the
+  // UNDO and REDO keys (card C6) are never live with nothing behind them.
+  "history-changed": [canUndo: boolean, canRedo: boolean];
   // React -> Workshop: offer / withdraw START EMPTY for the starter beat a
   // brand-new song opens with (card C5).
   "starter-offered": [];

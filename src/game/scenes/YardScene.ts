@@ -10,10 +10,14 @@ import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
+import { UndoRedoKeys } from "../undo-redo-keys.ts";
+import { placeSpawn } from "../spawn-placement.ts";
 import { SCENE_BG_V2 } from "../assets.ts";
 import { loadSpriteAssets, frameKey } from "../sprite-assets.ts";
 import { alignCarBody, CAR_CONTENT_E, FRAME_SIZE } from "../car-geometry.ts";
-import { YARD_SIDINGS_V2, YARD_CRANE_BEAM_Y } from "../scene-layout.ts";
+import { YARD_SIDINGS_V2, YARD_LAYOUT_V2, YARD_CRANE_BEAM_Y } from "../scene-layout.ts";
+import { ChipKey, CHIP_KEY_INK } from "../chip-key.ts";
+import { MIN_TOUCH_PX } from "../game-dimensions.ts";
 // The pure slot arithmetic lives outside the scene so the unit suite can reach
 // it — a real `import Phaser` cannot load under jsdom, and this is the math the
 // palette got wrong. Re-exported: it is still the Yard's geometry.
@@ -21,6 +25,8 @@ import {
   paletteSlot,
   trainSlot,
   trainStep,
+  trainPageSize,
+  clampTrainOffset,
   trainIndexAtX,
   moveTrainOrder,
   carFitScale,
@@ -145,6 +151,7 @@ export class YardScene extends BackgroundScene {
     // calling their completion handlers, so a visit must never inherit the
     // previous visit's animation latch.
     this.busy = false;
+    this.pendingSlot = false;
     this.selectedTrainId = null;
     this.addBackground("contain");
     this.chrome = spawnUiLayer(this, this.chromeSpawns, {
@@ -172,12 +179,23 @@ export class YardScene extends BackgroundScene {
     // one dispatch funnel and emits over the bus, so this scene needs no
     // knowledge of WHICH commands destroy anything.
     this.undoToast = attachUndoToast(this);
+    // UNDO and REDO, always on the header (card C6).
+    this.undoRedo = new UndoRedoKeys(this, 12);
+    this.buildScrollKeys();
+    this.layout();
     this.announceReady();
   }
+
+  private undoRedo?: UndoRedoKeys;
 
   /** Exposed for the e2e bridge: is the undo offer on screen, and for what. */
   get undoOffer(): { offering: boolean; lost: string } {
     return { offering: this.undoToast?.offering ?? false, lost: this.undoToast?.lost ?? "" };
+  }
+
+  /** The UNDO/REDO keys' state, for the e2e bridge. */
+  get historyKeys(): { canUndo: boolean; canRedo: boolean } | null {
+    return this.undoRedo?.state ?? null;
   }
 
   /** Authoritative scene-side model received through React's ready callback. */
@@ -191,6 +209,9 @@ export class YardScene extends BackgroundScene {
     selectedTrainRingIds: string[];
     busy: boolean;
     rebuildCount: number;
+    trainOffset: number;
+    shownTrainIds: string[];
+    scroll: { shown: boolean; back: boolean; on: boolean };
   } {
     return {
       carCount: this.cars.length,
@@ -211,7 +232,60 @@ export class YardScene extends BackgroundScene {
         .map((slot) => slot.instanceId),
       busy: this.busy,
       rebuildCount: this.rebuildCount,
+      trainOffset: this.trainOffset,
+      shownTrainIds: this.train
+        .filter((_slot, index) => this.trainTokens[index]?.car.visible === true)
+        .map((slot) => slot.instanceId),
+      scroll: {
+        shown: this.scrollKeys?.left.container.visible ?? false,
+        back: this.scrollKeys?.left.isEnabled ?? false,
+        on: this.scrollKeys?.right.isEnabled ?? false,
+      },
     };
+  }
+
+  /** The first train car on show. A train longer than the painted straight
+   *  scrolls instead of packing its cars on top of each other (card C6). */
+  private trainOffset = 0;
+  /** A crane lift is bringing one more car to the end of the line. */
+  private pendingSlot = false;
+  private scrollKeys?: { left: ChipKey; right: ChipKey };
+
+  /** ◀ and ▶ at the ends of the assembly line, shown only when the train is
+   *  longer than the line. Each moves the line most of a screenful, keeping
+   *  one car in view so the kid can see where they are. */
+  private buildScrollKeys(): void {
+    const arrow = (dir: -1 | 1) => (g: Phaser.GameObjects.Graphics, size: number, cy: number): void => {
+      const s = size * 0.22;
+      g.fillStyle(CHIP_KEY_INK, 1).fillTriangle(dir * s, cy, -dir * s * 0.7, cy - s, -dir * s * 0.7, cy + s);
+    };
+    const scroll = (dir: -1 | 1): void => {
+      if (this.busy) return;
+      const page = trainPageSize(this.backgroundRect);
+      this.trainOffset += dir * Math.max(1, page - 1);
+      this.layout();
+    };
+    this.scrollKeys = {
+      left: new ChipKey(this, { name: "yard-train-back", glyph: arrow(-1), onPress: () => scroll(-1) }, 12),
+      right: new ChipKey(this, { name: "yard-train-on", glyph: arrow(1), onPress: () => scroll(1) }, 12),
+    };
+  }
+
+  private layoutScrollKeys(r: SlotRect, count: number): void {
+    const keys = this.scrollKeys;
+    if (!keys) return;
+    const page = trainPageSize(r);
+    const overflow = count > page;
+    keys.left.setVisible(overflow);
+    keys.right.setVisible(overflow);
+    if (!overflow) return;
+    const a = YARD_LAYOUT_V2.assemblyLine;
+    const size = MIN_TOUCH_PX;
+    const cy = r.y + r.height * (a.y + a.h / 2);
+    keys.left.place(r.x + r.width * a.x - size * 0.62, cy, size, size);
+    keys.right.place(r.x + r.width * (a.x + a.w) + size * 0.62, cy, size, size);
+    keys.left.setEnabled(this.trainOffset > 0);
+    keys.right.setEnabled(this.trainOffset + page < count);
   }
 
 
@@ -241,6 +315,8 @@ export class YardScene extends BackgroundScene {
     selectedId: string | null,
   ): void {
     const modelChanged = !samePalette(this.cars, palette) || !sameTrain(this.train, train);
+    // A car just hitched lands on the end: scroll the line to show it.
+    if (train.length > this.train.length && this.train.length > 0) this.trainOffset = Number.MAX_SAFE_INTEGER;
     this.cars = palette;
     this.train = train;
     this.selectedId = palette.some((car) => car.id === selectedId) ? selectedId : null;
@@ -272,7 +348,11 @@ export class YardScene extends BackgroundScene {
       return;
     }
     const from = paletteSlot(r, fromSlotIndex);
-    const to = trainSlot(r, toTrainIndex, Math.max(1, this.train.length + 1));
+    // Scroll the line first, so the slot the crane lowers into is on show.
+    this.pendingSlot = true;
+    this.trainOffset = Number.MAX_SAFE_INTEGER;
+    this.layout();
+    const to = trainSlot(r, toTrainIndex, this.trainOffset);
     // The crane beam, measured off the plate (the painted gantry's beam sits at
     // y ≈ 0.30; its legs stand at x 0.510–0.554 and 0.580–0.622).
     //
@@ -308,6 +388,7 @@ export class YardScene extends BackgroundScene {
       onComplete: () => {
         ghost.destroy();
         this.setTokenVisible(this.paletteTokens.get(car.id), true);
+        this.pendingSlot = false;
         onComplete();
       },
     });
@@ -485,7 +566,7 @@ export class YardScene extends BackgroundScene {
       token.setDepth(homeDepth);
       const r = this.backgroundRect;
       const count = this.train.length;
-      const to = trainIndexAtX(r, token.x, count);
+      const to = trainIndexAtX(r, token.x, count, this.trainOffset);
       // Put it back on the grid no matter what: if the order did not change (a
       // tap, or a drag that landed on its own slot) the car must not be left
       // sitting 14 px high and between two slots. `layout()` is the one placer.
@@ -536,12 +617,20 @@ export class YardScene extends BackgroundScene {
       const token = this.paletteTokens.get(car.id);
       if (token) this.placeToken(token, r, paletteSlot(r, i), palettePitch);
     });
-    const count = Math.max(1, this.train.length);
-    const trainPitch = trainStep(r, count);
+    const count = this.train.length;
+    const trainPitch = trainStep(r);
+    // While the crane carries a car in, the line makes room for its slot.
+    this.trainOffset = clampTrainOffset(r, count + (this.pendingSlot ? 1 : 0), this.trainOffset);
+    const page = trainPageSize(r);
     this.train.forEach((_slot, i) => {
       const token = this.trainTokens[i];
-      if (token) this.placeToken(token, r, trainSlot(r, i, count), trainPitch);
+      if (!token) return;
+      this.placeToken(token, r, trainSlot(r, i, this.trainOffset), trainPitch);
+      // Cars scrolled off either end of the straight are not drawn (and an
+      // invisible object takes no taps).
+      this.setTokenVisible(token, i >= this.trainOffset && i < this.trainOffset + page);
     });
+    this.layoutScrollKeys(r, count);
     this.layoutChrome();
   }
 
@@ -563,6 +652,8 @@ export class YardScene extends BackgroundScene {
     const r = this.backgroundRect;
     if (r.width === 0) return;
     relayoutUiLayer(this.chrome, r, this.scale.gameSize);
+    const anchor = this.chromeSpawns.find((s) => s.id === "undo-redo");
+    if (anchor) this.undoRedo?.place(placeSpawn(anchor, r, this.scale.gameSize));
   }
 
   private destroyToken(token: CarToken): void {

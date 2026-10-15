@@ -45,28 +45,42 @@ export function paletteSlot(
   };
 }
 
-/** Horizontal pitch between assembly-line slots. Spacing shrinks as the train
- *  grows so the slots stay inside the painted track. Exported because it is
- *  also the width budget for each car's name chip. */
-export function trainStep(rect: SlotRect, count: number): number {
-  const w = rect.width * YARD_SIDINGS_V2.carW;
-  const span = rect.width * YARD_LAYOUT_V2.assemblyLine.w;
-  return Math.min(w * 1.05, span / Math.max(1, count));
+/** Horizontal pitch between assembly-line slots: one car and a coupling gap,
+ *  whatever the train's length. It used to shrink as the train grew, which
+ *  stacked a long train's cars on top of each other; now a train longer than
+ *  the painted straight scrolls instead (card C6, `trainPageSize`). Exported
+ *  because it is also the width budget for each car's name chip. */
+export function trainStep(rect: SlotRect): number {
+  return rect.width * YARD_SIDINGS_V2.carW * 1.05;
 }
 
-/** Centre + size of assembly-line slot `i` (left→right along the top track). */
+/** How many cars the painted straight shows at once. */
+export function trainPageSize(rect: SlotRect): number {
+  const w = rect.width * YARD_SIDINGS_V2.carW;
+  const span = rect.width * YARD_LAYOUT_V2.assemblyLine.w;
+  return Math.max(1, Math.floor((span - w) / trainStep(rect) + 1e-9) + 1);
+}
+
+/** The first car shown, kept so the straight is never part-empty while cars
+ *  are hidden off one end. */
+export function clampTrainOffset(rect: SlotRect, count: number, offset: number): number {
+  const max = Math.max(0, count - trainPageSize(rect));
+  return Math.max(0, Math.min(max, Math.round(offset)));
+}
+
+/** Centre + size of assembly-line slot `i` (left→right along the top track),
+ *  with the line scrolled so car `offset` is first. */
 export function trainSlot(
   rect: SlotRect,
   i: number,
-  count: number,
+  offset = 0,
 ): { cx: number; cy: number; w: number; h: number } {
   const a = YARD_LAYOUT_V2.assemblyLine;
   const w = rect.width * YARD_SIDINGS_V2.carW;
   const h = rect.height * YARD_SIDINGS_V2.carH;
-  const step = trainStep(rect, count);
   const startX = rect.x + rect.width * a.x + w / 2;
   return {
-    cx: startX + i * step,
+    cx: startX + (i - offset) * trainStep(rect),
     cy: rect.y + rect.height * (a.y + a.h / 2),
     w,
     h,
@@ -80,20 +94,21 @@ export function trainSlot(
  * the occupied range — so dragging a car off either end parks it first or last
  * rather than dropping it out of the train. Pure, because "where did that land"
  * is exactly the arithmetic that is impossible to eyeball once a train is long
- * and `trainStep` has started packing the slots tighter.
+ * and the line is scrolled. A drop lands among the cars on show.
  */
 export function trainIndexAtX(
   rect: SlotRect,
   x: number,
   count: number,
+  offset = 0,
 ): number {
   if (count <= 1) return 0;
   const a = YARD_LAYOUT_V2.assemblyLine;
   const w = rect.width * YARD_SIDINGS_V2.carW;
-  const step = trainStep(rect, count);
   const startX = rect.x + rect.width * a.x + w / 2;
-  const raw = Math.round((x - startX) / step);
-  return Math.max(0, Math.min(count - 1, raw));
+  const raw = Math.round((x - startX) / trainStep(rect)) + offset;
+  const last = Math.min(count - 1, offset + trainPageSize(rect) - 1);
+  return Math.max(offset, Math.min(last, raw));
 }
 
 /**

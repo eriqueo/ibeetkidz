@@ -66,6 +66,17 @@
           "y": 68.76
         },
         {
+          "height": 150,
+          "id": 17,
+          "name": "undo-redo",
+          "rotation": 0,
+          "type": "display",
+          "visible": true,
+          "width": 340,
+          "x": 1514,
+          "y": 73.76
+        },
+        {
           "height": 210,
           "id": 4,
           "name": "btn-ride-stop",
@@ -252,7 +263,7 @@
     }
   ],
   "nextlayerid": 3,
-  "nextobjectid": 17,
+  "nextobjectid": 18,
   "orientation": "orthogonal",
   "renderorder": "right-down",
   "tiledversion": "1.10.2",

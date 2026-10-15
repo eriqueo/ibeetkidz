@@ -45,6 +45,7 @@ export const TRACK_CHROME_NAMES = {
   speed: "speed",
   ride: "btn-ride-stop",
   send: "btn-send-song",
+  undoRedo: "undo-redo",
   jobsPlate: "panel-jobs",
   job: (id: TrackJobId): string => `job-${id}`,
   toggle: (id: TrackToolbarId): string => `toggle-${id}`,
@@ -53,6 +54,9 @@ export const TRACK_CHROME_NAMES = {
 export interface TrackChromeRects {
   readonly plate: PlacedRect;
   readonly slots: Readonly<Record<TrackHeaderSlotId, PlacedRect>>;
+  /** UNDO and REDO (card C6). Not a header slot: like RIDE/STOP they stay on
+   *  screen when the header is hidden. */
+  readonly undoRedo: PlacedRect;
   readonly jobsPlate: PlacedRect;
   readonly jobs: Readonly<Record<TrackJobId, PlacedRect>>;
   readonly toggles: Readonly<Record<TrackToolbarId, PlacedRect>>;
@@ -84,6 +88,7 @@ export function trackChromeRects(spawns: readonly TiledSpawn[]): TrackChromeRect
       ride: chromeRect(spawns, n.ride),
       send: chromeRect(spawns, n.send),
     },
+    undoRedo: chromeRect(spawns, n.undoRedo),
     jobsPlate: chromeRect(spawns, n.jobsPlate),
     jobs: Object.fromEntries(TRACK_JOB_IDS.map((id) => [id, chromeRect(spawns, n.job(id))])) as Record<TrackJobId, PlacedRect>,
     toggles: Object.fromEntries(TRACK_TOOLBAR_IDS.map((id) => [id, chromeRect(spawns, n.toggle(id))])) as Record<TrackToolbarId, PlacedRect>,

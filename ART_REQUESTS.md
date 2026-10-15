@@ -194,6 +194,25 @@ Deliver `btn-yard-clear` (idle + pressed) in the stone `btn-yard-*` family, on
 the same canvas as `btn-yard-hitch`: an empty stretch of track, the word
 **CLEAR**. Engineering swaps the sprite name in `yard.json`.
 
+### ⚠ OPEN — AR-080 · UNDO, REDO and the Yard's train-scroll arrows — P2
+
+Card C6 (forgiving controls) put UNDO and REDO on the Workshop, Yard and Track
+headers for good, and gave the Yard's assembly line ◀ ▶ keys when the train is
+longer than the straight. All four are drawn by code in the chip language
+(`src/game/chip-key.ts`: cream face, plum edge, a drawn curved arrow or
+triangle), the honest interim beside painted keycaps.
+
+Deliver, idle + pressed each, square, on the same canvas as `btn-yard-hitch`:
+
+1. `btn-undo` — an arrow curling back to the left, the word **UNDO**.
+2. `btn-redo` — the mirror, curling on to the right, the word **REDO**.
+3. `btn-train-back` / `btn-train-on` — a plain left / right arrow, no word.
+
+They sit on the parchment header plates and over the dark yard, so they need a
+frame that reads on both (the Workshop's MAP plaque is the closest family). A
+key with nothing to undo is shown dimmed by the engine; no separate state is
+needed. Engineering swaps the drawing for the frames in `chip-key.ts`.
+
 ### ⚠ OPEN — AR-077 · A painted rail for the Track speed slider — P2
 
 Eric, 2026-10-05: "instead of a slow fast and speed button, we just have a

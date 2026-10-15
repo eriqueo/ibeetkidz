@@ -11,7 +11,7 @@
   "width": 80,
   "height": 45,
   "nextlayerid": 3,
-  "nextobjectid": 13,
+  "nextobjectid": 14,
   "layers": [
     {
       "id": 2,
@@ -111,6 +111,17 @@
               "value": "ui-top-right"
             }
           ]
+        },
+        {
+          "id": 13,
+          "name": "undo-redo",
+          "type": "display",
+          "x": 1110,
+          "y": 124,
+          "width": 340,
+          "height": 150,
+          "rotation": 0,
+          "visible": true
         },
         {
           "id": 4,

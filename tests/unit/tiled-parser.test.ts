@@ -50,8 +50,10 @@ describe("workshop.json fixture (Three-Zone v3)", () => {
   it("projects the ui-layer into 21 descriptors", () => {
     // 16 pre-revamp + AR-016's SEND TO YARD plaque + the car-anchor display,
     // + `inst-keys`, + `inst-pads` and `inst-magic` once AR-024 landed their
-    // art (both tool panels were already built and reachable only by event).
-    expect(spawns).toHaveLength(20);
+    // art (both tool panels were already built and reachable only by event),
+    // + the `undo-redo` display (card C6).
+    expect(spawns).toHaveLength(21);
+    expect(spawns.map((s) => s.id)).toContain("undo-redo");
     expect(spawns.map((s) => s.id)).toContain("panel-header");
     expect(spawns.map((s) => s.id)).toContain("panel-transport");
     expect(spawns.map((s) => s.id)).toContain("lcd-transport");

@@ -33,7 +33,8 @@
 // rather than eyeballed — the brief for the artist is a curve, not a vibe.
 
 import Phaser from "phaser";
-import { GAME_DESIGN_SIZE } from "../game-dimensions.ts";
+import { GAME_DESIGN_SIZE, MIN_TOUCH_PX } from "../game-dimensions.ts";
+import { padImageHit } from "../tool-panels.ts";
 import { gameConfig } from "../game-config.ts";
 import { installSceneProjection } from "../rendering.ts";
 import { EventBus } from "../EventBus.ts";
@@ -59,6 +60,7 @@ import {
 import { colorFor } from "../livery-style.ts";
 import { asLiveryCoat, setLiveryColor, setLiveryTexture, type LiveryCoat } from "../car-tint.ts";
 import { attachUndoToast, type UndoToast } from "../undo-toast.ts";
+import { UndoRedoKeys } from "../undo-redo-keys.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, TRACK_SPEED_WINDOW, loadUiSprites, measureContentBox, placeUiSprite } from "../ui-sprites.ts";
 import {
   TRACK_JOB_BAR,
@@ -749,11 +751,28 @@ export class TrackV3Scene extends Phaser.Scene {
     const start = this.children.list.length;
     this.buildTopBar(c);
     this.registerToolbarObjects("header", start);
+    // RIDE/STOP stays when the header is hidden (card C6: STOP always in
+    // reach). Hiding the header is for watching the ride, and a ride must
+    // always be stoppable.
+    const keep = new Set<Phaser.GameObjects.GameObject>([...this.rideKey, ...this.stopKey]);
+    this.toolbarObjects.header = this.toolbarObjects.header.filter((o) => !keep.has(o));
     const jobsStart = this.children.list.length;
     this.buildLegend(c);
     this.registerToolbarObjects("jobs", jobsStart);
     for (const toolbar of TRACK_TOOLBAR_IDS) this.buildToolbarToggle(toolbar, c.toggles[toolbar]);
+    // UNDO and REDO, outside both decks for the same reason as RIDE/STOP.
+    this.undoRedo = new UndoRedoKeys(this, DEPTH.hud + 1);
+    this.undoRedo.place(c.undoRedo);
+    const keys = this.undoRedo;
+    this.chromeTeardown.push(() => keys.destroy());
     this.chromeObjects = this.children.list.slice(start);
+  }
+
+  private undoRedo?: UndoRedoKeys;
+
+  /** The UNDO/REDO keys' state, for the e2e bridge. */
+  get historyKeys(): { canUndo: boolean; canRedo: boolean } | null {
+    return this.undoRedo?.state ?? null;
   }
 
   /**
@@ -1086,6 +1105,8 @@ export class TrackV3Scene extends Phaser.Scene {
         .setDepth(DEPTH.hud + 3);
       placeUiSprite(key, def, rect);
       this.pressableAtlas(key, def, () => void EventBus.emit("track-toolbar-toggled", toolbar));
+      // Drawn small at the screen edge; tapped at full size (card C6).
+      padImageHit(key, MIN_TOUCH_PX);
     } else {
       this.pressable(
         this.add

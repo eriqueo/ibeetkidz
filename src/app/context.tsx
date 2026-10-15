@@ -90,8 +90,24 @@ function publishUndoOffer(lost: string): void {
 // the authoritative current value so navigation cannot make the offer vanish.
 EventBus.on("current-scene-ready", (scene) => {
   if (currentUndoOffer) EventBus.emit("undo-offered", currentUndoOffer);
+  publishHistory(true);
   maybeOfferStarterEmpty(scene.scene.key);
 });
+
+// The UNDO and REDO keys (card C6) are always on screen, so they need to know
+// whether there is anything behind them. Sent only when an answer changes,
+// and re-sent to a scene that has just become current.
+let publishedHistory = "";
+function publishHistory(force = false): void {
+  const { past, future } = store.getSnapshot();
+  const canUndo = past.length > 0;
+  const canRedo = future.length > 0;
+  const key = `${canUndo}/${canRedo}`;
+  if (!force && key === publishedHistory) return;
+  publishedHistory = key;
+  EventBus.emit("history-changed", canUndo, canRedo);
+}
+store.subscribe(() => publishHistory());
 
 // START EMPTY (card C5). Offered ONCE per visit to the app, the first time the
 // Workshop shows car 1 still carrying the untouched starter beat; it withdraws
@@ -554,6 +570,24 @@ const api: AppApi = {
 // last gap in "Forgiving UX. Undo everywhere" — the history stack, the store
 // method and this API have all existed since v1 with no caller.
 EventBus.on("undo-requested", () => api.undo());
+EventBus.on("redo-requested", () => api.redo());
+
+// The keyboard reaches the same two actions: Ctrl/⌘+Z undoes, Ctrl/⌘+Shift+Z
+// and Ctrl+Y redo. Not while typing in a text box, which has its own undo.
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (e) => {
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    const target = e.target as HTMLElement | null;
+    if (target?.closest("input, textarea, [contenteditable='true']")) return;
+    const key = e.key.toLowerCase();
+    const isRedo = (key === "z" && e.shiftKey) || (key === "y" && !e.shiftKey);
+    const isUndo = key === "z" && !e.shiftKey;
+    if (!isUndo && !isRedo) return;
+    e.preventDefault();
+    if (isRedo) api.redo();
+    else api.undo();
+  });
+}
 
 const AppContext = createContext<AppApi>(api);
 

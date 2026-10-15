@@ -305,7 +305,7 @@ describe("track-v3.json wiring", () => {
     expect(() => trackChromeRects(trackV3)).not.toThrow();
     const n = TRACK_CHROME_NAMES;
     const expected = [
-      n.headerPlate, n.map, n.speed, n.ride, n.send, n.jobsPlate,
+      n.headerPlate, n.map, n.speed, n.ride, n.send, n.undoRedo, n.jobsPlate,
       ...TRACK_JOB_IDS.map(n.job), ...TRACK_TOOLBAR_IDS.map(n.toggle),
     ].sort();
     expect(trackV3.map((s) => s.id).sort()).toEqual(expected);

@@ -9,6 +9,7 @@
 import Phaser from "phaser";
 import { EventBus } from "./EventBus.ts";
 import { headerPlateField, WORKSHOP_TOOL_MODAL } from "./scene-layout.ts";
+import { MIN_TOUCH_PX } from "./game-dimensions.ts";
 import { UI_ATLAS_KEY, UI_SPRITES, hasUiFrame, placeUiSprite, soundIconFrame, type UiSpriteDef } from "./ui-sprites.ts";
 import { LANE_GROUP_SPRITE } from "./livery-style.ts";
 import { OFFERED_DRUMS } from "../core/sound-catalog.ts";
@@ -261,9 +262,21 @@ export class PanelButton {
     this.latchRing.setSize(w * 1.04, h * 1.04).setDisplayOrigin(w * 0.52, h * 0.52);
   }
 
+  /** Tap area at least this big, in scene px, whatever size the key is drawn.
+   *  For keys with free space round them (a panel's ✕ and DONE); a key in a
+   *  tight row keeps the row's pitch. */
+  private minHit = 0;
+
+  setMinHit(px: number): this {
+    this.minHit = px;
+    return this;
+  }
+
   place(b: Box, fontPx = 12): void {
     this.bg.setSize(b.w, b.h);
-    this.hit.setTo(-b.w / 2, -b.h / 2, b.w, b.h);
+    const hw = Math.max(b.w, this.minHit);
+    const hh = Math.max(b.h, this.minHit);
+    this.hit.setTo(-hw / 2, -hh / 2, hw, hh);
     // FIT THE TEXT TO THE BUTTON, rather than to the button's height alone.
     //
     // The caller passes a size derived from the tile height, and Press Start 2P
@@ -385,6 +398,10 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
     this.doneBtn = new PanelButton(scene, "DONE", () => this.onDone(), 0x2a5c2a, { face: "btn-panel-done", bakedLabel: true });
     this.closeBtn.container.setName(`workshop-tool:${toolId}:close`);
     this.doneBtn.container.setName(`workshop-tool:${toolId}:done`);
+    // Both ways out sit with room round them, so their tap areas reach the
+    // touch minimum even where the art is drawn small (card C6).
+    this.closeBtn.setMinHit(MIN_TOUCH_PX);
+    this.doneBtn.setMinHit(MIN_TOUCH_PX);
     this.add([
       this.backdrop,
       this.shadow,
@@ -552,6 +569,16 @@ export abstract class BaseToolPanel extends Phaser.GameObjects.Container {
 /** A rectangle on a plate, normalized to the plate's OWN canvas — the space the
  *  recesses were measured in, straight off the delivered PNG. */
 interface PlateRegion { readonly x0: number; readonly y0: number; readonly x1: number; readonly y1: number }
+
+/** Grow an image's tap area, centred on its art, to at least `minPx` scene px
+ *  each way (card C6). The hit area is in the image's own unscaled frame. */
+export function padImageHit(img: Phaser.GameObjects.Image, minPx: number): void {
+  const area = img.input?.hitArea as Phaser.Geom.Rectangle | undefined;
+  if (!area) return;
+  const w = Math.max(img.width, minPx / (Math.abs(img.scaleX) || 1));
+  const h = Math.max(img.height, minPx / (Math.abs(img.scaleY) || 1));
+  area.setTo((img.width - w) / 2, (img.height - h) / 2, w, h);
+}
 
 /** Split a plate region into an `cols`×`rows` grid of boxes, in reading order.
  *  Shared by every plate whose art is a rack of matching recesses. */
@@ -1210,6 +1237,8 @@ export class PercussionToolPanel extends BaseToolPanel {
     const bw = shelf.w / PercussionToolPanel.SHELF_RECESSES;
     const first = (PercussionToolPanel.SHELF_RECESSES - this.addButtons.length) / 2;
     this.addButtons.forEach((btn, k) => {
+      // The tap area is the whole recess, not just the drawn key (card C6).
+      btn.setMinHit(Math.min(bw, shelf.h));
       btn.place({ x: shelf.x + (first + k) * bw + bw * 0.1, y: shelf.y + shelf.h * 0.1, w: bw * 0.8, h: shelf.h * 0.8 }, Math.max(12, shelf.h * 0.3));
     });
     this.hint.setPosition(grid.x + grid.w / 2, grid.y + grid.h * 0.5).setFontSize(Math.max(11, grid.h * 0.05));
@@ -1701,6 +1730,7 @@ export class MelodyEditorPanel extends BaseToolPanel {
     const [fx0, fy0, fx1, fy1] = fDef.content;
     const fH = faderW * (((fy1 - fy0) * 512) / ((fx1 - fx0) * 512));
     placeUiSprite(this.fader, fDef, { x: art.x + art.w * A.fader.x, y: art.y + art.h * A.fader.y1, width: faderW, height: fH });
+    padImageHit(this.fader, MIN_TOUCH_PX);
     this.faderTrack = {
       x: this.fader.x,
       y0: art.y + art.h * A.fader.y0,

@@ -29,6 +29,7 @@ import Phaser from "phaser";
 import { BackgroundScene } from "./BackgroundScene.ts";
 import { EventBus } from "../EventBus.ts";
 import { attachStarterOffer, attachUndoToast, type UndoToast } from "../undo-toast.ts";
+import { UndoRedoKeys } from "../undo-redo-keys.ts";
 import { SCENE_BG_V2, CAR_OPEN_SPRITES, CAR_SIDE_CANVAS, CAR_SIDE_VOID, type ImageAsset, type OpenCarAsset } from "../assets.ts";
 import { loadUiSprites, CHALKBOARD_SLATE } from "../ui-sprites.ts";
 import { WORKSHOP_GRID_V2 } from "../scene-layout.ts";
@@ -374,7 +375,18 @@ export class WorkshopScene extends BackgroundScene {
     // knowledge of WHICH commands destroy anything.
     this.undoToast = attachUndoToast(this);
     this.starterOffer = attachStarterOffer(this);
+    // UNDO and REDO, always on the header (card C6). Under the tool panels'
+    // depth-60 modal, like the rest of the header.
+    this.undoRedo = new UndoRedoKeys(this, 12);
+    this.layoutChrome();
     this.announceReady();
+  }
+
+  private undoRedo?: UndoRedoKeys;
+
+  /** The UNDO/REDO keys' state, for the e2e bridge. */
+  get historyKeys(): { canUndo: boolean; canRedo: boolean } | null {
+    return this.undoRedo?.state ?? null;
   }
 
   /** START EMPTY for a brand-new song's starter beat (card C5). */
@@ -853,6 +865,8 @@ export class WorkshopScene extends BackgroundScene {
     if (r.width === 0) return;
     const { width, height } = this.scale.gameSize;
     relayoutUiLayer(this.chrome, r, { width, height });
+    const undoAnchor = this.chromeSpawns.find((s) => s.id === "undo-redo");
+    if (undoAnchor) this.undoRedo?.place(placeSpawn(undoAnchor, r, { width, height }));
 
     const lcd = this.chromeSpawns.find((s) => s.id === "lcd-transport");
     if (lcd && this.songText && this.tempoText && this.lcdChip) {

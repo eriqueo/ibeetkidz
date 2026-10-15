@@ -18,6 +18,8 @@ import {
   paletteSlot,
   trainSlot,
   trainStep,
+  trainPageSize,
+  clampTrainOffset,
   trainIndexAtX,
   moveTrainOrder,
   carFitScale,
@@ -154,16 +156,32 @@ describe("paletteSlot — every car, 4 sidings, no collisions", () => {
 });
 
 describe("assembly line", () => {
-  it("packs tighter as the train grows, so slots stay on the painted track", () => {
+  it("never packs cars closer than a car's width, however long the train (card C6)", () => {
+    const w = REF.width * YARD_SIDINGS_V2.carW;
+    expect(trainStep(REF)).toBeGreaterThanOrEqual(w);
+  });
+
+  it("keeps every car on show on the painted straight", () => {
     const a = YARD_LAYOUT_V2.assemblyLine;
-    const last = trainSlot(REF, MAX_CARS - 1, MAX_CARS);
-    expect(last.cx).toBeLessThan(REF.width * (a.x + a.w));
-    expect(trainStep(REF, MAX_CARS)).toBeLessThanOrEqual(trainStep(REF, 1));
+    const page = trainPageSize(REF);
+    // A whole design's worth of cars fits without scrolling.
+    expect(page).toBeGreaterThanOrEqual(MAX_CARS);
+    const last = trainSlot(REF, page - 1);
+    expect(last.cx + last.w / 2).toBeLessThanOrEqual(REF.width * (a.x + a.w) + 1);
+    // Scrolled: the first car on show sits where car 0 sits unscrolled.
+    expect(trainSlot(REF, 7, 7).cx).toBeCloseTo(trainSlot(REF, 0).cx);
+  });
+
+  it("scrolls no further than the last car on the straight", () => {
+    const page = trainPageSize(REF);
+    expect(clampTrainOffset(REF, page - 2, 5)).toBe(0); // fits: never scrolled
+    expect(clampTrainOffset(REF, page + 6, 99)).toBe(6);
+    expect(clampTrainOffset(REF, page + 6, -3)).toBe(0);
   });
 
   it("gives each car a name chip no wider than the gap to the next car", () => {
-    const step = trainStep(REF, MAX_CARS);
-    const chip = namePlateBox(REF, trainSlot(REF, 0, MAX_CARS), step);
+    const step = trainStep(REF);
+    const chip = namePlateBox(REF, trainSlot(REF, 0), step);
     expect(chip.maxW).toBeLessThanOrEqual(step);
     expect(chip.w).toBeLessThanOrEqual(chip.maxW);
   });
@@ -173,9 +191,18 @@ describe("drag-to-reorder on the assembly line", () => {
   it("maps a drop x back to the slot it landed on", () => {
     const count = 5;
     for (let i = 0; i < count; i += 1) {
-      const slot = trainSlot(REF, i, count);
+      const slot = trainSlot(REF, i);
       expect(trainIndexAtX(REF, slot.cx, count)).toBe(i);
     }
+  });
+
+  it("maps a drop on a scrolled line to the car shown there", () => {
+    const count = trainPageSize(REF) + 4;
+    const offset = 3;
+    const slot = trainSlot(REF, 5, offset);
+    expect(trainIndexAtX(REF, slot.cx, count, offset)).toBe(5);
+    // Off the left end of a scrolled line: the first car on show, not car 0.
+    expect(trainIndexAtX(REF, -99999, count, offset)).toBe(offset);
   });
 
   it("clamps a drag off either end to first/last instead of out of the train", () => {
@@ -188,8 +215,8 @@ describe("drag-to-reorder on the assembly line", () => {
 
   it("snaps to the NEAREST slot, not the one it passed", () => {
     const count = 4;
-    const a = trainSlot(REF, 1, count);
-    const b = trainSlot(REF, 2, count);
+    const a = trainSlot(REF, 1);
+    const b = trainSlot(REF, 2);
     expect(trainIndexAtX(REF, a.cx + (b.cx - a.cx) * 0.4, count)).toBe(1);
     expect(trainIndexAtX(REF, a.cx + (b.cx - a.cx) * 0.6, count)).toBe(2);
   });
