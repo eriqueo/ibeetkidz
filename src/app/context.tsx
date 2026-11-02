@@ -39,6 +39,7 @@ import type { EventMap } from "../game/EventBus.ts";
 import { melodyVoices } from "../game/instrument-station.ts";
 import type Phaser from "phaser";
 import { attachPerfProbe } from "./perf-probe.ts";
+import { recordStorageResult, StorageDiagnosticReport, type StorageStep } from "./storage-diagnostics.tsx";
 
 // ── Singletons (one per page load) ──────────────────────────────────────────
 const toneSound = new ToneSoundPort();
@@ -410,15 +411,25 @@ function hasAudioContext(): boolean {
 /** Safari private mode throws on `localStorage.setItem`, and a sandboxed frame
  *  throws on merely touching `indexedDB` — so both are probed inside try. */
 function storageReachable(): boolean {
+  let step: StorageStep = "probe-write";
   try {
     localStorage.setItem(PROBE_KEY, "1");
+    recordStorageResult(step);
+    step = "probe-remove";
     localStorage.removeItem(PROBE_KEY);
-  } catch {
+    recordStorageResult(step);
+  } catch (err) {
+    recordStorageResult(step, err);
     return false;
   }
   try {
-    if (!globalThis.indexedDB) return false;
-  } catch {
+    if (!globalThis.indexedDB) {
+      recordStorageResult("probe-indexeddb", new Error("IndexedDB absent"));
+      return false;
+    }
+    recordStorageResult("probe-indexeddb");
+  } catch (err) {
+    recordStorageResult("probe-indexeddb", err);
     return false;
   }
   return true;
@@ -431,6 +442,7 @@ export function probeEnvironment(): BootProbe {
 }
 
 async function persist(): Promise<void> {
+  let step: StorageStep = "save-recordings";
   try {
     const project = getProject();
     for (const clip of Object.values(project.clips)) {
@@ -443,10 +455,14 @@ async function persist(): Promise<void> {
     // point. Never publish an index that names audio we failed to persist.
     // Passing the whole history also lets the adapter collect recordings that
     // no reachable undo/redo state can restore.
+    recordStorageResult(step);
+    step = "save-project";
     await storage.saveProject(project, store.getSnapshot());
+    recordStorageResult(step);
     blockedNoticeDismissed = false;
     if (storageTrouble?.kind === "blocked") emitStorageTrouble(null);
   } catch (err) {
+    recordStorageResult(step, err);
     // Autosave fires on a timer; it must never take the app down. Record the
     // failure instead so the kid finds out that saving stopped working.
     reportStorageTrouble(err instanceof QuotaExceededError ? "full" : "blocked");
@@ -474,7 +490,13 @@ store.subscribe(() => {
 
 /** Re-load the most recent saved project and rehydrate its recorded audio. */
 export async function loadLast(): Promise<void> {
-  const metas = await storage.listProjects();
+  const metas = await storage.listProjects().then((value) => {
+    recordStorageResult("list-projects");
+    return value;
+  }, (err: unknown) => {
+    recordStorageResult("list-projects", err);
+    throw err;
+  });
   if (metas.length === 0) return;
   const latest = [...metas].sort((a, b) => b.savedAt - a.savedAt)[0];
   if (!latest) return;
@@ -485,7 +507,9 @@ export async function loadLast(): Promise<void> {
   let project: Project | null;
   try {
     project = await storage.loadProject(latest.id);
+    recordStorageResult("load-project");
   } catch (err) {
+    recordStorageResult("load-project", err);
     const copy = err instanceof StorageError ? err.kidMessage : undefined;
     if (copy) reportSaveTrouble(copy);
     else console.warn("could not load the last project", err);
@@ -634,6 +658,7 @@ export function AppProvider({ children }: { children: ReactNode }): ReactNode {
     <AppContext.Provider value={api}>
       {children}
       <StorageNotice />
+      <StorageDiagnosticReport />
     </AppContext.Provider>
   );
 }
