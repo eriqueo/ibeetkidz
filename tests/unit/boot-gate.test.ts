@@ -199,6 +199,38 @@ describe("BootGate failure paths", () => {
     expect(saveProject).not.toHaveBeenCalled();
   });
 
+  it("does not warn on a fresh visit with working storage", async () => {
+    vi.spyOn(AudioEngine.prototype, "start").mockResolvedValue(undefined);
+    await mount(createElement(BootGate, { onStarted: vi.fn() }));
+    await tapBoot();
+    await act(async () => { api?.save(); });
+    expect(container.querySelector("#storage-notice")).toBeNull();
+  });
+
+  it("keeps a dismissed blocked-storage warning dismissed while autosave retries", async () => {
+    vi.useFakeTimers();
+    const save = vi.spyOn(LocalStoragePort.prototype, "saveProject")
+      .mockRejectedValue(new StorageError("unavailable", "storage denied"));
+    await mount(createElement("span", null));
+    await act(async () => { api?.save(); });
+    expect(container.querySelector("#storage-notice")).not.toBeNull();
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>("#storage-notice button")?.click();
+    });
+    await act(async () => {
+      api?.dispatch({ type: "setTempo", bpm: 129 });
+      await vi.advanceTimersByTimeAsync(801);
+    });
+    expect(save.mock.calls.length).toBeGreaterThan(1);
+    expect(container.querySelector("#storage-notice")).toBeNull();
+
+    // Recovery ends the outage. A new failure must warn again.
+    save.mockResolvedValueOnce(undefined);
+    await act(async () => { api?.save(); });
+    await act(async () => { api?.save(); });
+    expect(container.querySelector("#storage-notice")).not.toBeNull();
+  });
+
   it("a rejected engine.start() leaves a working retry, not a dead button", async () => {
     const started = vi.fn();
     const start = vi

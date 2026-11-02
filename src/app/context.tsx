@@ -329,6 +329,9 @@ interface Notice {
 }
 
 let storageTrouble: Notice | null = null;
+// Acknowledging a browser restriction lasts until a save succeeds. Autosave
+// still attempts writes so a later permission change can recover saving.
+let blockedNoticeDismissed = false;
 const troubleListeners = new Set<() => void>();
 
 function getStorageTrouble(): Notice | null {
@@ -344,6 +347,7 @@ function emitStorageTrouble(next: Notice | null): void {
 /** Flag that saving is broken. "full" wins over "blocked" — a full device is
  *  the more actionable message and must not be downgraded by a later probe. */
 export function reportStorageTrouble(kind: StorageTrouble): void {
+  if (kind === "blocked" && blockedNoticeDismissed) return;
   if (storageTrouble?.kind === "full" && kind === "blocked") return;
   emitStorageTrouble({ kind, copy: TROUBLE_COPY[kind] });
 }
@@ -355,8 +359,9 @@ export function reportSaveTrouble(copy: KidMessage): void {
   emitStorageTrouble({ kind: "save", copy });
 }
 
-/** Dismiss the notice (the kid tapped OK). */
+/** Reset the notice channel and its acknowledgement state. */
 export function clearStorageTrouble(): void {
+  blockedNoticeDismissed = false;
   emitStorageTrouble(null);
 }
 
@@ -439,6 +444,8 @@ async function persist(): Promise<void> {
     // Passing the whole history also lets the adapter collect recordings that
     // no reachable undo/redo state can restore.
     await storage.saveProject(project, store.getSnapshot());
+    blockedNoticeDismissed = false;
+    if (storageTrouble?.kind === "blocked") emitStorageTrouble(null);
   } catch (err) {
     // Autosave fires on a timer; it must never take the app down. Record the
     // failure instead so the kid finds out that saving stopped working.
@@ -612,7 +619,10 @@ const StorageNotice: FC = () => {
     <div id="storage-notice" role="alert">
       <p className="storage-notice-title">{copy.title}</p>
       <p className="storage-notice-body">{copy.body}</p>
-      <button type="button" onClick={clearStorageTrouble}>
+      <button type="button" onClick={() => {
+        if (storageTrouble?.kind === "blocked") blockedNoticeDismissed = true;
+        emitStorageTrouble(null);
+      }}>
         OK!
       </button>
     </div>
